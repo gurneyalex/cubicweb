@@ -17,8 +17,7 @@ from cubicweb.common.registerers import (
     accepts_registerer, extresources_registerer,
     etype_rtype_priority_registerer)
 #etype_rtype_selector, has_relation,
-from cubicweb.common.view import Template
-from cubicweb.common.appobject import ReloadableMixIn
+from cubicweb.common.view import Template, ReloadableMixIn
 
 from cubicweb.web.htmlwidgets import (BoxLink, BoxWidget, SideBoxWidget,
                                       RawBoxItem, BoxSeparator)
@@ -138,14 +137,6 @@ class UserRQLBoxTemplate(RQLBoxTemplate):
         assert self.rql is not None, self.id
         return (self.rql, {'x': self.req.user.eid}, 'x')
     
-
-class ExtResourcesBoxTemplate(BoxTemplate):
-    """base class for boxes displaying external resources such as the RSS logo.
-    It should list necessary resources with the .need_resources attribute.
-    """
-    __registerer__ = extresources_registerer
-    need_resources = ()
-
 
 class EntityBoxTemplate(BoxTemplate):
     """base class for boxes related to a single entity"""
