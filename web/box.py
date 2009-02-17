@@ -1,7 +1,7 @@
 """abstract box classes for CubicWeb web client
 
 :organization: Logilab
-:copyright: 2001-2008 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
 """
 __docformat__ = "restructuredtext en"
@@ -10,13 +10,13 @@ from logilab.common.decorators import cached
 from logilab.mtconverter import html_escape
 
 from cubicweb import Unauthorized, role as get_role
+from cubicweb.selectors import (one_line_rset,  primary_view,
+                                match_context_prop, has_related_entities,
+                                accepts_compat, condition_compat)
 from cubicweb.common.registerers import (
     accepts_registerer, extresources_registerer,
     etype_rtype_priority_registerer)
-from cubicweb.common.selectors import (
-    etype_rtype_selector, one_line_rset, accept, has_relation,
-    primary_view, match_context_prop, has_related_entities,
-    _rql_condition)
+#etype_rtype_selector, has_relation,
 from cubicweb.common.view import Template
 from cubicweb.common.appobject import ReloadableMixIn
 
@@ -106,7 +106,7 @@ class RQLBoxTemplate(BoxTemplate):
     user's rights) and rql attributes
     """
     __registerer__ = etype_rtype_priority_registerer
-    __selectors__ = BoxTemplate.__selectors__ + (etype_rtype_selector,)
+#XXX    __selectors__ = BoxTemplate.__selectors__ + (etype_rtype_selector,)
 
     rql  = None
     
@@ -151,11 +151,10 @@ class EntityBoxTemplate(BoxTemplate):
     """base class for boxes related to a single entity"""
     __registerer__ = accepts_registerer
     __selectors__ = (one_line_rset, primary_view,
-                     match_context_prop, etype_rtype_selector,
-                     has_relation, accept, _rql_condition)
-    accepts = ('Any',)
+                     match_context_prop,)
+                     #etype_rtype_selector, has_relation)
+    registered = accepts_compat(condition_compat(BoxTemplate.registered))
     context = 'incontext'
-    condition = None
     
     def call(self, row=0, col=0, **kwargs):
         """classes inheriting from EntityBoxTemplate should define cell_call"""

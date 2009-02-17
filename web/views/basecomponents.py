@@ -5,7 +5,7 @@
 * the workflow history section for workflowable objects
 
 :organization: Logilab
-:copyright: 2001-2008 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
 """
 __docformat__ = "restructuredtext en"
@@ -20,13 +20,13 @@ from cubicweb.common.selectors import (chainfirst, two_etypes_rset,
                                     match_form_params)
 
 from cubicweb.web.htmlwidgets import MenuWidget, PopupBoxMenu, BoxSeparator, BoxLink
-from cubicweb.web.component import (VComponent, SingletonVComponent, EntityVComponent, 
+from cubicweb.web.component import (VComponent, EntityVComponent, 
                                     RelatedObjectsVComponent)
 
 _ = unicode
 
 
-class RQLInputForm(SingletonVComponent):
+class RQLInputForm(VComponent):
     """build the rql input form, usually displayed in the header"""
     id = 'rqlinput'
     visible = False
@@ -55,7 +55,7 @@ class RQLInputForm(SingletonVComponent):
         self.w(u'</form></div>')
 
 
-class ApplLogo(SingletonVComponent):
+class ApplLogo(VComponent):
     """build the application logo, usually displayed in the header"""
     id = 'logo'
     site_wide = True # don't want user to hide this component using an eproperty
@@ -64,7 +64,7 @@ class ApplLogo(SingletonVComponent):
                % (self.req.base_url(), self.req.external_resource('LOGO')))
 
 
-class ApplHelp(SingletonVComponent):
+class ApplHelp(VComponent):
     """build the help button, usually displayed in the header"""
     id = 'help'
     def call(self):
@@ -73,7 +73,7 @@ class ApplHelp(SingletonVComponent):
                   self.req._(u'help'),))
 
 
-class UserLink(SingletonVComponent):
+class UserLink(VComponent):
     """if the user is the anonymous user, build a link to login
     else a link to the connected user object with a loggout link
     """
@@ -104,13 +104,17 @@ class UserLink(SingletonVComponent):
             self.w(self.req._('anonymous'))
             self.w(u'''&nbsp;[<a class="logout" href="javascript: popupLoginBox();">%s</a>]'''
                    % (self.req._('i18n_login_popup')))
+            # FIXME maybe have an other option to explicitely authorise registration
+            if self.config['anonymous-user']:
+                self.w(u'''&nbsp;[<a class="logout" href="?vid=register">%s</a>]'''
+                       % (self.req._('i18n_register_user')))
         else:
             self.w(self.req._('anonymous'))
             self.w(u'&nbsp;[<a class="logout" href="%s">%s</a>]'
                    % (self.build_url('login'), self.req._('login')))
 
 
-class ApplicationMessage(SingletonVComponent):
+class ApplicationMessage(VComponent):
     """display application's messages given using the __message parameter
     into a special div section
     """
@@ -165,7 +169,7 @@ class WFHistoryVComponent(EntityVComponent):
                        displaycols=displaycols, headers=headers)
 
 
-class ApplicationName(SingletonVComponent):
+class ApplicationName(VComponent):
     """display the application name"""
     id = 'appliname'
 
@@ -186,7 +190,7 @@ class SeeAlsoVComponent(RelatedObjectsVComponent):
     help = _('contentnavigation_seealso_description')
 
     
-class EtypeRestrictionComponent(SingletonVComponent):
+class EtypeRestrictionComponent(VComponent):
     """displays the list of entity types contained in the resultset
     to be able to filter accordingly.
     """
@@ -238,14 +242,14 @@ class EtypeRestrictionComponent(SingletonVComponent):
 
 class RSSFeedURL(VComponent):
     id = 'rss_feed_url'
-    __selectors__ = (non_final_entity,)
+    __selectors__ = (non_final_entity(),)
     
     def feed_url(self):
         return self.build_url(rql=self.limited_rql(), vid='rss')
 
 class RSSEntityFeedURL(VComponent):
     id = 'rss_feed_url'
-    __selectors__ = (non_final_entity, one_line_rset)
+    __selectors__ = (non_final_entity(), one_line_rset)
     
     def feed_url(self):
         return self.entity(0, 0).rss_feed_url()

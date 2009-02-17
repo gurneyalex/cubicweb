@@ -18,10 +18,10 @@ from mx.DateTime.Parser import DateFromString
 from logilab.common.decorators import cached
 
 from cubicweb import NoSelectableObject, ValidationError, typed_eid
+from cubicweb.selectors import match_user_groups
 from cubicweb.common.selectors import yes
 from cubicweb.common.mail import format_mail
 from cubicweb.common.view import STRICT_DOCTYPE, CW_XHTML_EXTENSIONS
-
 from cubicweb.web import ExplicitLogin, Redirect, RemoteCallFailed
 from cubicweb.web.controller import Controller
 from cubicweb.web.views import vid_from_rset
@@ -211,14 +211,14 @@ class JSonController(Controller):
             self.req.set_content_type(content_type)
             return xmlize(data)
         return data
-
+    
     def html_exec(self, rset=None):
-        """html mode: execute query and return the view as HTML"""
+        # XXX try to use the page-content template
         req = self.req
         rql = req.form.get('rql')
         if rset is None and rql:
             rset = self._exec(rql)
-            
+        
         vid = req.form.get('vid') or vid_from_rset(req, rset, self.schema)
         try:
             view = self.vreg.select_view(vid, req, rset)
@@ -239,6 +239,10 @@ class JSonController(Controller):
             if divid == 'pageContent':
                 stream.write(u'<div id="contentmain">')
         view.dispatch()
+        extresources = req.html_headers.getvalue(skiphead=True)
+        stream.write(u'<div class="ajaxHtmlHead">\n') # XXX use a widget ?
+        stream.write(extresources)
+        stream.write(u'</div>\n')
         if req.form.get('paginate') and divid == 'pageContent':
             stream.write(u'</div></div>')
         source = stream.getvalue()
@@ -462,7 +466,7 @@ class JSonController(Controller):
 
 class SendMailController(Controller):
     id = 'sendmail'
-    require_groups = ('managers', 'users')
+    __selectors__ = (match_user_groups('managers', 'users'),)
 
     def recipients(self):
         """returns an iterator on email's recipients as entities"""

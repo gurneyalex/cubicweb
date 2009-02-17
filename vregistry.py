@@ -234,7 +234,9 @@ class VRegistry(object):
             cls = registerer.do_it_yourself(vobjects)
             #_kicked |= registerer.kicked
             if cls:
-                vobject = cls.registered(self)
+                # registered() is technically a classmethod but is not declared
+                # as such because we need to compose registered in some cases
+                vobject = cls.registered.im_func(cls, self)
                 try:
                     vname = vobject.__name__
                 except AttributeError:
@@ -513,7 +515,7 @@ set_log_methods(registerer, getLogger('cubicweb.registration'))
 
 # advanced selector building functions ########################################
 
-def chainall(*selectors):
+def chainall(*selectors, **kwargs):
     """return a selector chaining given selectors. If one of
     the selectors fail, selection will fail, else the returned score
     will be the sum of each selector'score
@@ -527,9 +529,11 @@ def chainall(*selectors):
                 return 0
             score += partscore
         return score
+    if 'name' in kwargs:
+        selector.__name__ = kwargs['name']
     return selector
 
-def chainfirst(*selectors):
+def chainfirst(*selectors, **kwargs):
     """return a selector chaining given selectors. If all
     the selectors fail, selection will fail, else the returned score
     will be the first non-zero selector score
@@ -541,5 +545,70 @@ def chainfirst(*selectors):
             if partscore:
                 return partscore
         return 0
+    if 'name' in kwargs:
+        selector.__name__ = kwargs['name']
     return selector
 
+
+# selector base classes and operations ########################################
+
+class Selector(object):
+    """base class for selector classes providing implementation
+    for operators ``&`` and ``|``
+
+    This class is only here to give access to binary operators, the
+    selector logic itself should be implemented in the __call__ method
+    """
+    def __init__(self, *selectors):
+        self.selectors = self.merge_selectors(selectors)
+
+    @classmethod
+    def merge_selectors(cls, selectors):
+        """merge selectors when possible :
+
+        AndSelector(AndSelector(sel1, sel2), AndSelector(sel3, sel4))
+        ==> AndSelector(sel1, sel2, sel3, sel4)
+        """
+        merged_selectors = []
+        for selector in selectors:
+            if isinstance(selector, cls):
+                merged_selectors += selector.selectors
+            else:
+                merged_selectors.append(selector)
+        return merged_selectors
+        
+    def __and__(self, other):
+        return AndSelector(self, other)
+
+    def __or__(self, other):
+        return OrSelector(self, other)
+
+    __ror__ = __or__    # for cases like (function | selector)
+    __rand__ = __and__  # for cases like (function & selector)
+    # XXX (function | function) or (function & function) not managed yet
+
+    def __call__(self, cls, *args, **kwargs):
+        return NotImplementedError("selector %s must implement its logic "
+                                   "in its __call__ method" % self.__class__.__name__)
+
+
+class AndSelector(Selector):
+    """and-chained selectors (formerly known as chainall)"""
+    def __call__(self, cls, *args, **kwargs):
+        score = 0
+        for selector in self.selectors:
+            partscore = selector(cls, *args, **kwargs)
+            if not partscore:
+                return 0
+            score += partscore
+        return score
+
+
+class OrSelector(Selector):
+    """or-chained selectors (formerly known as chainfirst)"""
+    def __call__(self, cls, *args, **kwargs):
+        for selector in self.selectors:
+            partscore = selector(cls, *args, **kwargs)
+            if partscore:
+                return partscore
+        return 0

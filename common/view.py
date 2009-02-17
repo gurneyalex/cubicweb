@@ -12,13 +12,15 @@ from cStringIO import StringIO
 from logilab.mtconverter import html_escape
 
 from cubicweb import NotAnEntity, NoSelectableObject
+from cubicweb.selectors import (yes, match_user_groups, implements,
+                                nonempty_rset, none_rset)
+from cubicweb.selectors import require_group_compat, accepts_compat
 from cubicweb.common.registerers import accepts_registerer, priority_registerer
-from cubicweb.common.selectors import (chainfirst, match_user_group, accept,
-                                       nonempty_rset, empty_rset, none_rset)
-from cubicweb.common.appobject import AppRsetObject, ComponentMixIn
+from cubicweb.common.appobject import AppRsetObject
 from cubicweb.common.utils import UStringIO, HTMLStream
 
 _ = unicode
+
 
 # robots control
 NOINDEX = u'<meta name="ROBOTS" content="NOINDEX" />'
@@ -86,6 +88,7 @@ class View(AppRsetObject):
     attributes are added and the `w` attribute will be set at rendering
     time to a write function to use.
     """
+    __registerer__ = priority_registerer
     __registry__ = 'views'
 
     templatable = True
@@ -293,17 +296,7 @@ class View(AppRsetObject):
     def create_url(self, etype, **kwargs):
         """ return the url of the entity creation form for a given entity type"""
         return self.req.build_url('add/%s'%etype, **kwargs)
-
-
-# concrete views base classes #################################################
-
-class EntityView(View):
-    """base class for views applying on an entity (i.e. uniform result set)
-    """
-    __registerer__ = accepts_registerer
-    __selectors__ = (accept,)
-    category = 'entityview'
-
+    
     def field(self, label, value, row=True, show_label=True, w=None, tr=True):
         """ read-only field """
         if w is None:
@@ -319,15 +312,29 @@ class EntityView(View):
             w(u'</div>')
 
 
+# concrete views base classes #################################################
+
+class EntityView(View):
+    """base class for views applying on an entity (i.e. uniform result set)
+    """
+    # XXX deprecate
+    __registerer__ = accepts_registerer
+    __selectors__ = (implements('Any'),)
+    registered = accepts_compat(View.registered.im_func)
+
+    category = 'entityview'
+
+
 class StartupView(View):
     """base class for views which doesn't need a particular result set
     to be displayed (so they can always be displayed !)
     """
     __registerer__ = priority_registerer
-    __selectors__ = (match_user_group, none_rset)
-    require_groups = ()
+    __selectors__ = (none_rset,)
+    registered = require_group_compat(View.registered.im_func)
+    
     category = 'startupview'
-
+    
     def url(self):
         """return the url associated with this view. We can omit rql here"""
         return self.build_url('view', vid=self.id)
@@ -346,7 +353,7 @@ class EntityStartupView(EntityView):
     result set (usually a default rql is provided by the view class)
     """
     __registerer__ = accepts_registerer
-    __selectors__ = (chainfirst(none_rset, accept),)
+    __selectors__ = ((none_rset | implements('Any')),)
 
     default_rql = None
 
@@ -403,13 +410,7 @@ class AnyRsetView(View):
             labels.append(label)
         return labels
 
-
-class EmptyRsetView(View):
-    """base class for views applying on any empty result sets"""
-    __registerer__ = priority_registerer
-    __selectors__ = (empty_rset,)
-
-
+    
 # concrete template base classes ##############################################
 
 class Template(View):
@@ -418,9 +419,9 @@ class Template(View):
     """
     __registry__ = 'templates'
     __registerer__ = priority_registerer
-    __selectors__ = (match_user_group,)
+    __selectors__ = (yes,)
 
-    require_groups = ()
+    registered = require_group_compat(View.registered.im_func)
 
     def template(self, oid, **kwargs):
         """shortcut to self.registry.render method on the templates registry"""
@@ -433,7 +434,6 @@ class MainTemplate(Template):
     There is usually at least a regular main template and a simple fallback
     one to display error if the first one failed
     """
-
     base_doctype = STRICT_DOCTYPE
 
     @property
@@ -466,15 +466,3 @@ class MainTemplate(Template):
         self._stream.doctype = self.doctype
         if not xmldecl:
             self._stream.xmldecl = u''
-
-# viewable components base classes ############################################
-
-class VComponent(ComponentMixIn, View):
-    """base class for displayable components"""
-    property_defs = {
-        'visible':  dict(type='Boolean', default=True,
-                         help=_('display the component or not')),}
-
-class SingletonVComponent(VComponent):
-    """base class for displayable unique components"""
-    __registerer__ = priority_registerer
