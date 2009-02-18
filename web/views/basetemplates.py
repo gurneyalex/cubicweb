@@ -11,7 +11,7 @@ __docformat__ = "restructuredtext en"
 from logilab.mtconverter import html_escape
 
 from cubicweb import NoSelectableObject, ObjectNotFound
-from cubicweb.view import Template, MainTemplate,  NOINDEX, NOFOLLOW
+from cubicweb.view import View, MainTemplate,  NOINDEX, NOFOLLOW
 from cubicweb.utils import make_uid, UStringIO
 from cubicweb.web.views.baseviews import vid_from_rset
 
@@ -38,7 +38,7 @@ class LogInOutTemplate(MainTemplate):
         w(NOINDEX)
         w(NOFOLLOW)
         w(u'\n'.join(additional_headers) + u'\n')
-        self.template('htmlheader', rset=self.rset)
+        self.wview('htmlheader', rset=self.rset)
         w(u'<title>%s</title>\n' % html_escape(page_title))
 
 
@@ -47,7 +47,7 @@ class LogInTemplate(LogInOutTemplate):
     title = 'log in'
 
     def content(self, w):
-        self.template('logform', rset=self.rset, id='loginBox', klass='')
+        self.wview('logform', rset=self.rset, id='loginBox', klass='')
 
 
 class LoggedOutTemplate(LogInOutTemplate):
@@ -128,7 +128,7 @@ class TheMainTemplate(MainTemplate):
         else:
             view.set_request_content_type()
             self.set_stream(templatable=False)
-        self.template('page-content', view=view, rset=rset)
+        self.wview('page-content', view=view, rset=rset)
         if with_templates:
             self.template_footer(view)
 
@@ -161,14 +161,14 @@ class TheMainTemplate(MainTemplate):
         w(u'<meta http-equiv="content-type" content="%s; charset=%s"/>\n'
           % (content_type, self.req.encoding))
         w(u'\n'.join(additional_headers) + u'\n')
-        self.template('htmlheader', rset=self.rset)
+        self.wview('htmlheader', rset=self.rset)
         if page_title:
             w(u'<title>%s</title>\n' % html_escape(page_title))
 
     def template_body_header(self, view):
         w = self.w
         w(u'<body>\n')
-        self.template('header', rset=self.rset, view=view)
+        self.wview('header', rset=self.rset, view=view)
         w(u'<div id="page"><table width="100%" border="0" id="mainLayout"><tr>\n')
         self.nav_column(view, 'left')
         w(u'<td id="contentcol">\n')
@@ -185,7 +185,7 @@ class TheMainTemplate(MainTemplate):
         self.w(u'</td>\n')
         self.nav_column(view, 'right')
         self.w(u'</tr></table></div>\n')
-        self.template('footer', rset=self.rset)
+        self.wview('footer', rset=self.rset)
         self.w(u'</body>')
 
     def nav_column(self, view, context):
@@ -199,10 +199,10 @@ class TheMainTemplate(MainTemplate):
 
     def content_header(self, view=None):
         """by default, display informal messages in content header"""
-        self.template('contentheader', rset=self.rset, view=view)
+        self.wview('contentheader', rset=self.rset, view=view)
 
     def content_footer(self, view=None):
-        self.template('contentfooter', rset=self.rset, view=view)
+        self.wview('contentfooter', rset=self.rset, view=view)
 
 
 class PageContentTemplate(TheMainTemplate):
@@ -267,7 +267,7 @@ class ErrorTemplate(TheMainTemplate):
         w(u'<meta http-equiv="content-type" content="%s; charset=%s"/>\n'
           % (content_type, self.req.encoding))
         w(u'\n'.join(additional_headers))
-        self.template('htmlheader', rset=self.rset)
+        self.wview('htmlheader', rset=self.rset)
         w(u'<title>%s</title>\n' % html_escape(page_title))
         self.w(u'<body>\n')
 
@@ -288,7 +288,7 @@ class SimpleMainTemplate(TheMainTemplate):
         whead(u'<meta http-equiv="content-type" content="%s; charset=%s"/>\n'
               % (content_type, self.req.encoding))
         whead(u'\n'.join(additional_headers) + u'\n')
-        self.template('htmlheader', rset=self.rset)
+        self.wview('htmlheader', rset=self.rset)
         w = self.w
         w(u'<title>%s</title>\n' % html_escape(page_title))
         w(u'<body>\n')
@@ -319,7 +319,7 @@ class SimpleMainTemplate(TheMainTemplate):
 
 # page parts templates ########################################################
 
-class HTMLHeader(Template):
+class HTMLHeader(View):
     """default html headers"""
     id = 'htmlheader'
 
@@ -363,7 +363,7 @@ class HTMLHeader(Template):
         req.html_headers.define_var('pageid', pid);
 
 
-class HTMLPageHeader(Template):
+class HTMLPageHeader(View):
     """default html page header"""
     id = 'header'
 
@@ -404,8 +404,8 @@ class HTMLPageHeader(Template):
         self.w(u'<td id="lastcolumn">')
         self.w(u'</td>\n')
         self.w(u'</tr></table>\n')
-        self.template('logform', rset=self.rset, id='popupLoginBox', klass='hidden',
-                      title=False, message=False)
+        self.wview('logform', rset=self.rset, id='popupLoginBox', klass='hidden',
+                   title=False, message=False)
 
     def state_header(self):
         state = self.req.search_state
@@ -423,7 +423,7 @@ class HTMLPageHeader(Template):
 
 
 
-class HTMLPageFooter(Template):
+class HTMLPageFooter(View):
     """default html page footer: include logo if any, and close the HTML body
     """
     id = 'footer'
@@ -442,7 +442,7 @@ class HTMLPageFooter(Template):
         self.w(u'</div>')
 
 
-class HTMLContentHeader(Template):
+class HTMLContentHeader(View):
     """default html page content header:
     * include message component if selectable for this request
     * include selectable content navigation components
@@ -461,7 +461,7 @@ class HTMLContentHeader(Template):
             self.w(u'</div><div class="clear"></div>')
 
 
-class HTMLContentFooter(Template):
+class HTMLContentFooter(View):
     """default html page content footer: include selectable content navigation
     components
     """
@@ -478,7 +478,7 @@ class HTMLContentFooter(Template):
             self.w(u'</div>')
 
 
-class LogFormTemplate(Template):
+class LogFormTemplate(View):
     id = 'logform'
     title = 'log in'
 
