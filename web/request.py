@@ -1,7 +1,7 @@
 """abstract class for http request
 
 :organization: Logilab
-:copyright: 2001-2008 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
 """
 __docformat__ = "restructuredtext en"
@@ -18,14 +18,14 @@ from rql.utils import rqlvar_maker
 
 from logilab.common.decorators import cached
 
-# XXX move _MARKER here once AppObject.external_resource has been removed
 from cubicweb.dbapi import DBAPIRequest
-from cubicweb.common.appobject import _MARKER 
 from cubicweb.common.mail import header
 from cubicweb.common.uilib import remove_html_tags
 from cubicweb.common.utils import SizeConstrainedList, HTMLHead
 from cubicweb.web import (INTERNAL_FIELD_VALUE, LOGGER, NothingToEdit, RequestError,
                        StatusResponse)
+
+_MARKER = object()
 
 
 def list_form_param(form, param, pop=False):
@@ -265,9 +265,10 @@ class CubicWebRequestBase(DBAPIRequest):
     
     @cached # so it's writed only once
     def fckeditor_config(self):
+        self.add_js('fckeditor/fckeditor.js')
         self.html_headers.define_var('fcklang', self.lang)
         self.html_headers.define_var('fckconfigpath',
-                                     self.build_url('data/fckcwconfig.js'))
+                                     self.build_url('data/cubicweb.fckcwconfig.js'))
 
     def edited_eids(self, withtype=False):
         """return a list of edited eids"""

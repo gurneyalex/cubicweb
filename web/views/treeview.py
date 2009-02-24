@@ -11,6 +11,10 @@ from cubicweb.interfaces import ITree
 from cubicweb.common.selectors import implement_interface, yes
 from cubicweb.common.view import EntityView
 
+from cubicweb.interfaces import ITree
+from cubicweb.common.selectors import implement_interface, yes
+from cubicweb.common.view import EntityView
+
 def treecookiename(treeid):
     return str('treestate-%s' % treeid)
 
@@ -40,6 +44,7 @@ class TreeView(EntityView):
             self.wview(self.itemvid, self.rset, row=rowidx, col=0,
                        vid=subvid, parentvid=self.id, treeid=treeid)
         self.w(u'</ul>')
+        
 
 class FileTreeView(TreeView):
     """specific version of the treeview to display file trees

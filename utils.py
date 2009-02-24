@@ -1,11 +1,12 @@
 """Some utilities for CubicWeb server/clients.
 
 :organization: Logilab
-:copyright: 2001-2008 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
 """
 __docformat__ = "restructuredtext en"
 
+import locale
 from md5 import md5
 from time import time
 from random import randint, seed
@@ -41,6 +42,16 @@ def date_range(begin, end, incr=1, include=None):
         if include is None or include(date): 
             yield date
         date += incr
+
+def ustrftime(date, fmt='%Y-%m-%d'):
+    """like strftime, but returns a unicode string instead of an encoded
+    string which may be problematic with localized date.
+    
+    encoding is guessed by locale.getpreferredencoding()
+    """
+    # date format may depend on the locale
+    encoding = locale.getpreferredencoding(do_setlocale=False) or 'UTF-8'
+    return unicode(date.strftime(fmt), encoding)
 
 
 def dump_class(cls, clsname):
@@ -177,7 +188,7 @@ class HTMLHead(UStringIO):
             self.post_inlined_scripts.append(self.js_unload_code)
             self.pagedata_unload = True
 
-    def getvalue(self):
+    def getvalue(self, skiphead=False):
         """reimplement getvalue to provide a consistent (and somewhat browser
         optimzed cf. http://stevesouders.com/cuzillion) order in external
         resources declaration
@@ -209,7 +220,10 @@ class HTMLHead(UStringIO):
             w(u'<script type="text/javascript">\n')
             w(u'\n\n'.join(self.post_inlined_scripts))
             w(u'\n</script>\n')
-        return u'<head>\n%s</head>\n' % super(HTMLHead, self).getvalue()
+        header = super(HTMLHead, self).getvalue()
+        if skiphead:
+            return header
+        return u'<head>\n%s</head>\n' % header
         
 
 class HTMLStream(object):

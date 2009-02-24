@@ -5,22 +5,14 @@ A registerer is responsible to tell if an object should be registered according
 to the application's schema or to already registered object
 
 :organization: Logilab
-:copyright: 2006-2008 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2006-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
 """
 __docformat__ = "restructuredtext en"
 
-from cubicweb.vregistry import registerer
-
-
-def _accepts_interfaces(obj):
-    return sorted(getattr(obj, 'accepts_interfaces', ()))
-
-
-class yes_registerer(registerer):
-    """register without any other action"""
-    def do_it_yourself(self, registered):
-        return self.vobject
+from cubicweb.vregistry import registerer, yes_registerer
+from cubicweb.selectors import implements
+from cubicweb.cwvreg import use_interfaces
 
 class priority_registerer(registerer):
     """systematically kick previous registered class and register the
@@ -54,17 +46,6 @@ class priority_registerer(registerer):
 
     def equivalent(self, other):
         raise NotImplementedError(self, self.vobject)
-
-
-class kick_registerer(registerer):
-    """systematically kick previous registered class and don't register the
-    wrapped class. This is temporarily used to discard library object registrable
-    but that we don't want to use
-    """
-    def do_it_yourself(self, registered):
-        if registered:
-            self.kick(registered, registered[-1])
-        return 
     
 
 class accepts_registerer(priority_registerer):
@@ -81,25 +62,14 @@ class accepts_registerer(priority_registerer):
     """
     def do_it_yourself(self, registered):
         # if object is accepting interface, we have register it now and
-        # remove it latter if no object is implementing accepted interfaces
-        if _accepts_interfaces(self.vobject):
+        # remove it later if no object is implementing accepted interfaces
+        if use_interfaces(self.vobject):
             return self.vobject
-        if not 'Any' in self.vobject.accepts:
-            for ertype in self.vobject.accepts:
-                if ertype in self.schema:
-                    break
-            else:
-                self.skip()
-                return None
-        for required in getattr(self.vobject, 'requires', ()):
-            if required not in self.schema:
-                self.skip()
-                return
         self.remove_equivalents(registered)
         return self.vobject
     
     def equivalent(self, other):
-        if _accepts_interfaces(self.vobject) != _accepts_interfaces(other):
+        if use_interfaces(self.vobject) != use_interfaces(other):
             return False
         try:
             newaccepts = list(other.accepts)
@@ -115,90 +85,6 @@ class accepts_registerer(priority_registerer):
         except AttributeError:
             return False
 
-
-class id_registerer(priority_registerer):
-    """register according to the "id" attribute of the wrapped class,
-    refering to an entity type.
-    
-    * if the type is not Any and is not defined the application'schema,
-      skip the wrapped class
-    * if an object previously registered has the same .id attribute,
-      kick it out
-    * register
-    """
-    def do_it_yourself(self, registered):
-        etype = self.vobject.id
-        if etype != 'Any' and not self.schema.has_entity(etype):
-            self.skip()
-            return
-        self.remove_equivalents(registered)
-        return self.vobject
-    
-    def equivalent(self, other):
-        return other.id == self.vobject.id
-
-
-class etype_rtype_registerer(registerer):
-    """registerer handling optional .etype and .rtype attributes.:
-    
-    * if .etype is set and is not an entity type defined in the
-      application schema, skip the wrapped class
-    * if .rtype or .relname is set and is not a relation type defined in
-      the application schema, skip the wrapped class
-    * register
-    """
-    def do_it_yourself(self, registered):
-        cls = self.vobject
-        if hasattr(cls, 'etype'):
-            if not self.schema.has_entity(cls.etype):
-                return
-        rtype = getattr(cls, 'rtype', None)
-        if rtype and not self.schema.has_relation(rtype):
-            return
-        return cls
-
-class etype_rtype_priority_registerer(etype_rtype_registerer):
-    """add priority behaviour to the etype_rtype_registerer
-    """
-    def do_it_yourself(self, registered):
-        cls = super(etype_rtype_priority_registerer, self).do_it_yourself(registered)
-        if cls:
-            registerer = priority_registerer(self.registry, cls)
-            cls = registerer.do_it_yourself(registered)
-        return cls
-
-class action_registerer(etype_rtype_registerer):
-    """'all in one' actions registerer, handling optional .accepts,
-    .etype and .rtype attributes:
-    
-    * if .etype is set and is not an entity type defined in the
-      application schema, skip the wrapped class
-    * if .rtype or .relname is set and is not a relation type defined in
-      the application schema, skip the wrapped class
-    * if .accepts is set, delegate to the accepts_registerer
-    * register
-    """
-    def do_it_yourself(self, registered):
-        cls = super(action_registerer, self).do_it_yourself(registered)
-        if hasattr(cls, 'accepts'):
-            registerer = accepts_registerer(self.registry, cls)
-            cls = registerer.do_it_yourself(registered)
-        return cls
-
-
-class extresources_registerer(priority_registerer):
-    """'registerer according to a .need_resources attributes which
-    should list necessary resource identifiers for the wrapped object.
-    If one of its resources is missing, don't register
-    """
-    def do_it_yourself(self, registered):
-        if not hasattr(self.config, 'has_resource'):
-            return
-        for resourceid in self.vobject.need_resources:
-            if not self.config.has_resource(resourceid):
-                return
-        return super(extresources_registerer, self).do_it_yourself(registered)
-    
 
 __all__ = [cls.__name__ for cls in globals().values()
            if isinstance(cls, type) and issubclass(cls, registerer)

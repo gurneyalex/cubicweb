@@ -19,10 +19,9 @@ from logilab.common.compat import all
 from rql import parse, nodes
 
 from cubicweb import Unauthorized, typed_eid
-from cubicweb.common.selectors import match_context_prop, one_has_relation
+from cubicweb.selectors import match_context_prop, partial_relation_possible
+from cubicweb.appobject import AppRsetObject
 from cubicweb.common.registerers import priority_registerer
-from cubicweb.common.appobject import AppRsetObject
-from cubicweb.common.utils import AcceptMixIn
 from cubicweb.web.htmlwidgets import HTMLWidget
 
 ## rqlst manipulation functions used by facets ################################
@@ -234,7 +233,7 @@ def _cleanup_rqlst(rqlst, mainvar):
 
 
 ## base facet classes #########################################################
-class AbstractFacet(AcceptMixIn, AppRsetObject):
+class AbstractFacet(AppRsetObject):
     __registerer__ = priority_registerer
     __abstract__ = True
     __registry__ = 'facets'
@@ -334,10 +333,10 @@ class VocabularyFacet(AbstractFacet):
 
 
 class RelationFacet(VocabularyFacet):
-    __selectors__ = (one_has_relation, match_context_prop)
-    # class attributes to configure the relation facet
+    __select__ = partial_relation_possible() & match_context_prop()
+    # class attributes to configure the rel ation facet
     rtype = None
-    role = 'subject'
+    role = 'subject' 
     target_attr = 'eid'
     # set this to a stored procedure name if you want to sort on the result of
     # this function's result instead of direct value

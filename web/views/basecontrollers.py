@@ -18,10 +18,9 @@ from mx.DateTime.Parser import DateFromString
 from logilab.common.decorators import cached
 
 from cubicweb import NoSelectableObject, ValidationError, typed_eid
-from cubicweb.common.selectors import yes
+from cubicweb.selectors import yes, match_user_groups
+from cubicweb.view import STRICT_DOCTYPE, CW_XHTML_EXTENSIONS
 from cubicweb.common.mail import format_mail
-from cubicweb.common.view import STRICT_DOCTYPE, CW_XHTML_EXTENSIONS
-
 from cubicweb.web import ExplicitLogin, Redirect, RemoteCallFailed
 from cubicweb.web.controller import Controller
 from cubicweb.web.views import vid_from_rset
@@ -55,15 +54,73 @@ class LogoutController(Controller):
 
 
 class ViewController(Controller):
+    """standard entry point :
+    - build result set
+    - select and call main template
+    """
     id = 'view'
-    template = 'main'
+    template = 'main-template'
     
     def publish(self, rset=None):
         """publish a request, returning an encoded string"""
-        template = self.req.property_value('ui.main-template')
-        if template not in self.vreg.registry('templates') :
-            template = self.template
-        return self.vreg.main_template(self.req, template, rset=rset)
+        view, rset = self._select_view_and_rset(rset)
+        self.add_to_breadcrumbs(view)
+        self.validate_cache(view)
+        template = self.appli.main_template_id(self.req)
+        return self.vreg.main_template(self.req, template, rset=rset, view=view)
+
+    def _select_view_and_rset(self, rset):
+        req = self.req
+        if rset is None and not hasattr(req, '_rql_processed'):
+            req._rql_processed = True
+            rset = self.process_rql(req.form.get('rql'))
+        if rset and rset.rowcount == 1 and '__method' in req.form:
+            entity = rset.get_entity(0, 0)
+            try:
+                method = getattr(entity, req.form.pop('__method'))
+                method()
+            except Exception, ex:
+                self.exception('while handling __method')
+                req.set_message(req._("error while handling __method: %s") % req._(ex))
+        vid = req.form.get('vid') or vid_from_rset(req, rset, self.schema)
+        try:
+            view = self.vreg.select_view(vid, req, rset)
+        except ObjectNotFound:
+            self.warning("the view %s could not be found", vid)
+            req.set_message(req._("The view %s could not be found") % vid)
+            vid = vid_from_rset(req, rset, self.schema)
+            view = self.vreg.select_view(vid, req, rset)
+        except NoSelectableObject:
+            if rset:
+                req.set_message(req._("The view %s can not be applied to this query") % vid)
+            else:
+                req.set_message(req._("You have no access to this view or it's not applyable to current data"))
+            self.warning("the view %s can not be applied to this query", vid)
+            vid = vid_from_rset(req, rset, self.schema)
+            view = self.vreg.select_view(vid, req, rset)
+        return view, rset
+
+    def process_rql(self, rql):
+        """execute rql if specified"""
+        if rql:
+            self.ensure_ro_rql(rql)
+            if not isinstance(rql, unicode):
+                rql = unicode(rql, self.req.encoding)
+            pp = self.vreg.select_component('magicsearch', self.req)
+            self.rset = pp.process_query(rql, self.req)
+            return self.rset
+        return None
+
+    def add_to_breadcrumbs(self, view):
+        # update breadcrumps **before** validating cache, unless the view
+        # specifies explicitly it should not be added to breadcrumb or the
+        # view is a binary view
+        if view.add_to_breadcrumbs and not view.binary:
+            self.req.update_breadcrumbs()
+
+    def validate_cache(self, view):
+        view.set_http_cache_headers()
+        self.req.validate_cache()
 
     def execute_linkto(self, eid=None):
         """XXX __linkto parameter may cause security issue
@@ -211,14 +268,14 @@ class JSonController(Controller):
             self.req.set_content_type(content_type)
             return xmlize(data)
         return data
-
+    
     def html_exec(self, rset=None):
-        """html mode: execute query and return the view as HTML"""
+        # XXX try to use the page-content template
         req = self.req
         rql = req.form.get('rql')
         if rset is None and rql:
             rset = self._exec(rql)
-            
+        
         vid = req.form.get('vid') or vid_from_rset(req, rset, self.schema)
         try:
             view = self.vreg.select_view(vid, req, rset)
@@ -239,6 +296,11 @@ class JSonController(Controller):
             if divid == 'pageContent':
                 stream.write(u'<div id="contentmain">')
         view.dispatch()
+        extresources = req.html_headers.getvalue(skiphead=True)
+        if extresources:
+            stream.write(u'<div class="ajaxHtmlHead">\n') # XXX use a widget ?
+            stream.write(extresources)
+            stream.write(u'</div>\n')
         if req.form.get('paginate') and divid == 'pageContent':
             stream.write(u'</div></div>')
         source = stream.getvalue()
@@ -462,7 +524,7 @@ class JSonController(Controller):
 
 class SendMailController(Controller):
     id = 'sendmail'
-    require_groups = ('managers', 'users')
+    __select__ = match_user_groups('managers', 'users')
 
     def recipients(self):
         """returns an iterator on email's recipients as entities"""
@@ -510,7 +572,7 @@ class SendMailController(Controller):
 
 class MailBugReportController(SendMailController):
     id = 'reportbug'
-    __selectors__ = (yes,)
+    __select__ = yes()
 
     def publish(self, rset=None):
         body = self.req.form['description']

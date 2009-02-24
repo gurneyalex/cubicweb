@@ -23,7 +23,7 @@ Here is the prototype of the different hooks:
 
 
 :organization: Logilab
-:copyright: 2001-2008 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
 """
 __docformat__ = "restructuredtext en"
@@ -180,13 +180,12 @@ class HooksManager(object):
 #         self.register_hook(tidy_html_fields('before_add_entity'), 'before_add_entity', '')
 #         self.register_hook(tidy_html_fields('before_update_entity'), 'before_update_entity', '')
             
-from cubicweb.vregistry import autoselectors
-from cubicweb.common.appobject import AppObject
-from cubicweb.common.registerers import accepts_registerer, yes_registerer
-from cubicweb.common.selectors import yes
+from cubicweb.selectors import yes
+from cubicweb.appobject import AppObject
 
-class autoid(autoselectors):
+class autoid(type):
     """metaclass to create an unique 'id' attribute on the class using it"""
+    # XXX is this metaclass really necessary ?
     def __new__(mcs, name, bases, classdict):
         cls = super(autoid, mcs).__new__(mcs, name, bases, classdict)
         cls.id = str(id(cls))
@@ -195,8 +194,7 @@ class autoid(autoselectors):
 class Hook(AppObject):
     __metaclass__ = autoid
     __registry__ = 'hooks'
-    __registerer__ = accepts_registerer
-    __selectors__ = (yes,)
+    __select__ = yes()
     # set this in derivated classes
     events = None
     accepts = None
@@ -245,7 +243,6 @@ class Hook(AppObject):
         raise NotImplementedError
     
 class SystemHook(Hook):
-    __registerer__ = yes_registerer
     accepts = ('',)
 
 from logging import getLogger

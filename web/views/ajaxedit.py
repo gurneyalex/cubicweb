@@ -1,13 +1,12 @@
 """Set of views allowing edition of entities/relations using ajax
 
 :organization: Logilab
-:copyright: 2008 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
 """
 __docformat__ = "restructuredtext en"
 
-from cubicweb.common.selectors import (chainfirst, match_form_params,
-                                    match_kwargs)
+from cubicweb.selectors import chainfirst, match_form_params, match_kwargs
 from cubicweb.web.box import EditRelationBoxTemplate
 
 class AddRelationView(EditRelationBoxTemplate):
@@ -18,7 +17,8 @@ class AddRelationView(EditRelationBoxTemplate):
     class attributes.
     """
     __registry__ = 'views'
-    __selectors__ = (chainfirst(match_form_params, match_kwargs),)
+    __select__ = (match_form_params('rtype', 'target')
+                  | match_kwargs('rtype', 'target'))
     property_defs = {} # don't want to inherit this from Box
     id = 'xaddrelation'
     expected_kwargs = form_params = ('rtype', 'target')

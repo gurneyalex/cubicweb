@@ -1,7 +1,7 @@
 """base classes to handle tabbed views
 
 :organization: Logilab
-:copyright: 2008 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2008-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
 """
 
@@ -11,6 +11,7 @@ from logilab.common.decorators import monkeypatch
 from logilab.mtconverter import html_escape
 
 from cubicweb import NoSelectableObject, role
+from cubicweb.selectors import partial_has_related_entities
 from cubicweb.common.view import EntityView
 from cubicweb.common.selectors import has_related_entities
 from cubicweb.common.utils import HTMLHead
@@ -146,15 +147,16 @@ class EntityRelatedTab(EntityView):
         vid = 'gallery'
         __selectors__ = EntityRelationView.__selectors__ + (one_line_rset,)
 
+
     This is the view we want to have in a tab, only if there is something to show.
     Then, just define as below, and declare this being the tab content :
 
     class ProjectScreenshotTab(EntityRelatedTab, ProjectScreenshotsView):
         id = 'screenshots_tab'
     """
-    __selectors__ = EntityView.__selectors__ + (has_related_entities,)
+    __select__ = EntityView.__select__ & partial_has_related_entities()
     vid = 'list'
-
+    
     def cell_call(self, row, col):
         rset = self.entity(row, col).related(self.rtype, role(self))
         self.w(u'<div class="mainInfo">')

@@ -11,5 +11,5 @@ class Societe(AnyEntity):
     id = 'Societe'
     fetch_attrs = ('nom',)
     
-class AnotherNote(AnyEntity):
-    id = 'AnotherNote'
+class Note(AnyEntity):
+    id = 'Note'

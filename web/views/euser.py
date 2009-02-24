@@ -10,12 +10,30 @@ from logilab.common.decorators import cached
 from logilab.mtconverter import html_escape
 
 from cubicweb.schema import display_name
+from cubicweb.selectors import one_line_rset, implements, match_user_groups
+from cubicweb.view import EntityView
 from cubicweb.web import INTERNAL_FIELD_VALUE
-from cubicweb.web.form import EntityForm
+from cubicweb.web.form import FormMixIn
+from cubicweb.web.action import Action
 from cubicweb.web.views.baseviews import PrimaryView, EntityView
 
+
+class UserPreferencesEntityAction(Action):
+    id = 'prefs'
+    __select__ = (one_line_rset() & implements('EUser') &
+                  match_user_groups('owners', 'managers'))
+    
+    title = _('preferences')
+    category = 'mainactions'
+    
+    def url(self):
+        login = self.rset.get_entity(self.row or 0, self.col or 0).login
+        return self.build_url('euser/%s'%login, vid='epropertiesform')
+
+
 class EUserPrimaryView(PrimaryView):
-    accepts = ('EUser',)
+    __select__ = implements('EUser')
+    
     skip_attrs = ('firstname', 'surname')
     
     def iter_relations(self, entity):
@@ -34,13 +52,14 @@ class EUserPrimaryView(PrimaryView):
                                  ]
 class FoafView(EntityView):
     id = 'foaf'
-    accepts = ('EUser',)
+    __select__ = implements('EUser')
+    
     title = _('foaf')
     templatable = False
     content_type = 'text/xml'
 
     def call(self):
-        self.w('''<?xml version="1.0" encoding="%s"?>
+        self.w(u'''<?xml version="1.0" encoding="%s"?>
 <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
          xmlns:rdfs="http://www.w3org/2000/01/rdf-schema#"
          xmlns:foaf="http://xmlns.com/foaf/0.1/"> '''% self.req.encoding)
@@ -54,7 +73,6 @@ class FoafView(EntityView):
                       <foaf:maker rdf:resource="%s"/>
                       <foaf:primaryTopic rdf:resource="%s"/>
                    </foaf:PersonalProfileDocument>''' % (entity.absolute_url(), entity.absolute_url()))
-                      
         self.w(u'<foaf:Person rdf:ID="%s">\n' % entity.eid)
         self.w(u'<foaf:name>%s</foaf:name>\n' % html_escape(entity.dc_long_title()))
         if entity.surname:
@@ -68,17 +86,20 @@ class FoafView(EntityView):
             self.w(u'<foaf:mbox>%s</foaf:mbox>\n' % html_escape(emailaddr))
         self.w(u'</foaf:Person>\n')
 
+
 class FoafUsableView(FoafView):
     id = 'foaf_usable'
-  
+    # XXX killme
+    title = None
     def call(self):
         self.cell_call(0, 0)
+
             
-class EditGroups(EntityForm):
+class EditGroups(FormMixIn, EntityView):
     """displays a simple euser / egroups editable table"""
     
     id = 'editgroups'
-    accepts = ('EUser',)
+    __select__ = implements('EUser')
     
     def call(self):
         self.req.add_css('cubicweb.acl.css')            

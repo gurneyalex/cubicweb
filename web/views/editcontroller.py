@@ -26,17 +26,14 @@ class EditController(ViewController):
     def publish(self, rset=None, fromjson=False):
         """edit / create / copy / delete entity / relations"""
         self.fromjson = fromjson
-        req = self.req
-        form = req.form
-        for key in form:
+        for key in self.req.form:
             # There should be 0 or 1 action
             if key.startswith('__action_'):
                 cbname = key[1:]
                 try:
                     callback = getattr(self, cbname)
                 except AttributeError:
-                    raise ValidationError(None,
-                                          {None: req._('invalid action %r' % key)})
+                    raise RequestError(self.req._('invalid action %r' % key))
                 else:
                     return callback()
         self._default_publish()
@@ -199,7 +196,9 @@ class EditController(ViewController):
             value = Decimal(value)
         elif attrtype == 'Bytes':
             # if it is a file, transport it using a Binary (StringIO)
-            if formparams.has_key('__%s_detach' % attr):
+            # XXX later __detach is for the new widget system, the former is to
+            # be removed once web/widgets.py has been dropped
+            if formparams.has_key('__%s_detach' % attr) or formparams.has_key('%s__detach' % attr):
                 # drop current file value
                 value = None
             # no need to check value when nor explicit detach nor new file submitted,

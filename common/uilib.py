@@ -11,29 +11,18 @@ __docformat__ = "restructuredtext en"
 
 import csv
 import decimal
-import locale
 import re
 from urllib import quote as urlquote
 from cStringIO import StringIO
 from copy import deepcopy
 
-import simplejson
 
 from mx.DateTime import DateTimeType, DateTimeDeltaType
 
 from logilab.common.textutils import unormalize
 from logilab.mtconverter import html_escape, html_unescape
 
-def ustrftime(date, fmt='%Y-%m-%d'):
-    """like strftime, but returns a unicode string instead of an encoded
-    string which may be problematic with localized date.
-    
-    encoding is guessed by locale.getpreferredencoding()
-    """
-    # date format may depend on the locale
-    encoding = locale.getpreferredencoding(do_setlocale=False) or 'UTF-8'
-    return unicode(date.strftime(fmt), encoding)
-
+from cubicweb.utils import ustrftime
 
 def rql_for_eid(eid):
     """return the rql query necessary to fetch entity with the given eid.  This
@@ -221,7 +210,8 @@ def simple_sgml_tag(tag, content=None, **attrs):
     value = u'<%s' % tag
     if attrs:
         value += u' ' + u' '.join(u'%s="%s"' % (attr, html_escape(unicode(value)))
-                                  for attr, value in attrs.items())
+                                  for attr, value in attrs.items()
+                                  if value is not None)
     if content:
         value += u'>%s</%s>' % (html_escape(unicode(content)), tag)
     else:
@@ -258,6 +248,7 @@ def ajax_replace_url(nodeid, rql, vid=None, swap=False, **extraparams):
     elif vid:
         params.append(repr(vid))
     if extraparams:
+        import simplejson
         params.append(simplejson.dumps(extraparams))
     if swap:
         params.append('true')

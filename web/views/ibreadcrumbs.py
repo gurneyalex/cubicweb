@@ -1,20 +1,19 @@
 """navigation components definition for CubicWeb web client
 
 :organization: Logilab
-:copyright: 2001-2008 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
 """
 __docformat__ = "restructuredtext en"
 
 from logilab.mtconverter import html_escape
 
+# don't use AnyEntity since this may cause bug with isinstance() due to reloading
+from cubicweb.entity import Entity
 from cubicweb.interfaces import IBreadCrumbs
-from cubicweb.common.selectors import (match_context_prop, one_line_rset, 
-                                    implement_interface)
+from cubicweb.selectors import match_context_prop, one_line_rset, implements
 from cubicweb.common.view import EntityView
 from cubicweb.common.uilib import cut
-# don't use AnyEntity since this may cause bug with isinstance() due to reloading
-from cubicweb.common.entity import Entity
 from cubicweb.web.component import EntityVComponent
 
 _ = unicode
@@ -29,8 +28,7 @@ class BreadCrumbEntityVComponent(EntityVComponent):
     # register msg not generated since no entity implements IPrevNext in cubicweb itself
     title = _('contentnavigation_breadcrumbs')
     help = _('contentnavigation_breadcrumbs_description')
-    __selectors__ = (one_line_rset, match_context_prop, implement_interface)
-    accepts_interfaces = (IBreadCrumbs,)
+    __select__ = (one_line_rset() & match_context_prop() & implements(IBreadCrumbs))
     context = 'navtop'
     order = 5
     visible = False
@@ -73,7 +71,7 @@ class BreadCrumbEntityVComponent(EntityVComponent):
 
 class BreadCrumbComponent(BreadCrumbEntityVComponent):
     __registry__ = 'components'
-    __selectors__ = (one_line_rset, implement_interface)
+    __select__ = (one_line_rset() & implements(IBreadCrumbs))
     visible = True
 
 

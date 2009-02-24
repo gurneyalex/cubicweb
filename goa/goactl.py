@@ -1,7 +1,7 @@
 """cubicweb on appengine plugins for cubicweb-ctl
 
 :organization: Logilab
-:copyright: 2008 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2008-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
 """
 __docformat__ = "restructuredtext en"
@@ -11,7 +11,7 @@ from os.path import exists, join, split, dirname, basename, normpath, abspath
 from cubicweb import BadCommandUsage
 from cubicweb import CW_SOFTWARE_ROOT
 from cubicweb.toolsutils import (Command, register_commands, copy_skeleton,
-                              create_dir, create_symlink, create_copy)
+                                 create_dir, create_symlink, create_copy)
 from cubicweb.cwconfig import CubicWebConfiguration
 
 from logilab import common as lgc
@@ -47,28 +47,29 @@ COPY_CW_FILES = (
     '__init__.py',
     '__pkginfo__.py',
     '_exceptions.py',
+    'appobject.py',
     'dbapi.py',
     'cwvreg.py',
     'cwconfig.py',
+    'entity.py',
     'interfaces.py',
     'rset.py',
     'schema.py',
     'schemaviewer.py',
+    'selectors.py',
+    'utils.py',
     'vregistry.py',
+    'view.py',
     
-    'common/appobject.py',
-    'common/entity.py',
-    'common/html4zope.py',
     'common/mail.py',
     'common/migration.py',
     'common/mixins.py',
     'common/mttransforms.py',
     'common/registerers.py',
-    'common/rest.py',
-    'common/selectors.py',
-    'common/view.py',
     'common/uilib.py',
-    'common/utils.py',
+
+    'ext/html4zope.py',
+    'ext/rest.py',
 
     'server/hookhelper.py',
     'server/hooksmanager.py',

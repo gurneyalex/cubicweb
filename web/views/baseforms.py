@@ -15,20 +15,25 @@ from logilab.mtconverter import html_escape
 from logilab.common.decorators import cached
 
 from cubicweb.interfaces import IWorkflowable
-from cubicweb.common.utils import make_uid
+from cubicweb.selectors import (specified_etype_implements, implements,
+                                match_kwargs, match_form_params, one_line_rset,
+                                non_final_entity, accepts_etype_compat)
+from cubicweb.utils import make_uid
+from cubicweb.view import View, EntityView
+from cubicweb.common import tags
 from cubicweb.common.uilib import cut
-from cubicweb.common.selectors import (accept_etype, match_kwargs,
-                                    one_line_rset, implement_interface,
-                                    match_form_params, accept)
-from cubicweb.common.view import EntityView
 from cubicweb.web import INTERNAL_FIELD_VALUE, stdmsgs, eid_param
 from cubicweb.web.controller import NAV_FORM_PARAMETERS
 from cubicweb.web.widgets import checkbox, InputWidget, ComboBoxWidget
-from cubicweb.web.form import EntityForm, relation_id
+from cubicweb.web.form import FormMixIn, relation_id
 
 _ = unicode
 
-class DeleteConfForm(EntityForm):
+from cubicweb.web.form import MultipleFieldsForm, EntityFieldsForm, StringField, \
+     RichTextField, HiddenInput
+
+
+class DeleteConfForm(EntityView):
     id = 'deleteconf'
     title = _('delete')
     domid = 'deleteconf'
@@ -39,60 +44,52 @@ class DeleteConfForm(EntityForm):
     
     def call(self):
         """ask for confirmation before real deletion"""
-        _ = self.req._
-        self.req.add_js('cubicweb.edition.js')
-        self.w(u'<script type="text/javascript">updateMessage(\'%s\');</script>\n' % _('this action is not reversible!'))
+        req, w = self.req, self.w
+        _ = req._
+        req.add_js('cubicweb.edition.js')
+        w(u'<script type="text/javascript">updateMessage(\'%s\');</script>\n'
+          % _('this action is not reversible!'))
         # XXX above message should have style of a warning
-        self.w(u'<h4>%s</h4>\n' % _('Do you want to delete the following element(s) ?'))
-        if self.onsubmit:
-            self.w(u'<form id="deleteconf" action="%s" onsubmit="%s" method="post">'
-                   % (self.build_url(), self.onsubmit))
-        else:
-            self.w(u'<form id="deleteconf" action="%s" method="post">'
-                   % (self.build_url()))
-            
-        self.w(u'<fieldset>\n')
-        self.display_rset()
-        #self.w(u'<input type="hidden" name="rql" value="%s"/>' % self.req.form['rql'])
-        self.w(u'<input type="hidden" name="__form_id" value="%s"/>' % self.id)
-        self.w(self.button_delete(label=stdmsgs.YES))
-        self.w(self.button_cancel(label=stdmsgs.NO))
-        for param in NAV_FORM_PARAMETERS:
-            value = self.req.form.get(param)
-            if value:
-                self.w(u'<input type="hidden" name="%s" value="%s"/>' % (param, value))
-        self.w(u'</fieldset></form>\n')
-
-    def display_rset(self):
-        self.w(u'<ul>\n')
+        w(u'<h4>%s</h4>\n' % _('Do you want to delete the following element(s) ?'))
+        form = MultipleFieldsForm(req, domid='deleteconf', action=self.build_url('edit'),
+                                  onsubmit=self.onsubmit, copy_nav_params=True)
+        form.buttons.append(form.button_delete(label=stdmsgs.YES))
+        form.buttons.append(form.button_cancel(label=stdmsgs.NO))
         done = set()
+        w(u'<ul>\n')
         for i in xrange(self.rset.rowcount):
             if self.rset[i][0] in done:
                 continue
             done.add(self.rset[i][0])
-            self.cell_call(i, 0)
-        self.w(u'</ul>\n')
+            entity = self.rset.get_entity(i, 0)
+            subform = EntityFieldsForm(req, set_error_url=False,
+                                       entity=entity)
+            form.form_add_subform(subform)
+            # don't use outofcontext view or any other that may contain inline edition form
+            w(u'<li>%s</li>' % tags.a(entity.view('textoutofcontext'),
+                                      href=entity.absolute_url()))
+        w(u'</ul>\n')
+        w(form.form_render())
+
+
+class ChangeStateForm(EntityFieldsForm):
+    __method = StringField(name='__method', initial='set_state', widget=HiddenInput)
+    state = StringField(widget=HiddenInput, eidparam=True)
+    # XXX format field
+    trcomment = RichTextField(eidparam=True)
+
+    def form_buttons(self):
+        return [self.button_ok(label=stdmsgs.YES,
+                               tabindex=self.req.next_tabindex()),
+                self.button_cancel(label=stdmsgs.NO,
+                                   tabindex=self.req.next_tabindex())]
+
         
-    def cell_call(self, row, col):
-        entity = self.entity(row, col)
-        self.w(u'<li>')
-        self.w(u'<input type="hidden" name="eid" value="%s" />' % entity.eid)
-        self.w(u'<input type="hidden" name="%s" value="%s"/>\n'
-               % (eid_param('__type', entity.eid), self.rset.description[row][0]))
-        self.w(u'<a href="%s">' % html_escape(entity.absolute_url()))
-        # don't use outofcontext view or any other that may contain inline edition form
-        self.w(html_escape(entity.view('textoutofcontext')))
-        self.w(u'</a>')
-        self.w(u'</li>')
-
-
-class ChangeStateForm(EntityForm):
+class ChangeStateFormView(EntityView):
     id = 'statuschange'
     title = _('status change')
 
-    __selectors__ = (implement_interface, match_form_params)
-    accepts_interfaces = (IWorkflowable,)
-    form_params = ('treid',)
+    __select__ = implements(IWorkflowable) & match_form_params('treid')
 
     def cell_call(self, row, col, vid='secondary'):
         entity = self.entity(row, col)
@@ -102,59 +99,22 @@ class ChangeStateForm(EntityForm):
         dest = transition.destination()
         self.req.add_js('cubicweb.edition.js')
         _ = self.req._
-        self.w(self.error_message())
+        form = ChangeStateForm(self.req, entity=entity,
+                               redirect_path=self.redirectpath(entity))
+        self.w(form.error_message())
         self.w(u'<h4>%s %s</h4>\n' % (_(transition.name), entity.view('oneline')))
         msg = _('status will change from %(st1)s to %(st2)s') % {
             'st1': _(state.name),
             'st2': _(dest.name)}
         self.w(u'<p>%s</p>\n' % msg)
-        self.w(u'<form action="%s" onsubmit="return freezeFormButtons(\'entityForm\');" method="post" id="entityForm">\n'
-               % self.build_url('edit'))
-        self.w(u'<div id="progress">%s</div>' % _('validating...'))
-        self.w(u'<fieldset>\n')
-        #self.w(u'<input id="errorurl" type="hidden" name="__errorurl" value="%s"/>\n'
-        #       % html_escape(self.req.url()))
-        self.w(u'<input type="hidden" name="__form_id" value="%s"/>\n' % self.id)
-        self.w(u'<input type="hidden" name="eid" value="%s" />' % eid)
-        self.w(u'<input type="hidden" name="%s" value="%s"/>\n'
-               % (eid_param('__type', eid), entity.e_schema))
-        self.w(u'<input type="hidden" name="%s" value="%s"/>\n'
-               % (eid_param('state', eid), dest.eid))
-        self.w(u'<input type="hidden" name="__redirectpath" value="%s"/>\n'
-               % html_escape(self.redirectpath(entity)))
-        self.fill_form(entity, state, dest)
-        self.w(u'<input type="hidden" name="__method" value="set_state"/>\n')
-        self.w(self.button_ok(label=stdmsgs.YES, tabindex=self.req.next_tabindex()))
-        self.w(self.button_cancel(label=stdmsgs.NO, tabindex=self.req.next_tabindex()))
-        self.w(u'</fieldset>\n')
-        self.w(u'</form>')
-        
-    def fill_form(self, entity, state, dest):
-        # hack to use the widget for comment_format
-        trinfo = self.vreg.etype_class('TrInfo')(self.req, None)
-        # widget are cached, copy it since we want to modify its name attribute
-        wdg = trinfo.get_widget('comment_format')
-        wdg.name = 'trcommentformat'
-        # set a value in entity to avoid lookup for a non existant attribute...
-        trinfo['trcommentformat'] = u''
-        # comment format/content have to be grouped using the original entity eid
-        wdg.rname = eid_param('trcommentformat', entity.eid)
-        self.w(wdg.render_label(trinfo))
-        self.w(wdg._edit_render(trinfo))
-        self.w(u'<br/>\n')
-        cformname = eid_param('trcomment', entity.eid)
-        self.w(u'<label for="%s">%s</label>\n' % (cformname, self.req._('comment:')))
-        self.w(u'<textarea rows="10" cols="80" name="%s" tabindex="%s"></textarea><br/>\n'
-               % (cformname, self.req.next_tabindex()))
+        self.w(form.form_render(state=dest.eid))
 
     def redirectpath(self, entity):
         return entity.rest_path()
 
-
-class ClickAndEditForm(EntityForm):
+class ClickAndEditForm(FormMixIn, EntityView):
     id = 'reledit'
-    __selectors__ = (match_kwargs, )
-    expected_kwargs = ('rtype',)
+    __select__ = match_kwargs('rtype')
 
     #FIXME editableField class could be toggleable from userprefs
 
@@ -210,7 +170,7 @@ class ClickAndEditForm(EntityForm):
                 })
 
 
-class EditionForm(EntityForm):
+class EditionForm(FormMixIn, EntityView):
     """primary entity edition form
 
     When generating a new attribute_input, the editor will look for a method
@@ -219,12 +179,12 @@ class EditionForm(EntityForm):
     dynamic default values such as the 'tomorrow' date or the user's login
     being connected
     """    
-    __selectors__ = (one_line_rset, accept)
-
     id = 'edition'
+    __select__ = one_line_rset() & non_final_entity()
+
     title = _('edition')
     controller = 'edit'
-    skip_relations = EntityForm.skip_relations.copy()
+    skip_relations = FormMixIn.skip_relations.copy()
     
     EDITION_BODY = u'''\
  %(errormsg)s
@@ -526,7 +486,10 @@ class EditionForm(EntityForm):
 
     
 class CreationForm(EditionForm):
-    __selectors__ = (accept_etype, )
+    __select__ = specified_etype_implements('Any')
+    # XXX bw compat, use View.registered since we don't want accept_compat
+    #    wrapper set in EntityView
+    registered = accepts_etype_compat(View.registered)
     id = 'creation'
     title = _('creation')
     
@@ -639,8 +602,8 @@ class InlineFormMixIn(object):
 
 class InlineEntityCreationForm(InlineFormMixIn, CreationForm):
     id = 'inline-creation'
-    __selectors__ = (match_kwargs, accept_etype)
-    expected_kwargs = ('ptype', 'peid', 'rtype')
+    __select__ = (match_kwargs('ptype', 'peid', 'rtype')
+                  & specified_etype_implements('Any'))
     
     EDITION_BODY = u'''\
 <div id="div-%(parenteid)s-%(rtype)s-%(eid)s" class="inlinedform">
@@ -672,14 +635,11 @@ class InlineEntityCreationForm(InlineFormMixIn, CreationForm):
             self.w(self.req._('no such entity type %s') % etype)
             return
         self.edit_form(entity, ptype, peid, rtype, role, **kwargs)
-    
-    
 
 
 class InlineEntityEditionForm(InlineFormMixIn, EditionForm):
     id = 'inline-edition'
-    __selectors__ = (accept, match_kwargs)
-    expected_kwargs = ('ptype', 'peid', 'rtype')
+    __select__ = non_final_entity() & match_kwargs('ptype', 'peid', 'rtype')
     
     EDITION_BODY = u'''\
 <div onclick="restoreInlinedEntity('%(parenteid)s', '%(rtype)s', '%(eid)s')" id="div-%(parenteid)s-%(rtype)s-%(eid)s" class="inlinedform">   
@@ -731,7 +691,6 @@ class InlineEntityEditionForm(InlineFormMixIn, EditionForm):
         ctx['count'] = entity.row + 1
         return ctx
     
-    
 
 class CopyEditionForm(EditionForm):
     id = 'copy'
@@ -776,8 +735,7 @@ class CopyEditionForm(EditionForm):
         return self.req._('element copied')
        
     
-
-class TableEditForm(EntityForm):
+class TableEditForm(FormMixIn, EntityView):
     id = 'muledit'
     title = _('multiple edit')
 
@@ -877,128 +835,10 @@ class TableEditForm(EntityForm):
                                   'widget': wobj.edit_render(entity)})
         w(u'</tr>')
         return '\n'.join(html)
-        
-
-class UnrelatedDivs(EntityView):
-    id = 'unrelateddivs'
-    __selectors__ = (match_form_params,)
-    form_params = ('relation',)
-
-    @property
-    def limit(self):
-        if self.req.form.get('__force_display'):
-            return None
-        return self.req.property_value('navigation.related-limit') + 1
-
-    def cell_call(self, row, col):
-        entity = self.entity(row, col)
-        relname, target = self.req.form.get('relation').rsplit('_', 1)
-        rschema = self.schema.rschema(relname)
-        hidden = 'hidden' in self.req.form
-        is_cell = 'is_cell' in self.req.form
-        self.w(self.build_unrelated_select_div(entity, rschema, target,
-                                               is_cell=is_cell, hidden=hidden))
-
-    def build_unrelated_select_div(self, entity, rschema, target,
-                                   is_cell=False, hidden=True):
-        options = []
-        divid = 'div%s_%s_%s' % (rschema.type, target, entity.eid)
-        selectid = 'select%s_%s_%s' % (rschema.type, target, entity.eid)
-        if rschema.symetric or target == 'subject':
-            targettypes = rschema.objects(entity.e_schema)
-            etypes = '/'.join(sorted(etype.display_name(self.req) for etype in targettypes))
-        else:
-            targettypes = rschema.subjects(entity.e_schema)
-            etypes = '/'.join(sorted(etype.display_name(self.req) for etype in targettypes))
-        etypes = cut(etypes, self.req.property_value('navigation.short-line-size'))
-        options.append('<option>%s %s</option>' % (self.req._('select a'), etypes))
-        options += self._get_select_options(entity, rschema, target)
-        options += self._get_search_options(entity, rschema, target, targettypes)
-        if 'Basket' in self.schema: # XXX
-            options += self._get_basket_options(entity, rschema, target, targettypes)
-        relname, target = self.req.form.get('relation').rsplit('_', 1)
-        return u"""\
-<div class="%s" id="%s">
-  <select id="%s" onchange="javascript: addPendingInsert(this.options[this.selectedIndex], %s, %s, '%s');">
-    %s
-  </select>
-</div>
-""" % (hidden and 'hidden' or '', divid, selectid, html_escape(dumps(entity.eid)),
-       is_cell and 'true' or 'null', relname, '\n'.join(options))
-
-    def _get_select_options(self, entity, rschema, target):
-        """add options to search among all entities of each possible type"""
-        options = []
-        eid = entity.eid
-        pending_inserts = self.req.get_pending_inserts(eid)
-        rtype = rschema.type
-        for eview, reid in entity.vocabulary(rschema, target, self.limit):
-            if reid is None:
-                options.append('<option class="separator">-- %s --</option>' % html_escape(eview))
-            else:
-                optionid = relation_id(eid, rtype, target, reid)
-                if optionid not in pending_inserts:
-                    # prefix option's id with letters to make valid XHTML wise
-                    options.append('<option id="id%s" value="%s">%s</option>' %
-                                   (optionid, reid, html_escape(eview)))
-        return options
-
-    def _get_search_options(self, entity, rschema, target, targettypes):
-        """add options to search among all entities of each possible type"""
-        options = []
-        _ = self.req._
-        for eschema in targettypes:
-            mode = '%s:%s:%s:%s' % (target, entity.eid, rschema.type, eschema)
-            url = self.build_url(entity.rest_path(), vid='search-associate',
-                                 __mode=mode)
-            options.append((eschema.display_name(self.req),
-                            '<option value="%s">%s %s</option>' % (
-                html_escape(url), _('Search for'), eschema.display_name(self.req))))
-        return [o for l, o in sorted(options)]
-
-    def _get_basket_options(self, entity, rschema, target, targettypes):
-        options = []
-        rtype = rschema.type
-        _ = self.req._
-        for basketeid, basketname in self._get_basket_links(self.req.user.eid,
-                                                            target, targettypes):
-            optionid = relation_id(entity.eid, rtype, target, basketeid)
-            options.append('<option id="%s" value="%s">%s %s</option>' % (
-                optionid, basketeid, _('link to each item in'), html_escape(basketname)))
-        return options
-
-    def _get_basket_links(self, ueid, target, targettypes):
-        targettypes = set(targettypes)
-        for basketeid, basketname, elements in self._get_basket_info(ueid):
-            baskettypes = elements.column_types(0)
-            # if every elements in the basket can be attached to the
-            # edited entity
-            if baskettypes & targettypes:
-                yield basketeid, basketname
-            
-    def _get_basket_info(self, ueid):
-        basketref = []
-        basketrql = 'Any B,N WHERE B is Basket, B owned_by U, U eid %(x)s, B name N'
-        basketresultset = self.req.execute(basketrql, {'x': ueid}, 'x')
-        for result in basketresultset:
-            basketitemsrql = 'Any X WHERE X in_basket B, B eid %(x)s'
-            rset = self.req.execute(basketitemsrql, {'x': result[0]}, 'x')
-            basketref.append((result[0], result[1], rset))
-        return basketref
 
 
-class ComboboxView(EntityView):
-    """the view used in combobox (unrelated entities)
+# XXX bw compat
 
-    THIS IS A TEXT VIEW. DO NOT HTML_ESCAPE
-    """
-    id = 'combobox'
-    accepts = ('Any',)
-    title = None
-    
-    def cell_call(self, row, col):
-        """the combo-box view for an entity: same as text out of context view
-        by default
-        """
-        self.wview('textoutofcontext', self.rset, row=row, col=col)
-
+from logilab.common.deprecation import class_moved
+from cubicweb.web.views import editviews
+ComboboxView = class_moved(editviews.ComboboxView)
