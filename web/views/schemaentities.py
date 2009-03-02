@@ -1,21 +1,22 @@
 """Specific views for schema related entities
 
 :organization: Logilab
-:copyright: 2001-2008 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
 """
 __docformat__ = "restructuredtext en"
 
 from logilab.mtconverter import html_escape
 
+from cubicweb.selectors import implements, rql_condition
 from cubicweb.schemaviewer import SchemaViewer
+from cubicweb.view import EntityView
 from cubicweb.common.uilib import ureport_as_html
-from cubicweb.common.view import EntityView
 from cubicweb.web.views import baseviews
 
 
 class ImageView(EntityView):
-    accepts = ('EEType',)
+    __select__ = implements('EEType')
     id = 'image'
     title = _('image')
 
@@ -35,16 +36,16 @@ class _SchemaEntityPrimaryView(baseviews.PrimaryView):
         return html_escape(entity.dc_long_title())
     
 class EETypePrimaryView(_SchemaEntityPrimaryView):
-    accepts = ('EEType',)
+    __select__ = implements('EEType')
     skip_attrs = _SchemaEntityPrimaryView.skip_attrs + ('name', 'meta', 'final')
 
 class ERTypePrimaryView(_SchemaEntityPrimaryView):
-    accepts = ('ERType',)
+    __select__ = implements('ERType')
     skip_attrs = _SchemaEntityPrimaryView.skip_attrs + ('name', 'meta', 'final',
                                                         'symetric', 'inlined')
 
 class ErdefPrimaryView(_SchemaEntityPrimaryView):
-    accepts = ('EFRDef', 'ENFRDef')
+    __select__ = implements('EEType', 'ENFRDef')
     show_attr_label = True
 
 class EETypeSchemaView(EETypePrimaryView):
@@ -84,7 +85,7 @@ class ERTypeSchemaView(ERTypePrimaryView):
         
 class EETypeWorkflowView(EntityView):
     id = 'workflow'
-    accepts = ('EEType',)
+    __select__ = implements('EEType')
     cache_max_age = 60*60*2 # stay in http cache for 2 hours by default 
     
     def cell_call(self, row, col, **kwargs):
@@ -97,7 +98,7 @@ class EETypeWorkflowView(EntityView):
 
 
 class EETypeOneLineView(baseviews.OneLineView):
-    accepts = ('EEType',)
+    __select__ = implements('EEType')
     
     def cell_call(self, row, col, **kwargs):
         entity = self.entity(row, col)
@@ -109,14 +110,14 @@ class EETypeOneLineView(baseviews.OneLineView):
             self.w(u'</em>')
         
 
-from cubicweb.web.action import EntityAction
+from cubicweb.web.action import Action
 
-class ViewWorkflowAction(EntityAction):
+class ViewWorkflowAction(Action):
     id = 'workflow'
+    __select__ = implements('EEType') & rql_condition('S state_of X')
+    
     category = 'mainactions'
     title = _('view workflow')
-    accepts = ('EEType',)
-    condition = 'S state_of X' # must have at least one state associated
     def url(self):
         entity = self.rset.get_entity(self.row or 0, self.col or 0)
         return entity.absolute_url(vid='workflow')

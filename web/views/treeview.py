@@ -1,18 +1,31 @@
+"""Set of tree-building widgets, based on jQuery treeview plugin
+
+:organization: Logilab
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
+"""
+__docformat__ = "restructuredtext en"
+
+from logilab.common.decorators import monkeypatch
 from logilab.mtconverter import html_escape
 
 from cubicweb.interfaces import ITree
-from cubicweb.common.selectors import implement_interface, yes
-from cubicweb.common.view import EntityView
+from cubicweb.selectors import implements
+from cubicweb.view import EntityView
+from cubicweb.web.views.basecontrollers import JSonController
+
+def treecookiename(treeid):
+    return str('treestate-%s' % treeid)
+
 
 from cubicweb.web.views.baseviews import OneLineView
 
 class TreeView(EntityView):
     id = 'treeview'
-    accepts = ('Any',)
     itemvid = 'treeitemview'
     css_classes = 'treeview widget'
     title = _('tree view')
-    
+
     def call(self, subvid=None):
         if subvid is None and 'subvid' in self.req.form:
             subvid = self.req.form.pop('subvid') # consume it
@@ -30,7 +43,7 @@ class TreeView(EntityView):
                    % self.css_classes)
         for rowidx in xrange(len(self.rset)):
             self.wview(self.itemvid, self.rset, row=rowidx, col=0,
-                       vid=subvid, parentvid=self.id)
+                       vid=subvid, parentvid=self.id, treeid=treeid)
         self.w(u'</ul>')
         
 
@@ -41,8 +54,8 @@ class FileTreeView(TreeView):
     css_classes = 'treeview widget filetree'
     title = _('file tree view')
 
-    def call(self, subvid=None):
-        super(FileTreeView, self).call(subvid='filetree-oneline')
+    def call(self, subvid=None, treeid=None, initial_load=True):
+        super(FileTreeView, self).call(treeid=treeid, subvid='filetree-oneline', initial_load=initial_load)
 
 
 
@@ -64,10 +77,8 @@ class FileItemInnerView(EntityView):
 
 
 class DefaultTreeViewItemView(EntityView):
-    """default treeitem view for entities which don't implement ITree
-    """
+    """default treeitem view for entities which don't implement ITree"""
     id = 'treeitemview'
-    accepts = ('Any',)
     
     def cell_call(self, row, col, vid='oneline', parentvid='treeview'):
         entity = self.entity(row, col)
@@ -80,14 +91,11 @@ class DefaultTreeViewItemView(EntityView):
 
 class TreeViewItemView(EntityView):
     """specific treeitem view for entities which implement ITree
-    
-    (each item should be exandable if it's not a tree leaf)
+
+    (each item should be expandable if it's not a tree leaf)
     """
     id = 'treeitemview'
-    # XXX append yes to make sure we get an higher score than
-    #     the default treeitem view
-    __selectors__ = (implement_interface, yes)
-    accepts_interfaces = (ITree,)
+    __select_ = implements(ITree)
     
     def cell_call(self, row, col, vid='oneline', parentvid='treeview'):
         entity = self.entity(row, col)
@@ -111,7 +119,6 @@ class TreeViewItemView(EntityView):
                 divclasses.append('lastExpandable-hitarea')
             self.w(u'<li cubicweb:loadurl="%s" class="%s">' % (url, u' '.join(cssclasses)))
             self.w(u'<div class="%s"> </div>' % u' '.join(divclasses))
-                
             # add empty <ul> because jquery's treeview plugin checks for
             # sublists presence
             self.w(u'<ul class="placeholder"><li>place holder</li></ul>')

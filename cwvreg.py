@@ -1,7 +1,7 @@
 """extend the generic VRegistry with some cubicweb specific stuff
 
 :organization: Logilab
-:copyright: 2001-2008 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
 """
 __docformat__ = "restructuredtext en"
@@ -9,6 +9,7 @@ __docformat__ = "restructuredtext en"
 from warnings import warn
 
 from logilab.common.decorators import cached, clear_cache
+from logilab.common.interface import extend
 
 from rql import RQLHelper
 
@@ -17,11 +18,25 @@ from cubicweb.vregistry import VRegistry, ObjectNotFound, NoSelectableObject
 
 _ = unicode
 
-class DummyCursorError(Exception): pass
-class RaiseCursor:
-    @classmethod
-    def execute(cls, rql, args=None, eid_key=None):
-        raise DummyCursorError()
+def use_interfaces(obj):
+    from cubicweb.selectors import implements
+    try:
+        # XXX deprecated
+        return sorted(obj.accepts_interfaces) 
+    except AttributeError:
+        try:
+            impl = obj.__select__.search_selector(implements)
+            if impl:
+                return sorted(impl.expected_ifaces)
+        except AttributeError:
+            pass # old-style vobject classes with no accepts_interfaces
+        return ()
+
+def expand_parent_classes(iface):
+    res = [iface]
+    for parent in iface.__bases__:
+        res += expand_parent_classes(parent)
+    return res
 
 
 class CubicWebRegistry(VRegistry):
@@ -47,8 +62,10 @@ class CubicWebRegistry(VRegistry):
     def reset(self):
         self._registries = {}
         self._lastmodifs = {}
-        # two special registries, propertydefs which care all the property definitions, and
-        # propertyvals which contains values for those properties
+        self._needs_iface = {}
+        # two special registries, propertydefs which care all the property
+        # definitions, and propertyvals which contains values for those
+        # properties
         self._registries['propertydefs'] = {}
         self._registries['propertyvalues'] = self.eprop_values = {}
         for key, propdef in self.config.eproperty_definitions():
@@ -72,43 +89,51 @@ class CubicWebRegistry(VRegistry):
             for objects in regcontent.values():
                 for obj in objects:
                     obj.schema = schema
+
+    def register_if_interface_found(self, obj, ifaces, **kwargs):
+        """register an object but remove it if no entity class implements one of
+        the given interfaces
+        """
+        self.register(obj, **kwargs)
+        if not isinstance(ifaces,  (tuple, list)):
+            self._needs_iface[obj] = (ifaces,)
+        else:
+            self._needs_iface[obj] = ifaces
+
+    def register(self, obj, **kwargs):
+        if kwargs.get('registryname', obj.__registry__) == 'etypes':
+            kwargs['clear'] = True
+        super(CubicWebRegistry, self).register(obj, **kwargs)
+        # XXX bw compat
+        ifaces = use_interfaces(obj)
+        if ifaces:
+            self._needs_iface[obj] = ifaces
         
     def register_objects(self, path, force_reload=None):
-        """overriden to handle type class cache issue"""
-        if  super(CubicWebRegistry, self).register_objects(path, force_reload):
+        """overriden to remove objects requiring a missing interface"""
+        if super(CubicWebRegistry, self).register_objects(path, force_reload):
             # clear etype cache if you don't want to run into deep weirdness
             clear_cache(self, 'etype_class')
+            # we may want to keep interface dependent objects (e.g.for i18n
+            # catalog generation)
+            if not self.config.cleanup_interface_sobjects:
+                return
             # remove vobjects that don't support any available interface
             interfaces = set()
             for classes in self.get('etypes', {}).values():
                 for cls in classes:
-                    interfaces.update(cls.__implements__)
-            if not self.config.cleanup_interface_sobjects:
-                return
-            for registry, regcontent in self._registries.items():
-                if registry in ('propertydefs', 'propertyvalues', 'etypes'):
-                    continue
-                for oid, objects in regcontent.items():
-                    for obj in reversed(objects[:]):
-                        if not obj in objects:
-                            continue # obj has been kicked by a previous one
-                        accepted = set(getattr(obj, 'accepts_interfaces', ()))
-                        if accepted:
-                            for accepted_iface in accepted:
-                                for found_iface in interfaces:
-                                    if issubclass(found_iface, accepted_iface):
-                                        # consider priority if necessary
-                                        if hasattr(obj.__registerer__, 'remove_all_equivalents'):
-                                            registerer = obj.__registerer__(self, obj)
-                                            registerer.remove_all_equivalents(objects)
-                                        break
-                                else:
-                                    self.debug('kicking vobject %s (unsupported interface)', obj)
-                                    objects.remove(obj)
-                    # if objects is empty, remove oid from registry
-                    if not objects:
-                        del regcontent[oid]
-
+                    for iface in cls.__implements__:
+                        interfaces.update(expand_parent_classes(iface))
+                    interfaces.update(expand_parent_classes(cls))
+            for obj, ifaces in self._needs_iface.items():
+                ifaces = frozenset(isinstance(iface, basestring) and self.etype_class(iface) or iface
+                                   for iface in ifaces)
+                if not ifaces & interfaces:
+                    self.debug('kicking vobject %s (unsupported interface)', obj)
+                    self.unregister(obj)
+            
+        
+    
     def eid_rset(self, cursor, eid, etype=None):
         """return a result set for the given eid without doing actual query
         (we have the eid, we can suppose it exists and user has access to the
@@ -129,6 +154,8 @@ class CubicWebRegistry(VRegistry):
         default to a dump of the class registered for 'Any'
         """
         etype = str(etype)
+        if etype == 'Any':
+            return self.select(self.registry_objects('etypes', 'Any'), 'Any')
         eschema = self.schema.eschema(etype)
         baseschemas = [eschema] + eschema.ancestors()
         # browse ancestors from most specific to most generic and
@@ -136,12 +163,21 @@ class CubicWebRegistry(VRegistry):
         for baseschema in baseschemas:
             btype = str(baseschema)
             try:
-                return self.select(self.registry_objects('etypes', btype), etype)
+                cls = self.select(self.registry_objects('etypes', btype), etype)
+                break
             except ObjectNotFound:
                 pass
-        # no entity class for any of the ancestors, fallback to the default one
-        return self.select(self.registry_objects('etypes', 'Any'), etype)
-
+        else:
+            # no entity class for any of the ancestors, fallback to the default
+            # one
+            cls = self.select(self.registry_objects('etypes', 'Any'), etype)
+        # add class itself to the list of implemented interfaces, as well as the
+        # Any entity class so we can select according to class using the
+        # `implements` selector
+        extend(cls, cls)
+        extend(cls, self.etype_class('Any'))
+        return cls
+    
     def render(self, registry, oid, req, **context):
         """select an object in a given registry and render it
 
@@ -157,12 +193,12 @@ class CubicWebRegistry(VRegistry):
         selected = self.select(objclss, req, rset, **context)
         return selected.dispatch(**context)
         
-    def main_template(self, req, oid='main', **context):
+    def main_template(self, req, oid='main-template', **context):
         """display query by calling the given template (default to main),
         and returning the output as a string instead of requiring the [w]rite
         method as argument
         """
-        res = self.render('templates', oid, req, **context)
+        res = self.render('views', oid, req, **context)
         if isinstance(res, unicode):
             return res.encode(req.encoding)
         assert isinstance(res, str)

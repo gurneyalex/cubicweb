@@ -1,7 +1,14 @@
+"""produces some Ontology Web Language schema and views
+
+:organization: Logilab
+:copyright: 2008-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
+"""
+__docformat__ = "restructuredtext en"
+
 from logilab.mtconverter import TransformError, xml_escape
 
-from cubicweb.common.view import StartupView
-from cubicweb.common.view import EntityView
+from cubicweb.view import StartupView, EntityView
 
 _ = unicode
 
@@ -155,7 +162,6 @@ class OWLABOXView(EntityView):
     id = 'owlabox'
     title = _('owlabox')
     templatable = False
-    accepts = ('Any',)
     content_type = 'application/xml' # 'text/xml'
     
     def call(self):
@@ -169,11 +175,9 @@ class OWLABOXView(EntityView):
 
         
 class OWLABOXItemView(EntityView):
-    '''This view represents a part of the ABOX for a given entity.'''
-    
+    '''This view represents a part of the ABOX for a given entity.'''    
     id = 'owlaboxitem'
     templatable = False
-    accepts = ('Any',)
     content_type = 'application/xml' # 'text/xml'
 
     def cell_call(self, row, col, skiprels=DEFAULT_SKIP_RELS):

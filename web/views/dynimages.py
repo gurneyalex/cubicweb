@@ -1,7 +1,7 @@
 """dynamically generated image views
 
 :organization: Logilab
-:copyright: 2001-2008 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
 """
 __docformat__ = "restructuredtext en"
@@ -13,7 +13,8 @@ from itertools import cycle
 from logilab.common.graph import escape, GraphGenerator, DotBackend
 from yams import schema2dot as s2d
 
-from cubicweb.common.view import EntityView, StartupView
+from cubicweb.selectors import implements
+from cubicweb.view import EntityView, StartupView
 
 
 class RestrictedSchemaDotPropsHandler(s2d.SchemaDotPropsHandler):
@@ -108,7 +109,7 @@ class SchemaImageView(TmpFileViewMixin, StartupView):
 class EETypeSchemaImageView(TmpFileViewMixin, EntityView):
     id = 'eschemagraph'
     content_type = 'image/png'
-    accepts = ('EEType',)
+    __select__ = implements('EEType')
     skip_rels = ('owned_by', 'created_by', 'identity', 'is', 'is_instance_of')
     
     def _generate(self, tmpfile):
@@ -120,7 +121,7 @@ class EETypeSchemaImageView(TmpFileViewMixin, EntityView):
                        prophdlr=RestrictedSchemaDotPropsHandler(self.req))
 
 class ERTypeSchemaImageView(EETypeSchemaImageView):
-    accepts = ('ERType',)
+    __select__ = implements('ERType')
     
     def _generate(self, tmpfile):
         """display schema information for an entity"""
@@ -186,7 +187,7 @@ class WorkflowVisitor:
 class EETypeWorkflowImageView(TmpFileViewMixin, EntityView):
     id = 'ewfgraph'
     content_type = 'image/png'
-    accepts = ('EEType',)
+    __select__ = implements('EEType')
     
     def _generate(self, tmpfile):
         """display schema information for an entity"""

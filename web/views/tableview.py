@@ -11,13 +11,12 @@ from simplejson import dumps
 
 from logilab.mtconverter import html_escape
 
-from cubicweb.common.utils import make_uid
+from cubicweb.selectors import nonempty_rset, match_form_params, accept_rset
+from cubicweb.utils import make_uid
+from cubicweb.view import EntityView, AnyRsetView
 from cubicweb.common.uilib import toggle_action, limitsize, jsonize, htmlescape
-from cubicweb.common.view import EntityView, AnyRsetView
-from cubicweb.common.selectors import (nonempty_rset,  match_form_params,
-                                    accept_rset)
 from cubicweb.web.htmlwidgets import (TableWidget, TableColumn, MenuWidget,
-                                   PopupBoxMenu, BoxLink)
+                                      PopupBoxMenu, BoxLink)
 from cubicweb.web.facet import prepare_facets_rqlst, filter_hiddens
 
 class TableView(AnyRsetView):
@@ -246,6 +245,7 @@ class TableView(AnyRsetView):
         entity = self.rset.get_entity(row, col)
         return entity.sortvalue()
 
+
 class EditableTableView(TableView):
     id = 'editable-table'
     finalview = 'editable-final'
@@ -253,10 +253,9 @@ class EditableTableView(TableView):
 
     
 class CellView(EntityView):
-    __selectors__ = (nonempty_rset, accept_rset)
+    __select__ = nonempty_rset()
     
     id = 'cell'
-    accepts = ('Any',)
     
     def cell_call(self, row, col, cellvid=None):
         """
@@ -289,8 +288,7 @@ class InitialTableView(TableView):
       displayed with default restrictions set
     """
     id = 'initialtable'
-    __selectors__ = nonempty_rset, match_form_params
-    form_params = ('actualrql',)
+    __select__ = nonempty_rset() & match_form_params('actualrql')
     # should not be displayed in possible view since it expects some specific
     # parameters
     title = None

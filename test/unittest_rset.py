@@ -1,8 +1,11 @@
 # coding: utf-8
 """unit tests for module cubicweb.common.utils"""
+from __future__ import with_statement
 
 from logilab.common.testlib import TestCase, unittest_main
+
 from cubicweb.devtools.apptest import EnvBasedTC
+from cubicweb.selectors import traced_selection
 
 from urlparse import urlsplit
 from rql import parse
@@ -224,7 +227,8 @@ class ResultSetTC(EnvBasedTC):
         self.assertEquals(e.col, 0)
         self.assertEquals(e['title'], 'zou')
         self.assertRaises(KeyError, e.__getitem__, 'path')
-        self.assertEquals(e.view('text'), 'zou')
+        with traced_selection():
+            self.assertEquals(e.view('text'), 'zou')
         self.assertEquals(pprelcachedict(e._related_cache), [])
         
         e = rset.get_entity(0, 1)
