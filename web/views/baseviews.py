@@ -11,6 +11,8 @@
 :copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
 """
+#from __future__ import with_statement
+
 __docformat__ = "restructuredtext en"
 
 from warnings import warn
@@ -56,6 +58,21 @@ class FinalView(AnyRsetView):
     entities) 
     """
     id = 'final'
+    # record generated i18n catalog messages
+    _('%d&nbsp;years')
+    _('%d&nbsp;months')
+    _('%d&nbsp;weeks')
+    _('%d&nbsp;days')
+    _('%d&nbsp;hours')
+    _('%d&nbsp;minutes')
+    _('%d&nbsp;seconds')
+    _('%d years')
+    _('%d months')
+    _('%d weeks')
+    _('%d days')
+    _('%d hours')
+    _('%d minutes')
+    _('%d seconds')
             
     def cell_call(self, row, col, props=None, displaytime=False, format='text/html'):
         etype = self.rset.description[row][col]
@@ -67,23 +84,26 @@ class FinalView(AnyRsetView):
                 self.w(entity.printable_value(rtype, value, format=format))
                 return
         if etype in ('Time', 'Interval'):
-            _ = self.req._
             # value is DateTimeDelta but we have no idea about what is the 
             # reference date here, so we can only approximate years and months
-            if value.days > 730: # 2 years
-                self.w(_('%d years') % (value.days // 365))
-            elif value.days > 60: # 2 months
-                self.w(_('%d months') % (value.days // 30))
-            elif value.days > 14: # 2 weeks
-                self.w(_('%d weeks') % (value.days // 7))
-            elif value.days > 2:
-                self.w(_('%s days') % int(value.days))
-            elif value.hours > 2:
-                self.w(_('%s hours') % int(value.hours))
-            elif value.minutes >= 2:
-                self.w(_('%s minutes') % int(value.minutes))
+            if format == 'text/html':
+                space = '&nbsp;'
             else:
-                self.w(_('%s seconds') % int(value.seconds))
+                space = ' '
+            if value.days > 730: # 2 years
+                self.w(self.req.__('%%d%syears' % space) % (value.days // 365))
+            elif value.days > 60: # 2 months
+                self.w(self.req.__('%%d%smonths' % space) % (value.days // 30))
+            elif value.days > 14: # 2 weeks
+                self.w(self.req.__('%%d%sweeks' % space) % (value.days // 7))
+            elif value.days > 2:
+                self.w(self.req.__('%%d%sdays' % space) % int(value.days))
+            elif value.hours > 2:
+                self.w(self.req.__('%%d%shours' % space) % int(value.hours))
+            elif value.minutes >= 2:
+                self.w(self.req.__('%%d%sminutes' % space) % int(value.minutes))
+            else:
+                self.w(self.req.__('%%d%sseconds' % space) % int(value.seconds))
             return
         self.wdata(printable_value(self.req, etype, value, props, displaytime=displaytime))
 
@@ -138,22 +158,19 @@ class PrimaryView(EntityView):
         self.render_entity_metadata(entity)
         # entity's attributes and relations, excluding meta data
         # if the entity isn't meta itself
-        self.w(u'<table border="0" width="100%">')
-        self.w(u'<tr>')
-        self.w(u'<td valign="top">')
+        self.w(u'<div>')
         self.w(u'<div class="mainInfo">')
         self.render_entity_attributes(entity, siderelations)
         self.w(u'</div>')
         self.content_navigation_components('navcontenttop')
         if self.main_related_section:
             self.render_entity_relations(entity, siderelations)
-        self.w(u'</td>')
+        self.w(u'</div>')
         # side boxes
-        self.w(u'<td valign="top">')
+        self.w(u'<div class="primaryRight">')
         self.render_side_related(entity, siderelations)
-        self.w(u'</td>')
-        self.w(u'</tr>')
-        self.w(u'</table>')        
+        self.w(u'</div>')
+        self.w(u'<div class="clear"></div>')          
         self.content_navigation_components('navcontentbottom')
 
     def content_navigation_components(self, context):
@@ -243,8 +260,10 @@ class PrimaryView(EntityView):
         non-meta in a first step, meta in a second step
         """
         if hasattr(self, 'get_side_boxes_defs'):
-            for label, rset in self.get_side_boxes_defs(entity):
-                if rset:
+            sideboxes = [(label, rset) for label, rset in self.get_side_boxes_defs(entity)
+                         if rset]
+            if sideboxes:
+                for label, rset in sideboxes:
                     self.w(u'<div class="sideRelated">')
                     self.wview('sidebox', rset, title=label)
                     self.w(u'</div>')
@@ -255,15 +274,17 @@ class PrimaryView(EntityView):
                 #    continue
                 self._render_related_entities(entity, *relatedinfos)
             self.w(u'</div>')
-        for box in self.vreg.possible_vobjects('boxes', self.req, self.rset,
-                                               row=self.row, view=self,
-                                               context='incontext'):
-            try:
-                box.dispatch(w=self.w, row=self.row)
-            except NotImplementedError:
-                # much probably a context insensitive box, which only implements
-                # .call() and not cell_call()
-                box.dispatch(w=self.w)
+        boxes = list(self.vreg.possible_vobjects('boxes', self.req, self.rset,
+                                                 row=self.row, view=self,
+                                                 context='incontext'))
+        if boxes:
+            for box in boxes:
+                try:
+                    box.dispatch(w=self.w, row=self.row)
+                except NotImplementedError:
+                    # much probably a context insensitive box, which only implements
+                    # .call() and not cell_call()
+                    box.dispatch(w=self.w)               
                 
     def is_side_related(self, rschema, eschema):
         return rschema.meta and \
@@ -989,7 +1010,8 @@ class EntityRelationView(EntityView):
         else:
             role = 'object'
         rset = self.rset.get_entity(row, col).related(self.rtype, role)
-        self.w(u'<h1>%s</h1>' % self.req._(self.title).capitalize())
+        if self.title:
+            self.w(u'<h1>%s</h1>' % self.req._(self.title).capitalize())
         self.w(u'<div class="mainInfo">')
         self.wview(self.vid, rset, 'noresult')
         self.w(u'</div>')

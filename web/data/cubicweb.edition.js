@@ -264,7 +264,8 @@ function addInlineCreationForm(peid, ptype, ttype, rtype, role) {
     var d = async_rawremote_exec('inline_creation_form', peid, ptype, ttype, rtype, role);
     d.addCallback(function (response) {
 	var linknode = getNode('add' + rtype + ':' + peid + 'link');
-	var form = jQuery(getDomFromResponse(response));
+        var dom = getDomFromResponse(response);
+	var form = jQuery(dom);
 	form.css('display', 'none');
 	form.insertBefore(linknode.parentNode).slideDown('fast');
 	// setStyle(form, {display: 'none'});
@@ -273,6 +274,7 @@ function addInlineCreationForm(peid, ptype, ttype, rtype, role) {
 	// slideDown(form, {'duration':0.6});
 	reorderTabindex();
 	form.trigger('inlinedform-added');
+        postAjaxLoad(dom);
 	// MochiKit.Signal.signal(CubicWeb, 'inlinedform-added', form);
     });
     d.addErrback(function (xxx) {
@@ -402,9 +404,8 @@ function unfreezeFormButtons(formid) {
 
 /* disable form buttons while the validation is being done */
 function freezeFormButtons(formid) {
-    var formbuttons = jQuery(formid + ' input.validateButton');
     jQuery('#progress').show();
-    jQuery(formid + ' input.validateButton').attr('disabled', 'disabled');
+    jQuery('#' + formid + ' input.validateButton').attr('disabled', 'disabled');
     return true;
 }
 
