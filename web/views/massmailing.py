@@ -1,7 +1,7 @@
 """Mass mailing form views
 
 :organization: Logilab
-:copyright: 2007-2008 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2007-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
 """
 
@@ -10,17 +10,16 @@ import operator
 from logilab.mtconverter import html_escape
 
 from cubicweb.interfaces import IEmailable
-from cubicweb.common.view import EntityView
-from cubicweb.common.selectors import implement_interface, match_user_group
-from cubicweb.web.action import EntityAction
+from cubicweb.selectors import implements, match_user_groups
+from cubicweb.view import EntityView
+from cubicweb.web.action import Action
 from cubicweb.web import stdmsgs
 
 
-class SendEmailAction(EntityAction):
+class SendEmailAction(Action):
     category = 'mainactions'
-    __selectors__ = (implement_interface, match_user_group)
-    accepts_interfaces = (IEmailable,) # XXX should check email is set as well
-    require_groups = ('managers', 'users')
+    # XXX should check email is set as well
+    __select__ = implements(IEmailable) & match_user_groups('managers', 'users')
 
     id = 'sendemail'
     title = _('send email')
@@ -35,10 +34,7 @@ class SendEmailAction(EntityAction):
 
 class MassMailingForm(EntityView):
     id = 'massmailing'
-    __selectors__ = (implement_interface, match_user_group)
-    accepts_interfaces = (IEmailable,)
-    require_groups = ('managers', 'users')
-    
+    __select__ = implements(IEmailable) & match_user_groups('managers', 'users')
 
     form_template = u"""
 <div id="compose">

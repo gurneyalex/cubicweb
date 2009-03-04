@@ -4,7 +4,9 @@
 from cubicweb.devtools.apptest import EnvBasedTC
 
 from mx.DateTime import DateTimeType, now
+
 from cubicweb import Binary
+from cubicweb.common.mttransforms import HAS_TAL
 
 class EntityTC(EnvBasedTC):
 
@@ -16,18 +18,18 @@ class EntityTC(EnvBasedTC):
 ##                         embed=False)
     
     def test_boolean_value(self):
-        e = self.etype_instance('Tag')
+        e = self.etype_instance('EUser')
         self.failUnless(e)
 
     def test_yams_inheritance(self):
-        from entities import AnotherNote
+        from entities import Note
         e = self.etype_instance('SubNote')
-        self.assertIsInstance(e, AnotherNote)
+        self.assertIsInstance(e, Note)
         e2 = self.etype_instance('SubNote')
         self.assertIs(e.__class__, e2.__class__)
 
     def test_has_eid(self):
-        e = self.etype_instance('Tag')
+        e = self.etype_instance('EUser')
         self.assertEquals(e.eid, None)
         self.assertEquals(e.has_eid(), False)
         e.eid = 'X'
@@ -167,16 +169,17 @@ class EntityTC(EnvBasedTC):
     def test_related_rql(self):
         from cubicweb.entities import fetch_config
         Personne = self.vreg.etype_class('Personne')
-        Societe = self.vreg.etype_class('Societe')
-        Personne.fetch_attrs, Personne.fetch_order = fetch_config(('nom', 'prenom', 'sexe'))
-        Societe.fetch_attrs, Societe.fetch_order = fetch_config(('nom', 'web'))
-        aff = self.add_entity('Affaire', sujet=u'my subject', ref=u'the ref')
-        self.assertEquals(aff.related_rql('liee_a'),
-                          'Any X,AA,AB ORDERBY AA ASC WHERE E eid %(x)s, E liee_a X, '
-                          'X nom AA, X modification_date AB')
-        Societe.fetch_attrs = ('web',)
-        self.assertEquals(aff.related_rql('liee_a'),
-                          'Any X ORDERBY Z DESC WHERE X modification_date Z, E eid %(x)s, E liee_a X')
+        Note = self.vreg.etype_class('Note')
+        Personne.fetch_attrs, Personne.fetch_order = fetch_config(('nom', 'type'))
+        Note.fetch_attrs, Note.fetch_order = fetch_config(('type',))
+        aff = self.add_entity('Personne', nom=u'pouet')
+        self.assertEquals(aff.related_rql('evaluee'),
+                          'Any X,AA,AB ORDERBY AA ASC WHERE E eid %(x)s, E evaluee X, '
+                          'X type AA, X modification_date AB')
+        Personne.fetch_attrs, Personne.fetch_order = fetch_config(('nom', ))
+        # XXX
+        self.assertEquals(aff.related_rql('evaluee'),
+                          'Any X,AA ORDERBY Z DESC WHERE X modification_date Z, E eid %(x)s, E evaluee X, X modification_date AA')
     
     def test_entity_unrelated(self):
         p = self.add_entity('Personne', nom=u'di mascio', prenom=u'adrien')
@@ -269,26 +272,13 @@ class EntityTC(EnvBasedTC):
                               [('nom', 'subject'), ('eid', 'subject')])
         self.assertListEquals(rbc(e.relations_by_category('secondary')),
                               [('prenom', 'subject'),
-                               ('sexe', 'subject'),
-                               ('promo', 'subject'),
-                               ('titre', 'subject'),
-                               ('adel', 'subject'),
-                               ('ass', 'subject'),
-                               ('web', 'subject'),
-                               ('tel', 'subject'),
-                               ('fax', 'subject'),
-                               ('datenaiss', 'subject'),
-                               ('test', 'subject'),
-                               ('description', 'subject'),
-                               ('salary', 'subject')])
+                               ('type', 'subject'),])
         self.assertListEquals(rbc(e.relations_by_category('generic')),
-                              [('concerne', 'subject'),
-                               ('connait', 'subject'),
+                              [('travaille', 'subject'),
                                ('evaluee', 'subject'),
-                               ('travaille', 'subject'),
+                               ('connait', 'subject'),
                                ('ecrit_par', 'object'),
                                ('evaluee', 'object'),
-                               ('liee_a', 'object'),
                                ('tags', 'object')])
         self.assertListEquals(rbc(e.relations_by_category('generated')),
                               [('created_by', 'subject'),
@@ -313,11 +303,6 @@ class EntityTC(EnvBasedTC):
         self.assertEquals(e.printable_value('content'),
                           '<p>\ndu *texte*\n</p>')
         e['title'] = 'zou'
-        e['content'] = '<h1 tal:content="self/title">titre</h1>'
-        e['content_format'] = 'text/cubicweb-page-template'
-        self.assertEquals(e.printable_value('content'),
-                          '<h1>zou</h1>')
-        
         #e = self.etype_instance('Task')
         e['content'] = '''\
 a title
@@ -331,6 +316,12 @@ du :eid:`1:*ReST*`'''
         e['content_format'] = 'text/html'
         self.assertEquals(e.printable_value('content', format='text/plain').strip(),
                           u'**yo (zou éà ;)**')
+        if HAS_TAL:
+            e['content'] = '<h1 tal:content="self/title">titre</h1>'
+            e['content_format'] = 'text/cubicweb-page-template'
+            self.assertEquals(e.printable_value('content'),
+                              '<h1>zou</h1>')
+        
 
     def test_printable_value_bytes(self):
         e = self.add_entity('File', data=Binary('lambda x: 1'), data_format=u'text/x-python',
@@ -386,12 +377,10 @@ du :eid:`1:*ReST*`'''
         
 
     def test_entity_formatted_attrs(self):
-        e = self.etype_instance('Note')
+        e = self.etype_instance('EUser')
         self.assertEquals(e.formatted_attrs(), [])
         e = self.etype_instance('File')
         self.assertEquals(e.formatted_attrs(), ['description'])
-        e = self.etype_instance('AnotherNote')
-        self.assertEquals(e.formatted_attrs(), ['descr', 'descr2'])
         
         
     def test_fulltextindex(self):

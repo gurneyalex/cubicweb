@@ -1,7 +1,7 @@
 """xbel views
 
 :organization: Logilab
-:copyright: 2001-2008 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
 """
 __docformat__ = "restructuredtext en"
@@ -9,7 +9,9 @@ _ = unicode
 
 from logilab.mtconverter import html_escape
 
-from cubicweb.web.views.baseviews import XmlView, EntityView
+from cubicweb.selectors import implements
+from cubicweb.view import EntityView
+from cubicweb.web.views.xmlrss import XmlView
 
 
 class XbelView(XmlView):
@@ -45,9 +47,10 @@ class XbelItemView(EntityView):
 
     def url(self, entity):
         return entity.absolute_url()
+
         
 class XbelItemBookmarkView(XbelItemView):
-    accepts = ('Bookmark',)
+    __select__ = implements('Bookmark')
 
     def url(self, entity):
         return entity.actual_url()

@@ -4,13 +4,13 @@ those are in cubicweb.common since we need to know available widgets at schema
 serialization time
 
 :organization: Logilab
-:copyright: 2001-2008 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
 """
 
 from logilab.mtconverter import html_escape
 
-from cubicweb.common.utils import UStringIO
+from cubicweb.utils import UStringIO
 from cubicweb.common.uilib import toggle_action
 
 # XXX HTMLWidgets should have access to req (for datadir / static urls,

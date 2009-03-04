@@ -30,7 +30,7 @@ from docutils.parsers.rst.roles import register_canonical_role, set_classes
 
 from logilab.mtconverter import html_escape
 
-from cubicweb.common.html4zope import Writer
+from cubicweb.ext.html4zope import Writer
 
 # We provide our own parser as an attempt to get rid of
 # state machine reinstanciation

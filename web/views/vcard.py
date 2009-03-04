@@ -1,12 +1,13 @@
 """vcard import / export
 
 :organization: Logilab
-:copyright: 2001-2008 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
 """
 __docformat__ = "restructuredtext en"
 
-from cubicweb.common.view import EntityView
+from cubicweb.selectors import implements
+from cubicweb.view import EntityView
 
 _ = unicode 
 
@@ -18,8 +19,7 @@ class VCardEUserView(EntityView):
     title = _('vcard')
     templatable = False
     content_type = 'text/x-vcard'
-    accepts = ('EUser',)
-        
+    __select__ = implements('EUser')        
 
     def set_request_content_type(self):
         """overriden to set a .vcf filename"""

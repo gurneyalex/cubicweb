@@ -1,7 +1,7 @@
 """html calendar views
 
 :organization: Logilab
-:copyright: 2001-2008 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
 """
 
@@ -13,11 +13,10 @@ from vobject import iCalendar, icalendar
 from logilab.mtconverter import html_escape
 
 from cubicweb.interfaces import ICalendarable
-from cubicweb.common.utils import date_range
+from cubicweb.selectors import implements
+from cubicweb.utils import date_range
+from cubicweb.view import EntityView
 from cubicweb.common.uilib import ajax_replace_url
-from cubicweb.common.selectors import implement_interface
-from cubicweb.common.registerers import priority_registerer
-from cubicweb.common.view import EntityView
 
 
 # For backward compatibility
@@ -68,7 +67,8 @@ class CalendarItemView(EntityView):
         task.view('oneline', w=self.w)
         if dates:
             if task.start and task.stop:
-                self.w('<br/>from %s'%self.format_date(task.start))
+                self.w('<br/>' % self.req._('from %(date)s' % {'date': self.format_date(task.start)}))
+                self.w('<br/>' % self.req._('to %(date)s' % {'date': self.format_date(task.stop)}))
                 self.w('<br/>to %s'%self.format_date(task.stop))
                 
 class CalendarLargeItemView(CalendarItemView):
@@ -82,9 +82,7 @@ class iCalView(EntityView):
 
     Does apply to ICalendarable compatible entities
     """
-    __registerer__ = priority_registerer
-    __selectors__ = (implement_interface,)
-    accepts_interfaces = (ICalendarable,)
+    __select__ = implements(ICalendarable)
     need_navigation = False
     content_type = 'text/calendar'
     title = _('iCalendar')
@@ -113,13 +111,11 @@ class hCalView(EntityView):
 
     Does apply to ICalendarable compatible entities
     """
-    __registerer__ = priority_registerer
-    __selectors__ = (implement_interface,)
-    accepts_interfaces = (ICalendarable,)
+    id = 'hcal'
+    __select__ = implements(ICalendarable)
     need_navigation = False
     title = _('hCalendar')
     #templatable = False
-    id = 'hcal'
 
     def call(self):
         self.w(u'<div class="hcalendar">')
@@ -145,11 +141,9 @@ class _TaskEntry(object):
 
 class OneMonthCal(EntityView):
     """At some point, this view will probably replace ampm calendars"""
-    __registerer__ = priority_registerer
-    __selectors__ = (implement_interface, )
-    accepts_interfaces = (ICalendarable,)
-    need_navigation = False
     id = 'onemonthcal'
+    __select__ = implements(ICalendarable)
+    need_navigation = False
     title = _('one month')
 
     def call(self):
@@ -330,11 +324,9 @@ class OneMonthCal(EntityView):
 
 class OneWeekCal(EntityView):
     """At some point, this view will probably replace ampm calendars"""
-    __registerer__ = priority_registerer
-    __selectors__ = (implement_interface, )
-    accepts_interfaces = (ICalendarable,)
-    need_navigation = False
     id = 'oneweekcal'
+    __select__ = implements(ICalendarable)
+    need_navigation = False
     title = _('one week')
     
     def call(self):

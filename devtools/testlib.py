@@ -158,7 +158,7 @@ class WebTest(EnvBasedTC):
         self.commit()
 
     @nocoverage
-    def _check_html(self, output, view, template='main'):
+    def _check_html(self, output, view, template='main-template'):
         """raises an exception if the HTML is invalid"""
         try:
             validatorclass = self.vid_validators[view.id]
@@ -175,7 +175,7 @@ class WebTest(EnvBasedTC):
         return validator.parse_string(output.strip())
 
 
-    def view(self, vid, rset, req=None, template='main', **kwargs):
+    def view(self, vid, rset, req=None, template='main-template', **kwargs):
         """This method tests the view `vid` on `rset` using `template`
 
         If no error occured while rendering the view, the HTML is analyzed
@@ -197,24 +197,16 @@ class WebTest(EnvBasedTC):
             self.set_description("testing %s, mod=%s (%s)" % (vid, view.__module__, rset.printable_rql()))
         else:
             self.set_description("testing %s, mod=%s (no rset)" % (vid, view.__module__))
-        viewfunc = lambda **k: self.vreg.main_template(req, template, **kwargs)
         if template is None: # raw view testing, no template
             viewfunc = view.dispatch
-        elif template == 'main':
-            _select_view_and_rset = TheMainTemplate._select_view_and_rset
-            # patch TheMainTemplate.process_rql to avoid recomputing resultset
-            def __select_view_and_rset(self, view=view, rset=rset):
-                self.rset = rset
-                return view, rset
-            TheMainTemplate._select_view_and_rset = __select_view_and_rset
-        try:
-            return self._test_view(viewfunc, view, template, **kwargs)
-        finally:
-            if template == 'main':
-                TheMainTemplate._select_view_and_rset = _select_view_and_rset
+        else:
+            templateview = self.vreg.select_view(template, req, rset, view=view, **kwargs)
+            kwargs['view'] = view
+            viewfunc = lambda **k: self.vreg.main_template(req, template, **kwargs)
+        return self._test_view(viewfunc, view, template, kwargs)
 
 
-    def _test_view(self, viewfunc, view, template='main', **kwargs):
+    def _test_view(self, viewfunc, view, template='main-template', kwargs={}):
         """this method does the actual call to the view
 
         If no error occured while rendering the view, the HTML is analyzed
@@ -332,7 +324,7 @@ class WebTest(EnvBasedTC):
             backup_rset = rset._prepare_copy(rset.rows, rset.description)
             yield InnerTest(self._testname(rset, view.id, 'view'),
                             self.view, view.id, rset,
-                            rset.req.reset_headers(), 'main')
+                            rset.req.reset_headers(), 'main-template')
             # We have to do this because some views modify the
             # resultset's syntax tree
             rset = backup_rset
