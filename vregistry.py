@@ -29,24 +29,14 @@ import sys
 from os import listdir, stat
 from os.path import dirname, join, realpath, split, isdir
 from logging import getLogger
+import types
 
 from cubicweb import CW_SOFTWARE_ROOT, set_log_methods
 from cubicweb import RegistryNotFound, ObjectNotFound, NoSelectableObject
 
 
-class vobject_helper(object):
-    """object instantiated at registration time to help a wrapped
-    VObject subclass
-    """
 
-    def __init__(self, registry, vobject):
-        self.registry = registry
-        self.vobject = vobject
-        self.config = registry.config
-        self.schema = registry.schema
-
-
-class registerer(vobject_helper):
+class registerer(object):
     """do whatever is needed at registration time for the wrapped
     class, according to current application schema and already
     registered objects of the same kind (i.e. same registry name and
@@ -59,7 +49,10 @@ class registerer(vobject_helper):
     """
 
     def __init__(self, registry, vobject):
-        super(registerer, self).__init__(registry, vobject)
+        self.registry = registry
+        self.vobject = vobject
+        self.config = registry.config
+        self.schema = registry.schema
         self.kicked = set()
     
     def do_it_yourself(self, registered):
@@ -73,49 +66,11 @@ class registerer(vobject_helper):
     def skip(self):
         self.debug('no schema compat, skipping %s', self.vobject)
 
+class yes_registerer(registerer):
+    """register without any other action"""
+    def do_it_yourself(self, registered):
+        return self.vobject
 
-def selector(cls, *args, **kwargs):
-    """selector is called to help choosing the correct object for a
-    particular request and result set by returning a score.
-
-    it must implement a .score_method taking a request, a result set and
-    optionaly row and col arguments which return an int telling how well
-    the wrapped class apply to the given request and result set. 0 score
-    means that it doesn't apply.
-    
-    rset may be None. If not, row and col arguments may be optionally
-    given if the registry is scoring a given row or a given cell of
-    the result set (both row and col are int if provided).
-    """    
-    raise NotImplementedError(cls)
-
-
-class autoselectors(type):
-    """implements __selectors__ / __select__ compatibility layer so that:
-
-    __select__ = chainall(classmethod(A, B, C))
-
-    can be replaced by something like:
-    
-    __selectors__ = (A, B, C)
-    """
-    def __new__(mcs, name, bases, classdict):
-        if '__select__' in classdict and '__selectors__' in classdict:
-            raise TypeError("__select__ and __selectors__ "
-                            "can't be used together")
-        if '__select__' not in classdict and '__selectors__' in classdict:
-            selectors = classdict['__selectors__']
-            if len(selectors) > 1:
-                classdict['__select__'] = classmethod(chainall(*selectors))
-            else:
-                classdict['__select__'] = classmethod(selectors[0])
-        return super(autoselectors, mcs).__new__(mcs, name, bases, classdict)
-
-    def __setattr__(self, attr, value):
-        if attr == '__selectors__':
-            self.__select__ = classmethod(chainall(*value))
-        super(autoselectors, self).__setattr__(attr, value)
-            
 
 class VObject(object):
     """visual object, use to be handled somehow by the visual components
@@ -129,22 +84,16 @@ class VObject(object):
     :id:
       object's identifier in the registry (string like 'main',
       'primary', 'folder_box')
-    :__registerer__:
-      registration helper class
     :__select__:
-      selection helper function
-    :__selectors__:
-      tuple of selectors to be chained
-      (__select__ and __selectors__ are mutually exclusive)
+      class'selector
       
     Moreover, the `__abstract__` attribute may be set to True to indicate
     that a vobject is abstract and should not be registered
     """
-    __metaclass__ = autoselectors
     # necessary attributes to interact with the registry
     id = None
     __registry__ = None
-    __registerer__ = None
+    __registerer__ = yes_registerer
     __select__ = None
 
     @classmethod
@@ -155,6 +104,7 @@ class VObject(object):
         may be the right hook to create an instance for example). By
         default the vobject is returned without any transformation.
         """
+        cls.build___select__()
         return cls
 
     @classmethod
@@ -172,6 +122,29 @@ class VObject(object):
     def classid(cls):
         """returns a unique identifier for the vobject"""
         return '%s.%s' % (cls.__module__, cls.__name__)
+
+    # XXX bw compat code
+    @classmethod
+    def build___select__(cls):
+        for klass in cls.mro():
+            if klass.__name__ == 'AppRsetObject':
+                continue # the bw compat __selector__ is there
+            klassdict = klass.__dict__
+            if ('__select__' in klassdict and '__selectors__' in klassdict
+                and '__selgenerated__' not in klassdict):
+                raise TypeError("__select__ and __selectors__ can't be used together on class %s" % cls)
+            if '__selectors__' in klassdict and '__selgenerated__' not in klassdict:
+                cls.__selgenerated__ = True
+                # case where __selectors__ is defined locally (but __select__
+                # is in a parent class)
+                selectors = klassdict['__selectors__']
+                if len(selectors) == 1:
+                    # micro optimization: don't bother with AndSelector if there's
+                    # only one selector
+                    select = _instantiate_selector(selectors[0])
+                else:
+                    select = AndSelector(*selectors)
+                cls.__select__ = select
 
 
 class VRegistry(object):
@@ -204,107 +177,6 @@ class VRegistry(object):
 
     def __contains__(self, key):
         return key in self._registries
-        
-    def register_vobject_class(self, cls, _kicked=set()):
-        """handle vobject class registration
-        
-        vobject class with __abstract__ == True in their local dictionnary or
-        with a name starting starting by an underscore are not registered.
-        Also a vobject class needs to have __registry__ and id attributes set
-        to a non empty string to be registered.
-
-        Registration is actually handled by vobject's registerer.
-        """
-        if (cls.__dict__.get('__abstract__') or cls.__name__[0] == '_'
-            or not cls.__registry__ or not cls.id):
-            return
-        # while reloading a module :
-        # if cls was previously kicked, it means that there is a more specific
-        # vobject defined elsewhere re-registering cls would kick it out
-        if cls.classid() in _kicked:
-            self.debug('not re-registering %s because it was previously kicked',
-                      cls.classid())
-        else:
-            regname = cls.__registry__
-            if cls.id in self.config['disable-%s' % regname]:
-                return
-            registry = self._registries.setdefault(regname, {})
-            vobjects = registry.setdefault(cls.id, [])
-            registerer = cls.__registerer__(self, cls)
-            cls = registerer.do_it_yourself(vobjects)
-            #_kicked |= registerer.kicked
-            if cls:
-                vobject = cls.registered(self)
-                try:
-                    vname = vobject.__name__
-                except AttributeError:
-                    vname = vobject.__class__.__name__
-                self.debug('registered vobject %s in registry %s with id %s',
-                          vname, cls.__registry__, cls.id)
-                vobjects.append(vobject)
-            
-    def unregister_module_vobjects(self, modname):
-        """removes registered objects coming from a given module
-
-        returns a dictionnary classid/class of all classes that will need
-        to be updated after reload (i.e. vobjects referencing classes defined
-        in the <modname> module)
-        """
-        unregistered = {}
-        # browse each registered object
-        for registry, objdict in self.items():
-            for oid, objects in objdict.items():
-                for obj in objects[:]:
-                    objname = obj.classid()
-                    # if the vobject is defined in this module, remove it
-                    if objname.startswith(modname):
-                        unregistered[objname] = obj
-                        objects.remove(obj)
-                        self.debug('unregistering %s in %s registry',
-                                  objname, registry)
-                    # if not, check if the vobject can be found in baseclasses
-                    # (because we also want subclasses to be updated)
-                    else:
-                        if not isinstance(obj, type):
-                            obj = obj.__class__
-                        for baseclass in obj.__bases__:
-                            if hasattr(baseclass, 'classid'):
-                                baseclassid = baseclass.classid()
-                                if baseclassid.startswith(modname):
-                                    unregistered[baseclassid] = baseclass
-                # update oid entry
-                if objects:
-                    objdict[oid] = objects
-                else:
-                    del objdict[oid]
-        return unregistered
-
-
-    def update_registered_subclasses(self, oldnew_mapping):
-        """updates subclasses of re-registered vobjects
-
-        if baseviews.PrimaryView is changed, baseviews.py will be reloaded
-        automatically and the new version of PrimaryView will be registered.
-        But all existing subclasses must also be notified of this change, and
-        that's what this method does
-
-        :param oldnew_mapping: a dict mapping old version of a class to
-                               the new version
-        """
-        # browse each registered object
-        for objdict in self.values():
-            for objects in objdict.values():
-                for obj in objects:
-                    if not isinstance(obj, type):
-                        obj = obj.__class__
-                    # build new baseclasses tuple
-                    newbases = tuple(oldnew_mapping.get(baseclass, baseclass)
-                                     for baseclass in obj.__bases__)
-                    # update obj's baseclasses tuple (__bases__) if needed
-                    if newbases != obj.__bases__:
-                        self.debug('updating %s.%s base classes',
-                                  obj.__module__, obj.__name__)
-                        obj.__bases__ = newbases
 
     def registry(self, name):
         """return the registry (dictionary of class objects) associated to
@@ -330,7 +202,92 @@ class VRegistry(object):
             for objs in registry.values():
                 result += objs
             return result
-        
+
+    def object_by_id(self, registry, cid, *args, **kwargs):
+        """return the most specific component according to the resultset"""
+        objects = self[registry][cid]
+        assert len(objects) == 1, objects
+        return objects[0].selected(*args, **kwargs)
+
+    # methods for explicit (un)registration ###################################
+
+#     def clear(self, key):
+#         regname, oid = key.split('.')
+#         self[regname].pop(oid, None)
+    def register_all(self, objects, modname, butclasses=()):
+        for obj in objects:
+            try:
+                if obj.__module__ != modname or obj in butclasses:
+                    continue
+                oid = obj.id
+            except AttributeError:
+                continue
+            if oid:
+                self.register(obj)
+                
+    def register(self, obj, registryname=None, oid=None, clear=False):
+        """base method to add an object in the registry"""
+        assert not '__abstract__' in obj.__dict__
+        registryname = registryname or obj.__registry__
+        oid = oid or obj.id
+        assert oid
+        registry = self._registries.setdefault(registryname, {})
+        if clear:
+            vobjects = registry[oid] =  []
+        else:
+            vobjects = registry.setdefault(oid, [])
+        # registered() is technically a classmethod but is not declared
+        # as such because we need to compose registered in some cases
+        vobject = obj.registered.im_func(obj, self)
+        assert not vobject in vobjects
+        assert callable(vobject.__select__), vobject
+        vobjects.append(vobject)
+        try:
+            vname = vobject.__name__
+        except AttributeError:
+            vname = vobject.__class__.__name__
+        self.debug('registered vobject %s in registry %s with id %s',
+                   vname, registryname, oid)
+        # automatic reloading management
+        self._registered['%s.%s' % (obj.__module__, oid)] = obj
+
+    def unregister(self, obj, registryname=None):
+        registryname = registryname or obj.__registry__
+        registry = self.registry(registryname)
+        removed_id = obj.classid()
+        for registered in registry[obj.id]:
+            # use classid() to compare classes because vreg will probably
+            # have its own version of the class, loaded through execfile
+            if registered.classid() == removed_id:
+                # XXX automatic reloading management
+                try:
+                    registry[obj.id].remove(registered)
+                except ValueError:
+                    self.warning('can\'t remove %s, no id %s in the %s registry',
+                                 removed_id, obj.id, registryname)
+                except ValueError:
+                    self.warning('can\'t remove %s, not in the %s registry with id %s',
+                                 removed_id, registryname, obj.id)
+#                 else:
+#                     # if objects is empty, remove oid from registry
+#                     if not registry[obj.id]:
+#                         del regcontent[oid]                    
+                break
+    
+    def register_and_replace(self, obj, replaced, registryname=None):
+        if hasattr(replaced, 'classid'):
+            replaced = replaced.classid()
+        registryname = registryname or obj.__registry__
+        registry = self.registry(registryname)
+        registered_objs = registry[obj.id]
+        for index, registered in enumerate(registered_objs):
+            if registered.classid() == replaced:
+                del registry[obj.id][index]
+                break
+        self.register(obj, registryname=registryname)
+
+    # dynamic selection methods ###############################################
+    
     def select(self, vobjects, *args, **kwargs):
         """return an instance of the most specific object according
         to parameters
@@ -339,21 +296,23 @@ class VRegistry(object):
         """
         score, winners = 0, []
         for vobject in vobjects:
-            vobjectscore = vobject.__select__(*args, **kwargs)
+            vobjectscore = vobject.__select__(vobject, *args, **kwargs)
             if vobjectscore > score:
                 score, winners = vobjectscore, [vobject]
             elif vobjectscore > 0 and vobjectscore == score:
                 winners.append(vobject)
         if not winners:
             raise NoSelectableObject('args: %s\nkwargs: %s %s'
-                                     % (args, kwargs.keys(), [repr(v) for v in vobjects]))
+                                     % (args, kwargs.keys(),
+                                        [repr(v) for v in vobjects]))
         if len(winners) > 1:
             if self.config.mode == 'installed':
                 self.error('select ambiguity, args: %s\nkwargs: %s %s',
                            args, kwargs.keys(), [repr(v) for v in winners])
             else:
                 raise Exception('select ambiguity, args: %s\nkwargs: %s %s'
-                                % (args, kwargs.keys(), [repr(v) for v in winners]))
+                                % (args, kwargs.keys(),
+                                   [repr(v) for v in winners]))
         winner = winners[0]
         # return the result of the .selected method of the vobject
         return winner.selected(*args, **kwargs)
@@ -372,15 +331,8 @@ class VRegistry(object):
     def select_object(self, registry, cid, *args, **kwargs):
         """return the most specific component according to the resultset"""
         return self.select(self.registry_objects(registry, cid), *args, **kwargs)
-
-    def object_by_id(self, registry, cid, *args, **kwargs):
-        """return the most specific component according to the resultset"""
-        objects = self[registry][cid]
-        assert len(objects) == 1, objects
-        return objects[0].selected(*args, **kwargs)
     
     # intialization methods ###################################################
-
     
     def register_objects(self, path, force_reload=None):
         if force_reload is None:
@@ -471,15 +423,18 @@ class VRegistry(object):
         return True
 
     def load_module(self, module):
-        registered = {}
-        self.info('loading %s', module)
-        for objname, obj in vars(module).items():
-            if objname.startswith('_'):
-                continue
-            self.load_ancestors_then_object(module.__name__, registered, obj)
-        return registered
+        self._registered = {}
+        if hasattr(module, 'registration_callback'):
+            module.registration_callback(self)
+        else:
+            self.info('loading %s', module)
+            for objname, obj in vars(module).items():
+                if objname.startswith('_'):
+                    continue
+                self.load_ancestors_then_object(module.__name__, obj)
+        return self._registered
     
-    def load_ancestors_then_object(self, modname, registered, obj):
+    def load_ancestors_then_object(self, modname, obj):
         # skip imported classes
         if getattr(obj, '__module__', None) != modname:
             return
@@ -490,11 +445,11 @@ class VRegistry(object):
         except TypeError:
             return
         objname = '%s.%s' % (modname, obj.__name__)
-        if objname in registered:
+        if objname in self._registered:
             return
-        registered[objname] = obj
+        self._registered[objname] = obj
         for parent in obj.__bases__:
-            self.load_ancestors_then_object(modname, registered, parent)
+            self.load_ancestors_then_object(modname, parent)
         self.load_object(obj)
             
     def load_object(self, obj):
@@ -505,41 +460,277 @@ class VRegistry(object):
                 raise
             self.exception('vobject %s registration failed: %s', obj, ex)
         
+    # old automatic registration XXX deprecated ###############################
+    
+    def register_vobject_class(self, cls):
+        """handle vobject class registration
+        
+        vobject class with __abstract__ == True in their local dictionnary or
+        with a name starting starting by an underscore are not registered.
+        Also a vobject class needs to have __registry__ and id attributes set
+        to a non empty string to be registered.
+
+        Registration is actually handled by vobject's registerer.
+        """
+        if (cls.__dict__.get('__abstract__') or cls.__name__[0] == '_'
+            or not cls.__registry__ or not cls.id):
+            return
+        regname = cls.__registry__
+        if '%s.%s' % (regname, cls.id) in self.config['disable-appobjects']:
+            return
+        registry = self._registries.setdefault(regname, {})
+        vobjects = registry.setdefault(cls.id, [])
+        registerer = cls.__registerer__(self, cls)
+        cls = registerer.do_it_yourself(vobjects)
+        if cls:
+            self.register(cls)
+            
+    def unregister_module_vobjects(self, modname):
+        """removes registered objects coming from a given module
+
+        returns a dictionnary classid/class of all classes that will need
+        to be updated after reload (i.e. vobjects referencing classes defined
+        in the <modname> module)
+        """
+        unregistered = {}
+        # browse each registered object
+        for registry, objdict in self.items():
+            for oid, objects in objdict.items():
+                for obj in objects[:]:
+                    objname = obj.classid()
+                    # if the vobject is defined in this module, remove it
+                    if objname.startswith(modname):
+                        unregistered[objname] = obj
+                        objects.remove(obj)
+                        self.debug('unregistering %s in %s registry',
+                                  objname, registry)
+                    # if not, check if the vobject can be found in baseclasses
+                    # (because we also want subclasses to be updated)
+                    else:
+                        if not isinstance(obj, type):
+                            obj = obj.__class__
+                        for baseclass in obj.__bases__:
+                            if hasattr(baseclass, 'classid'):
+                                baseclassid = baseclass.classid()
+                                if baseclassid.startswith(modname):
+                                    unregistered[baseclassid] = baseclass
+                # update oid entry
+                if objects:
+                    objdict[oid] = objects
+                else:
+                    del objdict[oid]
+        return unregistered
+
+    def update_registered_subclasses(self, oldnew_mapping):
+        """updates subclasses of re-registered vobjects
+
+        if baseviews.PrimaryView is changed, baseviews.py will be reloaded
+        automatically and the new version of PrimaryView will be registered.
+        But all existing subclasses must also be notified of this change, and
+        that's what this method does
+
+        :param oldnew_mapping: a dict mapping old version of a class to
+                               the new version
+        """
+        # browse each registered object
+        for objdict in self.values():
+            for objects in objdict.values():
+                for obj in objects:
+                    if not isinstance(obj, type):
+                        obj = obj.__class__
+                    # build new baseclasses tuple
+                    newbases = tuple(oldnew_mapping.get(baseclass, baseclass)
+                                     for baseclass in obj.__bases__)
+                    # update obj's baseclasses tuple (__bases__) if needed
+                    if newbases != obj.__bases__:
+                        self.debug('updating %s.%s base classes',
+                                  obj.__module__, obj.__name__)
+                        obj.__bases__ = newbases
+        
 # init logging 
 set_log_methods(VObject, getLogger('cubicweb'))
 set_log_methods(VRegistry, getLogger('cubicweb.registry'))
 set_log_methods(registerer, getLogger('cubicweb.registration'))
 
 
-# advanced selector building functions ########################################
+# selector base classes and operations ########################################
 
-def chainall(*selectors):
-    """return a selector chaining given selectors. If one of
-    the selectors fail, selection will fail, else the returned score
-    will be the sum of each selector'score
+class Selector(object):
+    """base class for selector classes providing implementation
+    for operators ``&`` and ``|``
+
+    This class is only here to give access to binary operators, the
+    selector logic itself should be implemented in the __call__ method
+
+
+    a selector is called to help choosing the correct object for a
+    particular context by returning a score (`int`) telling how well
+    the class given as first argument apply to the given context.
+
+    0 score means that the class doesn't apply.
     """
-    assert selectors
-    def selector(cls, *args, **kwargs):
-        score = 0
+
+    @property
+    def func_name(self):
+        # backward compatibility
+        return self.__class__.__name__
+
+    def search_selector(self, selector):
+        """search for the given selector or selector instance in the selectors
+        tree. Return it of None if not found
+        """
+        if self is selector:
+            return self
+        if isinstance(selector, type) and isinstance(self, selector):
+            return self
+        return None
+
+    def __str__(self):
+        return self.__class__.__name__
+    
+    def __and__(self, other):
+        return AndSelector(self, other)
+    def __rand__(self, other):
+        return AndSelector(other, self)
+
+    def __or__(self, other):
+        return OrSelector(self, other)
+    def __ror__(self, other):
+        return OrSelector(other, self)
+
+    def __invert__(self):
+        return NotSelector(self)
+    
+    # XXX (function | function) or (function & function) not managed yet
+
+    def __call__(self, cls, *args, **kwargs):
+        return NotImplementedError("selector %s must implement its logic "
+                                   "in its __call__ method" % self.__class__)
+
+class MultiSelector(Selector):
+    """base class for compound selector classes"""
+    
+    def __init__(self, *selectors):
+        self.selectors = self.merge_selectors(selectors)
+
+    def __str__(self):
+        return '%s(%s)' % (self.__class__.__name__,
+                           ','.join(str(s) for s in self.selectors))
+
+    @classmethod
+    def merge_selectors(cls, selectors):
+        """deal with selector instanciation when necessary and merge
+        multi-selectors if possible:
+
+        AndSelector(AndSelector(sel1, sel2), AndSelector(sel3, sel4))
+        ==> AndSelector(sel1, sel2, sel3, sel4)
+        """
+        merged_selectors = []
         for selector in selectors:
+            try:
+                selector = _instantiate_selector(selector)
+            except:
+                pass
+            #assert isinstance(selector, Selector), selector
+            if isinstance(selector, cls):
+                merged_selectors += selector.selectors
+            else:
+                merged_selectors.append(selector)
+        return merged_selectors
+
+    def search_selector(self, selector):
+        """search for the given selector or selector instance in the selectors
+        tree. Return it of None if not found
+        """
+        for childselector in self.selectors:
+            if childselector is selector:
+                return childselector
+            found = childselector.search_selector(selector)
+            if found is not None:
+                return found
+        return None
+
+    
+def objectify_selector(selector_func):
+    """convenience decorator for simple selectors where a class definition
+    would be overkill::
+
+        @objectify_selector
+        def yes(cls, *args, **kwargs):
+            return 1
+        
+    """
+    return type(selector_func.__name__, (Selector,),
+                {'__call__': lambda self, *args, **kwargs: selector_func(*args, **kwargs)})
+
+def _instantiate_selector(selector):
+    """ensures `selector` is a `Selector` instance
+    
+    NOTE: This should only be used locally in build___select__()
+    XXX: then, why not do it ??
+    """
+    if isinstance(selector, types.FunctionType):
+        return objectify_selector(selector)()
+    if isinstance(selector, type) and issubclass(selector, Selector):
+        return selector()
+    return selector
+
+
+class AndSelector(MultiSelector):
+    """and-chained selectors (formerly known as chainall)"""
+    def __call__(self, cls, *args, **kwargs):
+        score = 0
+        for selector in self.selectors:
             partscore = selector(cls, *args, **kwargs)
             if not partscore:
                 return 0
             score += partscore
         return score
+
+
+class OrSelector(MultiSelector):
+    """or-chained selectors (formerly known as chainfirst)"""
+    def __call__(self, cls, *args, **kwargs):
+        for selector in self.selectors:
+            partscore = selector(cls, *args, **kwargs)
+            if partscore:
+                return partscore
+        return 0
+
+class NotSelector(Selector):
+    """negation selector"""
+    def __init__(self, selector):
+        self.selector = selector
+
+    def __call__(self, cls, *args, **kwargs):
+        score = self.selector(cls, *args, **kwargs)
+        return int(not score)
+
+    def __str__(self):
+        return 'NOT(%s)' % super(NotSelector, self).__str__()
+
+
+# XXX bw compat functions #####################################################
+
+def chainall(*selectors, **kwargs):
+    """return a selector chaining given selectors. If one of
+    the selectors fail, selection will fail, else the returned score
+    will be the sum of each selector'score
+    """
+    assert selectors
+    # XXX do we need to create the AndSelector here, a tuple might be enough
+    selector = AndSelector(*selectors)
+    if 'name' in kwargs:
+        selector.__name__ = kwargs['name']
     return selector
 
-def chainfirst(*selectors):
+def chainfirst(*selectors, **kwargs):
     """return a selector chaining given selectors. If all
     the selectors fail, selection will fail, else the returned score
     will be the first non-zero selector score
     """
     assert selectors
-    def selector(cls, *args, **kwargs):
-        for selector in selectors:
-            partscore = selector(cls, *args, **kwargs)
-            if partscore:
-                return partscore
-        return 0
+    selector = OrSelector(*selectors)
+    if 'name' in kwargs:
+        selector.__name__ = kwargs['name']
     return selector
-

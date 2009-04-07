@@ -2,24 +2,25 @@
 cubes development
 
 :organization: Logilab
-:copyright: 2001-2008 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
 """
 __docformat__ = "restructuredtext en"
 
 import sys
-from os import walk, mkdir, chdir, listdir, getcwd
+from datetime import datetime
+from os import mkdir, chdir, listdir
 from os.path import join, exists, abspath, basename, normpath, split, isdir
 
 
 from logilab.common import STD_BLACKLIST
 from logilab.common.modutils import get_module_files
 from logilab.common.textutils import get_csv
+from logilab.common.clcommands import register_commands
 
-from cubicweb import CW_SOFTWARE_ROOT as BASEDIR
+from cubicweb import CW_SOFTWARE_ROOT as BASEDIR, BadCommandUsage
 from cubicweb.__pkginfo__ import version as cubicwebversion
-from cubicweb import BadCommandUsage
-from cubicweb.toolsutils import Command, register_commands, confirm, copy_skeleton
+from cubicweb.toolsutils import Command, confirm, copy_skeleton
 from cubicweb.web.webconfig import WebConfiguration
 from cubicweb.server.serverconfig import ServerConfiguration
 
@@ -102,9 +103,8 @@ def generate_schema_pot(w, cubedir=None):
     _generate_schema_pot(w, vreg, schema, libschema=libschema, cube=cube)
                 
 def _generate_schema_pot(w, vreg, schema, libschema=None, cube=None):
-    from mx.DateTime import now
     from cubicweb.common.i18n import add_msg
-    w('# schema pot file, generated on %s\n' % now().strftime('%Y-%m-%d %H:%M:%S'))
+    w('# schema pot file, generated on %s\n' % datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
     w('# \n')
     w('# singular and plural forms for each entity type\n')
     w('\n')
@@ -143,10 +143,10 @@ def _generate_schema_pot(w, vreg, schema, libschema=None, cube=None):
             add_msg(w, rschema.description)
     w('# add related box generated message\n')
     w('\n')
+    actionbox = self.vreg['actions']['edit_box'][0]
     for eschema in schema.entities():
         if eschema.is_final():
             continue
-        entity = vreg.etype_class(eschema)(None, None)
         for x, rschemas in (('subject', eschema.subject_relations()),
                             ('object', eschema.object_relations())):
             for rschema in rschemas:
@@ -155,7 +155,7 @@ def _generate_schema_pot(w, vreg, schema, libschema=None, cube=None):
                 for teschema in rschema.targets(eschema, x):
                     if defined_in_library(libschema, eschema, rschema, teschema, x):
                         continue
-                    if entity.relation_mode(rschema.type, teschema.type, x) == 'create':
+                    if actionbox.relation_mode(rschema.type, teschema.type, x) == 'create':
                         if x == 'subject':
                             label = 'add %s %s %s %s' % (eschema, rschema, teschema, x)
                             label2 = "creating %s (%s %%(linkto)s %s %s)" % (teschema, eschema, rschema, teschema)
@@ -461,14 +461,13 @@ class NewCubeCommand(Command):
                 dependancies = ', '.join(repr(cube) for cube in includes)
         else:
             dependancies = ''
-        from mx.DateTime import now
         context = {'cubename' : cubename,
                    'distname' : distname,
                    'shortdesc' : shortdesc,
                    'longdesc' : longdesc or shortdesc,
                    'dependancies' : dependancies,
                    'version'  : cubicwebversion,
-                   'year'  : str(now().year),
+                   'year'  : str(datetime.now().year),
                    'author': self['author'],
                    'author-email': self['author-email'],
                    'author-web-site': self['author-web-site'],

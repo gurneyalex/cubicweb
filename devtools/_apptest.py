@@ -61,6 +61,7 @@ def unprotected_entities(app_schema, strict=False):
     
 
 def ignore_relations(*relations):
+    global SYSTEM_RELATIONS
     SYSTEM_RELATIONS += relations
 
 class TestEnvironment(object):
@@ -83,7 +84,6 @@ class TestEnvironment(object):
         self.restore_database()
         if verbose:
             print "init done"
-        login = source['db-user']
         config.repository = lambda x=None: self.repo
         self.app = CubicWebPublisher(config, vreg=vreg)
         self.verbose = verbose
@@ -234,15 +234,14 @@ class ExistingTestEnvironment(TestEnvironment):
             print "init test database ..."
         source = config.sources()['system']
         self.vreg = CubicWebRegistry(config)
-        repo, self.cnx = init_test_database(driver=source['db-driver'],
-                                            vreg=self.vreg)
+        self.cnx = init_test_database(driver=source['db-driver'],
+                                      vreg=self.vreg)[1]
         if verbose:
             print "init done" 
         self.app = CubicWebPublisher(config, vreg=self.vreg)
         self.verbose = verbose
         # this is done when the publisher is opening a connection
         self.cnx.vreg = self.vreg
-        login = source['db-user']
         
     def setup(self, config=None):
         """config is passed by TestSuite but is ignored in this environment"""

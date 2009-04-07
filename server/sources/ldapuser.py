@@ -48,7 +48,8 @@ MODES = {
     1: (636, 'ldaps'),
     2: (0,   'ldapi'),
     }
-                
+
+
 class LDAPUserSource(AbstractSource):
     """LDAP read-only EUser source"""
     support_entities = {'EUser': False} 

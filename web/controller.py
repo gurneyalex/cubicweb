@@ -2,17 +2,18 @@
 
 
 :organization: Logilab
-:copyright: 2001-2008 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
 """
 __docformat__ = "restructuredtext en"
 
-from mx.DateTime import strptime, Error as MxDTError, TimeDelta
+from datetime import timedelta
 
 from cubicweb import typed_eid
+from cubicweb.utils import strptime
 from cubicweb.common.registerers import priority_registerer
-from cubicweb.common.selectors import match_user_group
-from cubicweb.common.appobject import AppObject
+from cubicweb.selectors import yes, require_group_compat
+from cubicweb.appobject import AppObject
 from cubicweb.web import LOGGER, Redirect, RequestError
 
 
@@ -21,7 +22,7 @@ NAVIGATION_PARAMETERS = (('vid', '__redirectvid'),
                          ('__redirectpath', '__redirectpath'),
                          ('__redirectparams', '__redirectparams'),
                          )
-NAV_FORM_PARAMETERS = [fp for ap, fp in NAVIGATION_PARAMETERS]
+NAV_FORM_PARAMETERS = tuple(fp for ap, fp in NAVIGATION_PARAMETERS)
 
 def redirect_params(form):
     """transform redirection parameters into navigation parameters
@@ -68,8 +69,8 @@ class Controller(AppObject):
     """
     __registry__ = 'controllers'
     __registerer__ = priority_registerer
-    __selectors__ = (match_user_group,)
-    require_groups = ()
+    __select__ = yes()
+    registered = require_group_compat(AppObject.registered)
 
     def __init__(self, *args, **kwargs):
         super(Controller, self).__init__(*args, **kwargs)
@@ -84,6 +85,17 @@ class Controller(AppObject):
         raise NotImplementedError
 
     # generic methods useful for concret implementations ######################
+
+    def process_rql(self, rql):
+        """execute rql if specified"""
+        if rql:
+            self.ensure_ro_rql(rql)
+            if not isinstance(rql, unicode):
+                rql = unicode(rql, self.req.encoding)
+            pp = self.vreg.select_component('magicsearch', self.req)
+            self.rset = pp.process_query(rql, self.req)
+            return self.rset
+        return None
     
     def check_expected_params(self, params):
         """check that the given list of parameters are specified in the form
@@ -107,20 +119,20 @@ class Controller(AppObject):
             format = self.req.property_value('ui.datetime-format')
             try:
                 return strptime(value, format)
-            except MxDTError:
+            except:
                 pass
         elif etype == 'Time':
             format = self.req.property_value('ui.time-format')
             try:
                 # (adim) I can't find a way to parse a Time with a custom format
                 date = strptime(value, format) # this returns a DateTime
-                return TimeDelta(date.hour, date.minute, date.second)
-            except MxDTError:
+                return timedelta(0, date.hour *60*60 + date.minute*60 + date.second, 0)
+            except:
                 raise ValueError('can\'t parse %r (expected %s)' % (value, format))
         try:
             format = self.req.property_value('ui.date-format')
             return strptime(value, format)
-        except MxDTError:
+        except:
             raise ValueError('can\'t parse %r (expected %s)' % (value, format))
 
 

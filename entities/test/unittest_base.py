@@ -1,8 +1,6 @@
 # -*- coding: utf-8 -*-
 """unit tests for cubicweb.entities.base module"""
 
-from mx.DateTime import now
-
 from logilab.common.testlib import unittest_main
 from logilab.common.decorators import clear_cache
 from logilab.common.interface import implements
@@ -55,6 +53,12 @@ class MetadataTC(BaseEntityTC):
         self.assertEquals(card.default_content_format(), 'text/rest')
         
 
+    def test_entity_meta_attributes(self):
+        # XXX move to yams
+        self.assertEquals(self.schema['EUser'].meta_attributes(), {})
+        self.assertEquals(dict((str(k), v) for k, v in self.schema['Card'].meta_attributes().iteritems()),
+                          {'content_format': ('format', 'content')})
+        
 
 class EUserTC(BaseEntityTC):
     def test_dc_title_and_name(self):

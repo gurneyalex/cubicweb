@@ -4,13 +4,12 @@ those are in cubicweb.common since we need to know available widgets at schema
 serialization time
 
 :organization: Logilab
-:copyright: 2001-2008 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
 """
 __docformat__ = "restructuredtext en"
 
-from simplejson import dumps
-from mx.DateTime import now, today
+from datetime import datetime
 
 from logilab.mtconverter import html_escape
 
@@ -391,11 +390,7 @@ class TextWidget(Widget):
         if not entity.has_eid():
             return u''
         return entity.printable_value(self.name)
-    
-    def add_fckeditor_info(self, req):
-        req.add_js('fckeditor.js')
-        req.fckeditor_config()
-    
+        
     def _edit_render(self, entity, with_format=True):
         req = entity.req
         editor = self._edit_render_textarea(entity, with_format)
@@ -411,10 +406,10 @@ class TextWidget(Widget):
         if isinstance(dvalue, basestring):
             dvalue = html_escape(dvalue)
         if entity.use_fckeditor(self.name):
-            self.add_fckeditor_info(entity.req)
+            entity.req.fckeditor_config()
             if with_format:
                 if entity.has_eid():
-                    format = entity.format(self.name)
+                    format = entity.attribute_metadata(self.name, 'format')
                 else:
                     format = ''
                 frname = eid_param(self.name + '_format', entity.eid)
@@ -423,7 +418,7 @@ class TextWidget(Widget):
                     frname, format, frname)
             return u'%s<textarea cubicweb:type="wysiwyg" onkeypress="autogrow(this)" name="%s" %s>%s</textarea>' % (
                 hidden, self.rname, self.format_attrs(), dvalue)
-        if with_format and entity.has_format(self.name):
+        if with_format and entity.e_schema.has_metadata(self.name, 'format'):
             fmtwdg = entity.get_widget(self.name + '_format')
             fmtwdgstr = fmtwdg.edit_render(entity, tabindex=self.attrs['tabindex'])
             self.attrs['tabindex'] = entity.req.next_tabindex()
@@ -471,7 +466,8 @@ class FileWidget(Widget):
     def _file_wdg(self, entity):
         wdgs = [u'<input type="file" name="%s" %s/>' % (self.rname, self.format_attrs())]
         req = entity.req
-        if entity.has_format(self.name) or entity.has_text_encoding(self.name):
+        if (entity.e_schema.has_metadata(self.name, 'format')
+            or entity.e_schema.has_metadata(self.name, 'encoding')):
             divid = '%s-%s-advanced' % (self.name, entity.eid)
             wdgs.append(u'<a href="%s" title="%s"><img src="%s" alt="%s"/></a>' %
                         (html_escape(toggle_action(divid)),
@@ -517,14 +513,14 @@ class TextFileWidget(FileWidget):
     
     def _edit_render(self, entity):
         wdgs = [self._file_wdg(entity)]
-        if entity.format(self.name) in ('text/plain', 'text/html', 'text/rest'):
+        if entity.attribute_metadata(self.name, 'format') in ('text/plain', 'text/html', 'text/rest'):
             msg = self._edit_msg(entity)
             wdgs.append(u'<p><b>%s</b></p>' % msg)
             twdg = TextWidget(self.vreg, self.subjtype, self.rschema, self.objtype)
             twdg.rname = self.rname
             data = getattr(entity, self.name)
             if data:
-                encoding = entity.text_encoding(self.name)
+                encoding = entity.attribute_metadata(self.name, 'encoding')
                 try:
                     entity[self.name] = unicode(data.getvalue(), encoding)
                 except UnicodeError:
@@ -667,6 +663,7 @@ class AddComboBoxWidget(DynamicComboBoxWidget):
         res.append(u'<a href="javascript:noop()" id="add_newopt">&nbsp;</a></div>')
         return '\n'.join(res)
 
+
 class IntegerWidget(StringWidget):
     def __init__(self, vreg, subjschema, rschema, objschema, **kwattrs):
         kwattrs['size'] = 5
@@ -676,7 +673,6 @@ class IntegerWidget(StringWidget):
     def render_example(self, req):
         return '23'
     
-
         
 class FloatWidget(StringWidget):
     def __init__(self, vreg, subjschema, rschema, objschema, **kwattrs):
@@ -700,6 +696,7 @@ class FloatWidget(StringWidget):
             return [formatstr % value]
         return ()
 
+
 class DecimalWidget(StringWidget):
     def __init__(self, vreg, subjschema, rschema, objschema, **kwattrs):
         kwattrs['size'] = 5
@@ -708,17 +705,25 @@ class DecimalWidget(StringWidget):
         
     def render_example(self, req):
         return '345.0300'
-    
 
 
 class DateWidget(StringWidget):
     format_key = 'ui.date-format'
-    monthnames = ("january", "february", "march", "april",
-                  "may", "june", "july", "august",
-                  "september", "october", "november", "december")
-    
-    daynames = ("monday", "tuesday", "wednesday", "thursday",
-                "friday", "saturday", "sunday")
+    monthnames = ('january', 'february', 'march', 'april',
+                  'may', 'june', 'july', 'august',
+                  'september', 'october', 'november', 'december')
+    daynames = ('monday', 'tuesday', 'wednesday', 'thursday',
+                'friday', 'saturday', 'sunday')
+
+    @classmethod
+    def add_localized_infos(cls, req):
+        """inserts JS variables defining localized months and days"""
+        # import here to avoid dependancy from cubicweb-common to simplejson
+        _ = req._
+        monthnames = [_(mname) for mname in cls.monthnames]
+        daynames = [_(dname) for dname in cls.daynames]
+        req.html_headers.define_var('MONTHNAMES', monthnames)
+        req.html_headers.define_var('DAYNAMES', daynames)
     
     def __init__(self, vreg, subjschema, rschema, objschema, **kwattrs):
         kwattrs.setdefault('size', 10)
@@ -734,17 +739,7 @@ class DateWidget(StringWidget):
 
     def render_example(self, req):
         formatstr = req.property_value(self.format_key)
-        return now().strftime(formatstr)
-
-    @classmethod
-    def add_localized_infos(cls, req):
-        """inserts JS variables defining localized months and days"""
-        # import here to avoid dependancy from cubicweb-common to simplejson
-        _ = req._
-        monthnames = [_(mname) for mname in cls.monthnames]
-        daynames = [_(dname) for dname in cls.daynames]
-        req.html_headers.define_var('MONTHNAMES', monthnames)
-        req.html_headers.define_var('DAYNAMES', daynames)
+        return datetime.now().strftime(formatstr)
 
 
     def _edit_render(self, entity):
@@ -773,7 +768,7 @@ class DateWidget(StringWidget):
         req.add_css(('cubicweb.calendar_popup.css',))
         inputid = self.attrs.get('id', self.rname)
         helperid = "%shelper" % inputid
-        _today = today()
+        _today = datetime.now()
         year = int(req.form.get('year', _today.year))
         month = int(req.form.get('month', _today.month))
 
@@ -784,22 +779,19 @@ class DateWidget(StringWidget):
 
 class DateTimeWidget(DateWidget):
     format_key = 'ui.datetime-format'
-    
-    def render_example(self, req):
-        formatstr1 = req.property_value('ui.datetime-format')
-        formatstr2 = req.property_value('ui.date-format')
-        return req._('%(fmt1)s, or without time: %(fmt2)s') % {
-            'fmt1': now().strftime(formatstr1),
-            'fmt2': now().strftime(formatstr2),
-            }
-
-
-
 
     def __init__(self, vreg, subjschema, rschema, objschema, **kwattrs):
         kwattrs['size'] = 16
         kwattrs['maxlength'] = 16
         DateWidget.__init__(self, vreg, subjschema, rschema, objschema, **kwattrs)
+    
+    def render_example(self, req):
+        formatstr1 = req.property_value('ui.datetime-format')
+        formatstr2 = req.property_value('ui.date-format')
+        return req._('%(fmt1)s, or without time: %(fmt2)s') % {
+            'fmt1': datetime.now().strftime(formatstr1),
+            'fmt2': datetime.now().strftime(formatstr2),
+            }
 
 
 class TimeWidget(StringWidget):

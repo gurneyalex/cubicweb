@@ -1,7 +1,7 @@
 """cubicweb-ctl commands and command handlers specific to the server.serverconfig
 
 :organization: Logilab
-:copyright: 2001-2008 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
 """
 __docformat__ = "restructuredtext en"
@@ -9,10 +9,11 @@ __docformat__ = "restructuredtext en"
 import os
 
 from logilab.common.configuration import REQUIRED, Configuration, ini_format_section
+from logilab.common.clcommands import register_commands, cmd_run, pop_arg
 
 from cubicweb import AuthenticationError, ExecutionError, ConfigurationError
-from cubicweb.toolsutils import Command, CommandHandler, pop_arg, cmd_run, \
-     register_commands, confirm, restrict_perms_to_user
+from cubicweb.toolsutils import (Command, CommandHandler, confirm,
+                                 restrict_perms_to_user)
 from cubicweb.server.serverconfig import ServerConfiguration
 
 
@@ -466,8 +467,8 @@ def _remote_dump(host, appid, output, sudo=False):
     if os.system(dmpcmd):
         raise ExecutionError('Error while dumping the database')
     if output is None:
-        from mx.DateTime import today
-        date = today().strftime('%Y-%m-%d')
+        from datetime import date
+        date = date.today().strftime('%Y-%m-%d')
         output = '%s-%s.dump' % (appid, date)
     cmd = 'scp %s:/tmp/%s.dump %s' % (host, appid, output)
     print cmd

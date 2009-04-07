@@ -7,11 +7,11 @@
 __docformat__ = "restructuredtext en"
 
 from urlparse import urlsplit, urlunsplit
-from mx.DateTime import now
+from datetime import datetime
 
 from logilab.common.decorators import cached
 
-from cubicweb.common.entity import _marker
+from cubicweb.entity import _marker
 from cubicweb.entities import AnyEntity, fetch_config
 
 def mangle_email(address):
@@ -24,10 +24,6 @@ def mangle_email(address):
 class EmailAddress(AnyEntity):
     id = 'EmailAddress'
     fetch_attrs, fetch_order = fetch_config(['address', 'alias', 'canonical'])
-
-    widgets = {
-        'address' : "EmailWidget",
-        }
 
     def dc_title(self):
         if self.alias:
@@ -94,13 +90,7 @@ Emailaddress.id = 'Emailaddress'
 class EProperty(AnyEntity):
     id = 'EProperty'
 
-    fetch_attrs, fetch_order = fetch_config(['pkey', 'value'])
-
-    widgets = {
-        'pkey' : "PropertyKeyWidget",
-        'value' : "PropertyValueWidget",
-        }
-    
+    fetch_attrs, fetch_order = fetch_config(['pkey', 'value'])    
     rest_attr = 'pkey'
 
     def typed_value(self):
@@ -120,10 +110,6 @@ class Bookmark(AnyEntity):
     """customized class for Bookmark entities"""
     id = 'Bookmark'
     fetch_attrs, fetch_order = fetch_config(['title', 'path'])
-    widgets = {
-        'path' : "StringWidget",
-        }
-    __rtags__ = {'path': 'primary'}
 
     def actual_url(self):
         url = self.req.build_url(self.path)
@@ -153,6 +139,7 @@ class Card(AnyEntity):
     def dc_description(self, format='text/plain'):
         return self.synopsis or u''
 
+
 class ECache(AnyEntity):
     """Cache"""
     id = 'ECache'
@@ -160,7 +147,8 @@ class ECache(AnyEntity):
     fetch_attrs, fetch_order = fetch_config(['name'])
 
     def touch(self):
-        self.req.execute('SET X timestamp %(t)s WHERE X eid %(x)s', {'t': now(), 'x': self.eid}, 'x')
+        self.req.execute('SET X timestamp %(t)s WHERE X eid %(x)s',
+                         {'t': datetime.now(), 'x': self.eid}, 'x')
 
     def valid(self, date):
         return date < self.timestamp

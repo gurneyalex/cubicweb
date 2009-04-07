@@ -7,8 +7,7 @@
 __docformat__ = "restructuredtext en"
 
 from threading import Lock
-
-from mx.DateTime import now
+from datetime import datetime
 
 from logilab.common.cache import Cache
 from logilab.common.configuration import REQUIRED
@@ -501,7 +500,7 @@ class NativeSQLSource(SQLAdapterMixIn, AbstractSource):
         """add type and source info for an eid into the system table"""
         # begin by inserting eid/type/source/extid into the entities table
         attrs = {'type': str(entity.e_schema), 'eid': entity.eid,
-                 'extid': extid, 'source': source.uri, 'mtime': now()}
+                 'extid': extid, 'source': source.uri, 'mtime': datetime.now()}
         session.system_sql(self.sqlgen.insert('entities', attrs), attrs)
 
     def delete_info(self, session, eid, etype, uri, extid):
@@ -512,7 +511,7 @@ class NativeSQLSource(SQLAdapterMixIn, AbstractSource):
         session.system_sql(self.sqlgen.delete('entities', attrs), attrs)
         if self.has_deleted_entitites_table:
             attrs = {'type': etype, 'eid': eid, 'extid': extid,
-                     'source': uri, 'dtime': now()}
+                     'source': uri, 'dtime': datetime.now()}
             session.system_sql(self.sqlgen.insert('deleted_entities', attrs), attrs)
         
     def fti_unindex_entity(self, session, eid):
@@ -536,7 +535,7 @@ class NativeSQLSource(SQLAdapterMixIn, AbstractSource):
             if self.indexer is not None:
                 self.exception('error while reindexing %s', entity)
         # update entities.mtime
-        attrs = {'eid': entity.eid, 'mtime': now()}
+        attrs = {'eid': entity.eid, 'mtime': datetime.now()}
         session.system_sql(self.sqlgen.update('entities', attrs, ['eid']), attrs)
         
     def modified_entities(self, session, etypes, mtime):

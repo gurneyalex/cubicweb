@@ -1,7 +1,7 @@
 """This module provides misc utilities to test applications
 
 :organization: Logilab
-:copyright: 2001-2008 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
 """
 __docformat__ = "restructuredtext en"
@@ -493,13 +493,10 @@ class RepositoryBasedTC(TestCase):
         self._prepare()
         self.session.set_pool()
         self.maxeid = self.session.system_sql('SELECT MAX(eid) FROM entities').fetchone()[0]
-        #self.maxeid = self.execute('Any MAX(X)')
         
-    def tearDown(self, close=True):
+    def tearDown(self):
         self.close_connections()
         self.rollback()
         self.session.unsafe_execute('DELETE Any X WHERE X eid > %(x)s', {'x': self.maxeid})
         self.commit()
-        #if close:
-        #    self.close()
     

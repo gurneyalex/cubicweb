@@ -1,7 +1,7 @@
 """Primary view for bookmarks + user's bookmarks box
 
 :organization: Logilab
-:copyright: 2001-2008 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
 """
 __docformat__ = "restructuredtext en"
@@ -9,13 +9,30 @@ __docformat__ = "restructuredtext en"
 from logilab.mtconverter import html_escape
 
 from cubicweb import Unauthorized
+from cubicweb.selectors import implements
 from cubicweb.web.htmlwidgets import BoxWidget, BoxMenu, RawBoxItem
+from cubicweb.web.action import Action
 from cubicweb.web.box import UserRQLBoxTemplate
 from cubicweb.web.views.baseviews import PrimaryView
+from cubicweb.web.views.editforms import AutomaticEntityForm
+
+AutomaticEntityForm.rcategories.set_rtag('primary', 'path', 'subject', 'Bookmark')
+AutomaticEntityForm.rwidgets.set_rtag('StringWidget', 'path', 'subject', 'Bookmark')
+
+
+class FollowAction(Action):
+    id = 'follow'
+    __select__ = implements('Bookmark')
+
+    title = _('follow')
+    category = 'mainactions'
+    
+    def url(self):
+        return self.rset.get_entity(self.row or 0, self.col or 0).actual_url()
 
 
 class BookmarkPrimaryView(PrimaryView):
-    accepts = ('Bookmark',)
+    __select__ = implements('Bookmark')
         
     def cell_call(self, row, col):
         """the primary view for bookmark entity"""

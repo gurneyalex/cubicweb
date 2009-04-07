@@ -8,8 +8,8 @@ is checked.
 __docformat__ = "restructuredtext en"
 
 import sys
+from datetime import datetime
 
-from mx.DateTime import now
 from logilab.common.shellutils import ProgressBar
 
 from cubicweb.server.sqlutils import SQL_PREFIX
@@ -88,7 +88,7 @@ def reindex_entities(schema, session):
           ', '.join(sorted(str(e) for e in etypes))
     pb = ProgressBar(len(etypes) + 1)
     # first monkey patch Entity.check to disable validation
-    from cubicweb.common.entity import Entity
+    from cubicweb.entity import Entity
     _check = Entity.check
     Entity.check = lambda self, creation=False: True
     # clear fti table first
@@ -237,8 +237,8 @@ def check_metadata(schema, session, eids, fix=1):
     eidcolumn = SQL_PREFIX + 'eid'
     for etype, in cursor.fetchall():
         table = SQL_PREFIX + etype
-        for rel, default in ( ('creation_date', now()),
-                              ('modification_date', now()), ):
+        for rel, default in ( ('creation_date', datetime.now()),
+                              ('modification_date', datetime.now()), ):
             column = SQL_PREFIX + rel
             cursor = session.system_sql("SELECT %s FROM %s WHERE %s is NULL"
                                         % (eidcolumn, table, column))

@@ -1,18 +1,21 @@
 """Specific views for email addresses entities
 
 :organization: Logilab
-:copyright: 2001-2008 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
 """
 __docformat__ = "restructuredtext en"
 
 from logilab.mtconverter import html_escape
 
+from cubicweb.selectors import implements
 from cubicweb.common import Unauthorized
 from cubicweb.web.views import baseviews
+from cubicweb.web.views.editforms import AutomaticEntityForm
+
 
 class EmailAddressPrimaryView(baseviews.PrimaryView):
-    accepts = ('EmailAddress',)
+    __select__ = implements('EmailAddress')
     
     def cell_call(self, row, col, skipeids=None):
         self.skipeids = skipeids
@@ -59,7 +62,7 @@ class EmailAddressPrimaryView(baseviews.PrimaryView):
 
 
 class EmailAddressShortPrimaryView(EmailAddressPrimaryView):
-    accepts = ('EmailAddress',)
+    __select__ = implements('EmailAddress')
     id = 'shortprimary'
     title = None # hidden view
     def render_entity_attributes(self, entity, siderelations):
@@ -69,7 +72,7 @@ class EmailAddressShortPrimaryView(EmailAddressPrimaryView):
 
     
 class EmailAddressOneLineView(baseviews.OneLineView):
-    accepts = ('EmailAddress',)
+    __select__ = implements('EmailAddress')
     
     def cell_call(self, row, col, **kwargs):
         entity = self.entity(row, col)
@@ -89,7 +92,7 @@ class EmailAddressMailToView(baseviews.OneLineView):
     'mailto:'"""
 
     id = 'mailto'
-    accepts = ('EmailAddress',)
+    __select__ = implements('EmailAddress')
     
     def cell_call(self, row, col, **kwargs):
         entity = self.entity(row, col)
@@ -113,7 +116,7 @@ class EmailAddressMailToView(baseviews.OneLineView):
 
     
 class EmailAddressTextView(baseviews.TextView):
-    accepts = ('EmailAddress',)
+    __select__ = implements('EmailAddress')
     
     def cell_call(self, row, col, **kwargs):
         self.w(self.entity(row, col).display_address())

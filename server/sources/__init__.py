@@ -6,9 +6,8 @@
 """
 __docformat__ = "restructuredtext en"
 
+from datetime import datetime, timedelta
 from logging import getLogger
-
-from mx.DateTime import now, DateTimeDelta
 
 from cubicweb import set_log_methods
 from cubicweb.server.sqlutils import SQL_PREFIX
@@ -17,16 +16,16 @@ from cubicweb.server.sqlutils import SQL_PREFIX
 class TimedCache(dict):
     def __init__(self, ttlm, ttls=0):
         # time to live in minutes
-        self.ttl = DateTimeDelta(0, 0, ttlm, ttls)
+        self.ttl = timedelta(0, ttlm*60 + ttls, 0)
         
     def __setitem__(self, key, value):
-        dict.__setitem__(self, key, (now(), value))
+        dict.__setitem__(self, key, (datetime.now(), value))
         
     def __getitem__(self, key):
         return dict.__getitem__(self, key)[1]
     
     def clear_expired(self):
-        now_ = now()
+        now_ = datetime.now()
         ttl = self.ttl
         for key, (timestamp, value) in self.items():
             if now_ - timestamp > ttl:

@@ -75,17 +75,16 @@ is supported, no group or such):
 """
 __docformat__ = "restructuredtext en"
 
-from copy import deepcopy
 from itertools import imap, ifilterfalse
 
 from logilab.common.compat import any
 from logilab.common.decorators import cached
 
 from rql.stmts import Union, Select
-from rql.nodes import VariableRef, Comparison, Relation, Constant, Exists, Variable
+from rql.nodes import VariableRef, Comparison, Relation, Constant, Variable
 
 from cubicweb import server
-from cubicweb.common.utils import make_uid
+from cubicweb.utils import make_uid
 from cubicweb.server.utils import cleanup_solutions
 from cubicweb.server.ssplanner import (SSPlanner, OneFetchStep,
                                        add_types_restriction)
@@ -1389,7 +1388,7 @@ class TermsFiltererVisitor(object):
             return False
         if not same_scope(var):
             return False
-        if any(v for v,_ in var.stinfo['attrvars'] if not v.name in terms):
+        if any(v for v, _ in var.stinfo['attrvars'] if not v.name in variables):
             return False
         return True
         

@@ -14,17 +14,16 @@ from rql import BadRQLQuery
 from cubicweb import set_log_methods
 from cubicweb import (ValidationError, Unauthorized, AuthenticationError,
                    NoSelectableObject, RepositoryError)
-from cubicweb.cwconfig import CubicWebConfiguration
 from cubicweb.cwvreg import CubicWebRegistry
 from cubicweb.web import (LOGGER, StatusResponse, DirectResponse, Redirect, NotFound,
                        RemoteCallFailed, ExplicitLogin, InvalidSession)
-from cubicweb.web.component import SingletonComponent
+from cubicweb.web.component import Component
 
 # make session manager available through a global variable so the debug view can
 # print information about web session
 SESSION_MANAGER = None
 
-class AbstractSessionManager(SingletonComponent):
+class AbstractSessionManager(Component):
     """manage session data associated to a session identifier"""
     id = 'sessionmanager'
     
@@ -87,7 +86,7 @@ class AbstractSessionManager(SingletonComponent):
         raise NotImplementedError()
 
 
-class AbstractAuthenticationManager(SingletonComponent):
+class AbstractAuthenticationManager(Component):
     """authenticate user associated to a request and check session validity"""
     id = 'authmanager'
 
@@ -384,9 +383,11 @@ class CubicWebPublisher(object):
             if tb:
                 req.data['excinfo'] = excinfo
             req.form['vid'] = 'error'
-            content = self.vreg.main_template(req, 'main')
+            errview = self.vreg.select_view('error', req, None)
+            template = self.main_template_id(req)
+            content = self.vreg.main_template(req, template, view=errview)
         except:
-            content = self.vreg.main_template(req, 'error')
+            content = self.vreg.main_template(req, 'error-template')
         raise StatusResponse(500, content)
     
     def need_login_content(self, req):
@@ -396,10 +397,17 @@ class CubicWebPublisher(object):
         return self.vreg.main_template(req, 'loggedout')
     
     def notfound_content(self, req):
-        template = req.property_value('ui.main-template') or 'main'
         req.form['vid'] = '404'
-        return self.vreg.main_template(req, template)
+        view = self.vreg.select_view('404', req, None)
+        template = self.main_template_id(req)
+        return self.vreg.main_template(req, template, view=view)
 
+    def main_template_id(self, req):
+        template = req.property_value('ui.main-template')
+        if template not in self.vreg.registry('views') :
+            template = 'main-template'
+        return template
+        
 
 set_log_methods(CubicWebPublisher, LOGGER)
 set_log_methods(CookieSessionHandler, LOGGER)

@@ -1,21 +1,21 @@
 """cubicweb on appengine plugins for cubicweb-ctl
 
 :organization: Logilab
-:copyright: 2008 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2008-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
 """
 __docformat__ = "restructuredtext en"
 
-from os.path import exists, join, split, dirname, basename, normpath, abspath
+from os.path import exists, join, split, basename, normpath, abspath
 
-from cubicweb import BadCommandUsage
-from cubicweb import CW_SOFTWARE_ROOT
-from cubicweb.toolsutils import (Command, register_commands, copy_skeleton,
-                              create_dir, create_symlink, create_copy)
+from logilab.common.clcommands import register_commands
+
+from cubicweb import CW_SOFTWARE_ROOT, BadCommandUsage
+from cubicweb.toolsutils import (Command, copy_skeleton, create_symlink,
+                                 create_dir)
 from cubicweb.cwconfig import CubicWebConfiguration
 
 from logilab import common as lgc
-from logilab.common.textutils import get_csv
 from logilab import constraint as lgcstr
 from logilab import mtconverter as lgmtc
 import rql, yams, yapps, simplejson, dateutil, vobject, docutils, roman
@@ -47,28 +47,29 @@ COPY_CW_FILES = (
     '__init__.py',
     '__pkginfo__.py',
     '_exceptions.py',
+    'appobject.py',
     'dbapi.py',
     'cwvreg.py',
     'cwconfig.py',
+    'entity.py',
     'interfaces.py',
     'rset.py',
     'schema.py',
     'schemaviewer.py',
+    'selectors.py',
+    'utils.py',
     'vregistry.py',
+    'view.py',
     
-    'common/appobject.py',
-    'common/entity.py',
-    'common/html4zope.py',
     'common/mail.py',
     'common/migration.py',
     'common/mixins.py',
     'common/mttransforms.py',
     'common/registerers.py',
-    'common/rest.py',
-    'common/selectors.py',
-    'common/view.py',
     'common/uilib.py',
-    'common/utils.py',
+
+    'ext/html4zope.py',
+    'ext/rest.py',
 
     'server/hookhelper.py',
     'server/hooksmanager.py',

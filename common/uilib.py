@@ -11,29 +11,14 @@ __docformat__ = "restructuredtext en"
 
 import csv
 import decimal
-import locale
 import re
+from datetime import datetime, date, timedelta
 from urllib import quote as urlquote
 from cStringIO import StringIO
-from copy import deepcopy
 
-import simplejson
-
-from mx.DateTime import DateTimeType, DateTimeDeltaType
-
-from logilab.common.textutils import unormalize
 from logilab.mtconverter import html_escape, html_unescape
 
-def ustrftime(date, fmt='%Y-%m-%d'):
-    """like strftime, but returns a unicode string instead of an encoded
-    string which may be problematic with localized date.
-    
-    encoding is guessed by locale.getpreferredencoding()
-    """
-    # date format may depend on the locale
-    encoding = locale.getpreferredencoding(do_setlocale=False) or 'UTF-8'
-    return unicode(date.strftime(fmt), encoding)
-
+from cubicweb.utils import ustrftime
 
 def rql_for_eid(eid):
     """return the rql query necessary to fetch entity with the given eid.  This
@@ -226,8 +211,13 @@ def simple_sgml_tag(tag, content=None, **attrs):
     """
     value = u'<%s' % tag
     if attrs:
+        try:
+            attrs['class'] = attrs.pop('klass')
+        except KeyError:
+            pass
         value += u' ' + u' '.join(u'%s="%s"' % (attr, html_escape(unicode(value)))
-                                  for attr, value in attrs.items())
+                                  for attr, value in attrs.items()
+                                  if value is not None)
     if content:
         value += u'>%s</%s>' % (html_escape(unicode(content)), tag)
     else:
@@ -264,6 +254,7 @@ def ajax_replace_url(nodeid, rql, vid=None, swap=False, **extraparams):
     elif vid:
         params.append(repr(vid))
     if extraparams:
+        import simplejson
         params.append(simplejson.dumps(extraparams))
     if swap:
         params.append('true')
@@ -353,7 +344,7 @@ def render_HTML_tree(tree, selected_node=None, render_node=None, caption=None):
             cell_12 = line[j+1] is not None
             cell_21 = line[j+1] is not None and line[j+1].next_sibling() is not None
             link_type = link_types.get((cell_11, cell_12, cell_21), 0)
-            if link_type == 0 and i > 0 and links[i-1][j] in (1,2,3):
+            if link_type == 0 and i > 0 and links[i-1][j] in (1, 2, 3):
                 link_type = 2
             links[-1].append(link_type)
     
@@ -520,10 +511,10 @@ def jsonize(function):
         ret = function(*args, **kwargs)
         if isinstance(ret, decimal.Decimal):
             ret = float(ret)
-        elif isinstance(ret, DateTimeType):
+        elif isinstance(ret, (date, datetime)):
             ret = ret.strftime('%Y-%m-%d %H:%M')
-        elif isinstance(ret, DateTimeDeltaType):
-            ret = ret.seconds
+        elif isinstance(ret, timedelta):
+            ret = (ret.days * 24*60*60) + ret.seconds
         try:
             return simplejson.dumps(ret)
         except TypeError:

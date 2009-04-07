@@ -19,9 +19,8 @@ __docformat__ = "restructuredtext en"
 import sys
 import Queue
 from os.path import join, exists
+from datetime import datetime
 from time import time, localtime, strftime
-
-from mx.DateTime import now
 
 from logilab.common.decorators import cached
 
@@ -397,11 +396,13 @@ class Repository(object):
         return euser
 
     def _build_user(self, session, eid):
+        """return a EUser entity for user with the given eid"""
         cls = self.vreg.etype_class('EUser')
         rql = cls.fetch_rql(session.user, ['X eid %(x)s'])
         rset = session.execute(rql, {'x': eid}, 'x')
         assert len(rset) == 1, rset
         euser = rset.get_entity(0, 0)
+        # pylint: disable-msg=W0104
         # prefetch / cache euser's groups and properties. This is especially
         # useful for internal sessions to avoid security insertions
         euser.groups
@@ -493,6 +494,9 @@ class Repository(object):
         try:
             if session.execute('EUser X WHERE X login %(login)s', {'login': login}):
                 return False
+            if session.execute('EUser X WHERE X use_email C, C address %(login)s',
+                               {'login': login}):
+                return False
             # we have to create the user
             user = self.vreg.etype_class('EUser')(session, None)
             if isinstance(password, unicode):
@@ -504,6 +508,11 @@ class Repository(object):
             self.glob_add_entity(session, user)
             session.execute('SET X in_group G WHERE X eid %(x)s, G name "users"',
                             {'x': user.eid})
+            # FIXME this does not work yet
+            if '@' in login:
+                session.execute('INSERT EmailAddress X: X address "%(login)s", '
+                                'U primary_email X, U use_email X WHERE U login "%(login)s"',
+                                {'login':login})
             session.commit()
         finally:
             session.close()
@@ -656,7 +665,7 @@ class Repository(object):
           deleted since the given timestamp
         """
         session = self.internal_session()
-        updatetime = now()
+        updatetime = datetime.now()
         try:
             modentities, delentities = self.system_source.modified_entities(
                 session, etypes, mtime)

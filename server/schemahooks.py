@@ -104,6 +104,7 @@ class UpdateSchemaOp(SingleLastOperation):
         
 class DropTableOp(PreCommitOperation):
     """actually remove a database from the application's schema"""
+    table = None # make pylint happy
     def precommit_event(self):
         dropped = self.session.query_data('droppedtables',
                                           default=set(), setdefault=True)
@@ -117,6 +118,7 @@ class DropColumnOp(PreCommitOperation):
     """actually remove the attribut's column from entity table in the system
     database
     """
+    table = column = None # make pylint happy
     def precommit_event(self):
         session, table, column = self.session, self.table, self.column
         # drop index if any
@@ -241,6 +243,7 @@ def after_del_relation_type(session, rdefeid, rtype, rteid):
 
 class AddEETypeOp(EarlySchemaOperation):
     """actually add the entity type to the application's schema"""    
+    eid = None # make pylint happy
     def commit_event(self):
         eschema = self.schema.add_entity_type(self.kobj)
         eschema.eid = self.eid
@@ -302,6 +305,7 @@ def after_add_eetype(session, entity):
 
 class AddERTypeOp(EarlySchemaOperation):
     """actually add the relation type to the application's schema"""    
+    eid = None # make pylint happy
     def commit_event(self):
         rschema = self.schema.add_relation_type(self.kobj)
         rschema.set_default_groups()
@@ -361,6 +365,7 @@ class AddEFRDefPreCommitOp(PreCommitOperation):
       
     constraints are handled by specific hooks
     """
+    entity = None # make pylint happy
     def precommit_event(self):
         session = self.session
         entity = self.entity
@@ -447,6 +452,7 @@ class AddENFRDefPreCommitOp(PreCommitOperation):
 
     constraints are handled by specific hooks
     """
+    entity = None # make pylint happy
     def precommit_event(self):
         session = self.session
         entity = self.entity
@@ -538,6 +544,7 @@ def before_update_ertype(session, entity):
 
 class UpdateEntityTypeName(SchemaOperation):
     """this operation updates physical storage accordingly"""
+    oldname = newname = None # make pylint happy
 
     def precommit_event(self):
         # we need sql to operate physical changes on the system database
@@ -556,6 +563,7 @@ class UpdateEntityTypeName(SchemaOperation):
 
 class UpdateRdefOp(SchemaOperation):
     """actually update some properties of a relation definition"""
+    rschema = values = None # make pylint happy
 
     def precommit_event(self):
         if 'indexed' in self.values:
@@ -593,6 +601,8 @@ def after_update_erdef(session, entity):
 
 class UpdateRtypeOp(SchemaOperation):
     """actually update some properties of a relation definition"""    
+    rschema = values = entity = None # make pylint happy
+
     def precommit_event(self):
         session = self.session
         rschema = self.rschema
@@ -673,6 +683,8 @@ from cubicweb.schema import CONSTRAINTS
 
 class ConstraintOp(SchemaOperation):
     """actually update constraint of a relation definition"""
+    entity = None # make pylint happy
+    
     def prepare_constraints(self, rtype, subjtype, objtype):
         constraints = rtype.rproperty(subjtype, objtype, 'constraints')
         self.constraints = list(constraints)
@@ -730,6 +742,7 @@ def after_update_econstraint(session, entity):
 
 class DelConstraintOp(ConstraintOp):
     """actually remove a constraint of a relation definition"""
+    rtype = subjtype = objtype = None # make pylint happy
     
     def precommit_event(self):
         self.prepare_constraints(self.rtype, self.subjtype, self.objtype)

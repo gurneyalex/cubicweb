@@ -9,7 +9,18 @@ CubicWeb.require('htmlhelpers.js');
 
 var JSON_BASE_URL = baseuri() + 'json?';
 
-function postAjaxLoad(node) {
+/*
+ * inspect dom response, search for a <div class="ajaxHtmlHead"> node and
+ * put its content into the real document's head.
+ * This enables dynamic css and js loading and is used by replacePageChunk
+ */
+function loadAjaxHtmlHead(node) {
+    jQuery(node).find('div.ajaxHtmlHead').appendTo(jQuery('head'));
+}
+
+function postAjaxLoad(node, req) {
+    // addStylesheets(evalJSON(req.getResponseHeader('X-Cubicweb-Stylesheets') || '[]'));
+    loadAjaxHtmlHead(node);
     // find sortable tables if there are some
     if (typeof(Sortable) != 'undefined') {
 	Sortable.sortTables(node);
@@ -31,7 +42,6 @@ function postAjaxLoad(node) {
 
 // cubicweb loadxhtml plugin to make jquery handle xhtml response
 jQuery.fn.loadxhtml = function(url, data, reqtype, mode) {
-
     var ajax = null;
     if (reqtype == 'post') {
 	ajax = jQuery.post;
@@ -41,6 +51,7 @@ jQuery.fn.loadxhtml = function(url, data, reqtype, mode) {
     if (this.size() > 1) {
 	log('loadxhtml was called with more than one element');
     }
+    var node = this.get(0); // only consider the first element
     mode = mode || 'replace';
     var callback = null;
     if (data && data.callback) {
@@ -62,7 +73,7 @@ jQuery.fn.loadxhtml = function(url, data, reqtype, mode) {
 	} else if (mode == 'append') {
 	    jQuery(node).append(domnode);
 	}
-	postAjaxLoad(node);
+	postAjaxLoad(node, req);
 	while (jQuery.isFunction(callback)) {
 	    callback = callback.apply(this, [domnode]);
 	}

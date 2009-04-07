@@ -1,24 +1,19 @@
 """abstract box classes for CubicWeb web client
 
 :organization: Logilab
-:copyright: 2001-2008 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
 """
 __docformat__ = "restructuredtext en"
 
-from logilab.common.decorators import cached
 from logilab.mtconverter import html_escape
 
-from cubicweb import Unauthorized, role as get_role
-from cubicweb.common.registerers import (
-    accepts_registerer, extresources_registerer,
-    etype_rtype_priority_registerer)
-from cubicweb.common.selectors import (
-    etype_rtype_selector, one_line_rset, accept, has_relation,
-    primary_view, match_context_prop, has_related_entities,
-    _rql_condition)
-from cubicweb.common.view import Template
-from cubicweb.common.appobject import ReloadableMixIn
+from cubicweb import Unauthorized, role as get_role, target as get_target
+from cubicweb.selectors import (one_line_rset,  primary_view,
+                                match_context_prop, partial_has_related_entities,
+                                accepts_compat, has_relation_compat,
+                                condition_compat, require_group_compat)
+from cubicweb.view import View, ReloadableMixIn
 
 from cubicweb.web.htmlwidgets import (BoxLink, BoxWidget, SideBoxWidget,
                                       RawBoxItem, BoxSeparator)
@@ -27,7 +22,7 @@ from cubicweb.web.action import UnregisteredAction
 _ = unicode
 
 
-class BoxTemplate(Template):
+class BoxTemplate(View):
     """base template for boxes, usually a (contextual) list of possible
     
     actions. Various classes attributes may be used to control the box
@@ -42,7 +37,8 @@ class BoxTemplate(Template):
         box.render(self.w)
     """
     __registry__ = 'boxes'
-    __selectors__ = Template.__selectors__ + (match_context_prop,)
+    __select__ = match_context_prop()
+    registered = classmethod(require_group_compat(View.registered))
     
     categories_in_order = ()
     property_defs = {
@@ -105,8 +101,7 @@ class RQLBoxTemplate(BoxTemplate):
     according to application schema and display according to connected
     user's rights) and rql attributes
     """
-    __registerer__ = etype_rtype_priority_registerer
-    __selectors__ = BoxTemplate.__selectors__ + (etype_rtype_selector,)
+#XXX    __selectors__ = BoxTemplate.__selectors__ + (etype_rtype_selector,)
 
     rql  = None
     
@@ -139,23 +134,11 @@ class UserRQLBoxTemplate(RQLBoxTemplate):
         return (self.rql, {'x': self.req.user.eid}, 'x')
     
 
-class ExtResourcesBoxTemplate(BoxTemplate):
-    """base class for boxes displaying external resources such as the RSS logo.
-    It should list necessary resources with the .need_resources attribute.
-    """
-    __registerer__ = extresources_registerer
-    need_resources = ()
-
-
 class EntityBoxTemplate(BoxTemplate):
     """base class for boxes related to a single entity"""
-    __registerer__ = accepts_registerer
-    __selectors__ = (one_line_rset, primary_view,
-                     match_context_prop, etype_rtype_selector,
-                     has_relation, accept, _rql_condition)
-    accepts = ('Any',)
+    __select__ = BoxTemplate.__select__ & one_line_rset() & primary_view()
+    registered = accepts_compat(has_relation_compat(condition_compat(BoxTemplate.registered)))
     context = 'incontext'
-    condition = None
     
     def call(self, row=0, col=0, **kwargs):
         """classes inheriting from EntityBoxTemplate should define cell_call"""
@@ -163,8 +146,8 @@ class EntityBoxTemplate(BoxTemplate):
 
 
 class RelatedEntityBoxTemplate(EntityBoxTemplate):
-    __selectors__ = EntityBoxTemplate.__selectors__ + (has_related_entities,)
-    
+    __select__ = EntityBoxTemplate.__select__ & partial_has_related_entities()
+
     def cell_call(self, row, col, **kwargs):
         entity = self.entity(row, col)
         limit = self.req.property_value('navigation.related-limit') + 1
@@ -195,18 +178,12 @@ class EditRelationBoxTemplate(ReloadableMixIn, EntityBoxTemplate):
 
     def div_id(self):
         return self.id
-
-    @cached
-    def xtarget(self):
-        if self.target == 'subject':
-            return 'object', 'subject'
-        return 'subject', 'object'
         
     def box_item(self, entity, etarget, rql, label):
         """builds HTML link to edit relation between `entity` and `etarget`
         """
-        x, target = self.xtarget()
-        args = {x[0] : entity.eid, target[0] : etarget.eid}
+        role, target = get_role(self), get_target(self)
+        args = {role[0] : entity.eid, target[0] : etarget.eid}
         url = self.user_rql_callback((rql, args))
         # for each target, provide a link to edit the relation
         label = u'[<a href="%s">%s</a>] %s' % (url, label,
@@ -233,10 +210,9 @@ class EditRelationBoxTemplate(ReloadableMixIn, EntityBoxTemplate):
         if etype is not defined on the Box's class, the default
         behaviour is to use the entity's appropraite vocabulary function
         """
-        x, target = self.xtarget()
         # use entity.unrelated if we've been asked for a particular etype
         if hasattr(self, 'etype'):
-            return entity.unrelated(self.rtype, self.etype, x).entities()
+            return entity.unrelated(self.rtype, self.etype, get_role(self)).entities()
         # in other cases, use vocabulary functions
         entities = []
         for _, eid in entity.vocabulary(self.rtype, x):
@@ -246,6 +222,5 @@ class EditRelationBoxTemplate(ReloadableMixIn, EntityBoxTemplate):
         return entities
         
     def related_entities(self, entity):
-        x, target = self.xtarget()
-        return entity.related(self.rtype, x, entities=True)
+        return entity.related(self.rtype, get_role(self), entities=True)
 

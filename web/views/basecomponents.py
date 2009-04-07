@@ -2,31 +2,26 @@
 
 * the rql input form
 * the logged user link
-* the workflow history section for workflowable objects
 
 :organization: Logilab
-:copyright: 2001-2008 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
 """
 __docformat__ = "restructuredtext en"
 
 from rql import parse
 
-from cubicweb import Unauthorized
+from cubicweb.selectors import yes, two_etypes_rset, match_form_params
 from cubicweb.common.uilib import html_escape, toggle_action
-from cubicweb.common.selectors import yes, non_final_entity, one_line_rset
 from cubicweb.schema import display_name
-from cubicweb.common.selectors import (chainfirst, two_etypes_rset,
-                                    match_form_params)
 
 from cubicweb.web.htmlwidgets import MenuWidget, PopupBoxMenu, BoxSeparator, BoxLink
-from cubicweb.web.component import (VComponent, SingletonVComponent, EntityVComponent, 
-                                    RelatedObjectsVComponent)
+from cubicweb.web.component import Component, RelatedObjectsVComponent
 
 _ = unicode
 
 
-class RQLInputForm(SingletonVComponent):
+class RQLInputForm(Component):
     """build the rql input form, usually displayed in the header"""
     id = 'rqlinput'
     visible = False
@@ -55,7 +50,7 @@ class RQLInputForm(SingletonVComponent):
         self.w(u'</form></div>')
 
 
-class ApplLogo(SingletonVComponent):
+class ApplLogo(Component):
     """build the application logo, usually displayed in the header"""
     id = 'logo'
     site_wide = True # don't want user to hide this component using an eproperty
@@ -64,7 +59,7 @@ class ApplLogo(SingletonVComponent):
                % (self.req.base_url(), self.req.external_resource('LOGO')))
 
 
-class ApplHelp(SingletonVComponent):
+class ApplHelp(Component):
     """build the help button, usually displayed in the header"""
     id = 'help'
     def call(self):
@@ -73,7 +68,7 @@ class ApplHelp(SingletonVComponent):
                   self.req._(u'help'),))
 
 
-class UserLink(SingletonVComponent):
+class UserLink(Component):
     """if the user is the anonymous user, build a link to login
     else a link to the connected user object with a loggout link
     """
@@ -104,17 +99,22 @@ class UserLink(SingletonVComponent):
             self.w(self.req._('anonymous'))
             self.w(u'''&nbsp;[<a class="logout" href="javascript: popupLoginBox();">%s</a>]'''
                    % (self.req._('i18n_login_popup')))
+            # FIXME maybe have an other option to explicitely authorise registration
+            #       also provide a working register view
+#             if self.config['anonymous-user']:
+#                 self.w(u'''&nbsp;[<a class="logout" href="?vid=register">%s</a>]'''
+#                        % (self.req._('i18n_register_user')))
         else:
             self.w(self.req._('anonymous'))
             self.w(u'&nbsp;[<a class="logout" href="%s">%s</a>]'
                    % (self.build_url('login'), self.req._('login')))
 
 
-class ApplicationMessage(SingletonVComponent):
+class ApplicationMessage(Component):
     """display application's messages given using the __message parameter
     into a special div section
     """
-    __selectors__ = yes,
+    __select__ = yes()
     id = 'applmessages'
     site_wide = True # don't want user to hide this component using an eproperty
 
@@ -129,43 +129,7 @@ class ApplicationMessage(SingletonVComponent):
         self.w(u'</div>')
 
 
-class WFHistoryVComponent(EntityVComponent):
-    """display the workflow history for entities supporting it"""
-    id = 'wfhistory'
-    accepts = ('Any',)
-    context = 'navcontentbottom'
-    rtype = 'wf_info_for'
-    target = 'subject'
-    title = _('Workflow history')
-
-    def cell_call(self, row, col, view=None):
-        _ = self.req._
-        eid = self.rset[row][col]
-        sel = 'Any FS,TS,WF,D'
-        rql = ' ORDERBY D DESC WHERE WF wf_info_for X,'\
-              'WF from_state FS, WF to_state TS, WF comment C,'\
-              'WF creation_date D'
-        if self.vreg.schema.eschema('EUser').has_perm(self.req, 'read'):
-            sel += ',U,C'
-            rql += ', WF owned_by U?'
-            displaycols = range(5)
-            headers = (_('from_state'), _('to_state'), _('comment'), _('date'),
-                       _('EUser'))            
-        else:
-            sel += ',C'
-            displaycols = range(4)
-            headers = (_('from_state'), _('to_state'), _('comment'), _('date'))
-        rql = '%s %s, X eid %%(x)s' % (sel, rql)
-        try:
-            rset = self.req.execute(rql, {'x': eid}, 'x')
-        except Unauthorized:
-            return
-        if rset:
-            self.wview('table', rset, title=_(self.title), displayactions=False,
-                       displaycols=displaycols, headers=headers)
-
-
-class ApplicationName(SingletonVComponent):
+class ApplicationName(Component):
     """display the application name"""
     id = 'appliname'
 
@@ -186,13 +150,13 @@ class SeeAlsoVComponent(RelatedObjectsVComponent):
     help = _('contentnavigation_seealso_description')
 
     
-class EtypeRestrictionComponent(SingletonVComponent):
+class EtypeRestrictionComponent(Component):
     """displays the list of entity types contained in the resultset
     to be able to filter accordingly.
     """
     id = 'etypenavigation'
-    __select__ = classmethod(chainfirst(two_etypes_rset, match_form_params))
-    form_params = ('__restrtype', '__restrtypes', '__restrrql')
+    __select__ = two_etypes_rset() | match_form_params('__restrtype', '__restrtypes',
+                                                       '__restrrql')
     visible = False # disabled by default
     
     def call(self):
@@ -235,18 +199,7 @@ class EtypeRestrictionComponent(SingletonVComponent):
         self.w(u'</div>')
         
 
-
-class RSSFeedURL(VComponent):
-    id = 'rss_feed_url'
-    __selectors__ = (non_final_entity,)
-    
-    def feed_url(self):
-        return self.build_url(rql=self.limited_rql(), vid='rss')
-
-class RSSEntityFeedURL(VComponent):
-    id = 'rss_feed_url'
-    __selectors__ = (non_final_entity, one_line_rset)
-    
-    def feed_url(self):
-        return self.entity(0, 0).rss_feed_url()
-
+def registration_callback(vreg):
+    vreg.register_all(globals().values(), __name__, (SeeAlsoVComponent,))
+    if 'see_also' in vreg.schema:
+        vreg.register(SeeAlsoVComponent)

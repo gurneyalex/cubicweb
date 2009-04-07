@@ -1,7 +1,7 @@
 """this module contains base classes for web tests
 
 :organization: Logilab
-:copyright: 2001-2008 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
 """
 __docformat__ = "restructuredtext en"
@@ -13,8 +13,6 @@ from logilab.common.debugger import Debugger
 from logilab.common.testlib import InnerTest
 from logilab.common.pytest import nocoverage
 
-from rql import parse
-
 from cubicweb.devtools import VIEW_VALIDATORS
 from cubicweb.devtools.apptest import EnvBasedTC
 from cubicweb.devtools._apptest import unprotected_entities, SYSTEM_RELATIONS
@@ -24,8 +22,6 @@ from cubicweb.devtools.fill import insert_entity_queries, make_relations_queries
 from cubicweb.sobjects.notification import NotificationView
 
 from cubicweb.vregistry import NoSelectableObject
-from cubicweb.web.action import Action
-from cubicweb.web.views.basetemplates import TheMainTemplate
 
 
 ## TODO ###############
@@ -149,7 +145,7 @@ class WebTest(EnvBasedTC):
             if rschema.is_final() or rschema in ignored_relations:
                 continue
             rset = cu.execute('DISTINCT Any X,Y WHERE X %s Y' % rschema)
-            existingrels.setdefault(rschema.type, set()).update((x,y) for x, y in rset)
+            existingrels.setdefault(rschema.type, set()).update((x, y) for x, y in rset)
         q = make_relations_queries(self.schema, edict, cu, ignored_relations,
                                    existingrels=existingrels)
         for rql, args in q:
@@ -158,7 +154,7 @@ class WebTest(EnvBasedTC):
         self.commit()
 
     @nocoverage
-    def _check_html(self, output, view, template='main'):
+    def _check_html(self, output, view, template='main-template'):
         """raises an exception if the HTML is invalid"""
         try:
             validatorclass = self.vid_validators[view.id]
@@ -175,7 +171,7 @@ class WebTest(EnvBasedTC):
         return validator.parse_string(output.strip())
 
 
-    def view(self, vid, rset, req=None, template='main', **kwargs):
+    def view(self, vid, rset, req=None, template='main-template', **kwargs):
         """This method tests the view `vid` on `rset` using `template`
 
         If no error occured while rendering the view, the HTML is analyzed
@@ -184,7 +180,7 @@ class WebTest(EnvBasedTC):
         :returns: an instance of `cubicweb.devtools.htmlparser.PageInfo`
                   encapsulation the generated HTML
         """
-        req = req or rset.req
+        req = req or rset and rset.req or self.request()
         # print "testing ", vid,
         # if rset:
         #     print rset, len(rset), id(rset)
@@ -197,24 +193,16 @@ class WebTest(EnvBasedTC):
             self.set_description("testing %s, mod=%s (%s)" % (vid, view.__module__, rset.printable_rql()))
         else:
             self.set_description("testing %s, mod=%s (no rset)" % (vid, view.__module__))
-        viewfunc = lambda **k: self.vreg.main_template(req, template, **kwargs)
         if template is None: # raw view testing, no template
             viewfunc = view.dispatch
-        elif template == 'main':
-            _select_view_and_rset = TheMainTemplate._select_view_and_rset
-            # patch TheMainTemplate.process_rql to avoid recomputing resultset
-            def __select_view_and_rset(self, view=view, rset=rset):
-                self.rset = rset
-                return view, rset
-            TheMainTemplate._select_view_and_rset = __select_view_and_rset
-        try:
-            return self._test_view(viewfunc, view, template, **kwargs)
-        finally:
-            if template == 'main':
-                TheMainTemplate._select_view_and_rset = _select_view_and_rset
+        else:
+            templateview = self.vreg.select_view(template, req, rset, view=view, **kwargs)
+            kwargs['view'] = view
+            viewfunc = lambda **k: self.vreg.main_template(req, template, **kwargs)
+        return self._test_view(viewfunc, view, template, kwargs)
 
 
-    def _test_view(self, viewfunc, view, template='main', **kwargs):
+    def _test_view(self, viewfunc, view, template='main-template', kwargs={}):
         """this method does the actual call to the view
 
         If no error occured while rendering the view, the HTML is analyzed
@@ -249,7 +237,7 @@ class WebTest(EnvBasedTC):
                     output = '\n'.join(line_template % (idx + 1, line)
                                 for idx, line in enumerate(output)
                                 if line_context_filter(idx+1, position))
-                    msg+= '\nfor output:\n%s' % output
+                    msg += '\nfor output:\n%s' % output
             raise AssertionError, msg, tcbk
 
 
@@ -332,15 +320,11 @@ class WebTest(EnvBasedTC):
             backup_rset = rset._prepare_copy(rset.rows, rset.description)
             yield InnerTest(self._testname(rset, view.id, 'view'),
                             self.view, view.id, rset,
-                            rset.req.reset_headers(), 'main')
+                            rset.req.reset_headers(), 'main-template')
             # We have to do this because some views modify the
             # resultset's syntax tree
             rset = backup_rset
         for action in self.list_actions_for(rset):
-            # XXX this seems a bit dummy
-            #yield InnerTest(self._testname(rset, action.id, 'action'),
-            #                self.failUnless,
-            #                isinstance(action, Action))
             yield InnerTest(self._testname(rset, action.id, 'action'), action.url)
         for box in self.list_boxes_for(rset):
             yield InnerTest(self._testname(rset, box.id, 'box'), box.dispatch)

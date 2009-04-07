@@ -7,8 +7,7 @@
 __docformat__ = "restructuredtext en"
 
 import os
-from os.path import join, dirname, exists, split
-from urlparse import urljoin
+from os.path import join, exists, split
 
 from logilab.common.configuration import Method
 from logilab.common.decorators import cached
@@ -26,7 +25,7 @@ register_persistent_options( (
       'sitewide': True, 'group': 'ui', 
       }),
     ('main-template',
-     {'type' : 'string', 'default': 'main',
+     {'type' : 'string', 'default': 'main-template',
       'help': _('id of main template used to render pages'),
       'sitewide': True, 'group': 'ui',
       }),
@@ -193,12 +192,21 @@ if you want to allow everything',
         try:
             cube = self.cubes()[0]
             cubeeid = self.cube_pkginfo(cube).cube_eid
-        except Exception, ex:
+        except Exception:
             return None
         if cubeeid:
             return 'http://intranet.logilab.fr/jpl/view?__linkto=concerns:%s:subject&etype=Ticket&type=bug&vid=creation' % cubeeid
         return None
 
+    def fckeditor_installed(self):
+        return exists(self.ext_resources['FCKEDITOR_PATH'])
+    
+    def eproperty_definitions(self):
+        for key, pdef in super(WebConfiguration, self).eproperty_definitions():
+            if key == 'ui.fckeditor' and not self.fckeditor_installed():
+                continue
+            yield key, pdef
+                
     # method used to connect to the repository: 'inmemory' / 'pyro'
     # Pyro repository by default
     repo_method = 'pyro'

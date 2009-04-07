@@ -6,11 +6,11 @@
 """
 __docformat__ = "restructuredtext en"
 
-import warnings
 import re
 from logging import getLogger
+from warnings import warn
 
-from logilab.common.decorators import cached, clear_cache
+from logilab.common.decorators import cached, clear_cache, monkeypatch
 from logilab.common.compat import any
 
 from yams import BadSchemaDefinition, buildobjs as ybo
@@ -22,6 +22,12 @@ from yams.reader import (CONSTRAINTS, RelationFileReader, PyFileReader,
 from rql import parse, nodes, RQLSyntaxError, TypeResolverException
 
 from cubicweb import ETYPE_NAME_MAP, ValidationError, Unauthorized
+from cubicweb import set_log_methods
+
+# XXX <3.2 bw compat
+from yams import schema
+schema.use_py_datetime()
+nodes.use_py_datetime() 
 
 _ = unicode
 
@@ -36,7 +42,6 @@ ybo.RDEF_PROPERTIES += ('eid',)
 
 def bw_normalize_etype(etype):
     if etype in ETYPE_NAME_MAP:
-        from warnings import warn
         msg = '%s has been renamed to %s, please update your code' % (
             etype, ETYPE_NAME_MAP[etype])            
         warn(msg, DeprecationWarning, stacklevel=4)
@@ -68,6 +73,40 @@ def _actual_types(self, schema, etype):
     return (etype,)
 ybo.RelationDefinition._actual_types = _actual_types
 
+
+## cubicweb provides a RichString class for convenience
+class RichString(ybo.String):
+    """Convenience RichString attribute type
+    The follwing declaration::
+      
+      class Card(EntityType):
+          content = RichString(fulltextindexed=True, default_format='text/rest')
+          
+    is equivalent to::
+      
+      class Card(EntityType):
+          content_format = String(meta=True, internationalizable=True,
+                                 default='text/rest', constraints=[format_constraint])
+          content  = String(fulltextindexed=True)
+    """
+    def __init__(self, default_format='text/plain', format_constraints=None, **kwargs):
+        self.default_format = default_format
+        self.format_constraints = format_constraints or [format_constraint]
+        super(RichString, self).__init__(**kwargs)
+
+PyFileReader.context['RichString'] = RichString
+
+## need to monkeypatch yams' _add_relation function to handle RichString
+yams_add_relation = ybo._add_relation
+@monkeypatch(ybo)
+def _add_relation(relations, rdef, name=None, insertidx=None):
+    if isinstance(rdef, RichString):
+        format_attrdef = ybo.String(meta=True, internationalizable=True,
+                                    default=rdef.default_format, maxsize=50,
+                                    constraints=rdef.format_constraints)
+        yams_add_relation(relations, format_attrdef, name+'_format', insertidx)
+    yams_add_relation(relations, rdef, name, insertidx)
+    
 def display_name(req, key, form=''):
     """return a internationalized string for the key (schema entity or relation
     name) in a given form
@@ -282,19 +321,7 @@ class CubicWebEntitySchema(EntitySchema):
     def schema_entity(self):
         """return True if this entity type is used to build the schema"""
         return self.type in self.schema.schema_entity_types()
-
-    def rich_text_fields(self):
-        """return an iterator on (attribute, format attribute) of rich text field
-
-        (the first tuple element containing the text and the second the text format)
-        """
-        for rschema, _ in self.attribute_definitions():
-            if rschema.type.endswith('_format'):
-                for constraint in self.constraints(rschema):
-                    if isinstance(constraint, FormatConstraint):
-                        yield self.subject_relation(rschema.type[:-7]), rschema
-                        break
-                    
+    
     def check_perm(self, session, action, eid=None):
         # NB: session may be a server session or a request object
         user = session.user
@@ -477,13 +504,13 @@ class CubicWebSchema(Schema):
         rdef.name = rdef.name.lower()
         rdef.subject = bw_normalize_etype(rdef.subject)
         rdef.object = bw_normalize_etype(rdef.object)
-        super(CubicWebSchema, self).add_relation_def(rdef)
-        try:
-            self._eid_index[rdef.eid] = (self.eschema(rdef.subject),
-                                         self.rschema(rdef.name),
-                                         self.eschema(rdef.object))
-        except AttributeError:
-            pass # not a serialized schema
+        if super(CubicWebSchema, self).add_relation_def(rdef):
+            try:
+                self._eid_index[rdef.eid] = (self.eschema(rdef.subject),
+                                             self.rschema(rdef.name),
+                                             self.eschema(rdef.object))
+            except AttributeError:
+                pass # not a serialized schema
     
     def del_relation_type(self, rtype):
         rschema = self.rschema(rtype)
@@ -805,7 +832,34 @@ class RRQLExpression(RQLExpression):
         
 PyFileReader.context['RRQLExpression'] = RRQLExpression
 
-        
+# workflow extensions #########################################################
+
+class workflowable_definition(ybo.metadefinition):
+    """extends default EntityType's metaclass to add workflow relations
+    (i.e. in_state and wf_info_for).
+    This is the default metaclass for WorkflowableEntityType
+    """
+    def __new__(mcs, name, bases, classdict):
+        abstract = classdict.pop('abstract', False)
+        defclass = super(workflowable_definition, mcs).__new__(mcs, name, bases, classdict)
+        if not abstract:
+            existing_rels = set(rdef.name for rdef in defclass.__relations__)
+            if 'in_state' not in existing_rels and 'wf_info_for' not in existing_rels:
+                in_state = ybo.SubjectRelation('State', cardinality='1*',
+                                               # XXX automatize this
+                                               constraints=[RQLConstraint('S is ET, O state_of ET')],
+                                               description=_('account state'))
+                yams_add_relation(defclass.__relations__, in_state, 'in_state')
+                wf_info_for = ybo.ObjectRelation('TrInfo', cardinality='1*', composite='object')
+                yams_add_relation(defclass.__relations__, wf_info_for, 'wf_info_for')
+        return defclass
+
+class WorkflowableEntityType(ybo.EntityType):
+    __metaclass__ = workflowable_definition
+    abstract = True
+    
+PyFileReader.context['WorkflowableEntityType'] = WorkflowableEntityType
+
 # schema loading ##############################################################
 
 class CubicWebRelationFileReader(RelationFileReader):
@@ -839,13 +893,13 @@ class BootstrapSchemaLoader(SchemaLoader):
     SchemaLoader.file_handlers.update({'.rel' : CubicWebRelationFileReader,
                                        })
 
-    def load(self, config, path=()):
+    def load(self, config, path=(), **kwargs):
         """return a Schema instance from the schema definition read
         from <directory>
         """
         self.lib_directory = config.schemas_lib_dir()
         return super(BootstrapSchemaLoader, self).load(
-            path, config.appid, register_base_types=False)
+            path, config.appid, register_base_types=False, **kwargs)
     
     def _load_definition_files(self, cubes=None):
         # bootstraping, ignore cubes
@@ -863,7 +917,7 @@ class CubicWebSchemaLoader(BootstrapSchemaLoader):
     application's schema
     """
 
-    def load(self, config):
+    def load(self, config, **kwargs):
         """return a Schema instance from the schema definition read
         from <directory>
         """
@@ -872,11 +926,12 @@ class CubicWebSchemaLoader(BootstrapSchemaLoader):
             path = reversed([config.apphome] + config.cubes_path())
         else:
             path = reversed(config.cubes_path())
-        return super(CubicWebSchemaLoader, self).load(config, path=path)
+        return super(CubicWebSchemaLoader, self).load(config, path=path, **kwargs)
 
     def _load_definition_files(self, cubes):
         for filepath in (self.include_schema_files('bootstrap')
                          + self.include_schema_files('base')
+                         + self.include_schema_files('workflow')
                          + self.include_schema_files('Bookmark')
                          + self.include_schema_files('Card')):
             self.info('loading %s', filepath)
@@ -892,14 +947,15 @@ class CubicWebSchemaLoader(BootstrapSchemaLoader):
 PERM_USE_TEMPLATE_FORMAT = _('use_template_format')
 
 class FormatConstraint(StaticVocabularyConstraint):
-    need_perm_formats = (_('text/cubicweb-page-template'),
-                         )
+    need_perm_formats = [_('text/cubicweb-page-template')]
+        
     regular_formats = (_('text/rest'),
                        _('text/html'),
                        _('text/plain'),
                        )
     def __init__(self):
         pass
+    
     def serialize(self):
         """called to make persistent valuable data of a constraint"""
         return None
@@ -911,9 +967,11 @@ class FormatConstraint(StaticVocabularyConstraint):
         """
         return cls()
     
-    def vocabulary(self, entity=None):
-        if entity and entity.req.user.has_permission(PERM_USE_TEMPLATE_FORMAT):
-            return self.regular_formats + self.need_perm_formats
+    def vocabulary(self, entity=None, req=None):
+        if req is None and entity is not None:
+            req = entity.req
+        if req is not None and req.user.has_permission(PERM_USE_TEMPLATE_FORMAT):
+            return self.regular_formats + tuple(self.need_perm_formats)
         return self.regular_formats
     
     def __str__(self):
@@ -924,8 +982,6 @@ format_constraint = FormatConstraint()
 CONSTRAINTS['FormatConstraint'] = FormatConstraint
 PyFileReader.context['format_constraint'] = format_constraint
 
-from logging import getLogger
-from cubicweb import set_log_methods
 set_log_methods(CubicWebSchemaLoader, getLogger('cubicweb.schemaloader'))
 set_log_methods(BootstrapSchemaLoader, getLogger('cubicweb.bootstrapschemaloader'))
 set_log_methods(RQLExpression, getLogger('cubicweb.schema'))

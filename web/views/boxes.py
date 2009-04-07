@@ -3,7 +3,6 @@ generic boxes for CubicWeb web client:
 
 * actions box
 * possible views box
-* rss icon
 
 additional (disabled by default) boxes
 * schema box
@@ -16,9 +15,12 @@ additional (disabled by default) boxes
 __docformat__ = "restructuredtext en"
 
 from logilab.mtconverter import html_escape
-from cubicweb.common.selectors import any_rset, appobject_selectable
+
+from cubicweb.rtags import RelationTags
+from cubicweb.selectors import match_user_groups, non_final_entity
 from cubicweb.web.htmlwidgets import BoxWidget, BoxMenu, BoxHtml, RawBoxItem
-from cubicweb.web.box import BoxTemplate, ExtResourcesBoxTemplate
+from cubicweb.view import EntityView
+from cubicweb.web.box import BoxTemplate
 
 _ = unicode
     
@@ -28,8 +30,65 @@ class EditBox(BoxTemplate):
     change state, add related entities
     """
     id = 'edit_box'
+    __select__ = BoxTemplate.__select__ & non_final_entity()
+
     title = _('actions')
     order = 2
+    # 'link' / 'create' relation tags, used to control the "add entity" submenu
+    rmode = RelationTags() 
+    rmode.set_rtag('link', 'is', 'subject')
+    rmode.set_rtag('link', 'is', 'object')
+    rmode.set_rtag('link', 'is_instance_of', 'subject')
+    rmode.set_rtag('link', 'is_instance_of', 'object')
+    rmode.set_rtag('link', 'identity', 'subject')
+    rmode.set_rtag('link', 'identity', 'object')
+    rmode.set_rtag('link', 'owned_by', 'subject')
+    rmode.set_rtag('link', 'created_by', 'subject')
+    rmode.set_rtag('link', 'require_permission', 'subject')
+    rmode.set_rtag('link', 'wf_info_for', 'subject')
+    rmode.set_rtag('link', 'wf_info_for', 'subject')
+
+    @classmethod
+    def registered(cls, registry):
+        """build class using descriptor at registration time"""
+        super(EditBox, cls).registered(registry)
+        cls.init_rtags_mode()
+        return cls
+        
+    @classmethod
+    def init_rtags_mode(cls):
+        """set default category tags for relations where it's not yet defined in
+        the category relation tags
+        """
+        for eschema in cls.schema.entities():
+            for rschema, tschemas, role in eschema.relation_definitions(True):
+                for tschema in tschemas:
+                    if role == 'subject':
+                        X, Y = eschema, tschema
+                        card = rschema.rproperty(X, Y, 'cardinality')[0]
+                    else:
+                        X, Y = tschema, eschema
+                        card = rschema.rproperty(X, Y, 'cardinality')[1]
+                    if not cls.rmode.rtag(rschema, role, X, Y):
+                        if card in '?1':
+                            # by default, suppose link mode if cardinality doesn't allow
+                            # more than one relation
+                            mode = 'link'
+                        elif rschema.rproperty(X, Y, 'composite') == role:
+                            # if self is composed of the target type, create mode
+                            mode = 'create'
+                        else:
+                            # link mode by default
+                            mode = 'link'
+                        cls.rmode.set_rtag(mode, rschema, role, X, Y)
+
+    @classmethod
+    def relation_mode(cls, rtype, etype, targettype, role='subject'):
+        """return a string telling if the given relation is usually created
+        to a new entity ('create' mode) or to an existant entity ('link' mode)
+        """
+        return cls.rmode.rtag(rtype, role, etype, targettype)
+
 
     def call(self, view=None, **kwargs):
         _ = self.req._
@@ -89,7 +148,7 @@ class EditBox(BoxTemplate):
         actions = []
         _ = self.req._
         eschema = entity.e_schema
-        for rschema, teschema, x in entity.add_related_schemas():
+        for rschema, teschema, x in self.add_related_schemas(entity):
             if x == 'subject':
                 label = 'add %s %s %s %s' % (eschema, rschema, teschema, x)
                 url = self.linkto_url(entity, rschema, teschema, 'object')
@@ -98,6 +157,33 @@ class EditBox(BoxTemplate):
                 url = self.linkto_url(entity, rschema, teschema, 'subject')
             actions.append(self.mk_action(_(label), url))
         return actions
+
+    def add_related_schemas(self, entity):
+        """this is actually used ui method to generate 'addrelated' actions from
+        the schema.
+
+        If you're using explicit 'addrelated' actions for an entity types, you
+        should probably overrides this method to return an empty list else you
+        may get some unexpected actions.
+        """
+        req = self.req
+        eschema = entity.e_schema
+        for role, rschemas in (('subject', eschema.subject_relations()),
+                               ('object', eschema.object_relations())):
+            for rschema in rschemas:
+                if rschema.is_final():
+                    continue
+                # check the relation can be added as well
+                if role == 'subject'and not rschema.has_perm(req, 'add', fromeid=entity.eid):
+                    continue
+                if role == 'object'and not rschema.has_perm(req, 'add', toeid=entity.eid):
+                    continue
+                # check the target types can be added as well
+                for teschema in rschema.targets(eschema, role):
+                    if not self.relation_mode(rschema, eschema, teschema, role) == 'create':
+                        continue
+                    if teschema.has_local_role('add') or teschema.has_perm(req, 'add'):
+                        yield rschema, teschema, role
 
 
     def workflow_actions(self, entity, box):
@@ -130,10 +216,10 @@ class EditBox(BoxTemplate):
 class SearchBox(BoxTemplate):
     """display a box with a simple search form"""
     id = 'search_box'
+
     visible = True # enabled by default
     title = _('search')
     order = 0
-    need_resources = 'SEARCH_GO'
     formdef = u"""<form action="%s">
 <table id="tsearch"><tr><td>
 <input id="norql" type="text" accesskey="q" tabindex="%s" title="search text" value="%s" name="rql" />
@@ -143,7 +229,6 @@ class SearchBox(BoxTemplate):
 <input tabindex="%s" type="submit" id="rqlboxsubmit" class="rqlsubmit" value="" />
 </td></tr></table>
 </form>"""
-
 
     def call(self, view=None, **kwargs):
         req = self.req
@@ -164,11 +249,11 @@ class SearchBox(BoxTemplate):
 class PossibleViewsBox(BoxTemplate):
     """display a box containing links to all possible views"""
     id = 'possible_views_box'
+    __select__ = BoxTemplate.__select__ & match_user_groups('users', 'managers')
     
+    visible = False
     title = _('possible views')
     order = 10
-    require_groups = ('users', 'managers')
-    visible = False
 
     def call(self, **kwargs):
         box = BoxWidget(self.req._(self.title), self.id)
@@ -182,27 +267,11 @@ class PossibleViewsBox(BoxTemplate):
         if not box.is_empty():
             box.render(self.w)
 
-        
-class RSSIconBox(ExtResourcesBoxTemplate):
-    """just display the RSS icon on uniform result set"""
-    __selectors__ = ExtResourcesBoxTemplate.__selectors__ + (appobject_selectable('components', 'rss_feed_url'),)
-    
-    id = 'rss'
-    order = 999
-    need_resources = 'RSS_LOGO',
-    visible = False
-    
-    def call(self, **kwargs):
-        urlgetter = self.vreg.select_component('rss_feed_url', self.req, self.rset)
-        url = urlgetter.feed_url()
-        rss = self.req.external_resource('RSS_LOGO')
-        self.w(u'<a href="%s"><img src="%s" alt="rss"/></a>\n' % (html_escape(url), rss))
-
 
 class StartupViewsBox(BoxTemplate):
     """display a box containing links to all startup views"""
     id = 'startup_views_box'
-    visible = False# disabled by default
+    visible = False # disabled by default
     title = _('startup views')
     order = 70
 
@@ -215,3 +284,32 @@ class StartupViewsBox(BoxTemplate):
         if not box.is_empty():
             box.render(self.w)
 
+
+# helper classes ##############################################################
+
+class SideBoxView(EntityView):
+    """helper view class to display some entities in a sidebox"""
+    id = 'sidebox'
+    
+    def call(self, boxclass='sideBox', title=u''):
+        """display a list of entities by calling their <item_vid> view"""
+        if title:
+            self.w(u'<div class="sideBoxTitle"><span>%s</span></div>' % title)
+        self.w(u'<div class="%s"><div class="sideBoxBody">' % boxclass)
+        # if not too much entities, show them all in a list
+        maxrelated = self.req.property_value('navigation.related-limit')
+        if self.rset.rowcount <= maxrelated:
+            if len(self.rset) == 1:
+                self.wview('incontext', self.rset, row=0)
+            elif 1 < len(self.rset) < 5:
+                self.wview('csv', self.rset)
+            else:
+                self.wview('simplelist', self.rset)
+        # else show links to display related entities
+        else:
+            self.rset.limit(maxrelated)
+            rql = self.rset.printable_rql(encoded=False)
+            self.wview('simplelist', self.rset)
+            self.w(u'[<a href="%s">%s</a>]' % (self.build_url(rql=rql),
+                                               self.req._('see them all')))
+        self.w(u'</div>\n</div>\n')

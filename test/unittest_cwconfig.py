@@ -70,7 +70,8 @@ class CubicWebConfigurationTC(TestCase):
         self.assertEquals([unabsolutize(p) for p in self.config.vregistry_path()],
                           ['entities', 'web/views', 'sobjects',
                            'file/entities.py', 'file/views', 'file/hooks.py',
-                           'email/entities.py', 'email/views', 'email/hooks.py'])
+                           'email/entities.py', 'email/views', 'email/hooks.py',
+                           'test/data/entities.py'])
 
     def test_cubes_path(self):
         # make sure we don't import the email cube, but the stdlib email package

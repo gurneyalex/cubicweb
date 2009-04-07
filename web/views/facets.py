@@ -10,13 +10,14 @@ from simplejson import dumps
 
 from logilab.mtconverter import html_escape
 
-from cubicweb.common.selectors import (chainfirst, chainall, non_final_entity,
-                                    two_lines_rset, match_context_prop,
-                                    yes, one_has_relation)
+from cubicweb.vregistry import objectify_selector
+from cubicweb.selectors import (non_final_entity, two_lines_rset,
+                                match_context_prop, yes, relation_possible)
 from cubicweb.web.box import BoxTemplate
-from cubicweb.web.facet import (AbstractFacet, VocabularyFacet, FacetStringWidget,
-                             RelationFacet, prepare_facets_rqlst, filter_hiddens)
+from cubicweb.web.facet import (AbstractFacet, FacetStringWidget, RelationFacet,
+                                prepare_facets_rqlst, filter_hiddens)
 
+@objectify_selector
 def contextview_selector(cls, req, rset, row=None, col=None, view=None,
                          **kwargs):
     if view and getattr(view, 'filter_box_context_info', lambda: None)():
@@ -27,9 +28,9 @@ def contextview_selector(cls, req, rset, row=None, col=None, view=None,
 class FilterBox(BoxTemplate):
     """filter results of a query"""
     id = 'filter_box'
-    __selectors__ = (chainfirst(contextview_selector,
-                                chainall(non_final_entity, two_lines_rset)),
-                     match_context_prop)
+    __select__ = (((non_final_entity() & two_lines_rset())
+                   | contextview_selector()
+                   ) & match_context_prop())
     context = 'left'
     title = _('boxes_filter_box')
     visible = True # functionality provided by the search box by default
@@ -58,7 +59,7 @@ class FilterBox(BoxTemplate):
         req.add_css('cubicweb.facets.css')
         if self.roundcorners:
             req.html_headers.add_onload('jQuery(".facet").corner("tl br 10px");')
-        rset, vid, divid, paginate=self._get_context(view)
+        rset, vid, divid, paginate = self._get_context(view)
         if rset.rowcount < 2: # XXX done by selectors, though maybe necessary when rset has been hijacked
             return
         if vid is None:
@@ -129,7 +130,7 @@ class InStateFacet(RelationFacet):
 # inherit from RelationFacet to benefit from its possible_values implementation
 class ETypeFacet(RelationFacet):
     id = 'etype-facet'
-    __selectors__ = (yes,)
+    __select__ = yes()
     order = 1
     rtype = 'is'
     target_attr = 'name'
@@ -153,7 +154,7 @@ class ETypeFacet(RelationFacet):
 
 
 class HasTextFacet(AbstractFacet):
-    __selectors__ = (one_has_relation, match_context_prop)
+    __select__ = relation_possible('has_text', 'subject') & match_context_prop()
     id = 'has_text-facet'
     rtype = 'has_text'
     role = 'subject'

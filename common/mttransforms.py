@@ -1,7 +1,7 @@
 """mime type transformation engine for cubicweb, based on mtconverter
 
 :organization: Logilab
-:copyright: 2001-2008 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
 """
 __docformat__ = "restructuredtext en"
@@ -14,7 +14,7 @@ from logilab.mtconverter import (register_base_transforms,
                                  register_pil_transforms, 
                                  register_pygments_transforms)
 
-from cubicweb.common.uilib import rest_publish, html_publish, remove_html_tags
+from cubicweb.common.uilib import rest_publish, html_publish
 
 HTML_MIMETYPES = ('text/html', 'text/xhtml', 'application/xhtml+xml')
 
@@ -31,16 +31,7 @@ class html_to_html(Transform):
     output = 'text/html'
     def _convert(self, trdata):
         return html_publish(trdata.appobject, trdata.data)
-
-class ept_to_html(Transform):
-    inputs = ('text/cubicweb-page-template',)
-    output = 'text/html'
-    output_encoding = 'utf-8'
-    def _convert(self, trdata):
-        from cubicweb.common.tal import compile_template
-        value = trdata.encode(self.output_encoding)
-        return trdata.appobject.tal_render(compile_template(value), {})
-
+    
 
 # Instantiate and configure the transformation engine
 
@@ -49,7 +40,26 @@ mtconverter.UNICODE_POLICY = 'replace'
 ENGINE = TransformEngine()
 ENGINE.add_transform(rest_to_html())
 ENGINE.add_transform(html_to_html())
-ENGINE.add_transform(ept_to_html())
+
+try:
+    from cubicweb.ext.tal import compile_template
+except ImportError:
+    HAS_TAL = False
+    from cubicweb.schema import FormatConstraint
+    FormatConstraint.need_perm_formats.remove('text/cubicweb-page-template')
+    
+else:
+    HAS_TAL = True
+    
+    class ept_to_html(Transform):
+        inputs = ('text/cubicweb-page-template',)
+        output = 'text/html'
+        output_encoding = 'utf-8'
+        def _convert(self, trdata):
+            value = trdata.encode(self.output_encoding)
+            return trdata.appobject.tal_render(compile_template(value), {})
+
+    ENGINE.add_transform(ept_to_html())
 
 if register_pil_transforms(ENGINE, verb=False):
     HAS_PIL_TRANSFORMS = True
