@@ -238,3 +238,34 @@ class IFeed(Interface):
     def rss_feed_url(self):
         """return an url which layout sub-entities item
         """
+class ISiocItem(Interface):
+    """interface for entities (which are item
+    in sioc specification) with sioc views"""
+    
+    def isioc_content(self):
+        """return content entity"""
+
+    def isioc_container(self):
+        """return container entity"""
+
+    def isioc_type(self):
+        """return container type (post, BlogPost, MailMessage)"""
+
+    def isioc_replies(self):
+        """return replies items"""       
+
+    def isioc_topics(self):
+        """return topics items"""
+            
+class ISiocContainer(Interface):
+    """interface for entities (which are container
+    in sioc specification) with sioc views"""
+
+    def isioc_type(self):
+        """return container type (forum, Weblog, MailingList)"""
+
+    def isioc_items(self):
+        """return contained items"""
+
+   
+    

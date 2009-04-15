@@ -1,7 +1,7 @@
 """Source to query another RQL repository using pyro
 
 :organization: Logilab
-:copyright: 2007-2008 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2007-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
 """
 __docformat__ = "restructuredtext en"
@@ -21,7 +21,7 @@ from rql.utils import rqlvar_maker
 from cubicweb import dbapi, server
 from cubicweb import BadConnectionId, UnknownEid, ConnectionError
 from cubicweb.cwconfig import register_persistent_options
-from cubicweb.server.sources import AbstractSource, ConnectionWrapper
+from cubicweb.server.sources import AbstractSource, ConnectionWrapper, TimedCache
 
 class ReplaceByInOperator:
     def __init__(self, eids):
@@ -129,6 +129,7 @@ repository (default to 5 minutes).',
                        'group': 'sources', 
                        }),)
         register_persistent_options(myoptions)
+        self._query_cache = TimedCache(30)
 
     def last_update_time(self):
         pkey = u'sources.%s.latest-update-time' % self.uri
@@ -153,13 +154,15 @@ repository (default to 5 minutes).',
         """method called by the repository once ready to handle request"""
         interval = int(self.config.get('synchronization-interval', 5*60))
         self.repo.looping_task(interval, self.synchronize) 
+        self.repo.looping_task(self._query_cache.ttl.seconds/10, self._query_cache.clear_expired) 
 
     def synchronize(self, mtime=None):
         """synchronize content known by this repository with content in the
         external repository
         """
         self.info('synchronizing pyro source %s', self.uri)
-        extrepo = self.get_connection()._repo
+        cnx = self.get_connection()
+        extrepo = cnx._repo
         etypes = self.support_entities.keys()
         if mtime is None:
             mtime = self.last_update_time()
@@ -170,11 +173,13 @@ repository (default to 5 minutes).',
         try:
             for etype, extid in modified:
                 try:
-                    eid = self.extid2eid(extid, etype, session)
-                    rset = session.eid_rset(eid, etype)
-                    entity = rset.get_entity(0, 0)
-                    entity.complete(entity.e_schema.indexable_attributes())
-                    repo.index_entity(session, entity)
+                    exturi = cnx.describe(extid)[1]
+                    if exturi == 'system' or not exturi in repo.sources_by_uri:
+                        eid = self.extid2eid(extid, etype, session)
+                        rset = session.eid_rset(eid, etype)
+                        entity = rset.get_entity(0, 0)
+                        entity.complete(entity.e_schema.indexable_attributes())
+                        repo.index_entity(session, entity)
                 except:
                     self.exception('while updating %s with external id %s of source %s',
                                    etype, extid, self.uri)
@@ -237,9 +242,18 @@ repository (default to 5 minutes).',
         # try to reconnect
         return self.get_connection()
         
-    
     def syntax_tree_search(self, session, union, args=None, cachekey=None,
                            varmap=None):
+        #assert not varmap, (varmap, union)
+        rqlkey = union.as_string(kwargs=args)
+        try:
+            results = self._query_cache[rqlkey]
+        except KeyError:
+            results = self._syntax_tree_search(session, union, args)
+            self._query_cache[rqlkey] = results
+        return results
+    
+    def _syntax_tree_search(self, session, union, args):
         """return result from this source for a rql query (actually from a rql 
         syntax tree and a solution dictionary mapping each used variable to a 
         possible type). If cachekey is given, the query necessary to fetch the
@@ -277,18 +291,28 @@ repository (default to 5 minutes).',
         descr = rset.description
         if rset:
             needtranslation = []
+            rows = rset.rows
             for i, etype in enumerate(descr[0]):
                 if (etype is None or not self.schema.eschema(etype).is_final() or
                     getattr(union.locate_subquery(i, etype, args).selection[i], 'uidtype', None)):
                     needtranslation.append(i)
             if needtranslation:
-                for rowindex, row in enumerate(rset):
+                cnx = session.pool.connection(self.uri)
+                for rowindex in xrange(rset.rowcount - 1, -1, -1):
+                    row = rows[rowindex]
                     for colindex in needtranslation:
                         if row[colindex] is not None: # optional variable
                             etype = descr[rowindex][colindex]
-                            eid = self.extid2eid(row[colindex], etype, session)
-                            row[colindex] = eid
-            results = rset.rows
+                            exttype, exturi, extid = cnx.describe(row[colindex])
+                            if exturi == 'system' or not exturi in self.repo.sources_by_uri:
+                                eid = self.extid2eid(row[colindex], etype, session)
+                                row[colindex] = eid
+                            else:
+                                # skip this row
+                                del rows[rowindex]
+                                del descr[rowindex]
+                                break
+            results = rows
         else:
             results = []
         if server.DEBUG:

@@ -9,8 +9,29 @@ CubicWeb.require('htmlhelpers.js');
 
 var JSON_BASE_URL = baseuri() + 'json?';
 
+function postAjaxLoad(node) {
+    // find sortable tables if there are some
+    if (typeof(Sortable) != 'undefined') {
+	Sortable.sortTables(node);
+    }
+    // find textareas and wrap them if there are some
+    if (typeof(FCKeditor) != 'undefined') {
+	buildWysiwygEditors(node);
+    }
+    if (typeof initFacetBoxEvents != 'undefined') {
+	initFacetBoxEvents(node);
+    }
+    if (typeof buildWidgets != 'undefined') {
+	buildWidgets(node);
+    }
+    if (typeof roundedCornersOnLoad != 'undefined') {
+	roundedCornersOnLoad();
+    }
+}
+
 // cubicweb loadxhtml plugin to make jquery handle xhtml response
 jQuery.fn.loadxhtml = function(url, data, reqtype, mode) {
+
     var ajax = null;
     if (reqtype == 'post') {
 	ajax = jQuery.post;
@@ -27,6 +48,7 @@ jQuery.fn.loadxhtml = function(url, data, reqtype, mode) {
 	delete data.callback;
     }
     var node = this.get(0); // only consider the first element
+    ajax = jQuery.post;
     ajax(url, data, function(response) {
 	var domnode = getDomFromResponse(response);
 	if (mode == 'swap') {
@@ -40,28 +62,12 @@ jQuery.fn.loadxhtml = function(url, data, reqtype, mode) {
 	} else if (mode == 'append') {
 	    jQuery(node).append(domnode);
 	}
-	// find sortable tables if there are some
-	if (typeof(Sortable) != 'undefined') {
-	    Sortable.sortTables(node);
-	}
-	// find textareas and wrap them if there are some
-	if (typeof(FCKeditor) != 'undefined') {
-	    buildWysiwygEditors(node);
-	}
-
-	if (typeof initFacetBoxEvents != 'undefined') {
-	    initFacetBoxEvents(node);
-	}
-
-	if (typeof buildWidgets != 'undefined') {
-	    buildWidgets(node);
-	}
-
+	postAjaxLoad(node);
 	while (jQuery.isFunction(callback)) {
 	    callback = callback.apply(this, [domnode]);
 	}
     });
-}
+};
 
 
 
@@ -69,7 +75,7 @@ jQuery.fn.loadxhtml = function(url, data, reqtype, mode) {
  * the associated RQL to build them (Async call)
  */
 function loadDynamicFragments() {
-    var fragments = getElementsByTagAndClassName('div', 'dynamicFragment');
+    var fragments = jQuery('div.dynamicFragment');
     if (fragments.length == 0) {
 	return;
     }
@@ -277,7 +283,7 @@ function userCallbackThenReloadPage(cbname, msg) {
  * while the page was generated.
  */
 function unregisterUserCallback(cbname) {
-    d = async_remote_exec('unregister_user_callback', cbname);
+    var d = async_remote_exec('unregister_user_callback', cbname);
     d.addCallback(function() {resetCursor();});
     d.addErrback(function(xxx) {
 	updateMessage(_("an error occured"));

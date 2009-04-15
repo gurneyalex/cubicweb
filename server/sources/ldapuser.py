@@ -3,7 +3,7 @@
 this source is for now limited to a read-only EUser source
 
 :organization: Logilab
-:copyright: 2003-2008 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2003-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
 
 
@@ -20,8 +20,6 @@ WARRANTIES OF TITLE, MERCHANTABILITY, AGAINST INFRINGEMENT, AND FITNESS
 FOR A PARTICULAR PURPOSE.
 """
 
-from mx.DateTime import now, DateTimeDelta
-
 from logilab.common.textutils import get_csv
 from rql.nodes import Relation, VariableRef, Constant, Function
 
@@ -30,9 +28,10 @@ from ldap.ldapobject import ReconnectLDAPObject
 from ldap.filter import filter_format, escape_filter_chars
 from ldapurl import LDAPUrl
 
-from cubicweb.common import AuthenticationError, UnknownEid, RepositoryError
-from cubicweb.server.sources import AbstractSource, TrFunc, GlobTrFunc, ConnectionWrapper
+from cubicweb import AuthenticationError, UnknownEid, RepositoryError
 from cubicweb.server.utils import cartesian_product
+from cubicweb.server.sources import (AbstractSource, TrFunc, GlobTrFunc,
+                                     ConnectionWrapper, TimedCache)
 
 # search scopes
 BASE = ldap.SCOPE_BASE
@@ -49,24 +48,6 @@ MODES = {
     1: (636, 'ldaps'),
     2: (0,   'ldapi'),
     }
-
-class TimedCache(dict):
-    def __init__(self, ttlm, ttls=0):
-        # time to live in minutes
-        self.ttl = DateTimeDelta(0, 0, ttlm, ttls)
-        
-    def __setitem__(self, key, value):
-        dict.__setitem__(self, key, (now(), value))
-        
-    def __getitem__(self, key):
-        return dict.__getitem__(self, key)[1]
-    
-    def clear_expired(self):
-        now_ = now()
-        ttl = self.ttl
-        for key, (timestamp, value) in self.items():
-            if now_ - timestamp > ttl:
-                del self[key]
                 
 class LDAPUserSource(AbstractSource):
     """LDAP read-only EUser source"""
@@ -176,6 +157,10 @@ directory (default to once a day).',
         external repository
         """
         self.info('synchronizing ldap source %s', self.uri)
+        try:
+            ldap_emailattr = self.user_rev_attrs['email']
+        except KeyError:
+            return # no email in ldap, we're done
         session = self.repo.internal_session()
         try:
             cursor = session.system_sql("SELECT eid, extid FROM entities WHERE "
@@ -184,7 +169,7 @@ directory (default to once a day).',
                 # if no result found, _search automatically delete entity information
                 res = self._search(session, extid, BASE)
                 if res: 
-                    ldapemailaddr = res[0].get(self.user_rev_attrs['email'])
+                    ldapemailaddr = res[0].get(ldap_emailattr)
                     if ldapemailaddr:
                         rset = session.execute('EmailAddress X,A WHERE '
                                                'U use_email X, U eid %(u)s',
@@ -628,7 +613,10 @@ class RQL2LDAPFilter(object):
             filter = '(%s%s)' % (self._ldap_attrs[relation.r_type],
                                  rhs.accept(self))
         except KeyError:
-            assert relation.r_type == 'password' # 2.38 migration
+            # unsupported attribute
+            self.source.warning('%s source can\'t handle relation %s, no '
+                                'results will be returned from this source',
+                                self.source.uri, relation)
             raise UnknownEid # trick to return no result
         return filter
 

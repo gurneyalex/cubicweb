@@ -1,7 +1,7 @@
 """extend the generic VRegistry with some cubicweb specific stuff
 
 :organization: Logilab
-:copyright: 2001-2008 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
 """
 __docformat__ = "restructuredtext en"
@@ -12,7 +12,7 @@ from logilab.common.decorators import cached, clear_cache
 
 from rql import RQLHelper
 
-from cubicweb import Binary, UnknownProperty
+from cubicweb import Binary, UnknownProperty, UnknownEid
 from cubicweb.vregistry import VRegistry, ObjectNotFound, NoSelectableObject
 
 _ = unicode
@@ -322,9 +322,9 @@ class CubicWebRegistry(VRegistry):
         if vocab is not None:
             if callable(vocab):
                 # list() just in case its a generator function
-                vocabfunc = lambda e: list(vocab(propkey, req))
+                vocabfunc = lambda **kwargs: list(vocab(propkey, req))
             else:
-                vocabfunc = lambda e: vocab
+                vocabfunc = lambda **kwargs: vocab
             w = StaticComboBoxWidget(self, 'EProperty', self.schema['value'], 'String',
                                      vocabfunc=vocabfunc, description=tr(pdef['help']),
                                      **attrs)
@@ -337,7 +337,11 @@ class CubicWebRegistry(VRegistry):
         rqlst = self.rqlhelper.parse(rql)
         def type_from_eid(eid, session=session):
             return session.describe(eid)[0]
-        self.rqlhelper.compute_solutions(rqlst, {'eid': type_from_eid}, args)
+        try:
+            self.rqlhelper.compute_solutions(rqlst, {'eid': type_from_eid}, args)
+        except UnknownEid:
+            for select in rqlst.children:
+                select.solutions = []
         return rqlst
 
     @property

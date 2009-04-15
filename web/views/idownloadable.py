@@ -11,7 +11,7 @@ from logilab.mtconverter import BINARY_ENCODINGS, TransformError, html_escape
 from cubicweb.interfaces import IDownloadable
 from cubicweb.common.mttransforms import ENGINE
 from cubicweb.common.selectors import (one_line_rset, score_entity_selector,
-                                       interface_selector, contextprop_selector)
+                                       implement_interface, match_context_prop)
 from cubicweb.web.box import EntityBoxTemplate
 from cubicweb.web.views import baseviews
 
@@ -35,9 +35,19 @@ def download_box(w, entity, title=None, label=None):
     
 class DownloadBox(EntityBoxTemplate):
     id = 'download_box'
-    __selectors__ = (one_line_rset, interface_selector, contextprop_selector)
+    # XXX primary_view selector ?
+    __selectors__ = (one_line_rset, implement_interface, match_context_prop, score_entity_selector)
     accepts_interfaces = (IDownloadable,)
     order = 10
+
+    @classmethod
+    def score_entity(cls, entity):
+        mt = entity.download_content_type()
+        # no download box for images
+        if mt and mt.startswith('image/'):
+            return 0
+        return 1
+    
     def cell_call(self, row, col, title=None, label=None, **kwargs):
         entity = self.entity(row, col)
         download_box(self.w, entity, title, label)
@@ -48,7 +58,7 @@ class DownloadView(baseviews.EntityView):
     of entities providing the necessary interface
     """
     id = 'download'
-    __selectors__ = (one_line_rset, interface_selector)
+    __selectors__ = (one_line_rset, implement_interface)
     accepts_interfaces = (IDownloadable,)
 
     templatable = False
@@ -77,7 +87,7 @@ class DownloadLinkView(baseviews.EntityView):
     """view displaying a link to download the file"""
     id = 'downloadlink'
     title = None # should not be listed in possible views
-    __selectors__ = (interface_selector,)
+    __selectors__ = (implement_interface,)
 
     accepts_interfaces = (IDownloadable,)
     
@@ -89,9 +99,10 @@ class DownloadLinkView(baseviews.EntityView):
 
                                                                                 
 class IDownloadablePrimaryView(baseviews.PrimaryView):
-    __selectors__ = (interface_selector,)
-    #skip_attrs = ('eid', 'data',) # XXX
+    __selectors__ = (implement_interface,)
     accepts_interfaces = (IDownloadable,)
+    # XXX File/Image attributes but this is not specified in the IDownloadable interface
+    skip_attrs = baseviews.PrimaryView.skip_attrs + ('data', 'name')
 
     def render_entity_title(self, entity):
         self.w(u'<h1>%s %s</h1>'
@@ -100,12 +111,12 @@ class IDownloadablePrimaryView(baseviews.PrimaryView):
     
     def render_entity_attributes(self, entity, siderelations):
         super(IDownloadablePrimaryView, self).render_entity_attributes(entity, siderelations)
-        self.wview('downloadlink', entity.rset, title=self.req._('download'), row=entity.row)
         self.w(u'<div class="content">')
         contenttype = entity.download_content_type()
         if contenttype.startswith('image/'):
             self.wview('image', entity.rset, row=entity.row)
         else:
+            self.wview('downloadlink', entity.rset, title=self.req._('download'), row=entity.row)
             try:
                 if ENGINE.has_input(contenttype):
                     self.w(entity.printable_value('data'))
@@ -122,7 +133,7 @@ class IDownloadablePrimaryView(baseviews.PrimaryView):
 
 
 class IDownloadableLineView(baseviews.OneLineView):
-    __selectors__ = (interface_selector,)
+    __selectors__ = (implement_interface,)
     # don't kick default oneline view
     accepts_interfaces = (IDownloadable,)
     
@@ -138,7 +149,7 @@ class IDownloadableLineView(baseviews.OneLineView):
 
 
 class ImageView(baseviews.EntityView):
-    __selectors__ = (interface_selector, score_entity_selector)
+    __selectors__ = (implement_interface, score_entity_selector)
     id = 'image'
     title = _('image')
     accepts_interfaces = (IDownloadable,)

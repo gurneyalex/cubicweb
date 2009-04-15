@@ -47,7 +47,23 @@ msgid "%(subject)s %(etype)s #%(eid)s (%(login)s)"
 msgstr ""
 
 #, python-format
+msgid "%d days"
+msgstr ""
+
+#, python-format
+msgid "%d hours"
+msgstr ""
+
+#, python-format
+msgid "%d minutes"
+msgstr ""
+
+#, python-format
 msgid "%d months"
+msgstr ""
+
+#, python-format
+msgid "%d seconds"
 msgstr ""
 
 #, python-format
@@ -59,19 +75,35 @@ msgid "%d years"
 msgstr ""
 
 #, python-format
-msgid "%s days"
+msgid "%d&nbsp;days"
+msgstr ""
+
+#, python-format
+msgid "%d&nbsp;hours"
+msgstr ""
+
+#, python-format
+msgid "%d&nbsp;minutes"
+msgstr ""
+
+#, python-format
+msgid "%d&nbsp;months"
+msgstr ""
+
+#, python-format
+msgid "%d&nbsp;seconds"
+msgstr ""
+
+#, python-format
+msgid "%d&nbsp;weeks"
+msgstr ""
+
+#, python-format
+msgid "%d&nbsp;years"
 msgstr ""
 
 #, python-format
 msgid "%s error report"
-msgstr ""
-
-#, python-format
-msgid "%s hours"
-msgstr ""
-
-#, python-format
-msgid "%s minutes"
 msgstr ""
 
 #, python-format
@@ -80,10 +112,6 @@ msgstr ""
 
 #, python-format
 msgid "%s results matching query"
-msgstr ""
-
-#, python-format
-msgid "%s seconds"
 msgstr ""
 
 #, python-format
@@ -618,6 +646,12 @@ msgstr "delete"
 msgid "actions_delete_description"
 msgstr ""
 
+msgid "actions_download_as_owl"
+msgstr ""
+
+msgid "actions_download_as_owl_description"
+msgstr ""
+
 msgid "actions_edit"
 msgstr "modify"
 
@@ -716,6 +750,9 @@ msgstr ""
 
 msgid "add"
 msgstr ""
+
+msgid "add Bookmark bookmarked_by EUser object"
+msgstr "bookmark"
 
 msgid "add EEType add_permission RQLExpression subject"
 msgstr "rql expression for the add permission"
@@ -1311,6 +1348,9 @@ msgstr "created by"
 msgid "created_by_object"
 msgstr "has created"
 
+msgid "creating Bookmark (Bookmark bookmarked_by EUser %(linkto)s)"
+msgstr "creating bookmark for %(linkto)s"
+
 msgid "creating EConstraint (EFRDef %(linkto)s constrained_by EConstraint)"
 msgstr "creating constraint for attribute %(linkto)s"
 
@@ -1398,6 +1438,10 @@ msgid "csv entities export"
 msgstr ""
 
 msgid "csv export"
+msgstr ""
+
+#, python-format
+msgid "currently attached file: %s"
 msgstr ""
 
 msgid "data directory url"
@@ -1512,7 +1556,8 @@ msgstr "destination state"
 msgid "destination_state_object"
 msgstr "destination of"
 
-msgid "detach attached file"
+#, python-format
+msgid "detach attached file %s"
 msgstr ""
 
 msgid "detailed schema view"
@@ -1545,6 +1590,9 @@ msgid "download"
 msgstr ""
 
 msgid "download icon"
+msgstr ""
+
+msgid "download schema as owl"
 msgstr ""
 
 msgid "edit bookmarks"
@@ -1668,10 +1716,16 @@ msgstr ""
 msgid "february"
 msgstr ""
 
+msgid "file tree view"
+msgstr ""
+
 msgid "final"
 msgstr ""
 
 msgid "firstname"
+msgstr ""
+
+msgid "foaf"
 msgstr ""
 
 msgid "follow"
@@ -1991,10 +2045,18 @@ msgstr ""
 msgid "link a transition to one or more entity type"
 msgstr ""
 
+msgid ""
+"link a transition to one or more rql expression allowing to go through this "
+"transition"
+msgstr ""
+
 msgid "link to each item in"
 msgstr ""
 
 msgid "list"
+msgstr ""
+
+msgid "loading"
 msgstr ""
 
 msgid "log in"
@@ -2023,6 +2085,9 @@ msgid "manage"
 msgstr ""
 
 msgid "manage bookmarks"
+msgstr ""
+
+msgid "manage permissions"
 msgstr ""
 
 msgid "manage security"
@@ -2137,6 +2202,9 @@ msgstr ""
 msgid "not authorized"
 msgstr ""
 
+msgid "not selected"
+msgstr ""
+
 msgid "not specified"
 msgstr ""
 
@@ -2172,6 +2240,12 @@ msgstr ""
 
 msgid "ordernum"
 msgstr "order"
+
+msgid "owl"
+msgstr ""
+
+msgid "owlabox"
+msgstr ""
 
 msgid "owned_by"
 msgstr "owned by"
@@ -2215,6 +2289,9 @@ msgstr ""
 
 msgid "pkey"
 msgstr "key"
+
+msgid "planned_delivery"
+msgstr "planned delivery"
 
 msgid "please correct errors below"
 msgstr ""
@@ -2414,6 +2491,9 @@ msgid "select a relation"
 msgstr ""
 
 msgid "select this entity"
+msgstr ""
+
+msgid "selected"
 msgstr ""
 
 msgid "semantic description of this attribute"
@@ -2616,6 +2696,9 @@ msgstr "transition of"
 
 msgid "transition_of_object"
 msgstr "use transitions"
+
+msgid "tree view"
+msgstr ""
 
 msgid "tuesday"
 msgstr ""

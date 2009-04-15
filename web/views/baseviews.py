@@ -8,24 +8,27 @@
 
 
 :organization: Logilab
-:copyright: 2001-2008 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
 """
+#from __future__ import with_statement
+
 __docformat__ = "restructuredtext en"
 
+from warnings import warn
 from time import timezone
 
 from rql import nodes
 
 from logilab.common.decorators import cached
-from logilab.mtconverter import html_escape, TransformError
+from logilab.mtconverter import TransformError, html_escape, xml_escape
 
 from cubicweb import Unauthorized, NoSelectableObject, typed_eid
-from cubicweb.common.selectors import (yes, nonempty_rset, accept_selector,
+from cubicweb.common.selectors import (yes, nonempty_rset, accept,
                                        one_line_rset, match_search_state, 
-                                       req_form_params_selector, accept_rset_selector)
+                                       match_form_params, accept_rset)
 from cubicweb.common.uilib import (cut, printable_value,  UnicodeCSVWriter,
-                                   ajax_replace_url, rql_for_eid)
+                                   ajax_replace_url, rql_for_eid, simple_sgml_tag)
 from cubicweb.common.view import EntityView, AnyRsetView, EmptyRsetView
 from cubicweb.web.httpcache import MaxAgeHTTPCacheManager
 from cubicweb.web.views import vid_from_rset, linksearch_select_url, linksearch_match
@@ -55,34 +58,52 @@ class FinalView(AnyRsetView):
     entities) 
     """
     id = 'final'
+    # record generated i18n catalog messages
+    _('%d&nbsp;years')
+    _('%d&nbsp;months')
+    _('%d&nbsp;weeks')
+    _('%d&nbsp;days')
+    _('%d&nbsp;hours')
+    _('%d&nbsp;minutes')
+    _('%d&nbsp;seconds')
+    _('%d years')
+    _('%d months')
+    _('%d weeks')
+    _('%d days')
+    _('%d hours')
+    _('%d minutes')
+    _('%d seconds')
             
-    def cell_call(self, row, col, props=None, displaytime=False):
+    def cell_call(self, row, col, props=None, displaytime=False, format='text/html'):
         etype = self.rset.description[row][col]
         value = self.rset.rows[row][col]
         if etype == 'String':
             entity, rtype = self.rset.related_entity(row, col)
             if entity is not None:
                 # yes !
-                self.w(entity.printable_value(rtype, value))
+                self.w(entity.printable_value(rtype, value, format=format))
                 return
         if etype in ('Time', 'Interval'):
-            _ = self.req._
             # value is DateTimeDelta but we have no idea about what is the 
             # reference date here, so we can only approximate years and months
-            if value.days > 730: # 2 years
-                self.w(_('%d years') % (value.days // 365))
-            elif value.days > 60: # 2 months
-                self.w(_('%d months') % (value.days // 30))
-            elif value.days > 14: # 2 weeks
-                self.w(_('%d weeks') % (value.days // 7))
-            elif value.days > 2:
-                self.w(_('%s days') % int(value.days))
-            elif value.hours > 2:
-                self.w(_('%s hours') % int(value.hours))
-            elif value.minutes >= 2:
-                self.w(_('%s minutes') % int(value.minutes))
+            if format == 'text/html':
+                space = '&nbsp;'
             else:
-                self.w(_('%s seconds') % int(value.seconds))
+                space = ' '
+            if value.days > 730: # 2 years
+                self.w(self.req.__('%%d%syears' % space) % (value.days // 365))
+            elif value.days > 60: # 2 months
+                self.w(self.req.__('%%d%smonths' % space) % (value.days // 30))
+            elif value.days > 14: # 2 weeks
+                self.w(self.req.__('%%d%sweeks' % space) % (value.days // 7))
+            elif value.days > 2:
+                self.w(self.req.__('%%d%sdays' % space) % int(value.days))
+            elif value.hours > 2:
+                self.w(self.req.__('%%d%shours' % space) % int(value.hours))
+            elif value.minutes >= 2:
+                self.w(self.req.__('%%d%sminutes' % space) % int(value.minutes))
+            else:
+                self.w(self.req.__('%%d%sseconds' % space) % int(value.seconds))
             return
         self.wdata(printable_value(self.req, etype, value, props, displaytime=displaytime))
 
@@ -137,34 +158,34 @@ class PrimaryView(EntityView):
         self.render_entity_metadata(entity)
         # entity's attributes and relations, excluding meta data
         # if the entity isn't meta itself
-        self.w(u'<table border="0" width="100%">')
-        self.w(u'<tr>')
-        self.w(u'<td valign="top">')
+        self.w(u'<div>')
         self.w(u'<div class="mainInfo">')
         self.render_entity_attributes(entity, siderelations)
         self.w(u'</div>')
-        self.w(u'<div class="navcontenttop">')
-        for comp in self.vreg.possible_vobjects('contentnavigation',
-                                                self.req, self.rset,
-                                                view=self, context='navcontenttop'):
-            comp.dispatch(w=self.w, view=self)
-        self.w(u'</div>')
+        self.content_navigation_components('navcontenttop')
         if self.main_related_section:
             self.render_entity_relations(entity, siderelations)
-        self.w(u'</td>')
-        # side boxes
-        self.w(u'<td valign="top">')
-        self.render_side_related(entity, siderelations)
-        self.w(u'</td>')
-        self.w(u'</tr>')
-        self.w(u'</table>')        
-        self.w(u'<div class="navcontentbottom">')
-        for comp in self.vreg.possible_vobjects('contentnavigation',
-                                                self.req, self.rset,
-                                                view=self, context='navcontentbottom'):
-            comp.dispatch(w=self.w, view=self)
         self.w(u'</div>')
+        # side boxes
+        self.w(u'<div class="primaryRight">')
+        self.render_side_related(entity, siderelations)
+        self.w(u'</div>')
+        self.w(u'<div class="clear"></div>')          
+        self.content_navigation_components('navcontentbottom')
 
+    def content_navigation_components(self, context):
+        self.w(u'<div class="%s">' % context)
+        for comp in self.vreg.possible_vobjects('contentnavigation',
+                                                self.req, self.rset, row=self.row,
+                                                view=self, context=context):
+            try:
+                comp.dispatch(w=self.w, row=self.row, view=self)
+            except NotImplementedError:
+                warn('component %s doesnt implement cell_call, please update'
+                     % comp.__class__, DeprecationWarning)
+                comp.dispatch(w=self.w, view=self)
+        self.w(u'</div>')
+        
     def iter_attributes(self, entity):
         for rschema, targetschema in entity.e_schema.attribute_definitions():
             attr = rschema.type
@@ -239,8 +260,10 @@ class PrimaryView(EntityView):
         non-meta in a first step, meta in a second step
         """
         if hasattr(self, 'get_side_boxes_defs'):
-            for label, rset in self.get_side_boxes_defs(entity):
-                if rset:
+            sideboxes = [(label, rset) for label, rset in self.get_side_boxes_defs(entity)
+                         if rset]
+            if sideboxes:
+                for label, rset in sideboxes:
                     self.w(u'<div class="sideRelated">')
                     self.wview('sidebox', rset, title=label)
                     self.w(u'</div>')
@@ -251,15 +274,17 @@ class PrimaryView(EntityView):
                 #    continue
                 self._render_related_entities(entity, *relatedinfos)
             self.w(u'</div>')
-        for box in self.vreg.possible_vobjects('boxes', self.req, entity.rset,
-                                               col=entity.col, row=entity.row,
-                                               view=self, context='incontext'):
-            try:
-                box.dispatch(w=self.w, col=entity.col, row=entity.row)
-            except NotImplementedError:
-                # much probably a context insensitive box, which only implements
-                # .call() and not cell_call()
-                box.dispatch(w=self.w)
+        boxes = list(self.vreg.possible_vobjects('boxes', self.req, self.rset,
+                                                 row=self.row, view=self,
+                                                 context='incontext'))
+        if boxes:
+            for box in boxes:
+                try:
+                    box.dispatch(w=self.w, row=self.row)
+                except NotImplementedError:
+                    # much probably a context insensitive box, which only implements
+                    # .call() and not cell_call()
+                    box.dispatch(w=self.w)               
                 
     def is_side_related(self, rschema, eschema):
         return rschema.meta and \
@@ -350,10 +375,10 @@ class OneLineView(EntityView):
         self.w(u'</a>')
 
 class TextView(EntityView):
-    """the simplest text view for an entity
-    """
+    """the simplest text view for an entity"""
     id = 'text'
     title = _('text')
+    content_type = 'text/plain'
     accepts = 'Any',
     def call(self, **kwargs):
         """the view is called for an entire result set, by default loop
@@ -571,8 +596,7 @@ class XmlView(EntityView):
         self.wview(self.item_vid, self.rset, row=row, col=col)
         
     def call(self):
-        """display a list of entities by calling their <item_vid> view
-        """
+        """display a list of entities by calling their <item_vid> view"""
         self.w(u'<?xml version="1.0" encoding="%s"?>\n' % self.req.encoding)
         self.w(u'<%s size="%s">\n' % (self.xml_root, len(self.rset)))
         for i in xrange(self.rset.rowcount):
@@ -599,7 +623,7 @@ class XmlItemView(EntityView):
                     from base64 import b64encode
                     value = '<![CDATA[%s]]>' % b64encode(value.getvalue())
                 elif isinstance(value, basestring):
-                    value = value.replace('&', '&amp;').replace('<', '&lt;')
+                    value = xml_escape(value)
                 self.w(u'  <%s>%s</%s>\n' % (attr, value, attr))
         self.w(u'</%s>\n' % (entity.e_schema))
 
@@ -619,21 +643,25 @@ class XMLRsetView(AnyRsetView):
         eschema = self.schema.eschema
         labels = self.columns_labels(False)
         w(u'<?xml version="1.0" encoding="%s"?>\n' % self.req.encoding)
-        w(u'<%s>\n' % self.xml_root)
+        w(u'<%s query="%s">\n' % (self.xml_root, html_escape(rset.printable_rql())))
         for rowindex, row in enumerate(self.rset):
             w(u' <row>\n')
             for colindex, val in enumerate(row):
                 etype = descr[rowindex][colindex]
                 tag = labels[colindex]
+                attrs = {}
+                if '(' in tag:
+                    attrs['expr'] = tag
+                    tag = 'funccall'
                 if val is not None and not eschema(etype).is_final():
+                    attrs['eid'] = val
                     # csvrow.append(val) # val is eid in that case
-                    content = self.view('textincontext', rset, 
-                                        row=rowindex, col=colindex)
-                    w(u'  <%s eid="%s">%s</%s>\n' % (tag, val, html_escape(content), tag))
+                    val = self.view('textincontext', rset,
+                                    row=rowindex, col=colindex)
                 else:
-                    content = self.view('final', rset, displaytime=True,
-                                        row=rowindex, col=colindex)
-                    w(u'  <%s>%s</%s>\n' % (tag, html_escape(content), tag))
+                    val = self.view('final', rset, displaytime=True,
+                                    row=rowindex, col=colindex, format='text/plain')
+                w(simple_sgml_tag(tag, val, **attrs))
             w(u' </row>\n')
         w(u'</%s>\n' % self.xml_root)
     
@@ -645,18 +673,13 @@ class RssView(XmlView):
     content_type = 'text/xml'
     http_cache_manager = MaxAgeHTTPCacheManager
     cache_max_age = 60*60*2 # stay in http cache for 2 hours by default 
-    
-    def cell_call(self, row, col):
-        self.wview('rssitem', self.rset, row=row, col=col)
-        
-    def call(self):
-        """display a list of entities by calling their <item_vid> view"""
+
+    def _open(self):
         req = self.req
         self.w(u'<?xml version="1.0" encoding="%s"?>\n' % req.encoding)
-        self.w(u'''<rdf:RDF
+        self.w(u'''<rss version="2.0"
  xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
  xmlns:dc="http://purl.org/dc/elements/1.1/"
- xmlns="http://purl.org/rss/1.0/"
 >''')
         self.w(u'  <channel rdf:about="%s">\n' % html_escape(req.url()))
         self.w(u'    <title>%s RSS Feed</title>\n' % html_escape(self.page_title()))
@@ -664,42 +687,51 @@ class RssView(XmlView):
         params = req.form.copy()
         params.pop('vid', None)
         self.w(u'    <link>%s</link>\n' % html_escape(self.build_url(**params)))
-        self.w(u'    <items>\n')
-        self.w(u'      <rdf:Seq>\n')
-        for entity in self.rset.entities():
-            self.w(u'      <rdf:li resource="%s" />\n' % html_escape(entity.absolute_url()))
-        self.w(u'      </rdf:Seq>\n')
-        self.w(u'    </items>\n')
+
+    def _close(self):
         self.w(u'  </channel>\n')
+        self.w(u'</rss>')       
+        
+    def call(self):
+        """display a list of entities by calling their <item_vid> view"""
+        self._open()
         for i in xrange(self.rset.rowcount):
             self.cell_call(i, 0)
-        self.w(u'</rdf:RDF>')
+        self._close()
 
+    def cell_call(self, row, col):
+        self.wview('rssitem', self.rset, row=row, col=col)
 
 class RssItemView(EntityView):
     id = 'rssitem'
     date_format = '%%Y-%%m-%%dT%%H:%%M%+03i:00' % (timezone / 3600)
+    add_div_section = False
 
     def cell_call(self, row, col):
         entity = self.complete_entity(row, col)
         self.w(u'<item rdf:about="%s">\n' % html_escape(entity.absolute_url()))
+        self.render_title_link(entity)
+        self._marker('description', html_escape(entity.dc_description()))
+        self._marker('dc:date', entity.dc_date(self.date_format))
+        self.render_entity_creator(entity)
+        self.w(u'</item>\n')
+
+    def render_title_link(self, entity):
         self._marker('title', entity.dc_long_title())
         self._marker('link', entity.absolute_url())
-        self._marker('description', entity.dc_description())
-        self._marker('dc:date', entity.dc_date(self.date_format))
+           
+    def render_entity_creator(self, entity):
         if entity.creator:
-            self.w(u'<author>')
-            self._marker('name', entity.creator.name())
+            self._marker('dc:creator', entity.creator.name())
             email = entity.creator.get_email()
             if email:
-                self._marker('email', email)
-            self.w(u'</author>')
-        self.w(u'</item>\n')
+                self.w(u'<author>')
+                self.w(email)
+                self.w(u'</author>')       
         
     def _marker(self, marker, value):
         if value:
             self.w(u'  <%s>%s</%s>\n' % (marker, html_escape(value), marker))
-
 
 class CSVMixIn(object):
     """mixin class for CSV views"""
@@ -740,7 +772,8 @@ class CSVRsetView(CSVMixIn, AnyRsetView):
                     content = self.view('textincontext', rset, 
                                         row=rowindex, col=colindex)
                 else:
-                    content = self.view('final', rset, displaytime=True,
+                    content = self.view('final', rset,
+                                        displaytime=True, format='text/plain',
                                         row=rowindex, col=colindex)
                 csvrow.append(content)                    
             writer.writerow(csvrow)
@@ -785,7 +818,7 @@ class SearchForAssociationView(EntityView):
     """
     id = 'search-associate'
     title = _('search for association')
-    __selectors__ = (one_line_rset, match_search_state, accept_selector)
+    __selectors__ = (one_line_rset, match_search_state, accept)
     accepts = ('Any',)
     search_states = ('linksearch',)
 
@@ -793,7 +826,7 @@ class SearchForAssociationView(EntityView):
         rset, vid, divid, paginate = self.filter_box_context_info()
         self.w(u'<div id="%s">' % divid)
         self.pagination(self.req, rset, w=self.w)
-        self.wview(vid, rset)
+        self.wview(vid, rset, 'noresult')
         self.w(u'</div>')
 
     @cached
@@ -842,7 +875,7 @@ class EditRelationView(EntityView):
     """
     id = 'editrelation'
 
-    __selectors__ = (req_form_params_selector,)
+    __selectors__ = (match_form_params,)
     form_params = ('rtype',)
     
     # TODO: inlineview, multiple edit, (widget view ?)
@@ -855,13 +888,8 @@ class EditRelationView(EntityView):
         assert rtype is not None, "rtype is mandatory for 'edirelation' view"
         targettype = self.req.form.get('targettype', targettype)
         role = self.req.form.get('role', role)
-        mode = entity.rtags.get_mode(rtype, targettype, role)
-        if mode == 'create':
-            return
         category = entity.rtags.get_category(rtype, targettype, role)
-        if category in ('generated', 'metadata'):
-            return
-        elif category in ('primary', 'secondary'):
+        if category in ('primary', 'secondary') or self.schema.rschema(rtype).is_final():
             if hasattr(entity, '%s_format' % rtype):
                 formatwdg = entity.get_widget('%s_format' % rtype, role)
                 self.w(formatwdg.edit_render(entity))
@@ -872,10 +900,8 @@ class EditRelationView(EntityView):
             self.w(u'%s %s %s' %
                    (wdg.render_error(entity), wdg.edit_render(entity),
                     wdg.render_help(entity),))
-        elif category == 'generic':
-            self._render_generic_relation(entity, rtype, role)
         else:
-            self.error("oops, wrong category %s", category)
+            self._render_generic_relation(entity, rtype, role)
 
     def _render_generic_relation(self, entity, relname, role):
         text = self.req.__('add %s %s %s' % (entity.e_schema, relname, role))
@@ -988,7 +1014,8 @@ class EntityRelationView(EntityView):
         else:
             role = 'object'
         rset = self.rset.get_entity(row, col).related(self.rtype, role)
-        self.w(u'<h1>%s</h1>' % self.req._(self.title).capitalize())
+        if self.title:
+            self.w(u'<h1>%s</h1>' % self.req._(self.title).capitalize())
         self.w(u'<div class="mainInfo">')
         self.wview(self.vid, rset, 'noresult')
         self.w(u'</div>')

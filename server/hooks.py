@@ -2,7 +2,7 @@
 entities...
 
 :organization: Logilab
-:copyright: 2001-2008 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
 """
 __docformat__ = "restructuredtext en"
@@ -62,6 +62,8 @@ def setowner_after_add_entity(session, entity):
 
 def setis_after_add_entity(session, entity):
     """create a new entity -> set is relation"""
+    if hasattr(entity, '_cw_recreating'):
+        return
     session.unsafe_execute('SET X is E WHERE X eid %(x)s, E name %(name)s',
                            {'x': entity.eid, 'name': entity.id}, 'x')
     # XXX < 2.50 bw compat

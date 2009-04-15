@@ -52,8 +52,24 @@ msgid "%(subject)s %(etype)s #%(eid)s (%(login)s)"
 msgstr "%(subject)s %(etype)s #%(eid)s (%(login)s)"
 
 #, python-format
+msgid "%d days"
+msgstr "%d jours"
+
+#, python-format
+msgid "%d hours"
+msgstr "%d heures"
+
+#, python-format
+msgid "%d minutes"
+msgstr "%d minutes"
+
+#, python-format
 msgid "%d months"
 msgstr "%d mois"
+
+#, python-format
+msgid "%d seconds"
+msgstr "%d secondes"
 
 #, python-format
 msgid "%d weeks"
@@ -64,20 +80,36 @@ msgid "%d years"
 msgstr "%d années"
 
 #, python-format
-msgid "%s days"
-msgstr "%d jours"
+msgid "%d&nbsp;days"
+msgstr "%d&nbsp;jours"
+
+#, python-format
+msgid "%d&nbsp;hours"
+msgstr "%d&nbsp;heures"
+
+#, python-format
+msgid "%d&nbsp;minutes"
+msgstr "%d&nbsp;minutes"
+
+#, python-format
+msgid "%d&nbsp;months"
+msgstr "%d&nbsp;mois"
+
+#, python-format
+msgid "%d&nbsp;seconds"
+msgstr "%d&nbsp;secondes"
+
+#, python-format
+msgid "%d&nbsp;weeks"
+msgstr "%d&nbsp;semaines"
+
+#, python-format
+msgid "%d&nbsp;years"
+msgstr "%d&nbsp;années"
 
 #, python-format
 msgid "%s error report"
 msgstr "%s rapport d'erreur"
-
-#, python-format
-msgid "%s hours"
-msgstr "%s heures"
-
-#, python-format
-msgid "%s minutes"
-msgstr "%s minutes"
 
 #, python-format
 msgid "%s not estimated"
@@ -86,10 +118,6 @@ msgstr "%s non estimé(s)"
 #, python-format
 msgid "%s results matching query"
 msgstr "%s résultats pour la requête"
-
-#, python-format
-msgid "%s seconds"
-msgstr "%s secondes"
 
 #, python-format
 msgid "%s software version of the database"
@@ -641,6 +669,12 @@ msgstr "supprimer"
 msgid "actions_delete_description"
 msgstr ""
 
+msgid "actions_download_as_owl"
+msgstr ""
+
+msgid "actions_download_as_owl_description"
+msgstr ""
+
 msgid "actions_edit"
 msgstr "modifier"
 
@@ -739,6 +773,9 @@ msgstr "activé"
 
 msgid "add"
 msgstr "ajouter"
+
+msgid "add Bookmark bookmarked_by EUser object"
+msgstr "signet"
 
 msgid "add EEType add_permission RQLExpression subject"
 msgstr "définir une expression RQL d'ajout"
@@ -887,7 +924,7 @@ msgstr ""
 "s #%(toeid)s"
 
 msgid "address"
-msgstr "adresse"
+msgstr "adresse électronique"
 
 msgid "alias"
 msgstr "alias"
@@ -1197,7 +1234,7 @@ msgid "components_rqlinput_description"
 msgstr "la barre de requête rql, dans l'en-tête de page"
 
 msgid "components_rss_feed_url"
-msgstr ""
+msgstr "syndication rss"
 
 msgid "components_rss_feed_url_description"
 msgstr ""
@@ -1361,14 +1398,17 @@ msgstr "créé par"
 msgid "created_by_object"
 msgstr "a créé"
 
+msgid "creating Bookmark (Bookmark bookmarked_by EUser %(linkto)s)"
+msgstr "création d'un signet pour %(linkto)s"
+
 msgid "creating EConstraint (EFRDef %(linkto)s constrained_by EConstraint)"
-msgstr "création contrainte pour l'attribut %(linkto)s"
+msgstr "création d'une contrainte pour l'attribut %(linkto)s"
 
 msgid "creating EConstraint (ENFRDef %(linkto)s constrained_by EConstraint)"
-msgstr "création contrainte pour la relation %(linkto)s"
+msgstr "création d'une contrainte pour la relation %(linkto)s"
 
 msgid "creating EFRDef (EFRDef relation_type ERType %(linkto)s)"
-msgstr "création attribut %(linkto)s"
+msgstr "création d'un attribut %(linkto)s"
 
 msgid "creating ENFRDef (ENFRDef relation_type ERType %(linkto)s)"
 msgstr "création relation %(linkto)s"
@@ -1457,6 +1497,10 @@ msgstr "export d'entités en CSV"
 
 msgid "csv export"
 msgstr "export CSV"
+
+#, python-format
+msgid "currently attached file: %s"
+msgstr "fichie actuellement attaché %s"
 
 msgid "data directory url"
 msgstr "url du répertoire de données"
@@ -1582,8 +1626,9 @@ msgstr "état de destination"
 msgid "destination_state_object"
 msgstr "destination de"
 
-msgid "detach attached file"
-msgstr "détacher le fichier existant"
+#, python-format
+msgid "detach attached file %s"
+msgstr "détacher le fichier existant %s"
 
 msgid "detailed schema view"
 msgstr "vue détaillée du schéma"
@@ -1618,6 +1663,9 @@ msgstr "télécharger"
 
 msgid "download icon"
 msgstr "icône de téléchargement"
+
+msgid "download schema as owl"
+msgstr ""
 
 msgid "edit bookmarks"
 msgstr "éditer les signets"
@@ -1744,11 +1792,17 @@ msgstr ""
 msgid "february"
 msgstr "février"
 
+msgid "file tree view"
+msgstr "arborescence (fichiers)"
+
 msgid "final"
 msgstr "final"
 
 msgid "firstname"
 msgstr "prénom"
+
+msgid "foaf"
+msgstr "foaf"
 
 msgid "follow"
 msgstr "suivre le lien"
@@ -2085,11 +2139,19 @@ msgstr "lié une enregistrement de transition vers l'objet associé"
 msgid "link a transition to one or more entity type"
 msgstr "lie une transition à un ou plusieurs types d'entités"
 
+msgid ""
+"link a transition to one or more rql expression allowing to go through this "
+"transition"
+msgstr ""
+
 msgid "link to each item in"
 msgstr "lier vers chaque élément dans"
 
 msgid "list"
 msgstr "liste"
+
+msgid "loading"
+msgstr "chargement"
 
 msgid "log in"
 msgstr "s'identifier"
@@ -2118,6 +2180,9 @@ msgstr "gestion du site"
 
 msgid "manage bookmarks"
 msgstr "gérer les signets"
+
+msgid "manage permissions"
+msgstr "gestion des permissions"
 
 msgid "manage security"
 msgstr "gestion de la sécurité"
@@ -2233,6 +2298,9 @@ msgstr "pas d'information de version"
 msgid "not authorized"
 msgstr "non autorisé"
 
+msgid "not selected"
+msgstr "non sélectionné"
+
 msgid "not specified"
 msgstr "non spécifié"
 
@@ -2268,6 +2336,12 @@ msgstr "ordre"
 
 msgid "ordernum"
 msgstr "ordre"
+
+msgid "owl"
+msgstr ""
+
+msgid "owlabox"
+msgstr ""
 
 msgid "owned_by"
 msgstr "appartient à"
@@ -2312,6 +2386,9 @@ msgstr "récupérer des signets existants"
 
 msgid "pkey"
 msgstr "clé"
+
+msgid "planned_delivery"
+msgstr "livraison prévue"
 
 msgid "please correct errors below"
 msgstr "veuillez corriger les erreurs ci-dessous"
@@ -2522,6 +2599,9 @@ msgstr "sélectionner une relation"
 msgid "select this entity"
 msgstr "sélectionner cette entité"
 
+msgid "selected"
+msgstr "sélectionné"
+
 msgid "semantic description of this attribute"
 msgstr "description sémantique de cet attribut"
 
@@ -2726,6 +2806,9 @@ msgstr "transition de"
 
 msgid "transition_of_object"
 msgstr "a pour transition"
+
+msgid "tree view"
+msgstr "arborescence"
 
 msgid "tuesday"
 msgstr "mardi"
@@ -2940,6 +3023,9 @@ msgstr "vous avez été déconnecté"
 #~ msgstr ""
 #~ "langue par défaut (regarder le répertoire i18n de l'application pour voir "
 #~ "les langues disponibles)"
+
+#~ msgid "detach attached file"
+#~ msgstr "détacher le fichier existant"
 
 #~ msgid "filter"
 #~ msgstr "filtrer"

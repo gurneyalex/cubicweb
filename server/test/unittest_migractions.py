@@ -6,6 +6,8 @@ from mx.DateTime import DateTime, today
 from logilab.common.testlib import TestCase, unittest_main
 from cubicweb.devtools.apptest import RepositoryBasedTC, get_versions
 
+from cubicweb.schema import CubicWebSchemaLoader
+from cubicweb.server.sqlutils import SQL_PREFIX
 from cubicweb.server.repository import Repository
 from cubicweb.server.migractions import *
 
@@ -29,7 +31,6 @@ class MigrationCommandsTC(RepositoryBasedTC):
             repo.config._cubes = None
             repo.fill_schema()
             # hack to read the schema from data/migrschema
-            from cubicweb.schema import CubicWebSchemaLoader
             CubicWebSchemaLoader.main_schema_directory = 'migrschema'
             global migrschema
             migrschema = self.repo.config.load_schema()
@@ -40,6 +41,8 @@ class MigrationCommandsTC(RepositoryBasedTC):
         self.mh = ServerMigrationHelper(self.repo.config, migrschema,
                                         repo=self.repo, cnx=self.cnx,
                                         interactive=False)
+        assert self.cnx is self.mh._cnx
+        assert self.session is self.mh.session, (self.session.id, self.mh.session.id)
         
     def test_add_attribute_int(self):
         self.failIf('whatever' in self.schema)
@@ -66,9 +69,9 @@ class MigrationCommandsTC(RepositoryBasedTC):
         self.assertEquals(self.schema['shortpara'].subjects(), ('Note', ))
         self.assertEquals(self.schema['shortpara'].objects(), ('String', ))
         # test created column is actually a varchar(64)
-        notesql = self.mh.sqlexec("SELECT sql FROM sqlite_master WHERE type='table' and name='Note'")[0][0]
+        notesql = self.mh.sqlexec("SELECT sql FROM sqlite_master WHERE type='table' and name='%sNote'" % SQL_PREFIX)[0][0]
         fields = dict(x.strip().split()[:2] for x in notesql.split('(', 1)[1].rsplit(')', 1)[0].split(','))
-        self.assertEquals(fields['shortpara'], 'varchar(64)')
+        self.assertEquals(fields['%sshortpara' % SQL_PREFIX], 'varchar(64)')
         self.mh.rollback()
         
     def test_add_datetime_with_default_value_attribute(self):
@@ -134,7 +137,7 @@ class MigrationCommandsTC(RepositoryBasedTC):
         self.assertEquals([str(rs) for rs in self.schema['Folder2'].object_relations()],
                           ['filed_under2', 'identity'])
         self.assertEquals(sorted(str(e) for e in self.schema['filed_under2'].subjects()),
-                          ['Affaire', 'Card', 'Division', 'ECache', 'Email', 'EmailThread', 'File', 
+                          ['Affaire', 'Card', 'Division', 'Email', 'EmailThread', 'File', 
                            'Folder2', 'Image', 'Note', 'Personne', 'Societe', 'SubDivision'])
         self.assertEquals(self.schema['filed_under2'].objects(), ('Folder2',))
         eschema = self.schema.eschema('Folder2')
@@ -161,7 +164,7 @@ class MigrationCommandsTC(RepositoryBasedTC):
         self.mh.cmd_add_relation_type('filed_under2')
         self.failUnless('filed_under2' in self.schema)
         self.assertEquals(sorted(str(e) for e in self.schema['filed_under2'].subjects()),
-                          ['Affaire', 'Card', 'Division', 'ECache', 'Email', 'EmailThread', 'File', 
+                          ['Affaire', 'Card', 'Division', 'Email', 'EmailThread', 'File', 
                            'Folder2', 'Image', 'Note', 'Personne', 'Societe', 'SubDivision'])
         self.assertEquals(self.schema['filed_under2'].objects(), ('Folder2',))
 
@@ -364,23 +367,36 @@ class MigrationCommandsTC(RepositoryBasedTC):
     def test_add_remove_cube(self):
         cubes = set(self.config.cubes())
         schema = self.repo.schema
+        self.assertEquals(sorted(schema['see_also']._rproperties.keys()),
+                          sorted([('EmailThread', 'EmailThread'), ('Folder', 'Folder'),
+                                  ('Bookmark', 'Bookmark'), ('Bookmark', 'Note'),
+                                  ('Note', 'Note'), ('Note', 'Bookmark')]))
         try:
-            self.mh.cmd_remove_cube('email')
-            # file was there because it's an email dependancy, should have been removed
-            cubes.remove('email')
-            cubes.remove('file')
-            self.assertEquals(set(self.config.cubes()), cubes)
-            for ertype in ('Email', 'EmailThread', 'EmailPart', 'File', 'Image', 
-                           'sender', 'in_thread', 'reply_to', 'data_format'):
-                self.failIf(ertype in schema, ertype)
-            self.assertEquals(sorted(schema['see_also']._rproperties.keys()),
-                              [('Folder', 'Folder')])
-            self.assertEquals(schema['see_also'].subjects(), ('Folder',))
-            self.assertEquals(schema['see_also'].objects(), ('Folder',))
-            self.assertEquals(self.execute('Any X WHERE X pkey "system.version.email"').rowcount, 0)
-            self.assertEquals(self.execute('Any X WHERE X pkey "system.version.file"').rowcount, 0)
-            self.failIf('email' in self.config.cubes())
-            self.failIf('file' in self.config.cubes())
+            try:
+                self.mh.cmd_remove_cube('email')
+                # file was there because it's an email dependancy, should have been removed
+                cubes.remove('email')
+                cubes.remove('file')
+                self.assertEquals(set(self.config.cubes()), cubes)
+                for ertype in ('Email', 'EmailThread', 'EmailPart', 'File', 'Image', 
+                               'sender', 'in_thread', 'reply_to', 'data_format'):
+                    self.failIf(ertype in schema, ertype)
+                self.assertEquals(sorted(schema['see_also']._rproperties.keys()),
+                                  sorted([('Folder', 'Folder'),
+                                          ('Bookmark', 'Bookmark'),
+                                          ('Bookmark', 'Note'),
+                                          ('Note', 'Note'),
+                                          ('Note', 'Bookmark')]))
+                self.assertEquals(sorted(schema['see_also'].subjects()), ['Bookmark', 'Folder', 'Note'])
+                self.assertEquals(sorted(schema['see_also'].objects()), ['Bookmark', 'Folder', 'Note'])
+                self.assertEquals(self.execute('Any X WHERE X pkey "system.version.email"').rowcount, 0)
+                self.assertEquals(self.execute('Any X WHERE X pkey "system.version.file"').rowcount, 0)
+                self.failIf('email' in self.config.cubes())
+                self.failIf('file' in self.config.cubes())
+            except :
+                import traceback
+                traceback.print_exc()
+                raise
         finally:
             self.mh.cmd_add_cube('email')
             cubes.add('email')
@@ -390,9 +406,13 @@ class MigrationCommandsTC(RepositoryBasedTC):
                            'sender', 'in_thread', 'reply_to', 'data_format'):
                 self.failUnless(ertype in schema, ertype)
             self.assertEquals(sorted(schema['see_also']._rproperties.keys()),
-                              [('EmailThread', 'EmailThread'), ('Folder', 'Folder')])
-            self.assertEquals(sorted(schema['see_also'].subjects()), ['EmailThread', 'Folder'])
-            self.assertEquals(sorted(schema['see_also'].objects()), ['EmailThread', 'Folder'])
+                              sorted([('EmailThread', 'EmailThread'), ('Folder', 'Folder'),
+                                      ('Bookmark', 'Bookmark'),
+                                      ('Bookmark', 'Note'),
+                                      ('Note', 'Note'),
+                                      ('Note', 'Bookmark')]))
+            self.assertEquals(sorted(schema['see_also'].subjects()), ['Bookmark', 'EmailThread', 'Folder', 'Note'])
+            self.assertEquals(sorted(schema['see_also'].objects()), ['Bookmark', 'EmailThread', 'Folder', 'Note'])
             from cubes.email.__pkginfo__ import version as email_version
             from cubes.file.__pkginfo__ import version as file_version
             self.assertEquals(self.execute('Any V WHERE X value V, X pkey "system.version.email"')[0][0],
@@ -407,6 +427,16 @@ class MigrationCommandsTC(RepositoryBasedTC):
             # why this commit is necessary is unclear to me (though without it
             # next test may fail complaining of missing tables
             self.commit() 
+
+    def test_set_state(self):
+        user = self.session.user
+        self.set_debug(True)
+        self.mh.set_state(user.eid, 'deactivated')
+        user.clear_related_cache('in_state', 'subject')
+        try:
+            self.assertEquals(user.state, 'deactivated')
+        finally:
+            self.set_debug(False)
         
 if __name__ == '__main__':
     unittest_main()

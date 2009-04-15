@@ -2,7 +2,7 @@
 
 
 :organization: Logilab
-:copyright: 2001-2008 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
 """
 __docformat__ = "restructuredtext en"
@@ -145,7 +145,6 @@ class TreeMixIn(object):
         return self.iterchildren()
 
     def is_leaf(self):
-        print '*' * 80
         return len(self.children()) == 0
 
     def is_root(self):
@@ -165,21 +164,25 @@ class WorkflowableMixIn(object):
     
     @property
     def state(self):
-        return self.in_state[0].name
+        try:
+            return self.in_state[0].name
+        except IndexError:
+            self.warning('entity %s has no state', self)
+            return None
     
     @property
     def displayable_state(self):
         return self.req._(self.state)
 
     def wf_state(self, statename):
-        rset = self.req.execute('Any S, SN WHERE S name %(n)s, S state_of E, E name %(e)s',
+        rset = self.req.execute('Any S, SN WHERE S name SN, S name %(n)s, S state_of E, E name %(e)s',
                                 {'n': statename, 'e': str(self.e_schema)})
         if rset:
             return rset.get_entity(0, 0)
         return None
     
     def wf_transition(self, trname):
-        rset = self.req.execute('Any T, TN WHERE T name %(n)s, T transition_of E, E name %(e)s',
+        rset = self.req.execute('Any T, TN WHERE T name TN, T name %(n)s, T transition_of E, E name %(e)s',
                                 {'n': trname, 'e': str(self.e_schema)})
         if rset:
             return rset.get_entity(0, 0)
@@ -189,6 +192,7 @@ class WorkflowableMixIn(object):
         """change the entity's state according to a state defined in given
         parameters
         """
+        assert not isinstance(stateeid, basestring), 'change_state wants a state eid'
         if trcomment:
             self.req.set_shared_data('trcomment', trcomment)
         if trcommentformat:
@@ -366,22 +370,18 @@ class ProgressMixIn(object):
     """provide default implementations for IProgress interface methods"""
 
     @property
-    @cached
     def cost(self):
         return self.progress_info()['estimated']
 
     @property
-    @cached
     def revised_cost(self):
         return self.progress_info().get('estimatedcorrected', self.cost)
 
     @property
-    @cached
     def done(self):
         return self.progress_info()['done']
 
     @property
-    @cached
     def todo(self):
         return self.progress_info()['todo']
 
@@ -400,6 +400,6 @@ class ProgressMixIn(object):
             return 100. * self.done / self.revised_cost
         except ZeroDivisionError:
             # total cost is 0 : if everything was estimated, task is completed
-            if self.progress_info().get('notestmiated'):
+            if self.progress_info().get('notestimated'):
                 return 0.
             return 100

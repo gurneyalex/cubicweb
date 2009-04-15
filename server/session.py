@@ -1,7 +1,7 @@
 """Repository users' and internal' sessions.
 
 :organization: Logilab
-:copyright: 2001-2008 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
 """
 __docformat__ = "restructuredtext en"
@@ -21,6 +21,18 @@ from cubicweb.dbapi import ConnectionProperties
 from cubicweb.common.utils import make_uid
 from cubicweb.server.rqlrewrite import RQLRewriter
 
+_ETYPE_PYOBJ_MAP = { bool: 'Boolean',
+                     int: 'Int',
+                     long: 'Int',
+                     float: 'Float',
+                     Decimal: 'Decimal',
+                     unicode: 'String',
+                     NoneType: None,
+                     Binary: 'Bytes',
+                     DateTimeType: 'Datetime',
+                     DateTimeDeltaType: 'Interval',
+                     }
+
 def etype_from_pyobj(value):
     """guess yams type from python value"""
     # note:
@@ -28,17 +40,7 @@ def etype_from_pyobj(value):
     # * use type(value) and not value.__class__ since mx instances have no
     #   __class__ attribute
     # * XXX Date, Time
-    return {bool: 'Boolean',
-            int: 'Int',
-            long: 'Int',
-            float: 'Float',
-            Decimal: 'Decimal',
-            unicode: 'String',
-            NoneType: None,
-            Binary: 'Bytes',
-            DateTimeType: 'Datetime',
-            DateTimeDeltaType: 'Interval',
-            }[type(value)]
+    return _ETYPE_PYOBJ_MAP[type(value)]
 
 def is_final(rqlst, variable, args):
     # try to find if this is a final var or not
@@ -58,35 +60,8 @@ def _make_description(selected, args, solution):
         description.append(term.get_type(solution, args))
     return description
 
-#XXX rql <= 0.18.3 bw compat
 from rql import stmts
-if not hasattr(stmts.Union, 'get_variable_variables'):
-    def _union_get_variable_variables(self):
-        """return the set of variable names which take different type according to
-        the solution
-        """
-        change = set()
-        values = {}
-        for select in self.children:
-            change.update(select.get_variable_variables(values))
-        return change
-    stmts.Union.get_variable_variables = _union_get_variable_variables
-                        
-    def _select_get_variable_variables(self, _values=None):
-        """return the set of variable names which take different type according to
-        the solution
-        """
-        change = set()
-        if _values is None:
-            _values = {}
-        for solution in self.solutions:
-            for vname, etype in solution.iteritems():
-                if not vname in _values:
-                    _values[vname] = etype
-                elif _values[vname] != etype:
-                    change.add(vname)
-        return change
-    stmts.Select.get_variable_variables = _select_get_variable_variables
+assert hasattr(stmts.Union, 'get_variable_variables'), "You need RQL > 0.18.3"
 
 class Session(RequestSessionMixIn):
     """tie session id, user, connections pool and other session data all
@@ -469,10 +444,14 @@ class Session(RequestSessionMixIn):
                     # None value inserted by an outer join, no type
                     row_descr[index] = None
                     continue
-                if isfinal:
-                    row_descr[index] = etype_from_pyobj(value)
-                else:
-                    row_descr[index] = etype_from_eid(value)[0]
+                try:
+                    if isfinal:
+                        row_descr[index] = etype_from_pyobj(value)
+                    else:
+                        row_descr[index] = etype_from_eid(value)[0]
+                except UnknownEid:
+                    self.critical('wrong eid in repository, should check database')
+                    row_descr[index] = row[index] = None
             description.append(tuple(row_descr))
         return description
 

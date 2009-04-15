@@ -11,7 +11,7 @@ repository mainly:
 
 
 :organization: Logilab
-:copyright: 2001-2008 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
 """
 __docformat__ = "restructuredtext en"
@@ -144,6 +144,8 @@ class Repository(object):
         self.schema = CubicWebSchema(config.appid)
         # querier helper, need to be created after sources initialization
         self.querier = QuerierHelper(self, self.schema)
+        # should we reindex in changes?
+        self.do_fti = not config['delay-full-text-indexation']
         # sources
         self.sources = []
         self.sources_by_uri = {}
@@ -211,7 +213,7 @@ class Repository(object):
         self._get_pool().close(True) 
         for i in xrange(config['connections-pool-size']):
             self._available_pools.put_nowait(ConnectionsPool(self.sources))
-     
+        
     # internals ###############################################################
 
     def get_source(self, uri, source_config):
@@ -490,7 +492,7 @@ class Repository(object):
         session = self.internal_session()
         try:
             if session.execute('EUser X WHERE X login %(login)s', {'login': login}):
-                return
+                return False
             # we have to create the user
             user = self.vreg.etype_class('EUser')(session, None)
             if isinstance(password, unicode):
@@ -505,6 +507,7 @@ class Repository(object):
             session.commit()
         finally:
             session.close()
+        return True
         
     def connect(self, login, password, cnxprops=None):
         """open a connection for a given user
@@ -767,7 +770,8 @@ class Repository(object):
             raise UnknownEid(eid)
         return extid
 
-    def extid2eid(self, source, lid, etype, session=None, insert=True):
+    def extid2eid(self, source, lid, etype, session=None, insert=True,
+                  recreate=False):
         """get eid from a local id. An eid is attributed if no record is found"""
         cachekey = (str(lid), source.uri)
         try:
@@ -782,6 +786,15 @@ class Repository(object):
         if eid is not None:
             self._extid_cache[cachekey] = eid
             self._type_source_cache[eid] = (etype, source.uri, lid)
+            if recreate:
+                entity = source.before_entity_insertion(session, lid, etype, eid)
+                entity._cw_recreating = True
+                if source.should_call_hooks:
+                    self.hm.call_hooks('before_add_entity', etype, session, entity)
+                # XXX add fti op ?
+                source.after_entity_insertion(session, lid, entity)
+                if source.should_call_hooks:
+                    self.hm.call_hooks('after_add_entity', etype, session, entity)
             if reset_pool:
                 session.reset_pool()
             return eid
@@ -791,7 +804,7 @@ class Repository(object):
         # since the current session user may not have required permissions to
         # do necessary stuff and we don't want to commit user session.
         #
-        # More other, even if session is already an internal session but is
+        # Moreover, even if session is already an internal session but is
         # processing a commit, we have to use another one
         if not session.is_internal_session:
             session = self.internal_session()
@@ -803,6 +816,7 @@ class Repository(object):
             entity = source.before_entity_insertion(session, lid, etype, eid)
             if source.should_call_hooks:
                 self.hm.call_hooks('before_add_entity', etype, session, entity)
+            # XXX call add_info with complete=False ?
             self.add_info(session, entity, source, lid)
             source.after_entity_insertion(session, lid, entity)
             if source.should_call_hooks:
@@ -827,7 +841,8 @@ class Repository(object):
             entity.complete(entity.e_schema.indexable_attributes())
         session.add_query_data('neweids', entity.eid)
         # now we can update the full text index
-        FTIndexEntityOp(session, entity=entity)
+        if self.do_fti:
+            FTIndexEntityOp(session, entity=entity)
         CleanupEidTypeCacheOp(session)
         
     def delete_info(self, session, eid):
@@ -895,11 +910,6 @@ class Repository(object):
         else:
             source = subjsource
         return source
-    
-    @cached
-    def rel_type_sources(self, rtype):
-        return [source for source in self.sources
-                if source.support_relation(rtype) or rtype in source.dont_cross_relations]
     
     def locate_etype_source(self, etype):
         for source in self.sources:
@@ -993,7 +1003,7 @@ class Repository(object):
                                     entity)
         source.update_entity(session, entity)
         if not only_inline_rels:
-            if need_fti_update:
+            if need_fti_update and self.do_fti:
                 # reindex the entity only if this query is updating at least
                 # one indexable attribute
                 FTIndexEntityOp(session, entity=entity)
@@ -1094,6 +1104,26 @@ class Repository(object):
                 pass
         return nameserver
 
+    # multi-sources planner helpers ###########################################
+    
+    @cached
+    def rel_type_sources(self, rtype):
+        return [source for source in self.sources
+                if source.support_relation(rtype)
+                or rtype in source.dont_cross_relations]
+    
+    @cached
+    def can_cross_relation(self, rtype):
+        return [source for source in self.sources
+                if source.support_relation(rtype)
+                and rtype in source.cross_relations]
+    
+    @cached
+    def is_multi_sources_relation(self, rtype):
+        return any(source for source in self.sources
+                   if not source is self.system_source
+                   and source.support_relation(rtype))
+    
 
 def pyro_unregister(config):
     """unregister the repository from the pyro name server"""

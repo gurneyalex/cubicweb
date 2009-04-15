@@ -6,11 +6,12 @@
 """
 __docformat__ = "restructuredtext en"
 
-from cubicweb import UnknownEid
-from cubicweb.common.selectors import *
+from cubicweb.common.selectors import (searchstate_accept, match_user_group, yes,
+                                       one_line_rset, two_lines_rset, one_etype_rset,
+                                       authenticated_user, none_rset,
+                                       match_search_state, chainfirst, chainall)
 
-from cubicweb.web.action import (Action, EntityAction,  LinkToEntityAction,
-                              LinkToEntityAction2)
+from cubicweb.web.action import Action, EntityAction,  LinkToEntityAction
 from cubicweb.web.views import linksearch_select_url, linksearch_match
 from cubicweb.web.views.baseviews import vid_from_rset
 
@@ -55,7 +56,7 @@ class CancelSelectAction(Action):
 
 class ViewAction(Action):
     category = 'mainactions'    
-    __selectors__ = (in_group_selector, searchstate_accept)
+    __selectors__ = (match_user_group, searchstate_accept)
     require_groups = ('users', 'managers')
     order = 0
     
@@ -81,7 +82,6 @@ class ViewAction(Action):
 class ModifyAction(EntityAction):
     category = 'mainactions'
     __selectors__ = (one_line_rset, searchstate_accept)
-    #__selectors__ = searchstate_accept,
     schema_action = 'update'
     order = 10
     
@@ -110,7 +110,7 @@ class ModifyAction(EntityAction):
 
 class MultipleEditAction(EntityAction):
     category = 'mainactions'
-    __selectors__ = (two_lines_rset, oneetyperset_selector,
+    __selectors__ = (two_lines_rset, one_etype_rset,
                      searchstate_accept)
     schema_action = 'update'
     order = 10
@@ -198,7 +198,7 @@ class AddNewAction(MultipleEditAction):
         return 0
     __selectors__ = (match_search_state,
                      chainfirst(etype_rset_selector,
-                                chainall(two_lines_rset, oneetyperset_selector,
+                                chainall(two_lines_rset, one_etype_rset,
                                          has_add_perm_selector)))
 
     @property
@@ -219,7 +219,7 @@ class AddNewAction(MultipleEditAction):
 
 class UserPreferencesAction(Action):
     category = 'useractions'
-    __selectors__ = not_anonymous_selector,
+    __selectors__ = authenticated_user,
     order = 10
     
     id = 'myprefs'
@@ -231,7 +231,7 @@ class UserPreferencesAction(Action):
 
 class UserInfoAction(Action):
     category = 'useractions'
-    __selectors__ = not_anonymous_selector,
+    __selectors__ = authenticated_user,
     order = 20
     
     id = 'myinfos'
@@ -243,7 +243,7 @@ class UserInfoAction(Action):
 
 class LogoutAction(Action):
     category = 'useractions'
-    __selectors__ = not_anonymous_selector,
+    __selectors__ = authenticated_user,
     order = 30
     
     id = 'logout'
@@ -258,7 +258,7 @@ class LogoutAction(Action):
 class ManagersAction(Action):
     category = 'siteactions'
     __abstract__ = True
-    __selectors__ = in_group_selector,
+    __selectors__ = match_user_group,
     require_groups = ('managers',)
 
     def url(self):
@@ -301,7 +301,7 @@ class FollowAction(EntityAction):
         return self.rset.get_entity(self.row or 0, self.col or 0).actual_url()
 
 class UserPreferencesEntityAction(EntityAction):
-    __selectors__ = EntityAction.__selectors__ + (one_line_rset, in_group_selector,)
+    __selectors__ = EntityAction.__selectors__ + (one_line_rset, match_user_group,)
     require_groups = ('owners', 'managers')
     category = 'mainactions'
     accepts = ('EUser',)
@@ -312,4 +312,20 @@ class UserPreferencesEntityAction(EntityAction):
     def url(self):
         login = self.rset.get_entity(self.row or 0, self.col or 0).login
         return self.build_url('euser/%s'%login, vid='epropertiesform')
+
+# schema view action
+def schema_view(cls, req, rset, row=None, col=None, view=None,
+                **kwargs):
+    if view is None or not view.id == 'schema':
+        return 0
+    return 1
+
+class DownloadOWLSchemaAction(Action):
+    category = 'mainactions'
+    id = 'download_as_owl'
+    title = _('download schema as owl')
+    __selectors__ = none_rset, schema_view
+   
+    def url(self):
+        return self.build_url('view', vid='owl')
 

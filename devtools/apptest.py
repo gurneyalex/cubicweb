@@ -407,6 +407,7 @@ class RepositoryBasedTC(TestCase):
         self.__close(self.cnxid)
 
     # other utilities #########################################################
+    
     def set_debug(self, debugmode):
         from cubicweb.server import set_debug
         set_debug(debugmode)
@@ -452,7 +453,7 @@ class RepositoryBasedTC(TestCase):
         self.__commit = repo.commit
         self.__rollback = repo.rollback
         self.__close = repo.close
-        self.cnxid = repo.connect(*self.default_user_password())
+        self.cnxid = self.cnx.sessionid
         self.session = repo._sessions[self.cnxid]
         # XXX copy schema since hooks may alter it and it may be not fully
         #     cleaned (missing some schema synchronization support)
@@ -499,6 +500,6 @@ class RepositoryBasedTC(TestCase):
         self.rollback()
         self.session.unsafe_execute('DELETE Any X WHERE X eid > %(x)s', {'x': self.maxeid})
         self.commit()
-        if close:
-            self.close()
+        #if close:
+        #    self.close()
     
