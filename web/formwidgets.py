@@ -203,19 +203,19 @@ class Radio(Input):
     input will be generated for each possible value.
     """ 
     type = 'radio'
-    setdomid = False # by default, don't set id attribute on radio input
     
     def render(self, form, field):
         name, curvalues, attrs = self._render_attrs(form, field)
+        domid = attrs.pop('id', None)
         options = []
-        for label, value in field.vocabulary(form):
+        for i, (label, value) in enumerate(field.vocabulary(form)):
+            iattrs = attrs.copy()
+            if i == 0 and domid is not None:
+                iattrs['id'] = domid
             if value in curvalues:
-                tag = tags.input(name=name, type=self.type, value=value,
-                                 checked='checked', **attrs)
-            else:
-                tag = tags.input(name=name, type=self.type, value=value, **attrs)
-            tag += label + '<br/>'
-            options.append(tag)
+                iattrs['checked'] = u'checked'
+            tag = tags.input(name=name, type=self.type, value=value, **iattrs)
+            options.append(tag + label + '<br/>')
         return '\n'.join(options)
 
 
@@ -269,11 +269,11 @@ class DateTimePicker(TextInput):
 
 def init_ajax_attributes(attrs, wdgtype, loadtype=u'auto'):
     try:
-        attrs[u'klass'] += u' widget'
+        attrs['klass'] += u' widget'
     except KeyError:
-        attrs[u'klass'] = u'widget'
-    attrs.setdefault(u'cubicweb:wdgtype', wdgtype)
-    attrs.setdefault(u'cubicweb:loadtype', loadtype)
+        attrs['klass'] = u'widget'
+    attrs.setdefault('cubicweb:wdgtype', wdgtype)
+    attrs.setdefault('cubicweb:loadtype', loadtype)
 
 
 class AjaxWidget(FieldWidget):
@@ -282,7 +282,7 @@ class AjaxWidget(FieldWidget):
         super(AjaxWidget, self).__init__(**kwargs)
         init_ajax_attributes(self.attrs, wdgtype)
         if inputid is not None:
-            self.attrs[u'cubicweb:inputid'] = inputid
+            self.attrs['cubicweb:inputid'] = inputid
             
     def render(self, form, field):
         self.add_media(form)
@@ -342,7 +342,7 @@ class AddComboBoxWidget(Select):
   <input type="text" id="newopt" />
   <a href="javascript:noop()" id="add_newopt">&nbsp;</a></div>
 '''
-        
+
 # buttons ######################################################################
 
 class Button(Input):

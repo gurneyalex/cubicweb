@@ -278,9 +278,8 @@ class Entity(AppRsetObject, dict):
         return selection, orderby, restrictions
 
     def __init__(self, req, rset, row=None, col=0):
-        AppRsetObject.__init__(self, req, rset)
+        AppRsetObject.__init__(self, req, rset, row, col)
         dict.__init__(self)
-        self.row, self.col = row, col
         self._related_cache = {}
         if rset is not None:
             self.eid = rset[row][col]
@@ -398,7 +397,7 @@ class Entity(AppRsetObject, dict):
             needcheck = False
         return mainattr, needcheck
 
-    def attribute_metadata(self, attr, metadata):
+    def attr_metadata(self, attr, metadata):
         """return a metadata for an attribute (None if unspecified)"""
         value = getattr(self, '%s_%s' % (attr, metadata), None)
         if value is None and metadata == 'encoding':
@@ -425,14 +424,14 @@ class Entity(AppRsetObject, dict):
             # description...
             if props.get('internationalizable'):
                 value = self.req._(value)
-            attrformat = self.attribute_metadata(attr, 'format')
+            attrformat = self.attr_metadata(attr, 'format')
             if attrformat:
                 return self.mtc_transform(value, attrformat, format,
                                           self.req.encoding)
         elif attrtype == 'Bytes':
-            attrformat = self.attribute_metadata(attr, 'format')
+            attrformat = self.attr_metadata(attr, 'format')
             if attrformat:
-                encoding = self.attribute_metadata(attr, 'encoding')
+                encoding = self.attr_metadata(attr, 'encoding')
                 return self.mtc_transform(value.getvalue(), attrformat, format,
                                           encoding)
             return u''
