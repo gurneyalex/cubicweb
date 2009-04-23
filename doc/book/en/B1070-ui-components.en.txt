@@ -1,0 +1,14 @@
+Others web interface components
+===============================
+
+Actions
+-------
+XXXFILLME
+
+Component, VComponent
+---------------------
+XXXFILLME
+
+EProperty
+---------
+XXXFILLME
