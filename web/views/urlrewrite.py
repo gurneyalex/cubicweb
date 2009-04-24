@@ -7,7 +7,6 @@
 import re
 
 from cubicweb.appobject import AppObject
-from cubicweb.common.registerers import accepts_registerer
 
 
 def rgx(pattern, flags=0):
@@ -53,7 +52,6 @@ class URLRewriter(AppObject):
     """
     __metaclass__ = metarewriter
     __registry__ = 'urlrewriting'
-    __registerer__ = accepts_registerer
     __abstract__ = True
 
     id = 'urlrewriting'
@@ -80,14 +78,14 @@ class SimpleReqRewriter(URLRewriter):
         ('/manage', dict(vid='manage')),
         ('/notfound', dict(vid='404')),
         ('/error', dict(vid='error')),
-        (rgx('/schema/([^/]+?)/?'),  dict(vid='eschema', rql=r'Any X WHERE X is EEType, X name "\1"')),
+        (rgx('/schema/([^/]+?)/?'),  dict(vid='eschema', rql=r'Any X WHERE X is CWEType, X name "\1"')),
         (rgx('/add/([^/]+?)/?'), dict(vid='creation', etype=r'\1')),
         (rgx('/doc/images/(.+?)/?'), dict(vid='wdocimages', fid=r'\1')),
         (rgx('/doc/?'), dict(vid='wdoc', fid=r'main')),
         (rgx('/doc/(.+?)/?'), dict(vid='wdoc', fid=r'\1')),
         (rgx('/changelog/?'), dict(vid='changelog')),
         ]
-    
+
     def rewrite(self, req, uri):
         """for each `input`, `output `in rules, if `uri` matches `input`,
         req's form is updated with `output`
@@ -181,7 +179,7 @@ class SchemaBasedRewriter(URLRewriter):
     rules = [
         # rgxp : callback
         (rgx('/search/(.+)'), build_rset(rql=r'Any X WHERE X has_text %(text)s',
-                                         rgxgroups=[('text', 1)])), 
+                                         rgxgroups=[('text', 1)])),
         ]
 
     def rewrite(self, req, uri):

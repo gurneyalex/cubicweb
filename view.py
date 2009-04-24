@@ -17,8 +17,6 @@ from cubicweb.selectors import yes, non_final_entity, nonempty_rset, none_rset
 from cubicweb.selectors import require_group_compat, accepts_compat
 from cubicweb.appobject import AppRsetObject
 from cubicweb.utils import UStringIO, HTMLStream
-from cubicweb.vregistry import yes_registerer
-from cubicweb.common.registerers import accepts_registerer, priority_registerer, yes_registerer
 
 _ = unicode
 
@@ -66,9 +64,10 @@ CW_XHTML_EXTENSIONS = '''[
  cubicweb:facetName         CDATA   #IMPLIED
   "> ] '''
 
-TRANSITIONAL_DOCTYPE = u'<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd" %s>\n'
-
-STRICT_DOCTYPE = u'<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd" %s>\n'
+TRANSITIONAL_DOCTYPE = u'<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd" %s>\n' % CW_XHTML_EXTENSIONS
+TRANSITIONAL_DOCTYPE_NOEXT = u'<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">\n'
+STRICT_DOCTYPE = u'<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd" %s>\n' % CW_XHTML_EXTENSIONS
+STRICT_DOCTYPE_NOEXT = u'<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">\n'
 
 # base view object ############################################################
 
@@ -92,7 +91,6 @@ class View(AppRsetObject):
     time to a write function to use.
     """
     __registry__ = 'views'
-    __registerer__ = priority_registerer
     registered = require_group_compat(AppRsetObject.registered)
 
     templatable = True
@@ -108,9 +106,7 @@ class View(AppRsetObject):
 
     @property
     def content_type(self):
-        if self.req.xhtml_browser():
-            return 'application/xhtml+xml'
-        return 'text/html'
+        return self.req.html_content_type()
 
     def set_stream(self, w=None):
         if self.w is not None:
@@ -206,12 +202,12 @@ class View(AppRsetObject):
         self.req.set_content_type(self.content_type)
 
     # view utilities ##########################################################
-    
+
     def wview(self, __vid, rset, __fallback_vid=None, **kwargs):
         """shortcut to self.view method automatically passing self.w as argument
         """
         self.view(__vid, rset, __fallback_vid, w=self.w, **kwargs)
-        
+
     # XXX Template bw compat
     template = obsolete('.template is deprecated, use .view')(wview)
 
@@ -307,21 +303,20 @@ class View(AppRsetObject):
         w(u'<div class="field">%s</div>' % value)
         if row:
             w(u'</div>')
-            
+
     def initialize_varmaker(self):
         varmaker = self.req.get_page_data('rql_varmaker')
         if varmaker is None:
             varmaker = self.req.varmaker
             self.req.set_page_data('rql_varmaker', varmaker)
         self.varmaker = varmaker
-        
+
 
 
 # concrete views base classes #################################################
 
 class EntityView(View):
     """base class for views applying on an entity (i.e. uniform result set)"""
-    __registerer__ = accepts_registerer
     __select__ = non_final_entity()
     registered = accepts_compat(View.registered)
 
@@ -332,12 +327,11 @@ class StartupView(View):
     """base class for views which doesn't need a particular result set to be
     displayed (so they can always be displayed !)
     """
-    __registerer__ = priority_registerer
     __select__ = none_rset()
     registered = require_group_compat(View.registered)
-    
+
     category = 'startupview'
-    
+
     def url(self):
         """return the url associated with this view. We can omit rql here"""
         return self.build_url('view', vid=self.id)
@@ -411,7 +405,7 @@ class AnyRsetView(View):
             labels.append(label)
         return labels
 
-    
+
 # concrete template base classes ##############################################
 
 class MainTemplate(View):
@@ -419,26 +413,20 @@ class MainTemplate(View):
     There is usually at least a regular main template and a simple fallback
     one to display error if the first one failed
     """
-    base_doctype = STRICT_DOCTYPE
     registered = require_group_compat(View.registered)
 
     @property
     def doctype(self):
         if self.req.xhtml_browser():
-            return self.base_doctype % CW_XHTML_EXTENSIONS
-        return self.base_doctype % ''
+            return STRICT_DOCTYPE
+        return STRICT_DOCTYPE_NOEXT
 
-    def set_stream(self, w=None, templatable=True):
-        if templatable and self.w is not None:
+    def set_stream(self, w=None):
+        if self.w is not None:
             return
-
         if w is None:
             if self.binary:
                 self._stream = stream = StringIO()
-            elif not templatable:
-                # not templatable means we're using a non-html view, we don't
-                # want the HTMLStream stuff to interfere during data generation
-                self._stream = stream = UStringIO()
             else:
                 self._stream = stream = HTMLStream(self.req)
             w = stream.write
@@ -455,12 +443,12 @@ class MainTemplate(View):
 
     def linkable(self):
         return False
-    
+
 # concrete component base classes #############################################
 
 class ReloadableMixIn(object):
     """simple mixin for reloadable parts of UI"""
-    
+
     def user_callback(self, cb, args, msg=None, nonify=False):
         """register the given user callback and return an url to call it ready to be
         inserted in html
@@ -472,17 +460,17 @@ class ReloadableMixIn(object):
                 _cb(*args)
         cbname = self.req.register_onetime_callback(cb, *args)
         return self.build_js(cbname, html_escape(msg or ''))
-        
+
     def build_update_js_call(self, cbname, msg):
         rql = html_escape(self.rset.printable_rql())
         return "javascript:userCallbackThenUpdateUI('%s', '%s', '%s', '%s', '%s', '%s')" % (
             cbname, self.id, rql, msg, self.__registry__, self.div_id())
-    
+
     def build_reload_js_call(self, cbname, msg):
         return "javascript:userCallbackThenReloadPage('%s', '%s')" % (cbname, msg)
 
     build_js = build_update_js_call # expect updatable component by default
-    
+
     def div_id(self):
         return ''
 
@@ -490,12 +478,11 @@ class ReloadableMixIn(object):
 class Component(ReloadableMixIn, View):
     """base class for components"""
     __registry__ = 'components'
-    __registerer__ = yes_registerer
     __select__ = yes()
     property_defs = {
         _('visible'):  dict(type='Boolean', default=True,
                             help=_('display the component or not')),
-        }    
+        }
 
     def div_class(self):
         return '%s %s' % (self.propval('htmlclass'), self.id)

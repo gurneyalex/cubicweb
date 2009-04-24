@@ -30,7 +30,7 @@ Configuring the Web server
 
 :`main.anonymous-user`, `main.anonymous-password`:
     login and password to use to connect to the RQL server with
-    HTTP anonymous connection. EUser account should exist.
+    HTTP anonymous connection. CWUser account should exist.
 
 :`main.base-url`:
     url base site to be used to generate the urls of web pages
@@ -49,7 +49,7 @@ of configuration file.
    takes to the http:::
 
      RewriteCond %(REQUEST_URI) ^/demo
-     RewriteRule ^/demo$/demo/
+     RewriteRule ^/demo$ /demo/
      RewriteRule ^/demo/(.*) http://127.0.0.1:8080/$1 [L,P]
   
    and for the https:::
@@ -146,7 +146,7 @@ Configuring logging
 
 Configuring Eproperties
 -----------------------
-Other configuration settings are in the form of entities `EProperty`
+Other configuration settings are in the form of entities `CWProperty`
 in the database. It must be edited via the web interface or by
 RQL queries.
 

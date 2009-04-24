@@ -25,7 +25,7 @@ class AnyEntity(Entity):
     """
     id = 'Any'                    
     __implements__ = (IBreadCrumbs, IFeed)
-    
+
     @classmethod
     def selected(cls, etype):
         """the special Any entity is used as the default factory, so
@@ -124,7 +124,7 @@ class AnyEntity(Entity):
         
     @property
     def creator(self):
-        """return the EUser entity which has created this entity, or None if
+        """return the CWUser entity which has created this entity, or None if
         unknown or if the curent user doesn't has access to this euser
         """
         try:

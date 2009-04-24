@@ -3,14 +3,14 @@
 
 SQL queries optimization
 ~~~~~~~~~~~~~~~~~~~~~~~~
-1. EUser X WHERE X in_group G, G name 'users':
+1. CWUser X WHERE X in_group G, G name 'users':
 
-   EUser is the only subject entity type for the in_group relation,
+   CWUser is the only subject entity type for the in_group relation,
    which allow us to do ::
 
-     SELECT eid_from FROM in_group, EGroup
-     WHERE in_group.eid_to = EGroup.eid_from
-     AND EGroup.name = 'users'
+     SELECT eid_from FROM in_group, CWGroup
+     WHERE in_group.eid_to = CWGroup.eid_from
+     AND CWGroup.name = 'users'
 
 
 2. Any X WHERE X nonfinal1 Y, Y nonfinal2 Z
@@ -935,9 +935,9 @@ class SQLGenerator(object):
     def visit_function(self, func, contextrels=None):
         """generate SQL name for a function"""
         # function_description will check function is supported by the backend
-        self.dbms_helper.function_description(func.name) 
-        return '%s(%s)' % (func.name, ', '.join(c.accept(self, contextrels)
-                                                for c in func.children))
+        sqlname = self.dbms_helper.func_sqlname(func.name) 
+        return '%s(%s)' % (sqlname, ', '.join(c.accept(self, contextrels)
+                                              for c in func.children))
 
     def visit_constant(self, constant, contextrels=None):
         """generate SQL name for a constant"""

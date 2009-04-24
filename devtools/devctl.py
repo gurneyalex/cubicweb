@@ -9,7 +9,7 @@ __docformat__ = "restructuredtext en"
 
 import sys
 from datetime import datetime
-from os import mkdir, chdir, listdir
+from os import mkdir, chdir
 from os.path import join, exists, abspath, basename, normpath, split, isdir
 
 
@@ -40,7 +40,7 @@ class DevCubeConfiguration(ServerConfiguration, WebConfiguration):
 
     def my_cubes(self, cube):
         return (cube,) + self.cube_dependencies(cube) + self.cube_recommends(cube)
-    
+
     @property
     def apphome(self):
         return None
@@ -77,7 +77,7 @@ def cleanup_sys_modules(config):
             if mod.__file__.startswith(path):
                 del sys.modules[name]
                 break
-    
+
 def generate_schema_pot(w, cubedir=None):
     """generate a pot file with schema specific i18n messages
 
@@ -86,29 +86,31 @@ def generate_schema_pot(w, cubedir=None):
     """
     from cubicweb.cwvreg import CubicWebRegistry
     cube = cubedir and split(cubedir)[-1]
-    config = DevDepConfiguration(cube)
-    cleanup_sys_modules(config)
+    libconfig = DevDepConfiguration(cube)
+    libconfig.cleanup_interface_sobjects = False
+    cleanup_sys_modules(libconfig)
     if cubedir:
-        libschema = config.load_schema()
         config = DevCubeConfiguration(cube)
         schema = config.load_schema()
     else:
         schema = config.load_schema()
-        libschema = None
-        config.cleanup_interface_sobjects = False
+        config = libconfig
+        libconfig = None
     vreg = CubicWebRegistry(config)
     # set_schema triggers objects registrations
     vreg.set_schema(schema)
     w(DEFAULT_POT_HEAD)
-    _generate_schema_pot(w, vreg, schema, libschema=libschema, cube=cube)
-                
-def _generate_schema_pot(w, vreg, schema, libschema=None, cube=None):
+    _generate_schema_pot(w, vreg, schema, libconfig=libconfig, cube=cube)
+
+
+def _generate_schema_pot(w, vreg, schema, libconfig=None, cube=None):
     from cubicweb.common.i18n import add_msg
     w('# schema pot file, generated on %s\n' % datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
     w('# \n')
     w('# singular and plural forms for each entity type\n')
     w('\n')
-    if libschema is not None:
+    if libconfig is not None:
+        libschema = libconfig.load_schema()
         entities = [e for e in schema.entities() if not e in libschema]
     else:
         entities = schema.entities()
@@ -143,46 +145,64 @@ def _generate_schema_pot(w, vreg, schema, libschema=None, cube=None):
             add_msg(w, rschema.description)
     w('# add related box generated message\n')
     w('\n')
-    actionbox = self.vreg['actions']['edit_box'][0]
+    actionbox = vreg['boxes']['edit_box'][0]
     for eschema in schema.entities():
         if eschema.is_final():
             continue
-        for x, rschemas in (('subject', eschema.subject_relations()),
+        for role, rschemas in (('subject', eschema.subject_relations()),
                             ('object', eschema.object_relations())):
             for rschema in rschemas:
                 if rschema.is_final():
                     continue
-                for teschema in rschema.targets(eschema, x):
-                    if defined_in_library(libschema, eschema, rschema, teschema, x):
+                for teschema in rschema.targets(eschema, role):
+                    if defined_in_library(libschema, eschema, rschema,
+                                          teschema, role):
                         continue
-                    if actionbox.relation_mode(rschema.type, teschema.type, x) == 'create':
-                        if x == 'subject':
-                            label = 'add %s %s %s %s' % (eschema, rschema, teschema, x)
-                            label2 = "creating %s (%s %%(linkto)s %s %s)" % (teschema, eschema, rschema, teschema)
+                    if actionbox.relation_mode(rschema, eschema, teschema, role) == 'create':
+                        if role == 'subject':
+                            label = 'add %s %s %s %s' % (eschema, rschema,
+                                                         teschema, role)
+                            label2 = "creating %s (%s %%(linkto)s %s %s)" % (
+                                teschema, eschema, rschema, teschema)
                         else:
-                            label = 'add %s %s %s %s' % (teschema, rschema, eschema, x)
-                            label2 = "creating %s (%s %s %s %%(linkto)s)" % (teschema, teschema, rschema, eschema)
+                            label = 'add %s %s %s %s' % (teschema, rschema,
+                                                         eschema, role)
+                            label2 = "creating %s (%s %s %s %%(linkto)s)" % (
+                                teschema, teschema, rschema, eschema)
                         add_msg(w, label)
                         add_msg(w, label2)
-    cube = (cube and 'cubes.%s.' % cube or 'cubicweb.')
+    #cube = (cube and 'cubes.%s.' % cube or 'cubicweb.')
     done = set()
+    if libconfig is not None:
+        from cubicweb.cwvreg import CubicWebRegistry
+        libvreg = CubicWebRegistry(libconfig)
+        libvreg.set_schema(libschema) # trigger objects registration
+        # prefill done set
+        list(_iter_vreg_objids(libvreg, done))
+    print 'done', done
+    for objid in _iter_vreg_objids(vreg, done):
+        add_msg(w, '%s_description' % objid)
+        add_msg(w, objid)
+
+def _iter_vreg_objids(vreg, done, prefix=None):
     for reg, objdict in vreg.items():
         for objects in objdict.values():
             for obj in objects:
                 objid = '%s_%s' % (reg, obj.id)
                 if objid in done:
-                    continue
-                if obj.__module__.startswith(cube) and obj.property_defs:
-                    add_msg(w, '%s_description' % objid)
-                    add_msg(w, objid)
+                    break
+                if obj.property_defs:
+                    yield objid
                     done.add(objid)
+                    break
 
-                    
-def defined_in_library(libschema, etype, rtype, tetype, x):
-    """return true if the given relation definition exists in cubicweb's library"""
+
+def defined_in_library(libschema, etype, rtype, tetype, role):
+    """return true if the given relation definition exists in cubicweb's library
+    """
     if libschema is None:
         return False
-    if x == 'subject':
+    if role == 'subject':
         subjtype, objtype = etype, tetype
     else:
         subjtype, objtype = tetype, etype
@@ -211,7 +231,7 @@ msgstr ""
 
 class UpdateCubicWebCatalogCommand(Command):
     """Update i18n catalogs for cubicweb library.
-    
+
     It will regenerate cubicweb/i18n/xx.po files. You'll have then to edit those
     files to add translations of newly added messages.
     """
@@ -281,7 +301,7 @@ class UpdateTemplateCatalogCommand(Command):
     """
     name = 'i18nupdate'
     arguments = '[<cube>...]'
-    
+
     def run(self, args):
         """run the command with its specific arguments"""
         if args:
@@ -328,7 +348,7 @@ def update_cubes_catalogs(cubes):
             execute('xgettext --no-location --omit-header -k_ -L java --from-code=utf-8 -o %s %s'
                     % (tmppotfile, ' '.join(jsfiles)))
             # no pot file created if there are no string to translate
-            if exists(tmppotfile): 
+            if exists(tmppotfile):
                 potfiles.append(tmppotfile)
         print '******** create cube specific catalog'
         tmppotfile = join(tempdir, 'generated.pot')
@@ -367,7 +387,7 @@ class LiveServerCommand(Command):
     name = 'live-server'
     arguments = ''
     options = ()
-    
+
     def run(self, args):
         """run the command with its specific arguments"""
         from cubicweb.devtools.livetest import runserver
@@ -415,7 +435,7 @@ class NewCubeCommand(Command):
          ),
         )
 
-    
+
     def run(self, args):
         if len(args) != 1:
             raise BadCommandUsage("exactly one argument (cube name) is expected")
@@ -449,7 +469,7 @@ class NewCubeCommand(Command):
                     distname = 'cubicweb-' + distname
         else:
             distname = 'cubicweb-%s' % cubename.lower()
-        
+
         longdesc = shortdesc = raw_input('Enter a short description for your cube: ')
         if verbose:
             longdesc = raw_input('Enter a long description (or nothing if you want to reuse the short one): ')
@@ -487,7 +507,7 @@ class NewCubeCommand(Command):
             elif ans == 's':
                 break
         return includes
-    
+
 
 class ExamineLogCommand(Command):
     """Examine a rql log file.
@@ -506,7 +526,7 @@ class ExamineLogCommand(Command):
     name = 'exlog'
     options = (
         )
-    
+
     def run(self, args):
         if args:
             raise BadCommandUsage("no argument expected")
@@ -540,7 +560,7 @@ class ExamineLogCommand(Command):
         print 'Percentage;Cumulative Time;Occurences;Query'
         for time, occ, rql in stat:
             print '%.2f;%.2f;%s;%s' % (time/total_time, time, occ, rql)
-        
+
 register_commands((UpdateCubicWebCatalogCommand,
                    UpdateTemplateCatalogCommand,
                    LiveServerCommand,
