@@ -44,6 +44,14 @@ def start_looping_tasks(repo):
     # ensure no tasks will be further added
     repo._looping_tasks = ()
 
+def host_prefixed_baseurl(baseurl, host):
+    scheme, netloc, url, query, fragment = urlsplit(baseurl)
+    netloc_domain = '.' + '.'.join(netloc.split('.')[-2:])
+    if host.endswith(netloc_domain):
+        netloc = host
+    baseurl = urlunsplit((scheme, netloc, url, query, fragment))
+    return baseurl
+
 
 class LongTimeExpiringFile(static.File):
     """overrides static.File and sets a far futre ``Expires`` date
@@ -169,11 +177,8 @@ class CubicWebRootResource(resource.PostableResource):
             https = False
             baseurl = self.base_url
         if self.config['use-request-subdomain']:
-            scheme, netloc, url, query, fragment = urlsplit(baseurl)
-            if '.' in netloc:
-                netloc = '.'.join(host.split('.')[:1] + netloc.split('.')[1:])
-            baseurl = urlunsplit((scheme, netloc, url, query, fragment))
-            self.warning('base_url is %s for this request', baseurl)
+            baseurl = host_prefixed_baseurl(baseurl, host)
+            self.warning('used baseurl is %s for this request', baseurl)
         req = CubicWebTwistedRequestAdapter(request, self.appli.vreg, https, baseurl)
         if req.authmode == 'http':
             # activate realm-based auth
