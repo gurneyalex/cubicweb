@@ -170,7 +170,7 @@ class ApplicationTC(EnvBasedTC):
         self.commit()
     
     def test_nonregr_publish1(self):
-        req = self.request(u'EEType X WHERE X final FALSE, X meta FALSE')
+        req = self.request(u'CWEType X WHERE X final FALSE, X meta FALSE')
         self.app.publish('view', req)
         
     def test_nonregr_publish2(self):
@@ -183,7 +183,7 @@ class ApplicationTC(EnvBasedTC):
         user = self.user()
         req.form = {
             'eid':       `user.eid`,
-            '__type:'+`user.eid`:    'EUser',
+            '__type:'+`user.eid`:    'CWUser',
             'login:'+`user.eid`:     '', # ERROR: no login specified
             'edits-login:'+`user.eid`: unicode(user.login),
              # just a sample, missing some necessary information for real life
@@ -207,7 +207,7 @@ class ApplicationTC(EnvBasedTC):
         """        
         req = self.request()
         form = {'eid': ['X', 'Y'],
-                '__type:X': 'EUser',
+                '__type:X': 'CWUser',
                 # missing required field
                 'login:X': u'', 'edits-login:X': '', 
                 'surname:X': u'Mr Ouaoua', 'edits-surname:X': '',
@@ -253,7 +253,7 @@ class ApplicationTC(EnvBasedTC):
         vreg = self.app.vreg
         # default value
         self.assertEquals(vreg.property_value('ui.language'), 'en')
-        self.execute('INSERT EProperty X: X value "fr", X pkey "ui.language"')
+        self.execute('INSERT CWProperty X: X value "fr", X pkey "ui.language"')
         self.assertEquals(vreg.property_value('ui.language'), 'en')
         self.commit()
         self.assertEquals(vreg.property_value('ui.language'), 'fr')
@@ -261,7 +261,7 @@ class ApplicationTC(EnvBasedTC):
         self.assertEquals(vreg.property_value('ui.language'), 'fr')
         self.commit()
         self.assertEquals(vreg.property_value('ui.language'), 'de')
-        self.execute('DELETE EProperty X WHERE X pkey "ui.language"')
+        self.execute('DELETE CWProperty X WHERE X pkey "ui.language"')
         self.assertEquals(vreg.property_value('ui.language'), 'de')
         self.commit()
         self.assertEquals(vreg.property_value('ui.language'), 'en')
@@ -333,6 +333,26 @@ class ApplicationTC(EnvBasedTC):
         self.assertRaises(AuthenticationError, self.publish, req, 'logout')
         self.assertEquals(len(self.open_sessions), 0) 
 
+    def test_login_by_email(self):
+        login = self.request().user.login
+        address = login + u'@localhost'
+        self.execute('INSERT EmailAddress X: X address %(address)s, U primary_email X '
+                     'WHERE U login %(login)s', {'address': address, 'login': login})
+        self.commit()
+        # option allow-email-login not set
+        req, origcnx = self._init_auth('cookie')
+        req.form['__login'] = address
+        req.form['__password'] = origcnx.password
+        self._test_auth_fail(req)
+        # option allow-email-login set
+        self.set_option('allow-email-login', True)
+        req, origcnx = self._init_auth('cookie')
+        req.form['__login'] = address
+        req.form['__password'] = origcnx.password
+        self._test_auth_succeed(req, origcnx)
+        self.assertRaises(AuthenticationError, self.publish, req, 'logout')
+        self.assertEquals(len(self.open_sessions), 0) 
+
     def _test_auth_anon(self, req):
         self.app.connect(req)
         acnx = req.cnx
@@ -384,8 +404,6 @@ class ApplicationTC(EnvBasedTC):
         self.assertRaises(AuthenticationError, self.publish, req, 'logout')
         self.assertEquals(len(self.open_sessions), 0) 
 
-    
 
-        
 if __name__ == '__main__':
     unittest_main()

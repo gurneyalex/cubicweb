@@ -1,4 +1,4 @@
-from logilab.common.testlib import TestCase, mock_object
+from logilab.common.testlib import TestCase
 
 import os, os.path as osp
 import time
@@ -15,11 +15,10 @@ try:
     from google.appengine.api import datastore_file_stub
     from google.appengine.ext import db as gdb
     from cubicweb.goa import db, do_monkey_patch
-    from cubicweb.goa.dbmyams import load_schema
     import_appengine_failed = None
 except ImportError, exc:
-    raise
-    class db:
+    # XXX necessary ?
+    class db: 
         class Model:
             pass
         class DummyProperty:
@@ -34,8 +33,6 @@ except ImportError, exc:
     import_appengine_failed = 'cannot import appengine: %s' % exc
     
 
-from cubicweb import CW_SOFTWARE_ROOT
-from cubicweb.server.utils import crypt_password
 from cubicweb.devtools.fake import FakeRequest
 from cubicweb.goa.goavreg import GAERegistry
 from cubicweb.goa.goaconfig import GAEConfiguration
@@ -180,7 +177,7 @@ class GAEBasedTC(TestCase):
         
     def create_user(self, login, groups=('users',), req=None):
         assert not self.config['use-google-auth']
-        user = self.add_entity('EUser', upassword=str(login), login=unicode(login))
+        user = self.add_entity('CWUser', upassword=str(login), login=unicode(login))
         cu = self.session.cursor()
         cu.execute('SET X in_group G WHERE X eid %%(x)s, G name IN(%s)'
                     % ','.join(repr(g) for g in groups),

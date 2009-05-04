@@ -74,7 +74,7 @@ class RequestSessionMixIn(object):
             encoding = 'utf-8'
         self.encoding = encoding
         # cache result of execution for (rql expr / eids),
-        # should be emptied on commit/rollback of the server session / web 
+        # should be emptied on commit/rollback of the server session / web
         # connection
         self.local_perm_cache = {}
 
@@ -82,14 +82,14 @@ class RequestSessionMixIn(object):
         if self.user:
             return self.user.property_value(key)
         return self.vreg.property_value(key)
-    
+
     def etype_rset(self, etype, size=1):
         """return a fake result set for a particular entity type"""
         from cubicweb.rset import ResultSet
         rset = ResultSet([('A',)]*size, '%s X' % etype,
                          description=[(etype,)]*size)
-        def get_entity(row, col=0, etype=etype, vreg=self.vreg, rset=rset):
-            return self.vreg.etype_class(etype)(self, rset, row, col)
+        def get_entity(row, col=0, etype=etype, req=self, rset=rset):
+            return req.vreg.etype_class(etype)(req, rset, row, col)
         rset.get_entity = get_entity
         return self.decorate_rset(rset)
 
@@ -114,7 +114,7 @@ class RequestSessionMixIn(object):
             return None
 
     # url generation methods ##################################################
-    
+
     def build_url(self, method, base_url=None, **kwargs):
         """return an absolute URL using params dictionary key/values as URL
         parameters. Values are automatically URL quoted, and the
@@ -130,7 +130,7 @@ class RequestSessionMixIn(object):
         if not kwargs:
             return u'%s%s' % (base_url, path)
         return u'%s%s?%s' % (base_url, path, self.build_url_params(**kwargs))
-        
+
 
     def build_url_params(self, **kwargs):
         """return encoded params to incorporate them in an URL"""
@@ -154,7 +154,7 @@ class RequestSessionMixIn(object):
 
     def url_unquote(self, quoted):
         """returns a unicode unquoted string
-        
+
         decoding is based on `self.encoding` which is the encoding
         used in `url_quote`
         """
@@ -164,10 +164,10 @@ class RequestSessionMixIn(object):
             return unicode(urlunquote(quoted), self.encoding)
         except UnicodeDecodeError: # might occurs on manually typed URLs
             return unicode(urlunquote(quoted), 'iso-8859-1')
-    
+
 
     # session's user related methods #####################################
-    
+
     @cached
     def user_data(self):
         """returns a dictionnary with this user's information"""
@@ -197,31 +197,44 @@ class RequestSessionMixIn(object):
         return False
 
     # abstract methods to override according to the web front-end #############
-    
+
     def base_url(self):
         """return the root url of the application"""
         raise NotImplementedError
-    
+
     def decorate_rset(self, rset):
         """add vreg/req (at least) attributes to the given result set """
         raise NotImplementedError
-    
+
     def describe(self, eid):
         """return a tuple (type, sourceuri, extid) for the entity with id <eid>"""
         raise NotImplementedError
-        
 
-# XXX 2.45 is allowing nicer entity type names, use this map for bw compat    
-ETYPE_NAME_MAP = {'Eetype': 'EEType',
-                  'Ertype': 'ERType',
-                  'Efrdef': 'EFRDef',
-                  'Enfrdef': 'ENFRDef',
-                  'Econstraint': 'EConstraint',
-                  'Econstrainttype': 'EConstraintType',
-                  'Epermission': 'EPermission',
-                  'Egroup': 'EGroup',
-                  'Euser': 'EUser',
-                  'Eproperty': 'EProperty',
+
+# XXX 2.45 is allowing nicer entity type names, use this map for bw compat
+ETYPE_NAME_MAP = {# 3.2 migration
+                  'ECache': 'CWCache',
+                  'EUser': 'CWUser',
+                  'EGroup': 'CWGroup',
+                  'EProperty': 'CWProperty',
+                  'EFRDef': 'CWAttribute',
+                  'ENFRDef': 'CWRelation',
+                  'ERType': 'CWRType',
+                  'EEType': 'CWEType',
+                  'EConstraintType': 'CWConstraintType',
+                  'EConstraint': 'CWConstraint',
+                  'EPermission': 'CWPermission',
+                   # 2.45 migration
+                  'Eetype': 'CWEType',
+                  'Ertype': 'CWRType',
+                  'Efrdef': 'CWAttribute',
+                  'Enfrdef': 'CWRelation',
+                  'Econstraint': 'CWConstraint',
+                  'Econstrainttype': 'CWConstraintType',
+                  'Epermission': 'CWPermission',
+                  'Egroup': 'CWGroup',
+                  'Euser': 'CWUser',
+                  'Eproperty': 'CWProperty',
                   'Emailaddress': 'EmailAddress',
                   'Rqlexpression': 'RQLExpression',
                   'Trinfo': 'TrInfo',
@@ -255,7 +268,7 @@ CW_MIGRATION_MAP = {'erudi': 'cubicweb',
                     'ezone': 'zone',
                     'i18ncontent': 'i18ncontent',
                     'svnfile': 'vcsfile',
-                    
+
                     'eclassschemes': 'keyword',
                     'eclassfolders': 'folder',
                     'eclasstags': 'tag',
@@ -269,11 +282,6 @@ CW_MIGRATION_MAP = {'erudi': 'cubicweb',
                     'agueol': 'agueol',
                     'docaster': 'docaster',
                     'asteretud': 'asteretud',
-                    
-                    # XXX temp
-                    'keywords': 'keyword',
-                    'folders': 'folder',
-                    'tags': 'tag',
                     }
 
 def neg_role(role):
@@ -292,4 +300,4 @@ def target(obj):
         return obj.target
     except AttributeError:
         return neg_role(obj.role)
-        
+

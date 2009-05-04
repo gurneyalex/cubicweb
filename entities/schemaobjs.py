@@ -1,7 +1,7 @@
 """schema definition related entities
 
 :organization: Logilab
-:copyright: 2001-2008 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
 """
 __docformat__ = "restructuredtext en"
@@ -14,17 +14,10 @@ from cubicweb.schema import ERQLExpression, RRQLExpression
 from cubicweb.entities import AnyEntity, fetch_config
 
 
-class EEType(AnyEntity):
-    id = 'EEType'
+class CWEType(AnyEntity):
+    id = 'CWEType'
     fetch_attrs, fetch_order = fetch_config(['name'])
-    __rtags__ = {
-        ('final',         '*', 'subject'): 'generated',
-        
-        ('state_of',      '*', 'object'): 'create',
-        ('transition_of', '*', 'object'): 'create',
-        ('from_entity',   '*', 'object'): 'link',
-        ('to_entity',     '*', 'object'): 'link',
-        }
+
     def dc_title(self):
         return self.req._(self.name)
     
@@ -44,14 +37,9 @@ class EEType(AnyEntity):
         return self.get('name')
 
 
-class ERType(AnyEntity):
-    id = 'ERType'
+class CWRType(AnyEntity):
+    id = 'CWRType'
     fetch_attrs, fetch_order = fetch_config(['name'])
-    __rtags__ = {
-        ('final',         '*', 'subject'): 'generated',
-        
-        ('relation_type', '*', 'object') : 'create',
-        }
     
     def dc_title(self):
         return self.req._(self.name)
@@ -97,14 +85,9 @@ class ERType(AnyEntity):
         return self.get('name')
 
 
-class ENFRDef(AnyEntity):
-    id = 'ENFRDef'
+class CWRelation(AnyEntity):
+    id = 'CWRelation'
     fetch_attrs = fetch_config(['cardinality'])[0]
-    __rtags__ = {
-        ('relation_type', 'ERType', 'subject') : 'inlineview',
-        ('from_entity', 'EEType', 'subject') : 'inlineview',
-        ('to_entity', 'EEType', 'subject') : 'inlineview',
-        }
     
     def dc_title(self):
         return u'%s %s %s' % (
@@ -130,11 +113,11 @@ class ENFRDef(AnyEntity):
         """
         if self.relation_type:
             return self.relation_type[0].rest_path(), {}
-        return super(ENFRDef, self).after_deletion_path()
+        return super(CWRelation, self).after_deletion_path()
 
 
-class EFRDef(ENFRDef):
-    id = 'EFRDef'
+class CWAttribute(CWRelation):
+    id = 'CWAttribute'
     
     def dc_long_title(self):
         card = self.cardinality
@@ -147,8 +130,8 @@ class EFRDef(ENFRDef):
             self.to_entity[0].name)
 
 
-class EConstraint(AnyEntity):
-    id = 'EConstraint'
+class CWConstraint(AnyEntity):
+    id = 'CWConstraint'
     fetch_attrs, fetch_order = fetch_config(['value'])
 
     def dc_title(self):
@@ -160,7 +143,7 @@ class EConstraint(AnyEntity):
         """
         if self.reverse_constrained_by:
             return self.reverse_constrained_by[0].rest_path(), {}
-        return super(EConstraint, self).after_deletion_path()
+        return super(CWConstraint, self).after_deletion_path()
 
     @property
     def type(self):
@@ -170,10 +153,6 @@ class EConstraint(AnyEntity):
 class RQLExpression(AnyEntity):
     id = 'RQLExpression'
     fetch_attrs, fetch_order = fetch_config(['exprtype', 'mainvars', 'expression'])
-
-    widgets = {
-        'expression' : "StringWidget",
-        }
 
     def dc_title(self):
         return '%s(%s)' % (self.exprtype, self.expression or u'')
@@ -205,14 +184,9 @@ class RQLExpression(AnyEntity):
         return super(RQLExpression, self).after_deletion_path()
 
 
-class EPermission(AnyEntity):
-    id = 'EPermission'
+class CWPermission(AnyEntity):
+    id = 'CWPermission'
     fetch_attrs, fetch_order = fetch_config(['name', 'label'])
-
-
-    __rtags__ = {
-        'require_group' : 'primary',
-        }
 
     def dc_title(self):
         if self.label:
@@ -226,4 +200,4 @@ class EPermission(AnyEntity):
         permissionof = getattr(self, 'reverse_require_permission', ())
         if len(permissionof) == 1:
             return permissionof[0].rest_path(), {}
-        return super(EPermission, self).after_deletion_path()
+        return super(CWPermission, self).after_deletion_path()

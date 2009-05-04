@@ -4,8 +4,6 @@ import re
 from logilab.common.testlib import unittest_main
 from cubicweb.devtools.apptest import EnvBasedTC
 
-from mx.DateTime import now
-
 from cubicweb.sobjects.supervising import SendMailOp, SupervisionMailOp
 
 
@@ -23,7 +21,7 @@ class SupervisingTC(EnvBasedTC):
     def test_supervision(self):
         session = self.session()
         # do some modification
-        ueid = self.execute('INSERT EUser X: X login "toto", X upassword "sosafe", X in_group G, X in_state S '
+        ueid = self.execute('INSERT CWUser X: X login "toto", X upassword "sosafe", X in_group G, X in_state S '
                             'WHERE G name "users", S name "activated"')[0][0]        
         self.execute('SET X last_login_time NOW WHERE X eid %(x)s', {'x': ueid}, 'x')
         self.execute('SET X in_state S WHERE X login "anon", S name "deactivated"')

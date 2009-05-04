@@ -134,7 +134,6 @@ class SQLSchemaReaderClassTest(TestCase):
         self.assertListEquals([basename(f) for f in schema_files], ['Bookmark.py'])
 
     def test_knownValues_load_schema(self):
-        """read an url and return a Schema instance"""
         schema = loader.load(config)
         self.assert_(isinstance(schema, CubicWebSchema))
         self.assertEquals(schema.name, 'data')
@@ -142,13 +141,13 @@ class SQLSchemaReaderClassTest(TestCase):
         entities.sort()
         expected_entities = ['Bookmark', 'Boolean', 'Bytes', 'Card', 
                              'Date', 'Datetime', 'Decimal',
-                             'ECache', 'EConstraint', 'EConstraintType', 'EEType',
-                             'EFRDef', 'EGroup', 'EmailAddress', 'ENFRDef',
-                             'EPermission', 'EProperty', 'ERType', 'EUser',
-                             'Float', 'Int', 'Interval', 
-                             'Password', 
+                             'CWCache', 'CWConstraint', 'CWConstraintType', 'CWEType',
+                             'CWAttribute', 'CWGroup', 'EmailAddress', 'CWRelation',
+                             'CWPermission', 'CWProperty', 'CWRType', 'CWUser',
+                             'File', 'Float', 'Image', 'Int', 'Interval', 'Note',
+                             'Password', 'Personne',
                              'RQLExpression', 
-                             'State', 'String', 'Time', 
+                             'Societe', 'State', 'String', 'SubNote', 'Tag', 'Time', 
                              'Transition', 'TrInfo']
         self.assertListEquals(entities, sorted(expected_entities))
         relations = [str(r) for r in schema.relations()]
@@ -157,13 +156,13 @@ class SQLSchemaReaderClassTest(TestCase):
                               'allowed_transition', 'bookmarked_by', 'canonical',
 
                               'cardinality', 'comment', 'comment_format', 
-                              'composite', 'condition', 'constrained_by', 'content',
+                              'composite', 'condition', 'connait', 'constrained_by', 'content',
                               'content_format', 'created_by', 'creation_date', 'cstrtype',
 
-                              'defaultval', 'delete_permission', 'description',
-                              'description_format', 'destination_state',
+                              'data', 'data_encoding', 'data_format', 'defaultval', 'delete_permission',
+                              'description', 'description_format', 'destination_state',
 
-                              'eid', 'expression', 'exprtype',
+                              'ecrit_par', 'eid', 'evaluee', 'expression', 'exprtype',
 
                               'final', 'firstname', 'for_user',
                               'from_entity', 'from_state', 'fulltext_container', 'fulltextindexed',
@@ -176,17 +175,17 @@ class SQLSchemaReaderClassTest(TestCase):
 
                               'mainvars', 'meta', 'modification_date',
 
-                              'name', 
+                              'name', 'nom',
 
                               'ordernum', 'owned_by',
 
-                              'path', 'pkey', 'primary_email', 
+                              'path', 'pkey', 'prenom', 'primary_email', 
 
                               'read_permission', 'relation_type', 'require_group',
                               
                               'specializes', 'state_of', 'surname', 'symetric', 'synopsis',
 
-                              'timestamp', 'title', 'to_entity', 'to_state', 'transition_of',
+                              'tags', 'timestamp', 'title', 'to_entity', 'to_state', 'transition_of', 'travaille', 'type',
 
                               'upassword', 'update_permission', 'use_email',
 
@@ -196,10 +195,10 @@ class SQLSchemaReaderClassTest(TestCase):
     
         self.assertListEquals(relations, expected_relations)
 
-        eschema = schema.eschema('EUser')
+        eschema = schema.eschema('CWUser')
         rels = sorted(str(r) for r in eschema.subject_relations())
         self.assertListEquals(rels, ['created_by', 'creation_date', 'eid',
-                                     'firstname', 'has_text', 'identity',
+                                     'evaluee', 'firstname', 'has_text', 'identity',
                                      'in_group', 'in_state', 'is',
                                      'is_instance_of', 'last_login_time',
                                      'login', 'modification_date', 'owned_by',
@@ -209,7 +208,7 @@ class SQLSchemaReaderClassTest(TestCase):
         self.assertListEquals(rels, ['bookmarked_by', 'created_by', 'for_user',
                                      'identity', 'owned_by', 'wf_info_for'])
         rschema = schema.rschema('relation_type')
-        properties = rschema.rproperties('EFRDef', 'ERType')
+        properties = rschema.rproperties('CWAttribute', 'CWRType')
         self.assertEquals(properties['cardinality'], '1*')
         constraints = properties['constraints']
         self.failUnlessEqual(len(constraints), 1, constraints)
@@ -219,7 +218,7 @@ class SQLSchemaReaderClassTest(TestCase):
 
     def test_fulltext_container(self):
         schema = loader.load(config)
-        self.failUnless('has_text' in schema['EUser'].subject_relations())
+        self.failUnless('has_text' in schema['CWUser'].subject_relations())
         self.failIf('has_text' in schema['EmailAddress'].subject_relations())
 
 

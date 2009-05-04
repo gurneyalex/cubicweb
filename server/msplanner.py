@@ -33,25 +33,25 @@ XXX explain algorithm
 
 Exemples of multi-sources query execution
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-For a system source and a ldap user source (only EUser and its attributes
+For a system source and a ldap user source (only CWUser and its attributes
 is supported, no group or such):
 
-:EUser X:
-1. fetch EUser X from both sources and return concatenation of results
+:CWUser X:
+1. fetch CWUser X from both sources and return concatenation of results
 
-:EUser X WHERE X in_group G, G name 'users':
+:CWUser X WHERE X in_group G, G name 'users':
 * catch 1
-  1. fetch EUser X from both sources, store concatenation of results into a
+  1. fetch CWUser X from both sources, store concatenation of results into a
      temporary table
   2. return the result of TMP X WHERE X in_group G, G name 'users' from the
      system source
 * catch 2
-  1. return the result of EUser X WHERE X in_group G, G name 'users' from system
+  1. return the result of CWUser X WHERE X in_group G, G name 'users' from system
      source, that's enough (optimization of the sql querier will avoid join on
-     EUser, so we will directly get local eids)
+     CWUser, so we will directly get local eids)
     
-:EUser X,L WHERE X in_group G, X login L, G name 'users':
-1. fetch Any X,L WHERE X is EUser, X login L from both sources, store
+:CWUser X,L WHERE X in_group G, X login L, G name 'users':
+1. fetch Any X,L WHERE X is CWUser, X login L from both sources, store
    concatenation of results into a temporary table
 2. return the result of Any X, L WHERE X is TMP, X login LX in_group G,
    G name 'users' from the system source
@@ -59,13 +59,13 @@ is supported, no group or such):
 
 :Any X WHERE X owned_by Y:
 * catch 1
-  1. fetch EUser X from both sources, store concatenation of results into a
+  1. fetch CWUser X from both sources, store concatenation of results into a
      temporary table
   2. return the result of Any X WHERE X owned_by Y, Y is TMP from the system
      source
 * catch 2
   1. return the result of Any X WHERE X owned_by Y from system source, that's
-     enough (optimization of the sql querier will avoid join on EUser, so we
+     enough (optimization of the sql querier will avoid join on CWUser, so we
      will directly get local eids)
 
 
@@ -75,17 +75,16 @@ is supported, no group or such):
 """
 __docformat__ = "restructuredtext en"
 
-from copy import deepcopy
 from itertools import imap, ifilterfalse
 
 from logilab.common.compat import any
 from logilab.common.decorators import cached
 
 from rql.stmts import Union, Select
-from rql.nodes import VariableRef, Comparison, Relation, Constant, Exists, Variable
+from rql.nodes import VariableRef, Comparison, Relation, Constant, Variable
 
 from cubicweb import server
-from cubicweb.common.utils import make_uid
+from cubicweb.utils import make_uid
 from cubicweb.server.utils import cleanup_solutions
 from cubicweb.server.ssplanner import (SSPlanner, OneFetchStep,
                                        add_types_restriction)
@@ -1389,7 +1388,7 @@ class TermsFiltererVisitor(object):
             return False
         if not same_scope(var):
             return False
-        if any(v for v,_ in var.stinfo['attrvars'] if not v.name in terms):
+        if any(v for v, _ in var.stinfo['attrvars'] if not v in terms):
             return False
         return True
         

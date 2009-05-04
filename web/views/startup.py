@@ -6,26 +6,38 @@ apply to a result set.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
 """
 __docformat__ = "restructuredtext en"
+_ = unicode
 
+from logilab.common.textutils import unormalize
 from logilab.mtconverter import html_escape
 
-from cubicweb.common.uilib import ureport_as_html, unormalize, ajax_replace_url
-from cubicweb.common.view import StartupView
-from cubicweb.common.selectors import match_user_group
-from cubicweb.web.httpcache import EtagHTTPCacheManager
+from cubicweb.view import StartupView
+from cubicweb.selectors import match_user_groups
+from cubicweb.common.uilib import ureport_as_html
+from cubicweb.web import ajax_replace_url, uicfg, httpcache
 from cubicweb.web.views.management import SecurityViewMixIn
-from copy import deepcopy
-_ = unicode
 
 
 class ManageView(StartupView):
     id = 'manage'
-    title = _('manage')    
-    http_cache_manager = EtagHTTPCacheManager
+    title = _('manage')
+    http_cache_manager = httpcache.EtagHTTPCacheManager
+
+    @classmethod
+    def vreg_initialization_completed(cls):
+        for eschema in cls.schema.entities():
+            if eschema.schema_entity():
+                uicfg.etypecat.setdefault(eschema, 'schema')
+            elif eschema.is_subobject(strict=True):
+                uicfg.etypecat.setdefault(eschema, 'subobject')
+            elif eschema.meta:
+                uicfg.etypecat.setdefault(eschema, 'system')
+            else:
+                uicfg.etypecat.setdefault(eschema, 'application')
 
     def display_folders(self):
         return False
-    
+
     def call(self, **kwargs):
         """The default view representing the application's management"""
         self.req.add_css('cubicweb.manageview.css')
@@ -36,7 +48,7 @@ class ManageView(StartupView):
             self.w(u'<table><tr>\n')
             self.w(u'<td style="width:40%">')
             self._main_index()
-            self.w(u'</td><td style="width:60%">')            
+            self.w(u'</td><td style="width:60%">')
             self.folders()
             self.w(u'</td>')
             self.w(u'</tr></table>\n')
@@ -64,22 +76,22 @@ class ManageView(StartupView):
                 href = req.build_url('view', vid='creation', etype='Card', wikiid='index')
                 label = self.req._('create an index page')
             self.w(u'<br/><a href="%s">%s</a>\n' % (html_escape(href), label))
-        
+
     def folders(self):
         self.w(u'<h4>%s</h4>\n' % self.req._('Browse by category'))
         self.vreg.select_view('tree', self.req, None).dispatch(w=self.w)
-        
+
     def startup_views(self):
         self.w(u'<h4>%s</h4>\n' % self.req._('Startup views'))
         self.startupviews_table()
-        
+
     def startupviews_table(self):
         for v in self.vreg.possible_views(self.req, None):
             if v.category != 'startupview' or v.id in ('index', 'tree', 'manage'):
                 continue
             self.w('<p><a href="%s">%s</a></p>' % (
                 html_escape(v.url()), html_escape(self.req._(v.title).capitalize())))
-        
+
     def entities(self):
         schema = self.schema
         self.w(u'<h4>%s</h4>\n' % self.req._('The repository holds the following entities'))
@@ -88,17 +100,17 @@ class ManageView(StartupView):
         if manager:
             self.w(u'<tr><th colspan="4">%s</th></tr>\n' % self.req._('application entities'))
         self.entity_types_table(eschema for eschema in schema.entities()
-                                if not eschema.meta and not eschema.is_subobject(strict=True))
-        if manager: 
+                                if uicfg.etypecat.get(eschema) == 'application')
+        if manager:
             self.w(u'<tr><th colspan="4">%s</th></tr>\n' % self.req._('system entities'))
             self.entity_types_table(eschema for eschema in schema.entities()
-                                    if eschema.meta and not eschema.schema_entity())
-            if 'EFRDef' in schema: # check schema support
+                                if uicfg.etypecat.get(eschema) == 'system')
+            if 'CWAttribute' in schema: # check schema support
                 self.w(u'<tr><th colspan="4">%s</th></tr>\n' % self.req._('schema entities'))
-                self.entity_types_table(schema.eschema(etype)
-                                        for etype in schema.schema_entity_types())
+                self.entity_types_table(eschema for eschema in schema.entities()
+                                        if uicfg.etypecat.get(eschema) == 'schema')
         self.w(u'</table>')
-        
+
     def entity_types_table(self, eschemas):
         newline = 0
         infos = sorted(self.entity_types(eschemas),
@@ -112,8 +124,8 @@ class ManageView(StartupView):
             self.w(u'<td class="addcol">%s</td><td>%s</td>\n' % (addlink,  etypelink))
             self.w(u'<td class="addcol">%s</td><td>%s</td>\n' % (addlink2, etypelink2))
             self.w(u'</tr>\n')
-        
-        
+
+
     def entity_types(self, eschemas):
         """return a list of formatted links to get a list of entities of
         a each entity's types
@@ -134,7 +146,7 @@ class ManageView(StartupView):
             etypelink = u'&nbsp;<a href="%s">%s</a> (%d)' % (
                 html_escape(url), label, nb)
             yield (label, etypelink, self.add_entity_link(eschema, req))
-    
+
     def add_entity_link(self, eschema, req):
         """creates a [+] link for adding an entity if user has permission to do so"""
         if not eschema.has_perm(req, 'add'):
@@ -143,14 +155,14 @@ class ManageView(StartupView):
             html_escape(self.create_url(eschema.type)),
             self.req.__('add a %s' % eschema))
 
-    
+
 class IndexView(ManageView):
     id = 'index'
     title = _('index')
-    
+
     def display_folders(self):
         return 'Folder' in self.schema and self.req.execute('Any COUNT(X) WHERE X is Folder')[0][0]
-    
+
 
 
 class SchemaView(StartupView):
@@ -188,10 +200,10 @@ class SchemaView(StartupView):
             self.wview(section, None)
         self.w(u'</div>')
 
-    
+
 class ManagerSchemaPermissionsView(StartupView, SecurityViewMixIn):
     id = 'schema_security'
-    require_groups = ('managers',)
+    __select__ = StartupView.__select__ & match_user_groups('managers')
 
     def call(self, display_relations=True,
              skiprels=('is', 'is_instance_of', 'identity', 'owned_by', 'created_by')):
@@ -207,7 +219,7 @@ class ManagerSchemaPermissionsView(StartupView, SecurityViewMixIn):
             entities = [eschema for eschema in entities
                         if not eschema.meta]
         # compute relations
-        relations = []    
+        relations = []
         if display_relations:
             relations = [rschema for rschema in schema.relations()
                          if not (rschema.is_final() or rschema.type in skiprels)]
@@ -287,7 +299,7 @@ class ManagerSchemaPermissionsView(StartupView, SecurityViewMixIn):
             self.schema_definition(rschema, link=False)
             self.w(u'</div>')
 
-                
+
 class SchemaUreportsView(StartupView):
     id = 'schematext'
 
