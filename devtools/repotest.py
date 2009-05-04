@@ -228,10 +228,10 @@ def _build_variantes(self, newsolutions):
     variantes = _orig_build_variantes(self, newsolutions)
     sortedvariantes = []
     for variante in variantes:
-        orderedkeys = sorted((k[1], k[2], v) for k,v in variante.iteritems())
+        orderedkeys = sorted((k[1], k[2], v) for k, v in variante.iteritems())
         variante = DumbOrderedDict(sorted(variante.iteritems(),
-                                          lambda a,b: cmp((a[0][1],a[0][2],a[1]),
-                                                          (b[0][1],b[0][2],b[1]))))
+                                          lambda a, b: cmp((a[0][1],a[0][2],a[1]),
+                                                           (b[0][1],b[0][2],b[1]))))
         sortedvariantes.append( (orderedkeys, variante) )
     return [v for ok, v in sorted(sortedvariantes)]
 
@@ -241,7 +241,7 @@ _orig_init_temp_table = ExecutionPlan.init_temp_table
 
 def _check_permissions(*args, **kwargs):
     res, restricted = _orig_check_permissions(*args, **kwargs)
-    res = DumbOrderedDict(sorted(res.iteritems(), lambda a,b: cmp(a[1], b[1])))
+    res = DumbOrderedDict(sorted(res.iteritems(), lambda a, b: cmp(a[1], b[1])))
     return res, restricted
 
 def _dummy_check_permissions(self, rqlst):
@@ -267,7 +267,7 @@ try:
     from cubicweb.server.msplanner import PartPlanInformation
 except ImportError:
     class PartPlanInformation(object):
-        def merge_input_maps(*args):
+        def merge_input_maps(self, *args):
             pass
         def _choose_term(self, sourceterms):
             pass    

@@ -26,17 +26,14 @@ class EditController(ViewController):
     def publish(self, rset=None, fromjson=False):
         """edit / create / copy / delete entity / relations"""
         self.fromjson = fromjson
-        req = self.req
-        form = req.form
-        for key in form:
+        for key in self.req.form:
             # There should be 0 or 1 action
             if key.startswith('__action_'):
                 cbname = key[1:]
                 try:
                     callback = getattr(self, cbname)
                 except AttributeError:
-                    raise ValidationError(None,
-                                          {None: req._('invalid action %r' % key)})
+                    raise RequestError(self.req._('invalid action %r' % key))
                 else:
                     return callback()
         self._default_publish()
@@ -199,27 +196,33 @@ class EditController(ViewController):
             value = Decimal(value)
         elif attrtype == 'Bytes':
             # if it is a file, transport it using a Binary (StringIO)
-            if formparams.has_key('__%s_detach' % attr):
+            # XXX later __detach is for the new widget system, the former is to
+            # be removed once web/widgets.py has been dropped
+            if formparams.has_key('__%s_detach' % attr) or formparams.has_key('%s__detach' % attr):
                 # drop current file value
                 value = None
-            # no need to check value when nor explicit detach nor new file submitted,
-            # since it will think the attribut is not modified
+            # no need to check value when nor explicit detach nor new file
+            # submitted, since it will think the attribute is not modified
             elif isinstance(value, unicode):
                 # file modified using a text widget
-                value = Binary(value.encode(entity.text_encoding(attr)))
+                encoding = entity.attr_metadata(attr, 'encoding')
+                value = Binary(value.encode(encoding))
             else:
-                # (filename, mimetype, stream)
+                # value is a  3-uple (filename, mimetype, stream)
                 val = Binary(value[2].read())
                 if not val.getvalue(): # usually an unexistant file
                     value = None
                 else:
-                    # XXX suppose a File compatible schema
                     val.filename = value[0]
-                    if entity.has_format(attr):
-                        key = '%s_format' % attr
-                        formparams[key] = value[1]
-                        self.relations.append('X %s_format %%(%s)s'
-                                              % (attr, key))
+                    # ignore browser submitted MIME type since it may be buggy
+                    # XXX add a config option to tell if we should consider it
+                    # or not?
+                    #if entity.e_schema.has_metadata(attr, 'format'):
+                    #    key = '%s_format' % attr
+                    #    formparams[key] = value[1]
+                    #    self.relations.append('X %s_format %%(%s)s'
+                    #                          % (attr, key))
+                    # XXX suppose a File compatible schema
                     if entity.e_schema.has_subject_relation('name') \
                            and not formparams.get('name'):
                         formparams['name'] = value[0]

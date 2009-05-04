@@ -1,7 +1,7 @@
 """server.serverconfig definition
 
 :organization: Logilab
-:copyright: 2001-2008 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
 """
 __docformat__ = "restructuredtext en"
@@ -232,7 +232,7 @@ notified of every changes.',
                 hooks.setdefault(event, {}).setdefault(ertype, []).append(cb)
         return hooks
     
-    def load_schema(self, expand_cubes=False):
+    def load_schema(self, expand_cubes=False, construction_mode='strict'):
         from cubicweb.schema import CubicWebSchemaLoader
         if expand_cubes:
             # in case some new dependencies have been introduced, we have to
@@ -240,7 +240,7 @@ notified of every changes.',
             origcubes = self.cubes()
             self._cubes = None
             self.init_cubes(self.expand_cubes(origcubes))
-        schema = CubicWebSchemaLoader().load(self)
+        schema = CubicWebSchemaLoader().load(self, construction_mode=construction_mode)
         if expand_cubes:
             # restaure original value
             self._cubes = origcubes
@@ -266,7 +266,7 @@ notified of every changes.',
                     print 'not connecting to source', uri, 'during migration'
         elif 'all' in sources:
             assert len(sources) == 1
-            enabled_sources= None
+            enabled_sources = None
         else:
             known_sources = self.sources()
             for uri in sources:

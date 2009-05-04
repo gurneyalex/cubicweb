@@ -1,7 +1,16 @@
+"""produces some Ontology Web Language schema and views
+
+:organization: Logilab
+:copyright: 2008-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
+"""
+__docformat__ = "restructuredtext en"
+
 from logilab.mtconverter import TransformError, xml_escape
 
-from cubicweb.common.view import StartupView
-from cubicweb.common.view import EntityView
+from cubicweb.view import StartupView, EntityView
+from cubicweb.web.action import Action
+from cubicweb.selectors import none_rset, match_view
 
 _ = unicode
 
@@ -155,7 +164,6 @@ class OWLABOXView(EntityView):
     id = 'owlabox'
     title = _('owlabox')
     templatable = False
-    accepts = ('Any',)
     content_type = 'application/xml' # 'text/xml'
     
     def call(self):
@@ -169,11 +177,9 @@ class OWLABOXView(EntityView):
 
         
 class OWLABOXItemView(EntityView):
-    '''This view represents a part of the ABOX for a given entity.'''
-    
+    '''This view represents a part of the ABOX for a given entity.'''    
     id = 'owlaboxitem'
     templatable = False
-    accepts = ('Any',)
     content_type = 'application/xml' # 'text/xml'
 
     def cell_call(self, row, col, skiprels=DEFAULT_SKIP_RELS):
@@ -208,4 +214,15 @@ class OWLABOXItemView(EntityView):
             for x in getattr(entity, attr):
                 self.w(u'<%s>%s %s</%s>' % (attr, x.id, x.eid, attr))
         self.w(u'</%s>'% eschema)
+
+
+class DownloadOWLSchemaAction(Action):
+    id = 'download_as_owl'
+    __select__ = none_rset() & match_view('schema')
+    
+    category = 'mainactions'
+    title = _('download schema as owl')
+   
+    def url(self):
+        return self.build_url('view', vid='owl')
 

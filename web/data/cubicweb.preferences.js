@@ -7,6 +7,8 @@
 function toggleVisibility(elemId) {
     _clearPreviousMessages();
     jqNode(elemId).toggleClass('hidden');
+    asyncRemoteExec('set_cookie', cookiename,
+                      jQuery('#' + elemId).attr('class'));
 }
 
 function closeFieldset(fieldsetid){
@@ -38,7 +40,6 @@ function _toggleFieldset(fieldsetid, closeaction, linklabel, linkhref){
 		linkLabel = (_('open all'));
 	    }
 	});
- 
 }
 
 function validatePrefsForm(formid){

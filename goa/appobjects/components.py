@@ -1,28 +1,21 @@
 """overrides some base views for cubicweb on google appengine
 
 :organization: Logilab
-:copyright: 2008 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2008-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
 """
 __docformat__ = "restructuredtext en"
 
-from os.path import join
-
 from logilab.mtconverter import html_escape
-from logilab.common.decorators import cached
 
 from cubicweb import typed_eid
+from cubicweb.selectors import one_line_rset, match_search_state, accept
 from cubicweb.schema import display_name
 from cubicweb.common.view import StartupView, EntityView
-from cubicweb.common.selectors import (one_line_rset, match_search_state,
-                                    accept)
 from cubicweb.web import Redirect
 from cubicweb.web.views import vid_from_rset
-from cubicweb.goa.db import rset_from_objs
 
-from google.appengine.api import datastore, mail
-
-from main import APPLROOT
+from google.appengine.api import mail
 
 
 class SearchForAssociationView(EntityView):
@@ -31,9 +24,7 @@ class SearchForAssociationView(EntityView):
     """
     id = 'search-associate'
     
-    __selectors__ = (one_line_rset, match_search_state, accept)
-    accepts = ('Any',)
-    search_states = ('linksearch',)
+    __select__ = one_line_rset() & match_search_state('linksearch') & accept
 
     def cell_call(self, row, col):
         entity = self.entity(0, 0)

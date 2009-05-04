@@ -3,14 +3,14 @@
 
 SQL queries optimization
 ~~~~~~~~~~~~~~~~~~~~~~~~
-1. EUser X WHERE X in_group G, G name 'users':
+1. CWUser X WHERE X in_group G, G name 'users':
 
-   EUser is the only subject entity type for the in_group relation,
+   CWUser is the only subject entity type for the in_group relation,
    which allow us to do ::
 
-     SELECT eid_from FROM in_group, EGroup
-     WHERE in_group.eid_to = EGroup.eid_from
-     AND EGroup.name = 'users'
+     SELECT eid_from FROM in_group, CWGroup
+     WHERE in_group.eid_to = CWGroup.eid_from
+     AND CWGroup.name = 'users'
 
 
 2. Any X WHERE X nonfinal1 Y, Y nonfinal2 Z
@@ -489,8 +489,7 @@ class SQLGenerator(object):
                 sql.insert(1, 'FROM (SELECT 1) AS _T')
             sqls.append('\n'.join(sql))
         if select.need_intersect:
-            # XXX use getattr for lgc bw compat, remove once 0.37.3 is out
-            if distinct or not getattr(self.dbms_helper, 'intersect_all_support', True):
+            if distinct or not self.dbms_helper.intersect_all_support:
                 return '\nINTERSECT\n'.join(sqls)
             else:
                 return '\nINTERSECT ALL\n'.join(sqls)

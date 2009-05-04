@@ -35,18 +35,18 @@ Built-in types for attributes
 `````````````````````````````
 
 All `CubicWeb` built-in types are available : `String`, `Int`, `Float`,
-`Decimal`, `Boolean`, `Date`, `Datetime`, `Time`, `Interval`, `Byte` 
+`Decimal`, `Boolean`, `Date`, `Datetime`, `Time`, `Interval`, `Byte`
 and `Password`.
 They are implicitely imported (as well as the special the function "_"
 for translation :ref:`internationalization`).
 
 An attribute is defined in the schema as follows::
-    
+
     attr_name = attr_type(properties*)
 
 where `attr_type` is one of the type listed above and `properties` is
 a list of  the attribute needs to statisfy (see :ref:`properties`
-for more details). 
+for more details).
 
 
 Meta-data
@@ -55,22 +55,22 @@ Meta-data
 Each entity type has at least the following meta-relations :
 
   - `eid` (`Int`)
-  
+
   - `creation_date` (`Datetime`)
-  
+
   - `modification_date` (`Datetime`)
-  
-  - `created_by` (`EUser`) (which user created the entity)
-  
-  - `owned_by` (`EUser`) (to whom the entity belongs; by default the 
+
+  - `created_by` (`CWUser`) (which user created the entity)
+
+  - `owned_by` (`CWUser`) (to whom the entity belongs; by default the
      creator but not necessary, and it could have multiple owners)
-     
-  - `is` (`EEType`) (of which type the entity is)
+
+  - `is` (`CWEType`) (of which type the entity is)
 
 
 * relations can be defined by using `ObjectRelation` or `SubjectRelation`.
   The first argument of `SubjectRelation` or `ObjectRelation` gives respectively
-  the object/subject entity type of the relation. This could be :  
+  the object/subject entity type of the relation. This could be :
 
   * a string corresponding to an entity type
 
@@ -79,7 +79,7 @@ Each entity type has at least the following meta-relations :
   * special string such as follows :
 
     - "**" : all types of entities
-    - "*" : all types of non-meta entities 
+    - "*" : all types of non-meta entities
     - "@" : all types of meta entities but not system entities (e.g. used for
       the basic schema description)
 
@@ -91,7 +91,7 @@ Optionnal properties
 .. _properties:
 
 
-* optional properties for attributes and relations : 
+* optional properties for attributes and relations :
 
   - `description` : a string describing an attribute or a relation. By default
     this string will be used in the editing form of the entity, which means
@@ -103,7 +103,7 @@ Optionnal properties
 
   - `cardinality` : a two character string which specify the cardinality of the
     relation. The first character defines the cardinality of the relation on
-    the subject, and the second on the object. When a relation can have 
+    the subject, and the second on the object. When a relation can have
     multiple subjects or objects, the cardinality applies to all,
     not on a one-to-one basis (so it must be consistent...). The possible
     values are inspired from regular expression syntax :
@@ -116,24 +116,24 @@ Optionnal properties
   - `meta` : boolean indicating that the relation is a meta-relation (false by
     default)
 
-* optional properties for attributes : 
+* optional properties for attributes :
 
   - `required` : boolean indicating if the attribute is required (false by default)
 
   - `unique` : boolean indicating if the value of the attribute has to be unique
     or not within all entities of the same type (false by default)
 
-  - `indexed` : boolean indicating if an index needs to be created for this 
+  - `indexed` : boolean indicating if an index needs to be created for this
     attribute in the database (false by default). This is useful only if
     you know that you will have to run numerous searches on the value of this
     attribute.
 
   - `default` : default value of the attribute. In case of date types, the values
     which could be used correspond to the RQL keywords `TODAY` and `NOW`.
-  
+
   - `vocabulary` : specify static possible values of an attribute
 
-* optional properties of type `String` : 
+* optional properties of type `String` :
 
   - `fulltextindexed` : boolean indicating if the attribute is part of
     the full text index (false by default) (*applicable on the type `Byte`
@@ -144,11 +144,11 @@ Optionnal properties
 
   - `maxsize` : integer providing the maximum size of the string (no limit by default)
 
-* optional properties for relations : 
+* optional properties for relations :
 
   - `composite` : string indicating that the subject (composite == 'subject')
     is composed of the objects of the relations. For the opposite case (when
-    the object is composed of the subjects of the relation), we just set 
+    the object is composed of the subjects of the relation), we just set
     'object' as value. The composition implies that when the relation
     is deleted (so when the composite is deleted), the composed are also deleted.
 
@@ -159,7 +159,7 @@ By default, the available constraint types are :
 * `SizeConstraint` : allows to specify a minimum and/or maximum size on
   string (generic case of `maxsize`)
 
-* `BoundConstraint` : allows to specify a minimum and/or maximum value on 
+* `BoundConstraint` : allows to specify a minimum and/or maximum value on
   numeric types
 
 * `UniqueConstraint` : identical to "unique=True"
@@ -168,7 +168,7 @@ By default, the available constraint types are :
 
 * `RQLConstraint` : allows to specify a RQL query that has to be satisfied
   by the subject and/or the object of the relation. In this query the variables
-  `S` and `O` are reserved for the entities subject and object of the 
+  `S` and `O` are reserved for the entities subject and object of the
   relation.
 
 * `RQLVocabularyConstraint` : similar to the previous type of constraint except
@@ -184,9 +184,9 @@ XXX add note about defining relation type / definition
 
 A relation is defined by a Python class heriting `RelationType`. The name
 of the class corresponds to the name of the type. The class then contains
-a description of the properties of this type of relation, and could as well 
+a description of the properties of this type of relation, and could as well
 contain a string for the subject and a string for the object. This allows to create
-new definition of associated relations, (so that the class can have the 
+new definition of associated relations, (so that the class can have the
 definition properties from the relation) for example ::
 
   class locked_by(RelationType):
@@ -194,7 +194,7 @@ definition properties from the relation) for example ::
     inlined = True
     cardinality = '?*'
     subject = '*'
-    object = 'EUser'
+    object = 'CWUser'
 
 In addition to the permissions, the properties of the relation types
 (shared also by all definition of relation of this type) are :
@@ -217,13 +217,12 @@ specific permissions, its definition (by using `SubjectRelation` and
 `ObjectRelation`) is all we need.
 
 
-
 Updating your application with your new schema
 ----------------------------------------------
 
-If you modified your schema, the update is not automatic; indeed, this is 
+If you modified your schema, the update is not automatic; indeed, this is
 in general not a good idea.
-Instead, you call a shell on your application, which is a 
+Instead, you call a shell on your application, which is a
 an interactive python shell, with an appropriate
 cubicweb environment ::
 

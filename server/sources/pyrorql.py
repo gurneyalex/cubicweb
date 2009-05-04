@@ -9,7 +9,8 @@ __docformat__ = "restructuredtext en"
 import threading
 from os.path import join
 
-from mx.DateTime import DateTimeFromTicks
+from time import mktime
+from datetime import datetime
 
 from Pyro.errors import PyroError, ConnectionClosedError
 
@@ -23,7 +24,7 @@ from cubicweb import BadConnectionId, UnknownEid, ConnectionError
 from cubicweb.cwconfig import register_persistent_options
 from cubicweb.server.sources import AbstractSource, ConnectionWrapper, TimedCache
 
-class ReplaceByInOperator:
+class ReplaceByInOperator(Exception):
     def __init__(self, eids):
         self.eids = eids
         
@@ -133,20 +134,20 @@ repository (default to 5 minutes).',
 
     def last_update_time(self):
         pkey = u'sources.%s.latest-update-time' % self.uri
-        rql = 'Any V WHERE X is EProperty, X value V, X pkey %(k)s'
+        rql = 'Any V WHERE X is CWProperty, X value V, X pkey %(k)s'
         session = self.repo.internal_session()
         try:
             rset = session.execute(rql, {'k': pkey})
             if not rset:
                 # insert it
-                session.execute('INSERT EProperty X: X pkey %(k)s, X value %(v)s',
+                session.execute('INSERT CWProperty X: X pkey %(k)s, X value %(v)s',
                                 {'k': pkey, 'v': u'0'})
                 session.commit()
                 timestamp = 0
             else:
                 assert len(rset) == 1
                 timestamp = int(rset[0][0])
-            return DateTimeFromTicks(timestamp)
+            return datetime.fromtimestamp(timestamp)
         finally:
             session.close()
 
@@ -196,7 +197,7 @@ repository (default to 5 minutes).',
                     continue
             session.execute('SET X value %(v)s WHERE X pkey %(k)s',
                             {'k': u'sources.%s.latest-update-time' % self.uri,
-                             'v': unicode(int(updatetime.ticks()))})
+                             'v': unicode(int(mktime(updatetime.timetuple())))})
             session.commit()
         finally:
             session.close()

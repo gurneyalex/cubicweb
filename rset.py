@@ -191,8 +191,7 @@ class ResultSet(object):
         else:
             entities = sorted(enumerate(self),
                               key=lambda (i, e): keyfunc(e), reverse=reverse)
-
-        for index, entity in entities:
+        for index, _ in entities:
             rows.append(self.rows[index])
             descr.append(self.description[index])
         rset.rowcount = len(rows)
@@ -222,7 +221,7 @@ class ResultSet(object):
         for idx, line in enumerate(self):
             if col >= 0:
                 try:
-                    key = self.get_entity(idx,col)
+                    key = self.get_entity(idx, col)
                 except NotAnEntity:
                     key = line[col]
             else:
@@ -381,6 +380,9 @@ class ResultSet(object):
             pass
         # build entity instance
         etype = self.description[row][col]
+        if etype == 'EUser':
+            import traceback
+            traceback.printstack()
         entity = self.vreg.etype_class(etype)(req, self, row, col)
         entity.set_eid(eid)
         # cache entity

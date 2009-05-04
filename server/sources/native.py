@@ -7,8 +7,7 @@
 __docformat__ = "restructuredtext en"
 
 from threading import Lock
-
-from mx.DateTime import now
+from datetime import datetime
 
 from logilab.common.cache import Cache
 from logilab.common.configuration import REQUIRED
@@ -86,9 +85,9 @@ class NativeSQLSource(SQLAdapterMixIn, AbstractSource):
     # need default value on class since migration doesn't call init method
     has_deleted_entitites_table = True
     
-    passwd_rql = "Any P WHERE X is EUser, X login %(login)s, X upassword P"
-    auth_rql = "Any X WHERE X is EUser, X login %(login)s, X upassword %(pwd)s"
-    _sols = ({'X': 'EUser', 'P': 'Password'},)
+    passwd_rql = "Any P WHERE X is CWUser, X login %(login)s, X upassword P"
+    auth_rql = "Any X WHERE X is CWUser, X login %(login)s, X upassword %(pwd)s"
+    _sols = ({'X': 'CWUser', 'P': 'Password'},)
     
     options = (
         ('db-driver',
@@ -200,7 +199,7 @@ class NativeSQLSource(SQLAdapterMixIn, AbstractSource):
             self._rql_sqlgen.schema = schema
         except AttributeError:
             pass # __init__
-        if 'EUser' in schema: # probably an empty schema if not true...
+        if 'CWUser' in schema: # probably an empty schema if not true...
             # rql syntax trees used to authenticate users
             self._passwd_rqlst = self.compile_rql(self.passwd_rql)
             self._auth_rqlst = self.compile_rql(self.auth_rql)
@@ -222,7 +221,7 @@ class NativeSQLSource(SQLAdapterMixIn, AbstractSource):
         return True #not rtype == 'content_for'
 
     def authenticate(self, session, login, password):
-        """return EUser eid for the given login/password if this account is
+        """return CWUser eid for the given login/password if this account is
         defined in this source, else raise `AuthenticationError`
 
         two queries are needed since passwords are stored crypted, so we have
@@ -501,7 +500,7 @@ class NativeSQLSource(SQLAdapterMixIn, AbstractSource):
         """add type and source info for an eid into the system table"""
         # begin by inserting eid/type/source/extid into the entities table
         attrs = {'type': str(entity.e_schema), 'eid': entity.eid,
-                 'extid': extid, 'source': source.uri, 'mtime': now()}
+                 'extid': extid, 'source': source.uri, 'mtime': datetime.now()}
         session.system_sql(self.sqlgen.insert('entities', attrs), attrs)
 
     def delete_info(self, session, eid, etype, uri, extid):
@@ -512,7 +511,7 @@ class NativeSQLSource(SQLAdapterMixIn, AbstractSource):
         session.system_sql(self.sqlgen.delete('entities', attrs), attrs)
         if self.has_deleted_entitites_table:
             attrs = {'type': etype, 'eid': eid, 'extid': extid,
-                     'source': uri, 'dtime': now()}
+                     'source': uri, 'dtime': datetime.now()}
             session.system_sql(self.sqlgen.insert('deleted_entities', attrs), attrs)
         
     def fti_unindex_entity(self, session, eid):
@@ -536,7 +535,7 @@ class NativeSQLSource(SQLAdapterMixIn, AbstractSource):
             if self.indexer is not None:
                 self.exception('error while reindexing %s', entity)
         # update entities.mtime
-        attrs = {'eid': entity.eid, 'mtime': now()}
+        attrs = {'eid': entity.eid, 'mtime': datetime.now()}
         session.system_sql(self.sqlgen.update('entities', attrs, ['eid']), attrs)
         
     def modified_entities(self, session, etypes, mtime):

@@ -9,10 +9,10 @@ __docformat__ = "restructuredtext en"
 
 from logilab.mtconverter import html_escape
 
+from cubicweb.selectors import implements
 from cubicweb.interfaces import IProgress, IMileStone
 from cubicweb.schema import display_name
-from cubicweb.common.view import EntityView
-from cubicweb.common.selectors import implement_interface, accept
+from cubicweb.view import EntityView
 from cubicweb.web.htmlwidgets import ProgressBarWidget
 
 
@@ -35,9 +35,7 @@ class ProgressTableView(EntityView):
     
     id = 'progress_table_view'
     title = _('task progression')
-    __selectors__ = (accept, implement_interface)
-
-    accepts_interfaces = (IMileStone,)
+    __select__ = implements(IMileStone)
 
     # default columns of the table
     columns = (_('project'), _('milestone'), _('state'), _('eta_date'),
@@ -182,9 +180,7 @@ class ProgressBarView(EntityView):
     """displays a progress bar"""
     id = 'progressbar'
     title = _('progress bar')
-    __selectors__ = (accept, implement_interface)
-
-    accepts_interfaces = (IProgress,)
+    __select__ = implements(IProgress)
 
     def cell_call(self, row, col):
         self.req.add_css('cubicweb.iprogress.css')

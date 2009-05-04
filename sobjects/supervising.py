@@ -2,13 +2,14 @@
 
 
 :organization: Logilab
-:copyright: 2001-2008 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
 """
 __docformat__ = "restructuredtext en"
 
 from cubicweb import UnknownEid
-from cubicweb.common.view import ComponentMixIn, StartupView
+from cubicweb.selectors import none_rset
+from cubicweb.view import Component
 from cubicweb.common.mail import format_mail
 from cubicweb.server.hooksmanager import Hook
 from cubicweb.server.hookhelper import SendMailOp
@@ -28,7 +29,7 @@ class SomethingChangedHook(Hook):
             SupervisionMailOp(session)
         
     def _call(self, *args):
-        if self._event() == 'update_entity' and args[0].e_schema == 'EUser':
+        if self._event() == 'update_entity' and args[0].e_schema == 'CWUser':
             updated = set(args[0].iterkeys())
             if not (updated - frozenset(('eid', 'modification_date', 'last_login_time'))):
                 # don't record last_login_time update which are done 
@@ -137,9 +138,10 @@ def filter_changes(changes):
             yield change
 
 
-class SupervisionEmailView(ComponentMixIn, StartupView):
+class SupervisionEmailView(Component):
     """view implementing the email API for data changes supervision notification
     """
+    __select__ = none_rset()
     id = 'supervision_notif'
 
     def recipients(self):
