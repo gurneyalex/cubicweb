@@ -2,15 +2,17 @@
 is checked.
 
 :organization: Logilab
-:copyright: 2001-2008 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
 """
 __docformat__ = "restructuredtext en"
 
 import sys
+from datetime import datetime
 
-from mx.DateTime import now
 from logilab.common.shellutils import ProgressBar
+
+from cubicweb.server.sqlutils import SQL_PREFIX
 
 def has_eid(sqlcursor, eid, eids):
     """return true if the eid is a valid eid"""
@@ -26,7 +28,8 @@ def has_eid(sqlcursor, eid, eids):
         # XXX what to do...
         eids[eid] = True
         return True
-    sqlcursor.execute('SELECT * FROM %s WHERE eid=%s' % (etype, eid))
+    sqlcursor.execute('SELECT * FROM %s%s WHERE %seid=%s' % (SQL_PREFIX, etype,
+                                                             SQL_PREFIX, eid))
     result = sqlcursor.fetchall()
     if len(result) == 0:
         eids[eid] = False
@@ -58,7 +61,7 @@ def etype_fti_containers(eschema, _done=None):
                     yield container
     else:
         yield eschema
-    
+
 def reindex_entities(schema, session):
     """reindex all entities in the repository"""
     # deactivate modification_date hook since we don't want them
@@ -85,7 +88,7 @@ def reindex_entities(schema, session):
           ', '.join(sorted(str(e) for e in etypes))
     pb = ProgressBar(len(etypes) + 1)
     # first monkey patch Entity.check to disable validation
-    from cubicweb.common.entity import Entity
+    from cubicweb.entity import Entity
     _check = Entity.check
     Entity.check = lambda self, creation=False: True
     # clear fti table first
@@ -100,7 +103,7 @@ def reindex_entities(schema, session):
     # restore Entity.check
     Entity.check = _check
 
-    
+
 def check_schema(schema, session, eids, fix=1):
     """check serialized schema"""
     print 'Checking serialized schema'
@@ -108,7 +111,7 @@ def check_schema(schema, session, eids, fix=1):
                           'VocabularyConstraint', 'RQLConstraint',
                           'RQLVocabularyConstraint')
     rql = ('Any COUNT(X),RN,EN,ECTN GROUPBY RN,EN,ECTN ORDERBY 1 '
-           'WHERE X is EConstraint, R constrained_by X, '
+           'WHERE X is CWConstraint, R constrained_by X, '
            'R relation_type RT, R from_entity ET, RT name RN, '
            'ET name EN, X cstrtype ECT, ECT name ECTN')
     for count, rn, en, cstrname in session.execute(rql):
@@ -119,7 +122,7 @@ def check_schema(schema, session, eids, fix=1):
                 count, cstrname, en, rn)
 
 
-    
+
 def check_text_index(schema, session, eids, fix=1):
     """check all entities registered in the text index"""
     print 'Checking text index'
@@ -154,7 +157,9 @@ def check_entities(schema, session, eids, fix=1):
     for eschema in schema.entities():
         if eschema.is_final():
             continue
-        cursor = session.system_sql('SELECT eid FROM %s;' % eschema.type)
+        table = SQL_PREFIX + eschema.type
+        column = SQL_PREFIX +  'eid'
+        cursor = session.system_sql('SELECT %s FROM %s;' % (column, table))
         for row in cursor.fetchall():
             eid = row[0]
             # eids is full since we have fetched everyting from the entities table,
@@ -163,12 +168,12 @@ def check_entities(schema, session, eids, fix=1):
                 msg = '  Entity with eid %s exists in the %s table but not in the system table'
                 print >> sys.stderr, msg % (eid, eschema.type),
                 if fix:
-                    session.system_sql('DELETE FROM %s WHERE eid=%s;' % (eschema.type, eid))
+                    session.system_sql('DELETE FROM %s WHERE %s=%s;' % (table, column, eid))
                     print >> sys.stderr, ' [FIXED]'
                 else:
                     print >> sys.stderr
-                
-            
+
+
 def bad_related_msg(rtype, target, eid, fix):
     msg = '  A relation %s with %s eid %s exists but no such entity in sources'
     print >> sys.stderr, msg % (rtype, target, eid),
@@ -176,48 +181,49 @@ def bad_related_msg(rtype, target, eid, fix):
         print >> sys.stderr, ' [FIXED]'
     else:
         print >> sys.stderr
-    
-    
+
+
 def check_relations(schema, session, eids, fix=1):
     """check all relations registered in the repo system table"""
     print 'Checking relations'
     for rschema in schema.relations():
         if rschema.is_final():
             continue
-        rtype = rschema.type
-        if rtype == 'identity':
+        if rschema == 'identity':
             continue
         if rschema.inlined:
             for subjtype in rschema.subjects():
+                table = SQL_PREFIX + str(subjtype)
+                column = SQL_PREFIX +  str(rschema)
                 sql = 'SELECT %s FROM %s WHERE %s IS NOT NULL;' % (
-                    rtype, subjtype, rtype)
+                    column, table, column)
                 cursor = session.system_sql(sql)
                 for row in cursor.fetchall():
                     eid = row[0]
                     if not has_eid(cursor, eid, eids):
-                        bad_related_msg(rtype, 'object', eid, fix)
+                        bad_related_msg(rschema, 'object', eid, fix)
                         if fix:
-                            sql = 'UPDATE %s SET %s = NULL WHERE eid=%s;' % (
-                                subjtype, rtype, eid)
+                            sql = 'UPDATE %s SET %s = NULL WHERE %seid=%s;' % (
+                                table, column, SQL_PREFIX, eid)
                             session.system_sql(sql)
             continue
-        cursor = session.system_sql('SELECT eid_from FROM %s_relation;' % rtype)
+        cursor = session.system_sql('SELECT eid_from FROM %s_relation;' % rschema)
         for row in cursor.fetchall():
             eid = row[0]
             if not has_eid(cursor, eid, eids):
-                bad_related_msg(rtype, 'subject', eid, fix)
+                bad_related_msg(rschema, 'subject', eid, fix)
                 if fix:
                     sql = 'DELETE FROM %s_relation WHERE eid_from=%s;' % (
-                        rtype, eid)
+                        rschema, eid)
                     session.system_sql(sql)
-        cursor = session.system_sql('SELECT eid_to FROM %s_relation;' % rtype)
+        cursor = session.system_sql('SELECT eid_to FROM %s_relation;' % rschema)
         for row in cursor.fetchall():
             eid = row[0]
             if not has_eid(cursor, eid, eids):
-                bad_related_msg(rtype, 'object', eid, fix)
+                bad_related_msg(rschema, 'object', eid, fix)
                 if fix:
                     sql = 'DELETE FROM %s_relation WHERE eid_to=%s;' % (
-                        rtype, eid)
+                        rschema, eid)
                     session.system_sql(sql)
 
 
@@ -228,21 +234,26 @@ def check_metadata(schema, session, eids, fix=1):
     """
     print 'Checking metadata'
     cursor = session.system_sql("SELECT DISTINCT type FROM entities;")
+    eidcolumn = SQL_PREFIX + 'eid'
     for etype, in cursor.fetchall():
-        for rel, default in ( ('creation_date', now()),
-                              ('modification_date', now()), ):
-            cursor = session.system_sql("SELECT eid FROM %s "
-                                        "WHERE %s is NULL" % (etype, rel))
+        table = SQL_PREFIX + etype
+        for rel, default in ( ('creation_date', datetime.now()),
+                              ('modification_date', datetime.now()), ):
+            column = SQL_PREFIX + rel
+            cursor = session.system_sql("SELECT %s FROM %s WHERE %s is NULL"
+                                        % (eidcolumn, table, column))
             for eid, in cursor.fetchall():
                 msg = '  %s with eid %s has no %s'
                 print >> sys.stderr, msg % (etype, eid, rel),
                 if fix:
-                    session.system_sql("UPDATE %s SET %s=%(default)s WHERE eid=%s ;"
-                                       % (etype, rel, eid), {'default': default})
+                    session.system_sql("UPDATE %s SET %s=%%(v)s WHERE %s=%s ;"
+                                       % (table, column, eidcolumn, eid),
+                                       {'v': default})
                     print >> sys.stderr, ' [FIXED]'
                 else:
                     print >> sys.stderr
-    cursor = session.system_sql('SELECT MIN(eid) FROM euser;')
+    cursor = session.system_sql('SELECT MIN(%s) FROM %sCWUser;' % (eidcolumn,
+                                                                  SQL_PREFIX))
     default_user_eid = cursor.fetchone()[0]
     assert default_user_eid is not None, 'no user defined !'
     for rel, default in ( ('owned_by', default_user_eid), ):
