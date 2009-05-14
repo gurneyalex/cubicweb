@@ -69,8 +69,13 @@ CubicWeb looks pretty recent. Is it stable ?
   one schema to the other ever since. There is a well-defined way to
   handle data and schema migration.
 
+<<<<<<< /home/syt/src/fcubicweb/cubicweb_3.2/doc/book/en/annexes/faq.rst
+Why is the RQL query language looking similar to X ?
+----------------------------------------------------
+=======
 Why is the RQL query language looking similar to X ?
 -----------------------------------------------------
+>>>>>>> /tmp/faq.rst~other.MxOUAP
 
   It may remind you of SQL but it is higher level than SQL, more like
   SPARQL. Except that SPARQL did not exist when we started the project.
@@ -96,7 +101,46 @@ Why is the RQL query language looking similar to X ?
 
 which ajax library
 ------------------
-  [we use jquery and things on top of that]
+[we use jquery and things on top of that]
+
+
+How to implement security?
+--------------------------
+
+  This is an example of how it works in our framework::
+
+    class Version(EntityType):
+    """a version is defining the content of a particular project's
+    release"""
+    # definition of attributes is voluntarily missing
+    permissions = {'read': ('managers', 'users', 'guests',),
+                   'update': ('managers', 'logilab', 'owners',),
+                   'delete': ('managers', ),
+                   'add': ('managers', 'logilab',
+                        ERQLExpression('X version_of PROJ, U in_group G, PROJ
+                        require_permission P, P name "add_version", P require_group G'),)}
+
+  The above means that permission to read a Version is granted to any
+  user that is part of one of the groups 'managers', 'users', 'guests'.
+  The 'add' permission is granted to users in group 'managers' or
+  'logilab' and to users in group G, if G is linked by a permission
+  entity named "add_version" to the version's project.
+  ::
+
+    class version_of(RelationType):
+        """link a version to its project. A version is necessarily linked
+        to one and only one project. """
+        # some lines voluntarily missing
+        permissions = {'read': ('managers', 'users', 'guests',), 
+                       'delete': ('managers', ),
+                       'add': ('managers', 'logilab',
+                            RRQLExpression('O require_permission P, P name "add_version",
+                            'U in_group G, P require_group G'),) }
+
+  You can find additional information in the section :ref:`security`.
+
+  [XXX what does the second example means in addition to the first one?]
+
 
 `Error while publishing rest text ...`
 --------------------------------------
@@ -204,6 +248,7 @@ How to change the application logo?
 
      where DATADIR is ``mycubes/data``.
 
+
 How to configure LDAP source?
 -------------------------------
 
@@ -296,42 +341,4 @@ What is the CubicWeb datatype corresponding to GAE datastore's UserProperty?
 
   [XXX check that cw handle users better by
   mapping Google Accounts to local Euser entities automatically]
-
-
-How to implement security?
---------------------------
-
-  This is an example of how it works in our framework::
-
-    class Version(EntityType):
-    """a version is defining the content of a particular project's
-    release"""
-    # definition of attributes is voluntarily missing
-    permissions = {'read': ('managers', 'users', 'guests',),
-                   'update': ('managers', 'logilab', 'owners',),
-                   'delete': ('managers', ),
-                   'add': ('managers', 'logilab',
-                        ERQLExpression('X version_of PROJ, U in_group G, PROJ
-                        require_permission P, P name "add_version", P require_group G'),)}
-
-  The above means that permission to read a Version is granted to any
-  user that is part of one of the groups 'managers', 'users', 'guests'.
-  The 'add' permission is granted to users in group 'managers' or
-  'logilab' and to users in group G, if G is linked by a permission
-  entity named "add_version" to the version's project.
-  ::
-
-    class version_of(RelationType):
-        """link a version to its project. A version is necessarily linked
-        to one and only one project. """
-        # some lines voluntarily missing
-        permissions = {'read': ('managers', 'users', 'guests',),
-                       'delete': ('managers', ),
-                       'add': ('managers', 'logilab',
-                            RRQLExpression('O require_permission P, P name "add_version",
-                            'U in_group G, P require_group G'),) }
-
-  You can find additional information in the section :ref:`security`.
-
-  [XXX what does the second example means in addition to the first one?]
 
