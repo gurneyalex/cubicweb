@@ -43,7 +43,7 @@ def compare_steps(self, step, expected):
                               'expected %s queries, got %s' % (len(equeries), len(queries)))
             for i, (rql, sol) in enumerate(queries):
                 self.assertEquals(rql, equeries[i][0])
-                self.assertEquals(sol, equeries[i][1])
+                self.assertEquals(sorted(sol), sorted(equeries[i][1]))
             idx = 2
         else:
             idx = 1
@@ -72,7 +72,7 @@ class DumbOrderedDict(list):
     def __contains__(self, key):
         return key in self.iterkeys()
     def __getitem__(self, key):
-        for key_, value in self.iteritems():
+        for key_, value in list.__iter__(self):
             if key == key_:
                 return value
         raise KeyError(key)
@@ -80,6 +80,17 @@ class DumbOrderedDict(list):
         return (x for x, y in list.__iter__(self))
     def iteritems(self):
         return (x for x in list.__iter__(self))
+    def items(self):
+        return [x for x in list.__iter__(self)]
+
+class DumbOrderedDict2(object):
+    def __init__(self, origdict, sortkey):
+        self.origdict = origdict
+        self.sortkey = sortkey
+    def __getattr__(self, attr):
+        return getattr(self.origdict, attr)
+    def __iter__(self):
+        return iter(sorted(self.origdict, key=self.sortkey))
 
 
 from logilab.common.testlib import TestCase
@@ -92,7 +103,7 @@ from cubicweb.server.sources.rql2sql import remove_unused_solutions
 
 class RQLGeneratorTC(TestCase):
     schema = None # set this in concret test
-    
+
     def setUp(self):
         self.rqlhelper = RQLHelper(self.schema, special_relations={'eid': 'uid',
                                                                    'has_text': 'fti'})
@@ -103,7 +114,7 @@ class RQLGeneratorTC(TestCase):
     def tearDown(self):
         ExecutionPlan._check_permissions = _orig_check_permissions
         rqlannotation._select_principal = _orig_select_principal
-        
+
     def _prepare(self, rql):
         #print '******************** prepare', rql
         union = self.rqlhelper.parse(rql)
@@ -122,7 +133,7 @@ class RQLGeneratorTC(TestCase):
 
 class BaseQuerierTC(TestCase):
     repo = None # set this in concret test
-    
+
     def setUp(self):
         self.o = self.repo.querier
         self.session = self.repo._sessions.values()[0]
@@ -137,7 +148,7 @@ class BaseQuerierTC(TestCase):
         return self.session.unsafe_execute('Any MAX(X)')[0][0]
     def cleanup(self):
         self.session.unsafe_execute('DELETE Any X WHERE X eid > %s' % self.maxeid)
-        
+
     def tearDown(self):
         undo_monkey_patch()
         self.session.rollback()
@@ -148,7 +159,7 @@ class BaseQuerierTC(TestCase):
 
     def set_debug(self, debug):
         set_debug(debug)
-        
+
     def _rqlhelper(self):
         rqlhelper = self.o._rqlhelper
         # reset uid_func so it don't try to get type from eids
@@ -164,8 +175,8 @@ class BaseQuerierTC(TestCase):
         for select in rqlst.children:
             select.solutions.sort()
         return self.o.plan_factory(rqlst, kwargs, self.session)
-        
-    def _prepare(self, rql, kwargs=None):    
+
+    def _prepare(self, rql, kwargs=None):
         plan = self._prepare_plan(rql, kwargs)
         plan.preprocess(plan.rqlst)
         rqlst = plan.rqlst.children[0]
@@ -184,10 +195,10 @@ class BaseQuerierTC(TestCase):
 
     def execute(self, rql, args=None, eid_key=None, build_descr=True):
         return self.o.execute(self.session, rql, args, eid_key, build_descr)
-    
+
     def commit(self):
         self.session.commit()
-        self.session.set_pool()        
+        self.session.set_pool()
 
 
 class BasePlannerTC(BaseQuerierTC):
@@ -217,10 +228,10 @@ def _build_variantes(self, newsolutions):
     variantes = _orig_build_variantes(self, newsolutions)
     sortedvariantes = []
     for variante in variantes:
-        orderedkeys = sorted((k[1], k[2], v) for k,v in variante.iteritems())
+        orderedkeys = sorted((k[1], k[2], v) for k, v in variante.iteritems())
         variante = DumbOrderedDict(sorted(variante.iteritems(),
-                                          lambda a,b: cmp((a[0][1],a[0][2],a[1]),
-                                                          (b[0][1],b[0][2],b[1]))))
+                                          lambda a, b: cmp((a[0][1],a[0][2],a[1]),
+                                                           (b[0][1],b[0][2],b[1]))))
         sortedvariantes.append( (orderedkeys, variante) )
     return [v for ok, v in sorted(sortedvariantes)]
 
@@ -230,7 +241,7 @@ _orig_init_temp_table = ExecutionPlan.init_temp_table
 
 def _check_permissions(*args, **kwargs):
     res, restricted = _orig_check_permissions(*args, **kwargs)
-    res = DumbOrderedDict(sorted(res.iteritems(), lambda a,b: cmp(a[1], b[1])))
+    res = DumbOrderedDict(sorted(res.iteritems(), lambda a, b: cmp(a[1], b[1])))
     return res, restricted
 
 def _dummy_check_permissions(self, rqlst):
@@ -256,17 +267,17 @@ try:
     from cubicweb.server.msplanner import PartPlanInformation
 except ImportError:
     class PartPlanInformation(object):
-        def merge_input_maps(*args):
+        def merge_input_maps(self, *args):
             pass
-        def _choose_var(self, sourcevars):
-            pass    
+        def _choose_term(self, sourceterms):
+            pass
 _orig_merge_input_maps = PartPlanInformation.merge_input_maps
-_orig_choose_var = PartPlanInformation._choose_var
+_orig_choose_term = PartPlanInformation._choose_term
 
 def _merge_input_maps(*args):
     return sorted(_orig_merge_input_maps(*args))
 
-def _choose_var(self, sourcevars):
+def _choose_term(self, sourceterms):
     # predictable order for test purpose
     def get_key(x):
         try:
@@ -279,17 +290,7 @@ def _choose_var(self, sourcevars):
             except AttributeError:
                 # const
                 return x.value
-    varsinorder = sorted(sourcevars, key=get_key)
-    if len(self._sourcesvars) > 1:
-        for var in varsinorder:
-            if not var.scope is self.rqlst:
-                return var, sourcevars.pop(var)
-    else:
-        for var in varsinorder:
-            if var.scope is self.rqlst:
-                return var, sourcevars.pop(var)
-    var = varsinorder[0]
-    return var, sourcevars.pop(var)
+    return _orig_choose_term(self, DumbOrderedDict2(sourceterms, get_key))
 
 
 def do_monkey_patch():
@@ -299,7 +300,7 @@ def do_monkey_patch():
     ExecutionPlan.tablesinorder = None
     ExecutionPlan.init_temp_table = _init_temp_table
     PartPlanInformation.merge_input_maps = _merge_input_maps
-    PartPlanInformation._choose_var = _choose_var
+    PartPlanInformation._choose_term = _choose_term
 
 def undo_monkey_patch():
     RQLRewriter.insert_snippets = _orig_insert_snippets
@@ -307,5 +308,4 @@ def undo_monkey_patch():
     ExecutionPlan._check_permissions = _orig_check_permissions
     ExecutionPlan.init_temp_table = _orig_init_temp_table
     PartPlanInformation.merge_input_maps = _orig_merge_input_maps
-    PartPlanInformation._choose_var = _orig_choose_var
-
+    PartPlanInformation._choose_term = _orig_choose_term
