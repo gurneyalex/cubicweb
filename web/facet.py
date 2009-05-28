@@ -2,8 +2,9 @@
 a search
 
 :organization: Logilab
-:copyright: 2008-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2008-2009 LOGILAB S.A. (Paris, FRANCE), license is LGPL v2.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
+:license: GNU Lesser General Public License, v2.1 - http://www.gnu.org/licenses
 """
 __docformat__ = "restructuredtext en"
 
@@ -549,7 +550,7 @@ class FacetVocabularyWidget(HTMLWidget):
             cssclass += ' overflowed'
         self.w(u'<div class="facetBody%s">\n' % cssclass)
         for item in self.items:
-            item.render(self.w)
+            item.render(w=self.w)
         self.w(u'</div>\n')
         self.w(u'</div>\n')
 
@@ -576,11 +577,15 @@ class FacetRangeWidget(HTMLWidget):
 	min: %(minvalue)s,
 	max: %(maxvalue)s,
         values: [%(minvalue)s, %(maxvalue)s],
+        stop: function(event, ui) { // submit when the user stops sliding
+           var form = $('#%(sliderid)s').closest('form');
+           buildRQL.apply(null, evalJSON(form.attr('cubicweb:facetargs')));
+        },
     	slide: function(event, ui) {
-	    $('#%(sliderid)s_inf').html(ui.values[0]);
-	    $('#%(sliderid)s_sup').html(ui.values[1]);
-	    $('input[name=%(facetid)s_inf]').val(ui.values[0]);
-	    $('input[name=%(facetid)s_sup]').val(ui.values[1]);
+            $('#%(sliderid)s_inf').html(ui.values[0]);
+            $('#%(sliderid)s_sup').html(ui.values[1]);
+            $('input[name=%(facetid)s_inf]').val(ui.values[0]);
+            $('input[name=%(facetid)s_sup]').val(ui.values[1]);
     	}
    });
 '''

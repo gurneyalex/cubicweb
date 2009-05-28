@@ -1,8 +1,9 @@
 """Test tools for cubicweb
 
 :organization: Logilab
-:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), license is LGPL v2.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
+:license: GNU Lesser General Public License, v2.1 - http://www.gnu.org/licenses
 """
 __docformat__ = "restructuredtext en"
 
@@ -328,7 +329,7 @@ def cleanup_sqlite(dbfile, removecube=False):
         pass
     if removecube:
         try:
-            os.remove('%s-cube' % dbfile)
+            os.remove('%s-template' % dbfile)
         except OSError:
             pass
 
@@ -338,11 +339,11 @@ def init_test_database_sqlite(config, source, vreg=None):
     # remove database file if it exists (actually I know driver == 'sqlite' :)
     dbfile = source['system']['db-name']
     cleanup_sqlite(dbfile)
-    cube = '%s-cube' % dbfile
-    if exists(cube):
-        shutil.copy(cube, dbfile)
+    template = '%s-template' % dbfile
+    if exists(template):
+        shutil.copy(template, dbfile)
     else:
         # initialize the database
         from cubicweb.server import init_repository
         init_repository(config, interactive=False, vreg=vreg)
-        shutil.copy(dbfile, cube)
+        shutil.copy(dbfile, template)
