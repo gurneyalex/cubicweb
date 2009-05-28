@@ -2,8 +2,9 @@
 are much more limited for the moment)
 
 :organization: Logilab
-:copyright: 2007-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2007-2009 LOGILAB S.A. (Paris, FRANCE), license is LGPL v2.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
+:license: GNU Lesser General Public License, v2.1 - http://www.gnu.org/licenses
 """
 
 __docformat__ = "restructuredtext en"
@@ -87,7 +88,8 @@ class ApacheURLRewrite(Component):
     id = 'urlrewriter'
     rules = []
 
-    def rewrite(self, host, path):
+    def rewrite(self, host, path, req):
+        self.req = req
         for cond in self.rules:
             if cond.match(host=host, path=path):
                 return cond.process(path)
