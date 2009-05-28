@@ -1,12 +1,14 @@
 """widget classes for form construction
 
 :organization: Logilab
-:copyright: 2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2009 LOGILAB S.A. (Paris, FRANCE), license is LGPL v2.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
+:license: GNU Lesser General Public License, v2.1 - http://www.gnu.org/licenses
 """
 __docformat__ = "restructuredtext en"
 
 from datetime import date
+from warnings import warn
 
 from cubicweb.common import tags
 from cubicweb.web import stdmsgs, INTERNAL_FIELD_VALUE
@@ -107,6 +109,11 @@ class PasswordInput(Input):
                   '&nbsp;', tags.span(form.req._('confirm password'),
                                       **{'class': 'emphasis'})]
         return u'\n'.join(inputs)
+
+
+class PasswordSingleInput(Input):
+    """<input type='password'> without a confirmation field"""
+    type = 'password'
 
 
 class FileInput(Input):
@@ -299,6 +306,17 @@ class AutoCompletionWidget(TextInput):
     wdgtype = 'SuggestField'
     loadtype = 'auto'
 
+    def __init__(self, *args, **kwargs):
+        try:
+            self.autocomplete_initfunc = kwargs.pop('autocomplete_initfunc')
+        except KeyError:
+            warn('use autocomplete_initfunc argument of %s constructor '
+                 'instead of relying on autocomplete_initfuncs dictionary on '
+                 'the entity class' % self.__class__.__name__,
+                 DeprecationWarning)
+            self.autocomplete_initfunc = None
+        super(AutoCompletionWidget, self).__init__(*args, **kwargs)
+
     def _render_attrs(self, form, field):
         name, values, attrs = super(AutoCompletionWidget, self)._render_attrs(form, field)
         init_ajax_attributes(attrs, self.wdgtype, self.loadtype)
@@ -307,7 +325,11 @@ class AutoCompletionWidget(TextInput):
         return name, values, attrs
 
     def _get_url(self, entity, field):
-        fname = entity.autocomplete_initfuncs[field.name]
+        if self.autocomplete_initfunc is None:
+            # XXX for bw compat
+            fname = entity.autocomplete_initfuncs[field.name]
+        else:
+            fname = self.autocomplete_initfunc
         return entity.req.build_url('json', fname=fname, mode='remote',
                                     pageid=entity.req.pageid)
 
@@ -317,7 +339,12 @@ class StaticFileAutoCompletionWidget(AutoCompletionWidget):
     wdgtype = 'StaticFileSuggestField'
 
     def _get_url(self, entity, field):
-        return entity.req.datadir_url + entity.autocomplete_initfuncs[field.name]
+        if self.autocomplete_initfunc is None:
+            # XXX for bw compat
+            fname = entity.autocomplete_initfuncs[field.name]
+        else:
+            fname = self.autocomplete_initfunc
+        return entity.req.datadir_url + fname
 
 
 class RestrictedAutoCompletionWidget(AutoCompletionWidget):

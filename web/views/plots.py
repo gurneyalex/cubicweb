@@ -3,6 +3,7 @@
 :organization: Logilab
 :copyright: 2007-2009 LOGILAB S.A. (Paris, FRANCE), license is LGPL.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
+:license: GNU Lesser General Public License, v2.1 - http://www.gnu.org/licenses
 """
 __docformat__ = "restructuredtext en"
 
@@ -87,7 +88,7 @@ jQuery.plot(jQuery("#%(figid)s"), [%(plotdata)s],
      lines: {show: true},
      grid: {hoverable: true},
      xaxis: {mode: %(mode)s}});
-jQuery('#%(figid)s').bind('plothover', onPlotHover);
+jQuery("#%(figid)s").bind("plothover", onPlotHover);
 '''
 
     def __init__(self, labels, plots, timemode=False):
@@ -138,7 +139,7 @@ class PlotView(baseviews.AnyRsetView):
         nbcols = len(self.rset.rows[0])
         for col in xrange(1, nbcols):
             data = [row[col] for row in self.rset]
-            plots.append(filterout_nulls(abscissa, plot))
+            plots.append(filterout_nulls(abscissa, data))
         plotwidget = FlotPlotWidget(varnames, plots, timemode=self.timemode)
         plotwidget.render(self.req, width, height, w=self.w)
 
@@ -177,10 +178,22 @@ else:
 
         __select__ = at_least_two_columns() & second_column_is_number()
 
+        def _guess_vid(self, row):
+            etype = self.rset.description[row][0]
+            if self.schema.eschema(etype).is_final():
+                return 'final'
+            return 'textincontext'
+
         def call(self, title=None, width=None, height=None):
-            labels = ['%s: %s' % (row[0].encode(self.req.encoding), row[1])
-                      for row in self.rset]
-            values = [(row[1] or 0) for row in self.rset]
+            labels = []
+            values = []
+            for rowidx, (_, value) in enumerate(self.rset):
+                if value is not None:
+                    vid = self._guess_vid(rowidx)
+                    label = '%s: %s' % (self.view(vid, self.rset, row=rowidx, col=0),
+                                        value)
+                    labels.append(label.encode(self.req.encoding))
+                    values.append(value)
             pie = PieChartWidget(labels, values, pieclass=self.pieclass,
                                  title=title)
             if width is not None:

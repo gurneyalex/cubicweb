@@ -1,8 +1,9 @@
 """Some utilities for the CubicWeb server.
 
 :organization: Logilab
-:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), license is LGPL v2.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
+:license: GNU Lesser General Public License, v2.1 - http://www.gnu.org/licenses
 """
 __docformat__ = "restructuredtext en"
 
@@ -63,23 +64,21 @@ def cleanup_solutions(rqlst, solutions):
 DEFAULT_MSG = 'we need a manager connection on the repository \
 (the server doesn\'t have to run, even should better not)'
 
-def manager_userpasswd(user=None, passwd=None, msg=DEFAULT_MSG, confirm=False):
+def manager_userpasswd(user=None, msg=DEFAULT_MSG, confirm=False,
+                       passwdmsg='password'):
     if not user:
         print msg
         while not user:
             user = raw_input('login: ')
-        passwd = getpass('password: ')
-        if confirm:
-            while True:
-                passwd2 = getpass('confirm password: ')
-                if passwd == passwd2:
-                    break
-                print 'password doesn\'t match'
-                passwd = getpass('password: ')
         user = unicode(user, sys.stdin.encoding)
-    elif not passwd:
-        assert not confirm
-        passwd = getpass('password for %s: ' % user)
+    passwd = getpass('%s: ' % passwdmsg)
+    if confirm:
+        while True:
+            passwd2 = getpass('confirm password: ')
+            if passwd == passwd2:
+                break
+            print 'password doesn\'t match'
+            passwd = getpass('password: ')
     # XXX decode password using stdin encoding then encode it using appl'encoding
     return user, passwd
 
