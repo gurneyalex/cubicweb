@@ -15,8 +15,9 @@
 
 
 :organization: Logilab
-:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), license is LGPL v2.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
+:license: GNU Lesser General Public License, v2.1 - http://www.gnu.org/licenses
 """
 __docformat__ = "restructuredtext en"
 
@@ -237,7 +238,7 @@ class VRegistry(object):
                 # XXX automatic reloading management
                 try:
                     registry[obj.id].remove(registered)
-                except ValueError:
+                except KeyError:
                     self.warning('can\'t remove %s, no id %s in the %s registry',
                                  removed_id, obj.id, registryname)
                 except ValueError:
@@ -254,11 +255,14 @@ class VRegistry(object):
             replaced = replaced.classid()
         registryname = registryname or obj.__registry__
         registry = self.registry(registryname)
-        registered_objs = registry[obj.id]
+        registered_objs = registry.get(obj.id, ())
         for index, registered in enumerate(registered_objs):
             if registered.classid() == replaced:
                 del registry[obj.id][index]
                 break
+        else:
+            self.warning('trying to replace an unregistered view %s by %s',
+                         replaced, obj)
         self.register(obj, registryname=registryname)
 
     # dynamic selection methods ###############################################

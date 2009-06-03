@@ -1,10 +1,12 @@
 """The edit controller, handling form submitting.
 
 :organization: Logilab
-:copyright: 2001-2008 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), license is LGPL v2.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
+:license: GNU Lesser General Public License, v2.1 - http://www.gnu.org/licenses
 """
 __docformat__ = "restructuredtext en"
+
 from decimal import Decimal
 
 from rql.utils import rqlvar_maker
@@ -228,6 +230,9 @@ class EditController(ViewController):
                         formparams['name'] = value[0]
                         self.relations.append('X name %(name)s')
                     value = val
+            else:
+                # no specified value, skip
+                return
         elif value is not None:
             if attrtype in ('Date', 'Datetime', 'Time'):
                 try:

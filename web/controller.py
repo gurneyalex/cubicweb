@@ -2,15 +2,15 @@
 
 
 :organization: Logilab
-:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), license is LGPL v2.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
+:license: GNU Lesser General Public License, v2.1 - http://www.gnu.org/licenses
 """
 __docformat__ = "restructuredtext en"
 
 import datetime
 
 from cubicweb import typed_eid
-from cubicweb.utils import strptime, todate, todatetime
 from cubicweb.selectors import yes, require_group_compat
 from cubicweb.appobject import AppObject
 from cubicweb.web import LOGGER, Redirect, RequestError
@@ -106,35 +106,6 @@ class Controller(AppObject):
         if missing:
             raise RequestError('missing required parameter(s): %s'
                                % ','.join(missing))
-
-    def parse_datetime(self, value, etype='Datetime'):
-        """get a datetime or time from a string (according to etype)
-        Datetime formatted as Date are accepted
-        """
-        assert etype in ('Datetime', 'Date', 'Time'), etype
-        # XXX raise proper validation error
-        if etype == 'Datetime':
-            format = self.req.property_value('ui.datetime-format')
-            try:
-                return todatetime(strptime(value, format))
-            except:
-                pass
-        elif etype == 'Time':
-            format = self.req.property_value('ui.time-format')
-            try:
-                # (adim) I can't find a way to parse a Time with a custom format
-                date = strptime(value, format) # this returns a DateTime
-                return datetime.time(date.hour, date.minute, date.second)
-            except:
-                raise ValueError('can\'t parse %r (expected %s)' % (value, format))
-        try:
-            format = self.req.property_value('ui.date-format')
-            dt = strptime(value, format)
-            if etype == 'Datetime':
-                return todatetime(dt)
-            return todate(dt)
-        except:
-            raise ValueError('can\'t parse %r (expected %s)' % (value, format))
 
 
     def notify_edited(self, entity):

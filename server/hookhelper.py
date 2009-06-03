@@ -1,8 +1,9 @@
 """helper functions for application hooks
 
 :organization: Logilab
-:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), license is LGPL v2.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
+:license: GNU Lesser General Public License, v2.1 - http://www.gnu.org/licenses
 """
 __docformat__ = "restructuredtext en"
 
@@ -42,7 +43,7 @@ def get_user_sessions(repo, ueid):
     for session in repo._sessions.values():
         if ueid == session.user.eid:
             yield session
-        
+
 
 # mail related ################################################################
 
@@ -58,17 +59,17 @@ class SendMailOp(SingleLastOperation):
         else:
             assert recipients is None
             self.to_send = []
-        super(SendMailOp, self).__init__(session, **kwargs) 
-       
+        super(SendMailOp, self).__init__(session, **kwargs)
+
     def register(self, session):
         previous = super(SendMailOp, self).register(session)
         if previous:
             self.to_send = previous.to_send + self.to_send
-        
+
     def commit_event(self):
         self.repo.threaded_task(self.sendmails)
 
-    def sendmails(self):        
+    def sendmails(self):
         server, port = self.config['smtp-host'], self.config['smtp-port']
         SMTP_LOCK.acquire()
         try:
@@ -89,7 +90,7 @@ class SendMailOp(SingleLastOperation):
             smtp.close()
         finally:
             SMTP_LOCK.release()
-            
+
 
 # state related ###############################################################
 

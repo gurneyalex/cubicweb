@@ -1,5 +1,11 @@
 # -*- coding: utf-8 -*-
-"""unit tests for cubicweb.web.views.entities module"""
+"""unit tests for cubicweb.web.views.entities module
+
+:organization: Logilab
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), license is LGPL v2.
+:contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
+:license: GNU Lesser General Public License, v2.1 - http://www.gnu.org/licenses
+"""
 
 from datetime import datetime
 
@@ -374,14 +380,15 @@ du :eid:`1:*ReST*`'''
         self.assertEquals(person.prenom, u'sylvain')
         self.assertEquals(person.nom, u'thénault')
 
-    def test_metainformation(self):
+    def test_metainformation_and_external_absolute_url(self):
         note = self.add_entity('Note', type=u'z')
         metainf = note.metainformation()
         self.assertEquals(metainf, {'source': {'adapter': 'native', 'uri': 'system'}, 'type': u'Note', 'extid': None})
         self.assertEquals(note.absolute_url(), 'http://testing.fr/cubicweb/note/%s' % note.eid)
         metainf['source'] = metainf['source'].copy()
         metainf['source']['base-url']  = 'http://cubicweb2.com/'
-        self.assertEquals(note.absolute_url(), 'http://cubicweb2.com/note/%s' % note.eid)
+        metainf['extid']  = 1234
+        self.assertEquals(note.absolute_url(), 'http://cubicweb2.com/note/1234')
 
 if __name__ == '__main__':
     from logilab.common.testlib import unittest_main

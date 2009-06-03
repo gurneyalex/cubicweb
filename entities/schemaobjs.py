@@ -1,8 +1,9 @@
 """schema definition related entities
 
 :organization: Logilab
-:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), license is LGPL v2.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
+:license: GNU Lesser General Public License, v2.1 - http://www.gnu.org/licenses
 """
 __docformat__ = "restructuredtext en"
 
@@ -19,8 +20,8 @@ class CWEType(AnyEntity):
     fetch_attrs, fetch_order = fetch_config(['name'])
 
     def dc_title(self):
-        return self.req._(self.name)
-    
+        return u'%s (%s)' % (self.name, self.req._(self.name))
+
     def dc_long_title(self):
         stereotypes = []
         _ = self.req._
@@ -40,10 +41,10 @@ class CWEType(AnyEntity):
 class CWRType(AnyEntity):
     id = 'CWRType'
     fetch_attrs, fetch_order = fetch_config(['name'])
-    
+
     def dc_title(self):
-        return self.req._(self.name)
-    
+        return u'%s (%s)' % (self.name, self.req._(self.name))
+
     def dc_long_title(self):
         stereotypes = []
         _ = self.req._
@@ -61,7 +62,7 @@ class CWRType(AnyEntity):
 
     def inlined_changed(self, inlined):
         """check inlining is necessary and possible:
-        
+
         * return False if nothing has changed
         * raise ValidationError if inlining is'nt possible
         * eventually return True
@@ -88,13 +89,13 @@ class CWRType(AnyEntity):
 class CWRelation(AnyEntity):
     id = 'CWRelation'
     fetch_attrs = fetch_config(['cardinality'])[0]
-    
+
     def dc_title(self):
         return u'%s %s %s' % (
             self.from_entity[0].name,
-            self.relation_type[0].name, 
+            self.relation_type[0].name,
             self.to_entity[0].name)
-    
+
     def dc_long_title(self):
         card = self.cardinality
         scard, ocard = u'', u''
@@ -118,7 +119,7 @@ class CWRelation(AnyEntity):
 
 class CWAttribute(CWRelation):
     id = 'CWAttribute'
-    
+
     def dc_long_title(self):
         card = self.cardinality
         scard = u''
@@ -126,7 +127,7 @@ class CWAttribute(CWRelation):
             scard = '+'
         return u'%s %s%s %s' % (
             self.from_entity[0].name,
-            scard, self.relation_type[0].name, 
+            scard, self.relation_type[0].name,
             self.to_entity[0].name)
 
 
@@ -136,7 +137,7 @@ class CWConstraint(AnyEntity):
 
     def dc_title(self):
         return '%s(%s)' % (self.cstrtype[0].name, self.value or u'')
-        
+
     def after_deletion_path(self):
         """return (path, parameters) which should be used as redirect
         information when this entity is being deleted
@@ -149,7 +150,7 @@ class CWConstraint(AnyEntity):
     def type(self):
         return self.cstrtype[0].name
 
-        
+
 class RQLExpression(AnyEntity):
     id = 'RQLExpression'
     fetch_attrs, fetch_order = fetch_config(['exprtype', 'mainvars', 'expression'])
@@ -164,17 +165,17 @@ class RQLExpression(AnyEntity):
             values = getattr(self, 'reverse_%s' % rel)
             if values:
                 return values[0]
-            
+
     @cached
     def _rqlexpr(self):
         if self.exprtype == 'ERQLExpression':
             return ERQLExpression(self.expression, self.mainvars, self.eid)
         #if self.exprtype == 'RRQLExpression':
         return RRQLExpression(self.expression, self.mainvars, self.eid)
-    
+
     def check_expression(self, *args, **kwargs):
         return self._rqlexpr().check(*args, **kwargs)
-    
+
     def after_deletion_path(self):
         """return (path, parameters) which should be used as redirect
         information when this entity is being deleted
@@ -192,7 +193,7 @@ class CWPermission(AnyEntity):
         if self.label:
             return '%s (%s)' % (self.req._(self.name), self.label)
         return self.req._(self.name)
-    
+
     def after_deletion_path(self):
         """return (path, parameters) which should be used as redirect
         information when this entity is being deleted

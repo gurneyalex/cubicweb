@@ -1,10 +1,12 @@
 """navigation components definition for CubicWeb web client
 
 :organization: Logilab
-:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), license is LGPL v2.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
+:license: GNU Lesser General Public License, v2.1 - http://www.gnu.org/licenses
 """
 __docformat__ = "restructuredtext en"
+_ = unicode
 
 from logilab.mtconverter import html_escape
 
@@ -16,12 +18,11 @@ from cubicweb.view import EntityView
 from cubicweb.common.uilib import cut
 from cubicweb.web.component import EntityVComponent
 
-_ = unicode
 
 def bc_title(entity):
     textsize = entity.req.property_value('navigation.short-line-size')
     return html_escape(cut(entity.dc_title(), textsize))
-    
+
 
 class BreadCrumbEntityVComponent(EntityVComponent):
     id = 'breadcrumbs'
@@ -52,7 +53,7 @@ class BreadCrumbEntityVComponent(EntityVComponent):
                 self.w(u"\n")
                 self.wpath_part(parent, entity, i == len(path) - 1)
             self.w(u'</span>')
-            
+
     def wpath_part(self, part, contextentity, last=False):
         if isinstance(part, Entity):
             if last and part.eid == contextentity.eid:
@@ -67,7 +68,7 @@ class BreadCrumbEntityVComponent(EntityVComponent):
         else:
             textsize = self.req.property_value('navigation.short-line-size')
             self.w(cut(unicode(part), textsize))
-        
+
 
 class BreadCrumbComponent(BreadCrumbEntityVComponent):
     __registry__ = 'components'
@@ -80,7 +81,6 @@ class BreadCrumbView(EntityView):
 
     def cell_call(self, row, col):
         entity = self.entity(row, col)
-        desc = cut(entity.dc_description(), 50)
-        self.w(u'<a href="%s" title="%s">%s</a>' % (html_escape(entity.absolute_url()),
-                                                    html_escape(desc),
-                                                    bc_title(entity)))
+        desc = html_escape(cut(entity.dc_description(), 50))
+        self.w(u'<a href="%s" title="%s">%s</a>' % (
+            html_escape(entity.absolute_url()), desc, bc_title(entity)))

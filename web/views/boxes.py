@@ -9,10 +9,12 @@ additional (disabled by default) boxes
 * startup views box
 
 :organization: Logilab
-:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), license is LGPL v2.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
+:license: GNU Lesser General Public License, v2.1 - http://www.gnu.org/licenses
 """
 __docformat__ = "restructuredtext en"
+_ = unicode
 
 from logilab.mtconverter import html_escape
 
@@ -23,7 +25,6 @@ from cubicweb.view import EntityView
 from cubicweb.web import uicfg
 from cubicweb.web.box import BoxTemplate
 
-_ = unicode
 
 class EditBox(BoxTemplate):
     """
@@ -99,10 +100,10 @@ class EditBox(BoxTemplate):
         eschema = entity.e_schema
         for rschema, teschema, x in self.add_related_schemas(entity):
             if x == 'subject':
-                label = '%s %s %s %s' % (eschema, rschema, teschema, x)
+                label = 'add %s %s %s %s' % (eschema, rschema, teschema, x)
                 url = self.linkto_url(entity, rschema, teschema, 'object')
             else:
-                label = '%s %s %s %s' % (teschema, rschema, eschema, x)
+                label = 'add %s %s %s %s' % (teschema, rschema, eschema, x)
                 url = self.linkto_url(entity, rschema, teschema, 'subject')
             actions.append(self.mk_action(_(label), url))
         return actions

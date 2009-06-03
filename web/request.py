@@ -1,8 +1,9 @@
 """abstract class for http request
 
 :organization: Logilab
-:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), license is LGPL v2.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
+:license: GNU Lesser General Public License, v2.1 - http://www.gnu.org/licenses
 """
 __docformat__ = "restructuredtext en"
 
@@ -19,12 +20,14 @@ from rql.utils import rqlvar_maker
 from logilab.common.decorators import cached
 from logilab.common.deprecation import obsolete
 
+from logilab.mtconverter import html_escape
+
 from cubicweb.dbapi import DBAPIRequest
 from cubicweb.common.mail import header
 from cubicweb.common.uilib import remove_html_tags
 from cubicweb.utils import SizeConstrainedList, HTMLHead
-from cubicweb.web import (INTERNAL_FIELD_VALUE, LOGGER, NothingToEdit, RequestError,
-                          StatusResponse)
+from cubicweb.web import (INTERNAL_FIELD_VALUE, LOGGER, NothingToEdit,
+                          RequestError, StatusResponse)
 
 _MARKER = object()
 
@@ -477,6 +480,23 @@ class CubicWebRequestBase(DBAPIRequest):
             if localfile:
                 cssfile = self.datadir_url + cssfile
             add_css(cssfile, media)
+
+    def build_ajax_replace_url(self, nodeid, rql, vid, replacemode='replace',
+                               **extraparams):
+        """builds an ajax url that will replace `nodeid`s content
+        :param nodeid: the dom id of the node to replace
+        :param rql: rql to execute
+        :param vid: the view to apply on the resultset
+        :param replacemode: defines how the replacement should be done.
+        Possible values are :
+         - 'replace' to replace the node's content with the generated HTML
+         - 'swap' to replace the node itself with the generated HTML
+         - 'append' to append the generated HTML to the node's content
+        """
+        url = self.build_url('view', rql=rql, vid=vid, __notemplate=1,
+                             **extraparams)
+        return "javascript: loadxhtml('%s', '%s', '%s')" % (
+            nodeid, html_escape(url), replacemode)
 
     # urls/path management ####################################################
 

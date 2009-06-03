@@ -1,3 +1,11 @@
+"""
+
+:organization: Logilab
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), license is LGPL v2.
+:contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
+:license: GNU Lesser General Public License, v2.1 - http://www.gnu.org/licenses
+"""
+
 """unit tests for module cubicweb.server.sources.rql2sql"""
 
 import sys
@@ -1210,6 +1218,14 @@ WHERE rel_in_group0.eid_from=T00.x AND rel_in_group0.eid_to=G.cw_eid AND G.cw_na
 FROM T00, cw_CWGroup AS G, in_group_relation AS rel_in_group0
 WHERE rel_in_group0.eid_from=T00.x AND rel_in_group0.eid_to=G.cw_eid''',
                     varmap={'X': 'T00.x', 'X.login': 'T00.l'})
+
+    def test_is_null_transform(self):
+        union = self._prepare('Any X WHERE X login %(login)s')
+        r, args = self.o.generate(union, {'login': None})
+        self.assertLinesEquals((r % args).strip(),
+                               '''SELECT X.cw_eid
+FROM cw_CWUser AS X
+WHERE X.cw_login IS NULL''')
 
     def test_parser_parse(self):
         for t in self._parse(PARSER):

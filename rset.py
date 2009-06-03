@@ -1,8 +1,9 @@
 """The `ResultSet` class which is returned as result of a rql query
 
 :organization: Logilab
-:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), license is LGPL v2.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
+:license: GNU Lesser General Public License, v2.1 - http://www.gnu.org/licenses
 """
 __docformat__ = "restructuredtext en"
 
@@ -11,7 +12,7 @@ from logilab.common.decorators import cached, clear_cache, copy_cache
 from rql import nodes
 
 from cubicweb import NotAnEntity
-    
+
 
 class ResultSet(object):
     """a result set wrap a RQL query result. This object implements a partial
@@ -53,12 +54,12 @@ class ResultSet(object):
         self.req = None
         # actions cache
         self._rsetactions = None
-        
+
     def __str__(self):
         if not self.rows:
             return '<empty resultset %s>' % self.rql
         return '<resultset %s (%s rows)>' % (self.rql, len(self.rows))
-    
+
     def __repr__(self):
         if not self.rows:
             return '<empty resultset for %r>' % self.rql
@@ -85,22 +86,22 @@ class ResultSet(object):
             actions = self.vreg.possible_vobjects('actions', self.req, self, **kwargs)
             self._rsetactions[key] = actions
             return actions
-    
+
     def __len__(self):
         """returns the result set's size"""
         return self.rowcount
 
     def __nonzero__(self):
         return self.rowcount
-    
+
     def __getitem__(self, i):
         """returns the ith element of the result set"""
         return self.rows[i] #ResultSetRow(self.rows[i])
-    
+
     def __getslice__(self, i, j):
         """returns slice [i:j] of the result set"""
         return self.rows[i:j]
-        
+
     def __iter__(self):
         """Returns an iterator over rows"""
         return iter(self.rows)
@@ -126,7 +127,7 @@ class ResultSet(object):
         :param transformcb:
           a callable which should take a row and its type description as
           parameters, and return the transformed row and type description.
-          
+
 
         :type col: int
         :param col: the column index
@@ -199,7 +200,7 @@ class ResultSet(object):
 
     def split_rset(self, keyfunc=None, col=0, return_dict=False):
         """Splits the result set in multiple result set according to a given key
-    
+
         :type keyfunc: callable(entity or FinalType)
         :param keyfunc:
           a callable which should take a value of the rset in argument and
@@ -256,7 +257,7 @@ class ResultSet(object):
 
         :type offset: int
         :param offset: the offset index
-        
+
         :type inplace: bool
         :param inplace:
           if true, the result set is modified in place, else a new result set
@@ -289,7 +290,7 @@ class ResultSet(object):
                 copy_cache(rset, 'get_entity', self)
         rset.limited = (limit, offset)
         return rset
-    
+
     def printable_rql(self, encoded=False):
         """return the result set's origin rql as a string, with arguments
         substitued
@@ -301,11 +302,11 @@ class ResultSet(object):
             if isinstance(rqlstr, unicode):
                 return rqlstr
             return unicode(rqlstr, encoding)
-        else: 
+        else:
             if isinstance(rqlstr, unicode):
                 return rqlstr.encode(encoding)
             return rqlstr
-       
+
     # client helper methods ###################################################
 
     def entities(self, col=0):
@@ -320,7 +321,7 @@ class ResultSet(object):
     def get_entity(self, row, col=None):
         """special method for query retreiving a single entity, returns a
         partially initialized Entity instance.
-        
+
         WARNING: due to the cache wrapping this function, you should NEVER
                  give row as a named parameter (i.e. rset.get_entity(req, 0)
                  is OK but rset.get_entity(row=0, req=req) isn't
@@ -351,7 +352,7 @@ class ResultSet(object):
 
         partially means that only attributes selected in the RQL
         query will be directly assigned to the entity.
-        
+
         :type row,col: int, int
         :param row,col:
           row and col numbers localizing the entity among the result's table
@@ -380,9 +381,6 @@ class ResultSet(object):
             pass
         # build entity instance
         etype = self.description[row][col]
-        if etype == 'EUser':
-            import traceback
-            traceback.printstack()
         entity = self.vreg.etype_class(etype)(req, self, row, col)
         entity.set_eid(eid)
         # cache entity
@@ -427,7 +425,7 @@ class ResultSet(object):
 
     @cached
     def syntax_tree(self):
-        """get the syntax tree for the source query. 
+        """get the syntax tree for the source query.
 
         :rtype: rql.stmts.Statement
         :return: the RQL syntax tree of the originating query
@@ -441,12 +439,12 @@ class ResultSet(object):
         else:
             rqlst = self.vreg.parse(self.req, self.rql, self.args)
         return rqlst
-        
+
     @cached
     def column_types(self, col):
         """return the list of different types in the column with the given col
         index default to 0 (ie the first column)
-        
+
         :type col: int
         :param col: the index of the desired column
 
@@ -483,7 +481,7 @@ class ResultSet(object):
         etype = self.description[row][col]
         if self.vreg.schema.eschema(etype).is_final():
             # final type, find a better one to locate the correct subquery
-            # (ambiguous if possible) 
+            # (ambiguous if possible)
             for i in xrange(len(rqlst.children[0].selection)):
                 if i == col:
                     continue
@@ -522,7 +520,7 @@ class ResultSet(object):
                 __, rhs = rel.get_variable_parts()
                 return rhs.eval(self.args)
         return None
-        
+
 
 def attr_desc_iterator(rqlst, index=0):
     """return an iterator on a list of 2-uple (index, attr_relation)

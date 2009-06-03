@@ -1,8 +1,9 @@
 """authentication using google authentication service
 
 :organization: Logilab
-:copyright: 2008-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2008-2009 LOGILAB S.A. (Paris, FRANCE), license is LGPL v2.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
+:license: GNU Lesser General Public License, v2.1 - http://www.gnu.org/licenses
 """
 __docformat__ = "restructuredtext en"
 
@@ -23,7 +24,7 @@ class GAELogoutAction(LogoutAction):
 
     def url(self):
         return users.create_logout_url(self.req.build_url('logout') )
-    
+
 def registration_callback(vreg):
     if hasattr(vreg.config, 'has_resource'):
         vreg.register(GACWUserLink, clear=True)

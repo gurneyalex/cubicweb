@@ -45,17 +45,16 @@ Why do you think using pure python is better than using a template language ?
   we use standard OOP techniques and this is a key factor in a
   robust application.
 
-Why do you use the GPL license to prevent me from doing X ?
+Why do you use the LGPL license to prevent me from doing X ?
 -----------------------------------------------------------
 
-  GPL means that *if* you redistribute your application, you need to
-  redistribute it *and* the changes you made *and* the code _linked_
-  to it under the GPL licence.
+  LGPL means that *if* you redistribute your application, you need to
+  redistribute the changes you made to CubicWeb under the LGPL licence.
 
   Publishing a web site has nothing to do with redistributing
-  source code. A fair amount of companies use modified GPL code
+  source code. A fair amount of companies use modified LGPL code
   for internal use. And someone could publish a `CubicWeb` component
-  under a BSD licence for others to plug into a GPL framework without
+  under a BSD licence for others to plug into a LGPL framework without
   any problem. The only thing we are trying to prevent here is someone
   taking the framework and packaging it as closed source to his own
   clients.
@@ -64,10 +63,9 @@ Why do you use the GPL license to prevent me from doing X ?
 CubicWeb looks pretty recent. Is it stable ?
 --------------------------------------------
 
-  It is constantly evolving, piece by piece.  The framework has
-  evolved over the past seven years and data has been migrated from
-  one schema to the other ever since. There is a well-defined way to
-  handle data and schema migration.
+  It is constantly evolving, piece by piece.  The framework has evolved since
+  2001 and data has been migrated from one schema to the other ever since. There
+  is a well-defined way to handle data and schema migration.
 
 Why is the RQL query language looking similar to X ?
 -----------------------------------------------------
@@ -96,7 +94,46 @@ Why is the RQL query language looking similar to X ?
 
 which ajax library
 ------------------
-  [we use jquery and things on top of that]
+[we use jquery and things on top of that]
+
+
+How to implement security?
+--------------------------
+
+  This is an example of how it works in our framework::
+
+    class Version(EntityType):
+    """a version is defining the content of a particular project's
+    release"""
+    # definition of attributes is voluntarily missing
+    permissions = {'read': ('managers', 'users', 'guests',),
+                   'update': ('managers', 'logilab', 'owners',),
+                   'delete': ('managers', ),
+                   'add': ('managers', 'logilab',
+                        ERQLExpression('X version_of PROJ, U in_group G, PROJ
+                        require_permission P, P name "add_version", P require_group G'),)}
+
+  The above means that permission to read a Version is granted to any
+  user that is part of one of the groups 'managers', 'users', 'guests'.
+  The 'add' permission is granted to users in group 'managers' or
+  'logilab' and to users in group G, if G is linked by a permission
+  entity named "add_version" to the version's project.
+  ::
+
+    class version_of(RelationType):
+        """link a version to its project. A version is necessarily linked
+        to one and only one project. """
+        # some lines voluntarily missing
+        permissions = {'read': ('managers', 'users', 'guests',), 
+                       'delete': ('managers', ),
+                       'add': ('managers', 'logilab',
+                            RRQLExpression('O require_permission P, P name "add_version",
+                            'U in_group G, P require_group G'),) }
+
+  You can find additional information in the section :ref:`security`.
+
+  [XXX what does the second example means in addition to the first one?]
+
 
 `Error while publishing rest text ...`
 --------------------------------------
@@ -204,6 +241,7 @@ How to change the application logo?
 
      where DATADIR is ``mycubes/data``.
 
+
 How to configure LDAP source?
 -------------------------------
 
@@ -251,7 +289,7 @@ How to format an entity date attribute?
 
   If your schema has an attribute of type Date or Datetime, you might
   want to format it. First, you should define your preferred format using
-  the site configuration panel ``http://appurl/view?vid=systemepropertiesform``
+  the site configuration panel ``http://appurl/view?vid=systempropertiesform``
   and then set ``ui.date`` and/or ``ui.datetime``.
   Then in the view code, use::
     
@@ -298,40 +336,19 @@ What is the CubicWeb datatype corresponding to GAE datastore's UserProperty?
   mapping Google Accounts to local Euser entities automatically]
 
 
-How to implement security?
---------------------------
+How to reset the password for user joe?
+---------------------------------------
 
-  This is an example of how it works in our framework::
+  You need to generate a new encrypted password::
 
-    class Version(EntityType):
-    """a version is defining the content of a particular project's
-    release"""
-    # definition of attributes is voluntarily missing
-    permissions = {'read': ('managers', 'users', 'guests',),
-                   'update': ('managers', 'logilab', 'owners',),
-                   'delete': ('managers', ),
-                   'add': ('managers', 'logilab',
-                        ERQLExpression('X version_of PROJ, U in_group G, PROJ
-                        require_permission P, P name "add_version", P require_group G'),)}
+    $ python
+    >>> from cubicweb.server.utils import crypt_password
+    >>> crypt_password('joepass')
+    'qHO8282QN5Utg'
+    >>> 
 
-  The above means that permission to read a Version is granted to any
-  user that is part of one of the groups 'managers', 'users', 'guests'.
-  The 'add' permission is granted to users in group 'managers' or
-  'logilab' and to users in group G, if G is linked by a permission
-  entity named "add_version" to the version's project.
-  ::
+  and paste it in the database::
 
-    class version_of(RelationType):
-        """link a version to its project. A version is necessarily linked
-        to one and only one project. """
-        # some lines voluntarily missing
-        permissions = {'read': ('managers', 'users', 'guests',),
-                       'delete': ('managers', ),
-                       'add': ('managers', 'logilab',
-                            RRQLExpression('O require_permission P, P name "add_version",
-                            'U in_group G, P require_group G'),) }
-
-  You can find additional information in the section :ref:`security`.
-
-  [XXX what does the second example means in addition to the first one?]
-
+    $ psql mydb
+    mydb=> update cw_cwuser set cw_upassword='qHO8282QN5Utg' where cw_login='joe';
+    UPDATE 1

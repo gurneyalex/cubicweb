@@ -1,8 +1,9 @@
 """The automatic entity form.
 
 :organization: Logilab
-:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), license is LGPL v2.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
+:license: GNU Lesser General Public License, v2.1 - http://www.gnu.org/licenses
 """
 __docformat__ = "restructuredtext en"
 _ = unicode
@@ -11,13 +12,13 @@ from logilab.common.decorators import iclassmethod
 
 from cubicweb import typed_eid
 from cubicweb.web import stdmsgs, uicfg
-from cubicweb.web.form import FieldNotFound, EntityFieldsForm
+from cubicweb.web.form import FieldNotFound
 from cubicweb.web.formfields import guess_field
 from cubicweb.web.formwidgets import Button, SubmitButton
-from cubicweb.web.views.editforms import toggleable_relation_link, relation_id
+from cubicweb.web.views import forms, editforms
 
 
-class AutomaticEntityForm(EntityFieldsForm):
+class AutomaticEntityForm(forms.EntityFieldsForm):
     """base automatic form to edit any entity.
 
     Designed to be fully generated from schema but highly configurable through:
@@ -32,7 +33,7 @@ class AutomaticEntityForm(EntityFieldsForm):
     cwtarget = 'eformframe'
     cssclass = 'entityForm'
     copy_nav_params = True
-    form_buttons = [SubmitButton(stdmsgs.BUTTON_OK),
+    form_buttons = [SubmitButton(),
                     Button(stdmsgs.BUTTON_APPLY, cwaction='apply'),
                     Button(stdmsgs.BUTTON_CANCEL, cwaction='cancel')]
     attrcategories = ('primary', 'secondary')
@@ -189,7 +190,8 @@ class AutomaticEntityForm(EntityFieldsForm):
         """
         # we'll need an initialized varmaker if there are some inlined relation
         self.initialize_varmaker()
-        return self.erelations_by_category(self.edited_entity, True, 'add', self.rinlined)
+        return self.erelations_by_category(self.edited_entity, True, 'add',
+                                           self.rinlined)
 
     def srelations_by_category(self, categories=None, permission=None):
         """filter out result of relations_by_category(categories, permission) by
@@ -233,13 +235,13 @@ class AutomaticEntityForm(EntityFieldsForm):
         for label, rschema, role in self.srelations_by_category('generic', 'add'):
             relatedrset = entity.related(rschema, role, limit=self.related_limit)
             if rschema.has_perm(self.req, 'delete'):
-                toggleable_rel_link_func = toggleable_relation_link
+                toggleable_rel_link_func = editforms.toggleable_relation_link
             else:
                 toggleable_rel_link_func = lambda x, y, z: u''
             related = []
             for row in xrange(relatedrset.rowcount):
-                nodeid = relation_id(entity.eid, rschema, role,
-                                     relatedrset[row][0])
+                nodeid = editforms.relation_id(entity.eid, rschema, role,
+                                               relatedrset[row][0])
                 if nodeid in pending_deletes:
                     status = u'pendingDelete'
                     label = '+'

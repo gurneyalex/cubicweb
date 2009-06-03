@@ -4,10 +4,12 @@
 * the logged user link
 
 :organization: Logilab
-:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), license is LGPL v2.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
+:license: GNU Lesser General Public License, v2.1 - http://www.gnu.org/licenses
 """
 __docformat__ = "restructuredtext en"
+_ = unicode
 
 from rql import parse
 
@@ -18,10 +20,8 @@ from cubicweb.web import component
 from cubicweb.web.htmlwidgets import (MenuWidget, PopupBoxMenu, BoxSeparator,
                                       BoxLink)
 
-_ = unicode
-
 VISIBLE_PROP_DEF = {
-    _('visible'):  dict(type='Boolean', default=False,
+    _('visible'):  dict(type='Boolean', default=True,
                         help=_('display the component or not')),
     }
 
@@ -126,9 +126,8 @@ class ApplicationMessage(component.Component):
     """
     __select__ = yes()
     id = 'applmessages'
-    property_defs = VISIBLE_PROP_DEF
     # don't want user to hide this component using an cwproperty
-    site_wide = True
+    property_defs = {}
 
     def call(self):
         msgs = [msg for msg in (self.req.get_shared_data('sources_error', pop=True),

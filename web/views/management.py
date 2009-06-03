@@ -2,27 +2,28 @@
 
 
 :organization: Logilab
-:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), license is LGPL v2.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
+:license: GNU Lesser General Public License, v2.1 - http://www.gnu.org/licenses
 """
 __docformat__ = "restructuredtext en"
 _ = unicode
 
 from logilab.mtconverter import html_escape
 
-from cubicweb.selectors import yes, none_rset, match_user_groups
+from cubicweb.selectors import yes, none_rset, match_user_groups, authenticated_user
 from cubicweb.view import AnyRsetView, StartupView, EntityView
 from cubicweb.common.uilib import html_traceback, rest_traceback
 from cubicweb.web import formwidgets
-from cubicweb.web.form import FieldsForm, EntityFieldsForm
 from cubicweb.web.formfields import guess_field
-from cubicweb.web.formrenderers import HTableFormRenderer
 
 SUBMIT_MSGID = _('Submit bug report')
 MAIL_SUBMIT_MSGID = _('Submit bug report by mail')
 
+
 class SecurityViewMixIn(object):
     """display security information for a given schema """
+
     def schema_definition(self, eschema, link=True,  access_types=None):
         w = self.w
         _ = self.req._
@@ -33,14 +34,14 @@ class SecurityViewMixIn(object):
             _("permission"), _('granted to groups'), _('rql expressions')))
         for access_type in access_types:
             w(u'<tr>')
-            w(u'<td>%s</td>' % _('%s_perm' % access_type))
+            w(u'<td>%s</td>' % self.req.__('%s_perm' % access_type))
             groups = eschema.get_groups(access_type)
             l = []
             groups = [(_(group), group) for group in groups]
             for trad, group in sorted(groups):
                 if link:
                     l.append(u'<a href="%s" class="%s">%s</a><br/>' % (
-                    self.build_url('egroup/%s' % group), group, trad))
+                    self.build_url('cwgroup/%s' % group), group, trad))
                 else:
                     l.append(u'<div class="%s">%s</div>' % (group, trad))
             w(u'<td>%s</td>' % u''.join(l))
@@ -65,7 +66,10 @@ class SecurityViewMixIn(object):
 class SecurityManagementView(EntityView, SecurityViewMixIn):
     """display security information for a given entity"""
     id = 'security'
+    __select__ = EntityView.__select__ & authenticated_user()
+
     title = _('security')
+
     def call(self):
         self.w(u'<div id="progress">%s</div>' % self.req._('validating...'))
         super(SecurityManagementView, self).call()
@@ -101,11 +105,13 @@ class SecurityManagementView(EntityView, SecurityViewMixIn):
     def owned_by_edit_form(self, entity):
         self.w('<h3>%s</h3>' % self.req._('ownership'))
         msg = self.req._('ownerships have been changed')
-        form = EntityFieldsForm(self.req, None, entity=entity, submitmsg=msg,
-                                form_buttons=[formwidgets.SubmitButton()],
-                                domid='ownership%s' % entity.eid,
-                                __redirectvid='security',
-                                __redirectpath=entity.rest_path())
+        form = self.vreg.select_object('forms', 'base', self.req, entity=entity,
+                                       form_renderer_id='base',
+                                  submitmsg=msg,
+                                  form_buttons=[formwidgets.SubmitButton()],
+                                  domid='ownership%s' % entity.eid,
+                                  __redirectvid='security',
+                                  __redirectpath=entity.rest_path())
         field = guess_field(entity.e_schema, self.schema.rschema('owned_by'))
         form.append_field(field)
         self.w(form.form_render(display_progress_div=False))
@@ -158,11 +164,11 @@ class SecurityManagementView(EntityView, SecurityViewMixIn):
         newperm = self.vreg.etype_class('CWPermission')(self.req, None)
         newperm.eid = self.req.varmaker.next()
         w(u'<p>%s</p>' % _('add a new permission'))
-        form = EntityFieldsForm(self.req, None, entity=newperm,
-                                form_buttons=[formwidgets.SubmitButton()],
-                                domid='reqperm%s' % entity.eid,
-                                __redirectvid='security',
-                                __redirectpath=entity.rest_path())
+        form = self.vreg.select_object('forms', 'base', self.req, entity=newperm,
+                                       form_buttons=[formwidgets.SubmitButton()],
+                                       domid='reqperm%s' % entity.eid,
+                                       __redirectvid='security',
+                                       __redirectpath=entity.rest_path())
         form.form_add_hidden('require_permission', entity.eid, role='object',
                              eidparam=True)
         permnames = getattr(entity, '__permissions__', None)
@@ -178,8 +184,9 @@ class SecurityManagementView(EntityView, SecurityViewMixIn):
         form.append_field(field)
         field = guess_field(cwpermschema, self.schema.rschema('require_group'))
         form.append_field(field)
-        self.w(form.form_render(renderer=HTableFormRenderer(display_progress_div=False)))
-
+        renderer = self.select_object('formrenderers', 'htable', self.req,
+                                      display_progress_div=False)
+        self.w(form.form_render(renderer=renderer))
 
 
 class ErrorView(AnyRsetView):
@@ -235,7 +242,7 @@ class ErrorView(AnyRsetView):
         submiturl = self.config['submit-url']
         submitmail = self.config['submit-mail']
         if submiturl or submitmail:
-            form = FieldsForm(self.req, set_error_url=False)
+            form = self.select_object('forms', 'base', self.req, set_error_url=False)
             binfo = text_error_description(ex, excinfo, req, eversion, cversions)
             form.form_add_hidden('description', binfo)
             form.form_add_hidden('__bugreporting', '1')
@@ -270,6 +277,7 @@ def text_error_description(ex, excinfo, req, eversion, cubes):
         binfo += u":Package %s version: %s\n" % (pkg, pkgversion)
     binfo += '\n'
     return binfo
+
 
 class ProcessInformationView(StartupView):
     id = 'info'

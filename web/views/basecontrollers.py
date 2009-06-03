@@ -4,8 +4,9 @@ object to handle publication.
 
 
 :organization: Logilab
-:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), license is LGPL v2.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
+:license: GNU Lesser General Public License, v2.1 - http://www.gnu.org/licenses
 """
 __docformat__ = "restructuredtext en"
 
@@ -14,16 +15,17 @@ from smtplib import SMTP
 import simplejson
 
 from logilab.common.decorators import cached
+from logilab.mtconverter import html_escape
 
 from cubicweb import NoSelectableObject, ValidationError, ObjectNotFound, typed_eid
 from cubicweb.utils import strptime
 from cubicweb.selectors import yes, match_user_groups
-from cubicweb.view import STRICT_DOCTYPE
+from cubicweb.view import STRICT_DOCTYPE, STRICT_DOCTYPE_NOEXT
 from cubicweb.common.mail import format_mail
 from cubicweb.web import ExplicitLogin, Redirect, RemoteCallFailed, json_dumps
-from cubicweb.web.formrenderers import FormRenderer
 from cubicweb.web.controller import Controller
 from cubicweb.web.views import vid_from_rset
+from cubicweb.web.views.formrenderers import FormRenderer
 try:
     from cubicweb.web.facet import (FilterRQLBuilder, get_facet,
                                     prepare_facets_rqlst)
@@ -32,8 +34,13 @@ except ImportError: # gae
     HAS_SEARCH_RESTRICTION = False
 
 
-def xhtml_wrap(source):
-    head = u'<?xml version="1.0"?>\n' + STRICT_DOCTYPE
+def xhtml_wrap(self, source):
+    # XXX factor out, watch view.py ~ Maintemplate.doctype
+    if self.req.xhtml_browser():
+        dt = STRICT_DOCTYPE
+    else:
+        dt = STRICT_DOCTYPE_NOEXT
+    head = u'<?xml version="1.0"?>\n' + dt
     return head + u'<div xmlns="http://www.w3.org/1999/xhtml" xmlns:cubicweb="http://www.logilab.org/2008/cubicweb">%s</div>' % source.strip()
 
 def jsonize(func):
@@ -51,7 +58,7 @@ def xhtmlize(func):
     def wrapper(self, *args, **kwargs):
         self.req.set_content_type(self.req.html_content_type())
         result = func(self, *args, **kwargs)
-        return xhtml_wrap(result)
+        return xhtml_wrap(self, result)
     wrapper.__name__ = func.__name__
     return wrapper
 
@@ -114,6 +121,8 @@ class ViewController(Controller):
             try:
                 method = getattr(entity, req.form.pop('__method'))
                 method()
+            except Redirect: # propagate redirect that might occur in method()
+                raise
             except Exception, ex:
                 self.exception('while handling __method')
                 req.set_message(req._("error while handling __method: %s") % req._(ex))
@@ -203,7 +212,7 @@ class FormValidatorController(Controller):
         self.req.set_content_type('text/html')
         jsarg = simplejson.dumps( (status, args) )
         return """<script type="text/javascript">
- window.parent.handleFormValidationResponse('entityForm', null, %s);
+ window.parent.handleFormValidationResponse('entityForm', null, null, %s);
 </script>""" %  simplejson.dumps( (status, args) )
 
     def validation_error(self, err):
@@ -332,7 +341,7 @@ class JSonController(Controller):
                                        entity=entity)
         form.form_build_context()
         vfield = form.field_by_name('value')
-        renderer = FormRenderer()
+        renderer = FormRenderer(self.req)
         return vfield.render(form, renderer, tabindex=tabindex) \
                + renderer.render_help(form, vfield)
 
@@ -377,11 +386,7 @@ class JSonController(Controller):
             ctrl.publish(None, fromjson=True)
         except ValidationError, err:
             self.req.cnx.rollback()
-            if not err.entity or isinstance(err.entity, (long, int)):
-                eid = err.entity
-            else:
-                eid = err.entity.eid
-            return (False, (eid, err.errors))
+            return (False, (err.entity, err.errors))
         except Redirect, redir:
             return (True, redir.location)
         except Exception, err:
@@ -413,6 +418,8 @@ class JSonController(Controller):
             rset = entity.related(rtype, role)
             if rset:
                 output = self.view(vid, rset)
+                if vid == 'textoutofcontext':
+                    output = html_escape(output)
             else:
                 output = default
             return (success, args, output)
@@ -481,6 +488,24 @@ class JSonController(Controller):
     def js_delete_bookmark(self, beid):
         rql = 'DELETE B bookmarked_by U WHERE B eid %(b)s, U eid %(u)s'
         self.req.execute(rql, {'b': typed_eid(beid), 'u' : self.req.user.eid})
+
+    def js_node_clicked(self, treeid, nodeeid):
+        """add/remove eid in treestate cookie"""
+        from cubicweb.web.views.treeview import treecookiename
+        cookies = self.req.get_cookie()
+        statename = treecookiename(treeid)
+        treestate = cookies.get(statename)
+        if treestate is None:
+            cookies[statename] = nodeeid
+            self.req.set_cookie(cookies, statename)
+        else:
+            marked = set(filter(None, treestate.value.split(';')))
+            if nodeeid in marked:
+                marked.remove(nodeeid)
+            else:
+                marked.add(nodeeid)
+            cookies[statename] = ';'.join(marked)
+            self.req.set_cookie(cookies, statename)
 
     def js_set_cookie(self, cookiename, cookievalue):
         # XXX we should consider jQuery.Cookie

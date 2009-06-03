@@ -1,3 +1,10 @@
+"""
+
+:organization: Logilab
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), license is LGPL v2.
+:contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
+:license: GNU Lesser General Public License, v2.1 - http://www.gnu.org/licenses
+"""
 from logilab.common.testlib import unittest_main
 
 from cubicweb.devtools.apptest import EnvBasedTC
@@ -20,6 +27,6 @@ class ActionsTC(EnvBasedTC):
         rset = self.execute('Any X WHERE X login "anon"', req=req)
         self.failIf([action for action in self.vreg.possible_vobjects('actions', req, rset)
                      if action.id == 'sendemail'])
-        
+
 if __name__ == '__main__':
     unittest_main()

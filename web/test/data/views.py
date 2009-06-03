@@ -1,3 +1,10 @@
+"""
+
+:organization: Logilab
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), license is LGPL v2.
+:contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
+:license: GNU Lesser General Public License, v2.1 - http://www.gnu.org/licenses
+"""
 from cubicweb.web import Redirect
 from cubicweb.web.application import CubicWebPublisher
 
@@ -21,6 +28,6 @@ def auto_login_publish(self, path, req):
             pass
         assert req.user.login == login
     return orig_publish(self, path, req)
-    
+
 orig_publish = CubicWebPublisher.main_publish
 CubicWebPublisher.main_publish = auto_login_publish

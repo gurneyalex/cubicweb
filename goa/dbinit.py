@@ -1,8 +1,9 @@
 """some utility functions for datastore initialization.
 
 :organization: Logilab
-:copyright: 2008 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2008-2009 LOGILAB S.A. (Paris, FRANCE), license is LGPL v2.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
+:license: GNU Lesser General Public License, v2.1 - http://www.gnu.org/licenses
 """
 __docformat__ = "restructuredtext en"
 
@@ -72,7 +73,7 @@ def init_relations(gaeentity, eschema):
         dsrelation = 'o_' + rschema.type
         if not dsrelation in gaeentity:
             gaeentity[dsrelation] = None
-    
+
 def fix_entities(schema):
     for etype in ('CWUser', 'CWGroup'):
         eschema = schema.eschema(etype)
@@ -81,7 +82,7 @@ def fix_entities(schema):
             # XXX o_is on CWEType entity
             gaeentity['s_is'] = Key.from_path('CWEType', 'key_' + etype, parent=None)
             Put(gaeentity)
-    
+
 def init_persistent_schema(ssession, schema):
     execute = ssession.unsafe_execute
     rql = ('INSERT CWEType X: X name %(name)s, X description %(descr)s,'
@@ -105,4 +106,3 @@ def insert_versions(ssession, config):
         execute('INSERT CWProperty X: X pkey %(pk)s, X value%(v)s',
                 {'pk': u'system.version.%s' % cube,
                  'v': unicode(config.cube_version(cube))})
-    

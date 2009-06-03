@@ -3,8 +3,9 @@
 This module contains functions to initialize a new repository.
 
 :organization: Logilab
-:copyright: 2003-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2003-2009 LOGILAB S.A. (Paris, FRANCE), license is LGPL v2.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
+:license: GNU Lesser General Public License, v2.1 - http://www.gnu.org/licenses
 """
 __docformat__ = "restructuredtext en"
 
@@ -103,7 +104,7 @@ from cubicweb.server.sources.rql2sql import remove_unused_solutions
 
 class RQLGeneratorTC(TestCase):
     schema = None # set this in concret test
-    
+
     def setUp(self):
         self.rqlhelper = RQLHelper(self.schema, special_relations={'eid': 'uid',
                                                                    'has_text': 'fti'})
@@ -114,7 +115,7 @@ class RQLGeneratorTC(TestCase):
     def tearDown(self):
         ExecutionPlan._check_permissions = _orig_check_permissions
         rqlannotation._select_principal = _orig_select_principal
-        
+
     def _prepare(self, rql):
         #print '******************** prepare', rql
         union = self.rqlhelper.parse(rql)
@@ -133,7 +134,7 @@ class RQLGeneratorTC(TestCase):
 
 class BaseQuerierTC(TestCase):
     repo = None # set this in concret test
-    
+
     def setUp(self):
         self.o = self.repo.querier
         self.session = self.repo._sessions.values()[0]
@@ -148,7 +149,7 @@ class BaseQuerierTC(TestCase):
         return self.session.unsafe_execute('Any MAX(X)')[0][0]
     def cleanup(self):
         self.session.unsafe_execute('DELETE Any X WHERE X eid > %s' % self.maxeid)
-        
+
     def tearDown(self):
         undo_monkey_patch()
         self.session.rollback()
@@ -159,7 +160,7 @@ class BaseQuerierTC(TestCase):
 
     def set_debug(self, debug):
         set_debug(debug)
-        
+
     def _rqlhelper(self):
         rqlhelper = self.o._rqlhelper
         # reset uid_func so it don't try to get type from eids
@@ -175,8 +176,8 @@ class BaseQuerierTC(TestCase):
         for select in rqlst.children:
             select.solutions.sort()
         return self.o.plan_factory(rqlst, kwargs, self.session)
-        
-    def _prepare(self, rql, kwargs=None):    
+
+    def _prepare(self, rql, kwargs=None):
         plan = self._prepare_plan(rql, kwargs)
         plan.preprocess(plan.rqlst)
         rqlst = plan.rqlst.children[0]
@@ -195,10 +196,10 @@ class BaseQuerierTC(TestCase):
 
     def execute(self, rql, args=None, eid_key=None, build_descr=True):
         return self.o.execute(self.session, rql, args, eid_key, build_descr)
-    
+
     def commit(self):
         self.session.commit()
-        self.session.set_pool()        
+        self.session.set_pool()
 
 
 class BasePlannerTC(BaseQuerierTC):
@@ -270,7 +271,7 @@ except ImportError:
         def merge_input_maps(self, *args):
             pass
         def _choose_term(self, sourceterms):
-            pass    
+            pass
 _orig_merge_input_maps = PartPlanInformation.merge_input_maps
 _orig_choose_term = PartPlanInformation._choose_term
 
@@ -309,4 +310,3 @@ def undo_monkey_patch():
     ExecutionPlan.init_temp_table = _orig_init_temp_table
     PartPlanInformation.merge_input_maps = _orig_merge_input_maps
     PartPlanInformation._choose_term = _orig_choose_term
-

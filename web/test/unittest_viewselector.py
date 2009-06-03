@@ -1,8 +1,7 @@
 # -*- coding: iso-8859-1 -*-
 """XXX rename, split, reorganize this
+:license: GNU Lesser General Public License, v2.1 - http://www.gnu.org/licenses
 """
-from __future__ import with_statement
-
 from logilab.common.testlib import unittest_main
 
 from cubicweb.devtools.apptest import EnvBasedTC
@@ -66,13 +65,13 @@ class VRegistryTC(ViewSelectorTC):
         self.assertListEqual(self.pviews(req, None),
                              [('changelog', wdoc.ChangeLogView),
                               ('debug', debug.DebugView),
-                              ('epropertiesform', cwproperties.EPropertiesForm),
                               ('index', startup.IndexView),
                               ('info', management.ProcessInformationView),
                               ('manage', startup.ManageView),
                               ('owl', owl.OWLView),
+                              ('propertiesform', cwproperties.CWPropertiesForm),
                               ('schema', startup.SchemaView),
-                              ('systemepropertiesform', cwproperties.SystemEPropertiesForm)])
+                              ('systempropertiesform', cwproperties.SystemCWPropertiesForm)])
 
     def test_possible_views_noresult(self):
         rset, req = self.env.get_rset_and_req('Any X WHERE X eid 999999')

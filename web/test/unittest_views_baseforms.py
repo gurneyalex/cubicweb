@@ -1,4 +1,10 @@
-"""cubicweb.web.views.baseforms unit tests"""
+"""cubicweb.web.views.baseforms unit tests
+
+:organization: Logilab
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), license is LGPL v2.
+:contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
+:license: GNU Lesser General Public License, v2.1 - http://www.gnu.org/licenses
+"""
 
 from StringIO import StringIO
 from datetime import date
@@ -31,7 +37,7 @@ class EditionFormTC(EnvBasedTC):
 
     def setup_database(self):
         self.create_user('joe')
-        
+
     def _build_creation_form(self, etype):
         req = self.request()
         req.next_tabindex()
@@ -44,10 +50,10 @@ class EditionFormTC(EnvBasedTC):
         view.w = buffer.write
         view.edit_form(entity, {})
         return buffer.getvalue()
-    
+
     def _test_view_for(self, etype, expected):
         self.assertTextEquals(expected, cleanup_text(self._build_creation_form(etype)))
-        
+
     def test_base(self):
         self._test_view_for('CWGroup', '''\
 <form id="entityForm" class="entityForm" cubicweb:target="eformframe"
@@ -198,7 +204,7 @@ method="post" onsubmit="return freezeFormButtons('entityForm')" enctype="applica
         entity = vreg.etype_class('Salesterm')(req, None, None)
         view = vreg.select_view('creation', req, None)
         self.failUnless(view.need_multipart(entity))
-        
+
 
 
     def test_nonregr_check_add_permission_on_relation(self):
@@ -214,7 +220,7 @@ method="post" onsubmit="return freezeFormButtons('entityForm')" enctype="applica
         self.login('joe')
         html = self._build_creation_form('BlogEntry')
         self.failIf('name="edits-checked_by:A"' in html)
-        
+
 from cubicweb.devtools.testlib import WebTest
 from cubicweb.devtools.htmlparser import DTDValidator
 

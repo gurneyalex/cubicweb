@@ -1,8 +1,9 @@
 """common web configuration for twisted/modpython applications
 
 :organization: Logilab
-:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), license is LGPL v2.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
+:license: GNU Lesser General Public License, v2.1 - http://www.gnu.org/licenses
 """
 __docformat__ = "restructuredtext en"
 
@@ -22,7 +23,7 @@ register_persistent_options( (
     ('site-title',
      {'type' : 'string', 'default': 'unset title',
       'help': _('site title'),
-      'sitewide': True, 'group': 'ui', 
+      'sitewide': True, 'group': 'ui',
       }),
     ('main-template',
      {'type' : 'string', 'default': 'main-template',
@@ -54,7 +55,7 @@ register_persistent_options( (
       'help': _('maximum number of entities to display in related combo box'),
       'group': 'navigation',
       }),
-    
+
     ))
 
 
@@ -64,7 +65,7 @@ class WebConfiguration(CubicWebConfiguration):
     """
     cubicweb_vobject_path = CubicWebConfiguration.cubicweb_vobject_path | set(['web/views'])
     cube_vobject_path = CubicWebConfiguration.cube_vobject_path | set(['views'])
-    
+
     options = merge_options(CubicWebConfiguration.options + (
         ('anonymous-user',
          {'type' : 'string',
@@ -185,7 +186,7 @@ if you want to allow everything',
           'interface\'s language according to browser defined preferences',
           'group': 'web', 'inputlevel': 2,
           }),
-        
+
         ('print-traceback',
          {'type' : 'yn',
           'default': not CubicWebConfiguration.mode == 'installed',
@@ -206,17 +207,17 @@ if you want to allow everything',
 
     def fckeditor_installed(self):
         return exists(self.ext_resources['FCKEDITOR_PATH'])
-    
+
     def eproperty_definitions(self):
         for key, pdef in super(WebConfiguration, self).eproperty_definitions():
             if key == 'ui.fckeditor' and not self.fckeditor_installed():
                 continue
             yield key, pdef
-                
+
     # method used to connect to the repository: 'inmemory' / 'pyro'
     # Pyro repository by default
     repo_method = 'pyro'
-    
+
     # don't use @cached: we want to be able to disable it while this must still
     # be cached
     def repository(self, vreg=None):
@@ -235,7 +236,7 @@ if you want to allow everything',
 
     def vc_config(self):
         return self.repository().get_versions()
-    
+
     # mapping to external resources (id -> path) (`external_resources` file) ##
     ext_resources = {
         'FAVICON':  'DATADIR/favicon.ico',
@@ -244,13 +245,13 @@ if you want to allow everything',
         'HELP':     'DATADIR/help.png',
         'CALENDAR_ICON': 'DATADIR/calendar.gif',
         'SEARCH_GO':'DATADIR/go.png',
-        
+
         'FCKEDITOR_PATH':  '/usr/share/fckeditor/',
-        
+
         'IE_STYLESHEETS':    ['DATADIR/cubicweb.ie.css'],
         'STYLESHEETS':       ['DATADIR/cubicweb.css'],
         'STYLESHEETS_PRINT': ['DATADIR/cubicweb.print.css'],
-        
+
         'JAVASCRIPTS':       ['DATADIR/jquery.js',
                               'DATADIR/jquery.corner.js',
                               'DATADIR/jquery.json.js',
@@ -258,8 +259,8 @@ if you want to allow everything',
                               'DATADIR/cubicweb.python.js',
                               'DATADIR/cubicweb.htmlhelpers.js'],
         }
-        
-        
+
+
     def anonymous_user(self):
         """return a login and password to use for anonymous users. None
         may be returned for both if anonymous connections are not allowed
@@ -272,7 +273,7 @@ if you want to allow everything',
         if user is not None:
             user = unicode(user)
         return user, passwd
-    
+
     def has_resource(self, rid):
         """return true if an external resource is defined"""
         return bool(self.ext_resources.get(rid))
@@ -281,19 +282,19 @@ if you want to allow everything',
     def locate_resource(self, rid):
         """return the directory where the given resource may be found"""
         return self._fs_locate(rid, 'data')
-            
+
     @cached
     def locate_doc_file(self, fname):
         """return the directory where the given resource may be found"""
         return self._fs_locate(fname, 'wdoc')
-            
+
     def _fs_locate(self, rid, rdirectory):
         """return the directory where the given resource may be found"""
         path = [self.apphome] + self.cubes_path() + [join(self.shared_dir())]
         for directory in path:
             if exists(join(directory, rdirectory, rid)):
                 return join(directory, rdirectory)
-            
+
     def locate_all_files(self, rid, rdirectory='wdoc'):
         """return all files corresponding to the given resource"""
         path = [self.apphome] + self.cubes_path() + [join(self.shared_dir())]
@@ -308,7 +309,7 @@ if you want to allow everything',
         # load external resources definition
         self._build_ext_resources()
         self._init_base_url()
-        
+
     def _init_base_url(self):
         # normalize base url(s)
         baseurl = self['base-url']
@@ -341,11 +342,11 @@ if you want to allow everything',
 
 
     # static files handling ###################################################
-    
+
     @property
     def static_directory(self):
         return join(self.appdatahome, 'static')
-    
+
     def static_file_exists(self, rpath):
         return exists(join(self.static_directory, rpath))
 
@@ -365,4 +366,3 @@ if you want to allow everything',
     def static_file_del(self, rpath):
         if self.static_file_exists(rpath):
             os.remove(join(self.static_directory, rpath))
-        

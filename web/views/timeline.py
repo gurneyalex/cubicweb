@@ -3,8 +3,9 @@
 cf. http://code.google.com/p/simile-widgets/
 
 :organization: Logilab
-:copyright: 2008-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2008-2009 LOGILAB S.A. (Paris, FRANCE), license is LGPL v2.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
+:license: GNU Lesser General Public License, v2.1 - http://www.gnu.org/licenses
 """
 __docformat__ = "restructuredtext en"
 
@@ -16,6 +17,7 @@ from cubicweb.interfaces import ICalendarable
 from cubicweb.selectors import implements
 from cubicweb.view import EntityView, StartupView
 
+_ = unicode
 
 class TimelineJsonView(EntityView):
     """generates a json file to feed Timeline.loadJSON()
@@ -67,7 +69,7 @@ class TimelineJsonView(EntityView):
             return None
         event_data = {'start': start.strftime(self.date_fmt),
                       'title': html_escape(entity.dc_title()),
-                      'description': entity.dc_description(),
+                      'description': entity.dc_description(format='text/html'),
                       'link': entity.absolute_url(),
                       }
         onclick = self.onclick(entity)
@@ -101,6 +103,7 @@ class TimelineViewMixIn(object):
 class TimelineView(TimelineViewMixIn, EntityView):
     """builds a cubicweb timeline widget node"""
     id = 'timeline'
+    title = _('timeline')
     __select__ = implements(ICalendarable)
     need_navigation = False
     def call(self, tlunit=None):

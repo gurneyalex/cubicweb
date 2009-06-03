@@ -13,11 +13,11 @@ following differences:
 * all methods returning `google.appengine.ext.db.Model` instance(s) will return
   `cubicweb.goa.db.Model` instance instead (though you should see almost no
   difference since those instances have the same api)
-  
+
 * class methods returning model instance take a `req` as first argument, unless
   they are called through an instance, representing the current request
   (accessible through `self.req` on almost all objects)
-  
+
 * XXX no instance.<modelname>_set attributes, use instance.reverse_<attr name>
       instead
 * XXX reference property always return a list of objects, not the instance
@@ -25,8 +25,9 @@ following differences:
 * XXX ListProperty
 
 :organization: Logilab
-:copyright: 2008-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2008-2009 LOGILAB S.A. (Paris, FRANCE), license is LGPL v2.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
+:license: GNU Lesser General Public License, v2.1 - http://www.gnu.org/licenses
 """
 __docformat__ = "restructuredtext en"
 
@@ -47,7 +48,7 @@ from google.appengine.api.datastore_types import Text, Blob
 from google.appengine.api.datastore_errors import BadKeyError
 
 # XXX remove this dependancy
-from google.appengine.ext import db 
+from google.appengine.ext import db
 
 
 def rset_from_objs(req, objs, attrs=('eid',), rql=None, args=None):
@@ -76,15 +77,15 @@ def rset_from_objs(req, objs, attrs=('eid',), rql=None, args=None):
                 value = obj[attr]
                 descr = str(eschema.destination(attr))
             line.append(value)
-            linedescr.append(descr)            
+            linedescr.append(descr)
         rows.append(line)
         description.append(linedescr)
         for j, attr in enumerate(attrs):
             if attr == 'eid':
                 entity = vreg.etype_class(eschema.type)(req, rset, i, j)
-                rset._get_entity_cache_ = {(i, j): entity}        
+                rset._get_entity_cache_ = {(i, j): entity}
     rset.rowcount = len(rows)
-    req.decorate_rset(rset)    
+    req.decorate_rset(rset)
     return rset
 
 
@@ -102,7 +103,7 @@ def needrequest(wrapped):
         return wrapped(cls, req, *args, **kwargs)
     return iclassmethod(wrapper)
 
-    
+
 class gaedbmetaentity(metaentity):
     """metaclass for goa.db.Model classes: filter entity / db model part,
     put aside the db model part for later creation of db model class.
@@ -139,15 +140,15 @@ def extract_dbmodel(entitycls):
 class Model(entities.AnyEntity):
     id = 'Any'
     __metaclass__ = gaedbmetaentity
-    
+
     row = col = 0
-    
+
     @classmethod
     def __initialize__(cls):
         super(Model, cls).__initialize__()
         cls._attributes = frozenset(rschema for rschema in cls.e_schema.subject_relations()
                                     if rschema.is_final())
-    
+
     def __init__(self, *args, **kwargs):
         # db.Model prototype:
         #   __init__(self, parent=None, key_name=None, **kw)
@@ -168,7 +169,7 @@ class Model(entities.AnyEntity):
                         val = val._dbmodel
                     kwargs[key] = val.key()
             self._gaeinitargs = (args, kwargs)
-            
+
     def __repr__(self):
         return '<ModelEntity %s %s %s at %s>' % (
             self.e_schema, self.eid, self.keys(), id(self))
@@ -179,7 +180,7 @@ class Model(entities.AnyEntity):
             tschema = self.e_schema.destination(attr)
             if tschema == 'String':
                 if len(value) > 500:
-                    value = Text(value)                
+                    value = Text(value)
             elif tschema == 'Password':
                 # if value is a Binary instance, this mean we got it
                 # from a query result and so it is already encrypted
@@ -203,7 +204,7 @@ class Model(entities.AnyEntity):
                 value = self._cubicweb_to_datastore(attr, value)
             gaedict[attr] = value
         return gaedict
-    
+
     def to_gae_model(self):
         dbmodel = self._dbmodel
         dbmodel.update(self._to_gae_dict())
@@ -211,7 +212,7 @@ class Model(entities.AnyEntity):
 
     @property
     @cached
-    def _dbmodel(self): 
+    def _dbmodel(self):
         if self.has_eid():
             assert self._gaeinitargs is None
             try:
@@ -240,7 +241,7 @@ class Model(entities.AnyEntity):
             if '_app' in kwargs:
                 assert _app is None
                 _app = kwargs.pop('_app')
-            
+
             for key, value in kwargs.iteritems():
                 if key in self._attributes:
                     values['s_'+key] = value
@@ -267,10 +268,10 @@ class Model(entities.AnyEntity):
         value will be prefixed by 'key_' to build the actual key name.
         """
         return None
-    
+
     def metainformation(self):
         return {'type': self.id, 'source': {'uri': 'system'}, 'extid': None}
-       
+
     def view(self, vid, __registry='views', **kwargs):
         """shortcut to apply a view on this entity"""
         return self.vreg.render(__registry, vid, self.req, rset=self.rset,
@@ -282,7 +283,7 @@ class Model(entities.AnyEntity):
         if needcheck:
             return 'eid', False
         return mainattr, needcheck
-    
+
     def get_value(self, name):
         try:
             value = self[name]
@@ -306,7 +307,7 @@ class Model(entities.AnyEntity):
             return True
         except BadKeyError:
             return False
-        
+
     def complete(self, skip_bytes=True):
         pass
 
@@ -319,7 +320,7 @@ class Model(entities.AnyEntity):
             objs = Query(str(targettype)).Run()
         return rset_from_objs(self.req, objs, ('eid',),
                               'Any X WHERE X is %s' % targettype)
-    
+
     def key(self):
         return Key(self.eid)
 
@@ -334,7 +335,7 @@ class Model(entities.AnyEntity):
                                        'Any X WHERE X eid %(x)s', {'x': self.eid})
             self.row = self.col = 0
         return dbmodel
-    
+
     @needrequest
     def get(cls, req, keys):
         # if check if this is a dict.key call
@@ -393,7 +394,7 @@ class Model(entities.AnyEntity):
 
     def dynamic_properties(self):
         raise NotImplementedError('use eschema')
-        
+
     def is_saved(self):
         return self.has_eid()
 
@@ -425,7 +426,7 @@ BlobProperty = db.BlobProperty
 IntegerProperty = db.IntegerProperty
 FloatProperty = db.FloatProperty
 ListProperty = db.ListProperty
-SelfReferenceProperty = db.SelfReferenceProperty 
+SelfReferenceProperty = db.SelfReferenceProperty
 UserProperty = db.UserProperty
 
 

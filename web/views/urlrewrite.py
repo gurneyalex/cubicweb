@@ -1,8 +1,9 @@
 """Rules based url rewriter component, to get configurable RESTful urls
 
 :organization: Logilab
-:copyright: 2007-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2007-2009 LOGILAB S.A. (Paris, FRANCE), license is LGPL v2.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
+:license: GNU Lesser General Public License, v2.1 - http://www.gnu.org/licenses
 """
 import re
 
@@ -73,8 +74,8 @@ class SimpleReqRewriter(URLRewriter):
     rules = [
         ('/schema',  dict(vid='schema')),
         ('/index', dict(vid='index')),
-        ('/myprefs', dict(vid='epropertiesform')),
-        ('/siteconfig', dict(vid='systemepropertiesform')),
+        ('/myprefs', dict(vid='propertiesform')),
+        ('/siteconfig', dict(vid='systempropertiesform')),
         ('/manage', dict(vid='manage')),
         ('/notfound', dict(vid='404')),
         ('/error', dict(vid='error')),

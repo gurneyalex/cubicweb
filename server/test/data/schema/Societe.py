@@ -1,3 +1,10 @@
+"""
+
+:organization: Logilab
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), license is LGPL v2.
+:contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
+:license: GNU Lesser General Public License, v2.1 - http://www.gnu.org/licenses
+"""
 class Societe(EntityType):
     permissions = {
         'read': ('managers', 'users', 'guests'),
@@ -5,10 +12,10 @@ class Societe(EntityType):
         'delete': ('managers', 'owners', ERQLExpression('U login L, X nom L')),
         'add': ('managers', 'users',)
         }
-    
+
     nom  = String(maxsize=64, fulltextindexed=True)
     web  = String(maxsize=128)
-    type  = String(maxsize=128) # attribute in common with Note 
+    type  = String(maxsize=128) # attribute in common with Note
     tel  = Int()
     fax  = Int()
     rncs = String(maxsize=128)

@@ -4,8 +4,9 @@ those are in cubicweb.common since we need to know available widgets at schema
 serialization time
 
 :organization: Logilab
-:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), license is LGPL v2.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
+:license: GNU Lesser General Public License, v2.1 - http://www.gnu.org/licenses
 """
 
 from logilab.mtconverter import html_escape
@@ -57,6 +58,7 @@ class BoxWidget(HTMLWidget):
     def append(self, item):
         self.items.append(item)
 
+    title_class = 'boxTitle'
     main_div_class = 'boxContent'
     listing_class = 'boxListing'
 
@@ -82,7 +84,7 @@ class BoxWidget(HTMLWidget):
                 title = '<span>%s</span>' % html_escape(self.title)
             else:
                 title = '<span>%s</span>' % self.title
-            self.w(u'<div class="boxTitle">%s</div>' % title)
+            self.w(u'<div class="%s">%s</div>' % (self.title_class, title))
         if self.items:
             self.box_begin_content()
             for item in self.items:
@@ -93,6 +95,7 @@ class BoxWidget(HTMLWidget):
 
 class SideBoxWidget(BoxWidget):
     """default CubicWeb's sidebox widget"""
+    title_class = u'sideBoxTitle'
     main_div_class = u'sideBoxBody'
     listing_class = ''
 

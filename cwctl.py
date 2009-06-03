@@ -1,6 +1,7 @@
 """%%prog %s [options] %s
 
 CubicWeb main applications controller.
+:license: GNU Lesser General Public License, v2.1 - http://www.gnu.org/licenses
 %s"""
 
 import sys
@@ -744,10 +745,10 @@ class RecompileApplicationCatalogsCommand(ApplicationCommand):
       identifiers of the applications to consider. If no application is
       given, recompile for all registered applications.
     """
-    name = 'i18ncompile'
+    name = 'i18ninstance'
 
     @staticmethod
-    def i18ncompile_application(appid):
+    def i18ninstance_application(appid):
         """recompile application's messages catalogs"""
         config = cwcfg.config_for(appid)
         try:

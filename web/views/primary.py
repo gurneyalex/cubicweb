@@ -1,8 +1,9 @@
 """The default primary view
 
 :organization: Logilab
-:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), license is LGPL v2.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
+:license: GNU Lesser General Public License, v2.1 - http://www.gnu.org/licenses
 """
 __docformat__ = "restructuredtext en"
 _ = unicode
@@ -141,7 +142,7 @@ class PrimaryView(EntityView):
         for box in boxes:
             if isinstance(box, tuple):
                 label, rset, vid  = box
-                self.w(u'<div class="sideRelated">')
+                self.w(u'<div class="sideBox">')
                 self.wview(vid, rset, title=label)
                 self.w(u'</div>')
             else:

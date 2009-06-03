@@ -5,15 +5,17 @@ Take a look at http://www.python.org/peps/pep-0249.html
 (most parts of this document are reported here in docstrings)
 
 :organization: Logilab
-:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), license is LGPL v2.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
+:license: GNU Lesser General Public License, v2.1 - http://www.gnu.org/licenses
 """
 __docformat__ = "restructuredtext en"
 
 from logging import getLogger
 from time import time, clock
 
-from cubicweb import ConnectionError, RequestSessionMixIn, set_log_methods
+from logilab.common.logging_ext import set_log_methods
+from cubicweb import ETYPE_NAME_MAP, ConnectionError, RequestSessionMixIn
 from cubicweb.cwvreg import CubicWebRegistry, MulCnxCubicWebRegistry
 from cubicweb.cwconfig import CubicWebNoAppConfiguration
 
@@ -50,7 +52,7 @@ def get_repository(method, database=None, config=None, vreg=None):
         # resolve the Pyro object
         try:
             nshost, nsport = config['pyro-ns-host'], config['pyro-ns-port']
-            uri = locator.getNS(nshost, nsport) .resolve(nsid)
+            uri = locator.getNS(nshost, nsport).resolve(nsid)
         except ProtocolError:
             raise ConnectionError('Could not connect to the Pyro name server '
                                   '(host: %s:%i)' % (nshost, nsport))
@@ -101,7 +103,12 @@ def connect(database=None, user=None, password=None, host=None,
             vreg = MulCnxCubicWebRegistry(config, initlog=initlog)
         else:
             vreg = CubicWebRegistry(config, initlog=initlog)
-        vreg.set_schema(repo.get_schema())
+        schema = repo.get_schema()
+        for oldetype, newetype in ETYPE_NAME_MAP.items():
+            if oldetype in schema:
+                print 'aliasing', newetype, 'to', oldetype
+                schema._entities[newetype] = schema._entities[oldetype]
+        vreg.set_schema(schema)
     else:
         vreg = None
     cnx = repo_connect(repo, user, password, cnxprops)

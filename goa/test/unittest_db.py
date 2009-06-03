@@ -1,4 +1,11 @@
 # -*- coding: utf-8 -*-
+"""
+
+:organization: Logilab
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), license is LGPL v2.
+:contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
+:license: GNU Lesser General Public License, v2.1 - http://www.gnu.org/licenses
+"""
 from cubicweb.goa.testlib import *
 
 from cubicweb import Binary
@@ -10,11 +17,11 @@ from google.appengine.api.datastore_types import Text, Blob
 
 class Blog(db.Model):
     data = db.BlobProperty()
-    
+
 class DBTest(GAEBasedTC):
     config = GAEConfiguration('toto')
     config.global_set_option('use-google-auth', False)
-    
+
     MODEL_CLASSES = (Blog,)
 
     def test_set_none_relation(self):
@@ -25,7 +32,7 @@ class DBTest(GAEBasedTC):
     def test_euser_key(self):
         euser = self.add_entity('CWUser', login=u'toto', upassword='toto')
         self.assertEquals(euser.key().name(), 'key_toto')
-        
+
     def test_egroup_key(self):
         egroup = self.add_entity('CWGroup', name=u'toto')
         self.assertEquals(egroup.key().name(), 'key_toto')
@@ -40,7 +47,7 @@ class DBTest(GAEBasedTC):
         text = u'e'*501
         entity = self.add_entity('State', name=u'test', description=text)
         self.assertIsInstance(entity.description, unicode)
-        self.failIf(isinstance(entity.description, Text)) 
+        self.failIf(isinstance(entity.description, Text))
         self.assertEquals(entity.description, text)
 
     def test_long_accentued_text(self):
@@ -48,7 +55,7 @@ class DBTest(GAEBasedTC):
         text = u'é'*500
         entity = self.add_entity('State', name=u'test', description=text)
         self.assertIsInstance(entity.description, unicode)
-        self.failIf(isinstance(entity.description, Text)) 
+        self.failIf(isinstance(entity.description, Text))
         self.assertEquals(entity.description, text)
 
     def test_blob(self):
@@ -56,10 +63,10 @@ class DBTest(GAEBasedTC):
         entity = self.add_entity('Blog', data=data)
         self.assertIsInstance(entity.data, Binary)
         value = entity.data.getvalue()
-        self.failIf(isinstance(value, Blob)) 
+        self.failIf(isinstance(value, Blob))
         self.assertEquals(value, data)
-        
-        
+
+
 if __name__ == '__main__':
     from logilab.common.testlib import unittest_main
     unittest_main()

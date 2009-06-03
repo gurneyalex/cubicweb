@@ -1,16 +1,17 @@
 """Source to query another RQL repository using pyro
 
 :organization: Logilab
-:copyright: 2007-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2007-2009 LOGILAB S.A. (Paris, FRANCE), license is LGPL v2.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
+:license: GNU Lesser General Public License, v2.1 - http://www.gnu.org/licenses
 """
 __docformat__ = "restructuredtext en"
 
 import threading
 from os.path import join
-
 from time import mktime
 from datetime import datetime
+from base64 import b64decode
 
 from Pyro.errors import PyroError, ConnectionClosedError
 
@@ -177,7 +178,7 @@ repository (default to 5 minutes).',
                 try:
                     exturi = cnx.describe(extid)[1]
                     if exturi == 'system' or not exturi in repo.sources_by_uri:
-                        eid = self.extid2eid(extid, etype, session)
+                        eid = self.extid2eid(str(extid), etype, session)
                         rset = session.eid_rset(eid, etype)
                         entity = rset.get_entity(0, 0)
                         entity.complete(entity.e_schema.indexable_attributes())
@@ -188,7 +189,8 @@ repository (default to 5 minutes).',
                     continue
             for etype, extid in deleted:
                 try:
-                    eid = self.extid2eid(extid, etype, session, insert=False)
+                    eid = self.extid2eid(str(extid), etype, session,
+                                         insert=False)
                     # entity has been deleted from external repository but is not known here
                     if eid is not None:
                         repo.delete_info(session, eid)
@@ -307,7 +309,8 @@ repository (default to 5 minutes).',
                             etype = descr[rowindex][colindex]
                             exttype, exturi, extid = cnx.describe(row[colindex])
                             if exturi == 'system' or not exturi in self.repo.sources_by_uri:
-                                eid = self.extid2eid(row[colindex], etype, session)
+                                eid = self.extid2eid(str(row[colindex]), etype,
+                                                     session)
                                 row[colindex] = eid
                             else:
                                 # skip this row
@@ -342,12 +345,14 @@ repository (default to 5 minutes).',
         cu = session.pool[self.uri]
         cu.execute('SET %s WHERE X eid %%(x)s' % ','.join(relations),
                    kwargs, 'x')
+        self._query_cache.clear()
 
     def delete_entity(self, session, etype, eid):
         """delete an entity from the source"""
         cu = session.pool[self.uri]
         cu.execute('DELETE %s X WHERE X eid %%(x)s' % etype,
                    {'x': self.eid2extid(eid, session)}, 'x')
+        self._query_cache.clear()
 
     def add_relation(self, session, subject, rtype, object):
         """add a relation to the source"""
@@ -355,6 +360,7 @@ repository (default to 5 minutes).',
         cu.execute('SET X %s Y WHERE X eid %%(x)s, Y eid %%(y)s' % rtype,
                    {'x': self.eid2extid(subject, session),
                     'y': self.eid2extid(object, session)}, ('x', 'y'))
+        self._query_cache.clear()
 
     def delete_relation(self, session, subject, rtype, object):
         """delete a relation from the source"""
@@ -362,6 +368,7 @@ repository (default to 5 minutes).',
         cu.execute('DELETE X %s Y WHERE X eid %%(x)s, Y eid %%(y)s' % rtype,
                    {'x': self.eid2extid(subject, session),
                     'y': self.eid2extid(object, session)}, ('x', 'y'))
+        self._query_cache.clear()
 
 
 class RQL2RQL(object):
@@ -490,7 +497,7 @@ class RQL2RQL(object):
             # XXX what about optional relation or outer NOT EXISTS()
             raise
         except ReplaceByInOperator, ex:
-            rhs = 'IN (%s)' % ','.join(str(eid) for eid in ex.eids)
+            rhs = 'IN (%s)' % ','.join(eid for eid in ex.eids)
         self.need_translation = False
         self.current_operator = None
         if node.optional in ('right', 'both'):
@@ -563,17 +570,15 @@ class RQL2RQL(object):
         except UnknownEid:
             operator = self.current_operator
             if operator is not None and operator != '=':
-                # deal with query like X eid > 12
+                # deal with query like "X eid > 12"
                 #
-                # The problem is
-                # that eid order in the external source may differ from the
-                # local source
+                # The problem is that eid order in the external source may
+                # differ from the local source
                 #
-                # So search for all eids from this
-                # source matching the condition locally and then to replace the
-                # > 12 branch by IN (eids) (XXX we may have to insert a huge
-                # number of eids...)
-                # planner so that
+                # So search for all eids from this source matching the condition
+                # locally and then to replace the "> 12" branch by "IN (eids)"
+                #
+                # XXX we may have to insert a huge number of eids...)
                 sql = "SELECT extid FROM entities WHERE source='%s' AND type IN (%s) AND eid%s%s"
                 etypes = ','.join("'%s'" % etype for etype in self.current_etypes)
                 cu = self._session.system_sql(sql % (self.source.uri, etypes,
@@ -582,6 +587,6 @@ class RQL2RQL(object):
                 # results
                 rows = cu.fetchall()
                 if rows:
-                    raise ReplaceByInOperator((r[0] for r in rows))
+                    raise ReplaceByInOperator((b64decode(r[0]) for r in rows))
             raise
 

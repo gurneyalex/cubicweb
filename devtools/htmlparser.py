@@ -1,4 +1,10 @@
-"""defines a validating HTML parser used in web application tests"""
+"""defines a validating HTML parser used in web application tests
+
+:organization: Logilab
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), license is LGPL v2.
+:contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
+:license: GNU Lesser General Public License, v2.1 - http://www.gnu.org/licenses
+"""
 
 import re
 
@@ -88,13 +94,13 @@ class PageInfo(object):
         self.input_tags = self.find_tag('input')
         self.title_tags = [self.h1_tags, self.h2_tags, self.h3_tags, self.h4_tags]
 
-    def find_tag(self, tag):
+    def find_tag(self, tag, gettext=True):
         """return a list which contains text of all "tag" elements """
         if self.default_ns is None:
             iterstr = ".//%s" % tag
         else:
             iterstr = ".//{%s}%s" % (self.default_ns, tag)
-        if tag in ('a', 'input'):
+        if not gettext or tag in ('a', 'input'):
             return [(elt.text, elt.attrib) for elt in self.etree.iterfind(iterstr)]
         return [u''.join(elt.xpath('.//text()')) for elt in self.etree.iterfind(iterstr)]
 

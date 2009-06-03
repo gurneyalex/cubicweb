@@ -1,8 +1,9 @@
 """some utilities for cubicweb tools
 
 :organization: Logilab
-:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), license is LGPL v2.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
+:license: GNU Lesser General Public License, v2.1 - http://www.gnu.org/licenses
 """
 __docformat__ = "restructuredtext en"
 
@@ -39,7 +40,7 @@ def create_dir(directory):
         if ex.errno != errno.EEXIST:
             raise
         print 'directory %s already exists' % directory
-                
+
 def create_symlink(source, target):
     """create a symbolic link"""
     if exists(target):
@@ -51,7 +52,7 @@ def create_copy(source, target):
     import shutil
     print '[copy] %s <-- %s' % (target, source)
     shutil.copy2(source, target)
-    
+
 def rm(whatever):
     import shutil
     shutil.rmtree(whatever)
@@ -66,7 +67,7 @@ def show_diffs(appl_file, ref_file, askconfirm=True):
     diffs = p_output.read()
     if diffs:
         if askconfirm:
-            print 
+            print
             print diffs
             action = raw_input('replace (N/y/q) ? ').lower()
         else:
@@ -120,7 +121,7 @@ def copy_skeleton(skeldir, targetdir, context,
                 show_diffs(tfpath, fpath, askconfirm)
             else:
                 shutil.copyfile(fpath, tfpath)
-                
+
 def fill_templated_file(fpath, tfpath, context):
     fobj = file(tfpath, 'w')
     templated = file(fpath).read()
@@ -158,7 +159,7 @@ def read_config(config_file):
     :param config_file: path to the configuration file
 
     :rtype: dict
-    :return: a dictionary with specified values associated to option names 
+    :return: a dictionary with specified values associated to option names
     """
     from logilab.common.fileutils import lines
     config = current = {}
@@ -194,10 +195,10 @@ def env_path(env_var, default, name):
 
     :type default: str
     :param default: default value if the environment variable is not defined
-    
+
     :type name: str
     :param name: the informal name of the path, used for error message
-    
+
     :rtype: str
     :return: the value of the environment variable or the default value
 
@@ -243,12 +244,12 @@ class Command(BaseCommand):
             msg = 'No helper for command %s using %s configuration' % (
                 cmdname, config.name)
             raise ConfigurationError(msg)
-        
+
     def fail(self, reason):
         print "command failed:", reason
         sys.exit(1)
-    
-                    
+
+
 def main_run(args, doc):
     """command line tool"""
     try:
@@ -289,4 +290,4 @@ def config_connect(appid, optconfig):
     if not password:
         password = getpass('password: ')
     return connect(user=user, password=password, host=optconfig.host, database=appid)
-    
+

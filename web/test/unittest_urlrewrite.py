@@ -1,3 +1,10 @@
+"""
+
+:organization: Logilab
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), license is LGPL v2.
+:contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
+:license: GNU Lesser General Public License, v2.1 - http://www.gnu.org/licenses
+"""
 from logilab.common.testlib import TestCase, unittest_main
 
 from cubicweb.devtools._apptest import FakeRequest
@@ -23,8 +30,8 @@ class UrlRewriteTC(TestCase):
             ('foo' , dict(rql='Foo F')),
             ('/index' , dict(vid='index2')),
             ('/schema', {'vid': 'schema'}),
-            ('/myprefs', dict(vid='epropertiesform')),
-            ('/siteconfig', dict(vid='systemepropertiesform')),
+            ('/myprefs', dict(vid='propertiesform')),
+            ('/siteconfig', dict(vid='systempropertiesform')),
             ('/manage', dict(vid='manage')),
             ('/notfound', {'vid': '404'}),
             ('/error', {'vid': 'error'}),
@@ -35,7 +42,7 @@ class UrlRewriteTC(TestCase):
             ('/doc/(.+?)/?$', dict(fid='\\1', vid='wdoc')),
             ('/changelog/?$', dict(vid='changelog')),
             # now in SchemaBasedRewriter
-            #('/search/(.+)$', dict(rql=r'Any X WHERE X has_text "\1"')), 
+            #('/search/(.+)$', dict(rql=r'Any X WHERE X has_text "\1"')),
             ])
 
 
@@ -94,8 +101,8 @@ class RgxActionRewriteTC(EnvBasedTC):
         pmid, rset = rewriter.rewrite(req, u'/DaLToN/JoE')
         self.assertEquals(len(rset), 1)
         self.assertEquals(rset[0][0], self.p1.eid)
-        
-    
+
+
 
 if __name__ == '__main__':
     unittest_main()

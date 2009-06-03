@@ -1,4 +1,11 @@
 # -*- coding: iso-8859-1 -*-
+"""
+
+:organization: Logilab
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), license is LGPL v2.
+:contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
+:license: GNU Lesser General Public License, v2.1 - http://www.gnu.org/licenses
+"""
 from socket import gethostname
 
 from logilab.common.testlib import unittest_main, TestCase
@@ -78,9 +85,9 @@ admin changed status from <activated> to <deactivated> for entity
 
 yeah
 
-url: http://testing.fr/cubicweb/euser/toto
+url: http://testing.fr/cubicweb/cwuser/toto
 ''')
-        self.assertEquals(v.subject(), 'status changed euser #%s (admin)' % u.eid)
+        self.assertEquals(v.subject(), 'status changed cwuser #%s (admin)' % u.eid)
 
 if __name__ == '__main__':
     unittest_main()

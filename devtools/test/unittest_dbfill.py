@@ -1,5 +1,11 @@
 # -*- coding: iso-8859-1 -*-
-"""unit tests for database value generator"""
+"""unit tests for database value generator
+
+:organization: Logilab
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), license is LGPL v2.
+:contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
+:license: GNU Lesser General Public License, v2.1 - http://www.gnu.org/licenses
+"""
 
 import os.path as osp
 import re
@@ -31,7 +37,7 @@ class ValueGeneratorTC(TestCase):
             return getattr(self, '_available_%s_%s' % (etype, attrname))(etype, attrname)
         except AttributeError:
             return None
-    
+
     def _available_Person_firstname(self, etype, attrname):
         return [f.strip() for f in file(osp.join(DATADIR, 'firstnames.txt'))]
 
@@ -51,11 +57,11 @@ class ValueGeneratorTC(TestCase):
         year = date.year
         month = date.month
         day = date.day
-        self.failUnless(day in range(1, 29), '%s not in [0;28]' % day) 
+        self.failUnless(day in range(1, 29), '%s not in [0;28]' % day)
         self.failUnless(month in range(1, 13), '%s not in [1;12]' % month)
         self.failUnless(year in range(2000, 2005),
                         '%s not in [2000;2004]' % year)
-        
+
 
     def test_string(self):
         """test string generation"""
@@ -89,7 +95,7 @@ class ValueGeneratorTC(TestCase):
         for index in range(5):
             date_value = self.person_valgen._generate_value('birthday', index)
             self._check_date(date_value)
-        
+
     def test_phone(self):
         """tests make_tel utility"""
         self.assertEquals(make_tel(22030405), '22 03 04 05')
@@ -102,14 +108,14 @@ class ValueGeneratorTC(TestCase):
                           u'yo')
         self.assertEquals(self.person_valgen._generate_value('description', 12),
                           u'yo')
-                          
-        
+
+
 
 class ConstraintInsertionTC(TestCase):
 
     def test_writeme(self):
         self.skip('Test automatic insertion / Schema Constraints')
-    
+
 
 if __name__ == '__main__':
     unittest_main()
