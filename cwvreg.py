@@ -1,8 +1,9 @@
 """extend the generic VRegistry with some cubicweb specific stuff
 
 :organization: Logilab
-:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), license is LGPL v2.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
+:license: GNU Lesser General Public License, v2.1 - http://www.gnu.org/licenses
 """
 __docformat__ = "restructuredtext en"
 _ = unicode
@@ -113,7 +114,12 @@ class CubicWebRegistry(VRegistry):
 
     def register_objects(self, path, force_reload=None):
         """overriden to remove objects requiring a missing interface"""
-        if super(CubicWebRegistry, self).register_objects(path, force_reload):
+        extrapath = {}
+        for cubesdir in self.config.cubes_search_path():
+            if cubesdir != self.config.CUBES_DIR:
+                extrapath[cubesdir] = 'cubes'
+        if super(CubicWebRegistry, self).register_objects(path, force_reload,
+                                                          extrapath):
             self.initialization_completed()
             # call vreg_initialization_completed on appobjects and print
             # registry content
@@ -248,6 +254,16 @@ class CubicWebRegistry(VRegistry):
                 self.exception('error while trying to list possible %s views for %s',
                                vid, rset)
 
+    def view(self, __vid, req, rset=None, __fallback_vid=None, **kwargs):
+        """shortcut to self.vreg.render method avoiding to pass self.req"""
+        try:
+            view = self.select_view(__vid, req, rset, **kwargs)
+        except NoSelectableObject:
+            if __fallback_vid is None:
+                raise
+            view = self.select_view(__fallback_vid, req, rset, **kwargs)
+        return view.render(**kwargs)
+
     def select_box(self, oid, *args, **kwargs):
         """return the most specific view according to the result set"""
         try:
@@ -269,11 +285,10 @@ class CubicWebRegistry(VRegistry):
         except (NoSelectableObject, ObjectNotFound):
             return
 
-    def select_view(self, __vid, req, rset, **kwargs):
+    def select_view(self, __vid, req, rset=None, **kwargs):
         """return the most specific view according to the result set"""
         views = self.registry_objects('views', __vid)
         return self.select(views, req, rset, **kwargs)
-
 
     # properties handling #####################################################
 

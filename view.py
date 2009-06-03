@@ -2,10 +2,12 @@
 
 
 :organization: Logilab
-:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), license is LGPL v2.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
+:license: GNU Lesser General Public License, v2.1 - http://www.gnu.org/licenses
 """
 __docformat__ = "restructuredtext en"
+_ = unicode
 
 from cStringIO import StringIO
 
@@ -17,8 +19,6 @@ from cubicweb.selectors import yes, non_final_entity, nonempty_rset, none_rset
 from cubicweb.selectors import require_group_compat, accepts_compat
 from cubicweb.appobject import AppRsetObject
 from cubicweb.utils import UStringIO, HTMLStream
-
-_ = unicode
 
 
 # robots control
@@ -206,7 +206,7 @@ class View(AppRsetObject):
 
     # view utilities ##########################################################
 
-    def wview(self, __vid, rset, __fallback_vid=None, **kwargs):
+    def wview(self, __vid, rset=None, __fallback_vid=None, **kwargs):
         """shortcut to self.view method automatically passing self.w as argument
         """
         self.view(__vid, rset, __fallback_vid, w=self.w, **kwargs)
@@ -220,21 +220,6 @@ class View(AppRsetObject):
     def wdata(self, data):
         """simple helper that escapes `data` and writes into `self.w`"""
         self.w(html_escape(data))
-
-    def action(self, actionid, row=0):
-        """shortcut to get action object with id `actionid`"""
-        return self.vreg.select_action(actionid, self.req, self.rset,
-                                       row=row)
-
-    def action_url(self, actionid, label=None, row=0):
-        """simple method to be able to display `actionid` as a link anywhere
-        """
-        action = self.vreg.select_action(actionid, self.req, self.rset,
-                                         row=row)
-        if action:
-            label = label or self.req._(action.title)
-            return u'<a href="%s">%s</a>' % (html_escape(action.url()), label)
-        return u''
 
     def html_headers(self):
         """return a list of html headers (eg something to be inserted between

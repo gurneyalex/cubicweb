@@ -1,4 +1,10 @@
-"""unittests for cw.web.formfields"""
+"""unittests for cw.web.formfields
+
+:organization: Logilab
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), license is LGPL v2.
+:contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
+:license: GNU Lesser General Public License, v2.1 - http://www.gnu.org/licenses
+"""
 
 from logilab.common.testlib import TestCase, unittest_main
 
@@ -6,9 +12,9 @@ from yams.constraints import StaticVocabularyConstraint, SizeConstraint
 
 from cubicweb.devtools import TestServerConfiguration
 from cubicweb.devtools.testlib import EnvBasedTC
-from cubicweb.web.form import EntityFieldsForm
 from cubicweb.web.formwidgets import PasswordInput, TextArea, Select
 from cubicweb.web.formfields import *
+from cubicweb.web.views.forms import EntityFieldsForm
 
 from cubes.file.entities import File
 

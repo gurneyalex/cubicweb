@@ -36,10 +36,10 @@ above by::
 
 
 :organization: Logilab
-:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), license is LGPL v2.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
+:license: GNU Lesser General Public License, v2.1 - http://www.gnu.org/licenses
 """
-
 __docformat__ = "restructuredtext en"
 
 import logging
@@ -245,6 +245,7 @@ class EntitySelector(EClassSelector):
         if kwargs.get('entity'):
             score = self.score_entity(kwargs['entity'])
         elif row is None:
+            col = col or 0
             for row, rowvalue in enumerate(rset.rows):
                 if rowvalue[col] is None: # outer join
                     continue
@@ -255,6 +256,7 @@ class EntitySelector(EClassSelector):
                     return escore
                 score += escore
         else:
+            col = col or 0
             etype = rset.description[row][col]
             if etype is not None: # outer join
                 score = self.score(req, rset, row, col)
@@ -273,9 +275,13 @@ class EntitySelector(EClassSelector):
 # very basic selectors ########################################################
 
 class yes(Selector):
-    """return arbitrary score"""
-    def __init__(self, score=1):
+    """return arbitrary score
+
+    default score of 0.5 so any other selector take precedence
+    """
+    def __init__(self, score=0.5):
         self.score = score
+
     def __call__(self, *args, **kwargs):
         return self.score
 

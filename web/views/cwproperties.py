@@ -1,8 +1,9 @@
 """Specific views for CWProperty
 
 :organization: Logilab
-:copyright: 2007-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2007-2009 LOGILAB S.A. (Paris, FRANCE), license is LGPL v2.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
+:license: GNU Lesser General Public License, v2.1 - http://www.gnu.org/licenses
 """
 __docformat__ = "restructuredtext en"
 _ = unicode
@@ -16,11 +17,10 @@ from cubicweb.selectors import (one_line_rset, none_rset, implements,
                                 match_user_groups)
 from cubicweb.view import StartupView
 from cubicweb.web import uicfg, stdmsgs
-from cubicweb.web.form import CompositeForm, EntityFieldsForm, FormViewMixIn
-from cubicweb.web.formrenderers import FormRenderer
+from cubicweb.web.form import FormViewMixIn
 from cubicweb.web.formfields import FIELDS, StringField
 from cubicweb.web.formwidgets import Select, Button, SubmitButton
-from cubicweb.web.views import primary
+from cubicweb.web.views import primary, formrenderers
 
 
 # some string we want to be internationalizable for nicer display of property
@@ -189,10 +189,11 @@ class SystemCWPropertiesForm(FormViewMixIn, StartupView):
 
     def form(self, formid, keys, splitlabel=False):
         buttons = [SubmitButton()]
-        form = CompositeForm(self.req, domid=formid, action=self.build_url(),
-                             form_buttons=buttons,
-                             onsubmit="return validatePrefsForm('%s')" % formid,
-                             submitmsg=self.req._('changes applied'))
+        form = self.vreg.select_object('forms', 'composite', self.req,
+                                  domid=formid, action=self.build_url(),
+                                  form_buttons=buttons,
+                                  onsubmit="return validatePrefsForm('%s')" % formid,
+                                  submitmsg=self.req._('changes applied'))
         path = self.req.relative_path()
         if '?' in path:
             path, params = path.split('?', 1)
@@ -200,9 +201,9 @@ class SystemCWPropertiesForm(FormViewMixIn, StartupView):
         form.form_add_hidden('__redirectpath', path)
         for key in keys:
             self.form_row(form, key, splitlabel)
-        renderer = CWPropertiesFormRenderer()
-        return form.form_render(display_progress_div=False,
-                                renderer=renderer)
+        renderer = self.vreg.select_object('formrenderers', 'cwproperties', self.req,
+                                           display_progress_div=False)
+        return form.form_render(renderer=renderer)
 
     def form_row(self, form, key, splitlabel):
         entity = self.entity_for_key(key)
@@ -210,13 +211,13 @@ class SystemCWPropertiesForm(FormViewMixIn, StartupView):
             label = key.split('.')[-1]
         else:
             label = key
-        subform = EntityFieldsForm(self.req, entity=entity, set_error_url=False)
-
+        subform = self.vreg.select_object('forms', 'base', self.req, entity=entity,
+                                     set_error_url=False)
         subform.append_field(PropertyValueField(name='value', label=label,
                                                 eidparam=True))
         subform.vreg = self.vreg
         subform.form_add_hidden('pkey', key, eidparam=True)
- 	subform.form_add_hidden("current-value:%s" % entity.eid,)
+        subform.form_add_hidden("current-value:%s" % entity.eid,)
         form.form_add_subform(subform)
         return subform
 
@@ -358,8 +359,9 @@ uicfg.autoform_field.tag_attribute(('CWProperty', 'pkey'), PropertyKeyField)
 uicfg.autoform_field.tag_attribute(('CWProperty', 'value'), PropertyValueField)
 
 
-class CWPropertiesFormRenderer(FormRenderer):
+class CWPropertiesFormRenderer(formrenderers.FormRenderer):
     """specific renderer for properties"""
+    id = 'cwproperties'
 
     def open_form(self, form, values):
         err = '<div class="formsg"></div>'

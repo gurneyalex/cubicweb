@@ -1,15 +1,16 @@
 """Some utilities for CubicWeb server/clients.
 
 :organization: Logilab
-:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), license is LGPL v2.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
+:license: GNU Lesser General Public License, v2.1 - http://www.gnu.org/licenses
 """
 __docformat__ = "restructuredtext en"
 
 import locale
 from md5 import md5
 from datetime import datetime, timedelta, date
-from time import time
+from time import time, mktime
 from random import randint, seed
 from calendar import monthrange
 
@@ -36,6 +37,9 @@ def todatetime(somedate):
         return somedate
     assert isinstance(somedate, date), repr(somedate)
     return datetime(somedate.year, somedate.month, somedate.day)
+
+def datetime2ticks(date):
+    return mktime(date.timetuple()) * 1000
 
 ONEDAY = timedelta(days=1)
 ONEWEEK = timedelta(days=7)
@@ -99,7 +103,7 @@ def ustrftime(date, fmt='%Y-%m-%d'):
 
 def make_uid(key):
     """forge a unique identifier"""
-    msg = str(key) + "%.10f"%time() + str(randint(0, 1000000))
+    msg = str(key) + "%.10f" % time() + str(randint(0, 1000000))
     return md5(msg).hexdigest()
 
 
