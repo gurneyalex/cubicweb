@@ -1,6 +1,5 @@
 # -*- coding: iso-8859-1 -*-
 """XXX rename, split, reorganize this
-
 """
 
 import os.path as osp
@@ -15,11 +14,12 @@ from cubicweb.common.selectors import match_user_group
 from cubicweb.web._exceptions import NoSelectableObject
 from cubicweb.web.action import Action
 from cubicweb.web.views import (baseviews, tableview, baseforms, calendar, 
-                             management, embedding, actions, startup, 
-                             euser, schemaentities, xbel, vcard, 
-                             idownloadable, wdoc, debug)
+                                management, embedding, actions, startup, 
+                                euser, schemaentities, xbel, vcard,
+                                treeview, idownloadable, wdoc, debug)
 from cubicweb.entities.lib import Card
 from cubicweb.interfaces import IMileStone
+from cubicweb.web.views import owl
 
 USERACTIONS = [('myprefs', actions.UserPreferencesAction),
                ('myinfos', actions.UserInfoAction),
@@ -75,6 +75,7 @@ class VRegistryTC(ViewSelectorTC):
                               ('index', startup.IndexView),
                               ('info', management.ProcessInformationView),
                               ('manage', startup.ManageView),
+                              ('owl', owl.OWLView),
                               ('schema', startup.SchemaView),
                               ('systemepropertiesform', management.SystemEpropertiesForm)])
         # no entity but etype
@@ -94,14 +95,18 @@ class VRegistryTC(ViewSelectorTC):
                              [('csvexport', baseviews.CSVRsetView),
                               ('ecsvexport', baseviews.CSVEntityView),
                               ('editable-table', tableview.EditableTableView),
+                              ('filetree', treeview.FileTreeView),
                               ('list', baseviews.ListView),
                               ('oneline', baseviews.OneLineView),
+                              ('owlabox', owl.OWLABOXView),
                               ('primary', baseviews.PrimaryView),
+                              ('rsetxml', baseviews.XMLRsetView),
                               ('rss', baseviews.RssView),
                               ('secondary', baseviews.SecondaryView),
                               ('security', management.SecurityManagementView),
                               ('table', tableview.TableView),
                               ('text', baseviews.TextView),
+                              ('treeview', treeview.TreeView),
                               ('xbel', xbel.XbelView),
                               ('xml', baseviews.XmlView),
                               ])
@@ -111,14 +116,18 @@ class VRegistryTC(ViewSelectorTC):
                              [('csvexport', baseviews.CSVRsetView),
                               ('ecsvexport', baseviews.CSVEntityView),
                               ('editable-table', tableview.EditableTableView),
+                              ('filetree', treeview.FileTreeView),
                               ('list', baseviews.ListView),
                               ('oneline', baseviews.OneLineView),
+                              ('owlabox', owl.OWLABOXView),
                               ('primary', baseviews.PrimaryView),
+                              ('rsetxml', baseviews.XMLRsetView),
                               ('rss', baseviews.RssView),
                               ('secondary', baseviews.SecondaryView),
                               ('security', management.SecurityManagementView),
                               ('table', tableview.TableView),
                               ('text', baseviews.TextView),
+                              ('treeview', treeview.TreeView),
                               ('xbel', xbel.XbelView),
                               ('xml', baseviews.XmlView),
                               ])
@@ -128,14 +137,18 @@ class VRegistryTC(ViewSelectorTC):
                              [('csvexport', baseviews.CSVRsetView),
                               ('ecsvexport', baseviews.CSVEntityView),
                               ('editable-table', tableview.EditableTableView),
+                              ('filetree', treeview.FileTreeView),
                               ('list', baseviews.ListView),
                               ('oneline', baseviews.OneLineView),
+                              ('owlabox', owl.OWLABOXView),
                               ('primary', baseviews.PrimaryView),
+                              ('rsetxml', baseviews.XMLRsetView),
                               ('rss', baseviews.RssView),
                               ('secondary', baseviews.SecondaryView),
                               ('security', management.SecurityManagementView),
                               ('table', tableview.TableView),
                               ('text', baseviews.TextView),
+                              ('treeview', treeview.TreeView),
                               ('xbel', xbel.XbelView),
                               ('xml', baseviews.XmlView),
                               ])
@@ -144,6 +157,7 @@ class VRegistryTC(ViewSelectorTC):
         self.assertListEqual(self.pviews(req, rset),
                              [('csvexport', baseviews.CSVRsetView),
                               ('editable-table', tableview.EditableTableView),
+                              ('rsetxml', baseviews.XMLRsetView),
                               ('table', tableview.TableView),
                               ])
         # list of euser entities
@@ -152,14 +166,19 @@ class VRegistryTC(ViewSelectorTC):
                              [('csvexport', baseviews.CSVRsetView),
                               ('ecsvexport', baseviews.CSVEntityView),
                               ('editable-table', tableview.EditableTableView),
+                              ('filetree', treeview.FileTreeView),
+                              ('foaf', euser.FoafView),
                               ('list', baseviews.ListView),
                               ('oneline', baseviews.OneLineView),
+                              ('owlabox', owl.OWLABOXView),
                               ('primary', euser.EUserPrimaryView),
+                              ('rsetxml', baseviews.XMLRsetView),
                               ('rss', baseviews.RssView),
                               ('secondary', baseviews.SecondaryView),
                               ('security', management.SecurityManagementView),
                               ('table', tableview.TableView),
                               ('text', baseviews.TextView),
+                              ('treeview', treeview.TreeView),
                               ('vcard', vcard.VCardEUserView),
                               ('xbel', xbel.XbelView),
                               ('xml', baseviews.XmlView),

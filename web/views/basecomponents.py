@@ -44,11 +44,11 @@ class RQLInputForm(SingletonVComponent):
           <form action="%s">
 <fieldset>
 <input type="text" id="rql" name="rql" value="%s"  title="%s" tabindex="%s" accesskey="q" class="searchField" />
-<input type="submit" value="%s" class="searchButton" tabindex="%s" />
+<input type="submit" value="" class="rqlsubmit" tabindex="%s" />
 </fieldset>
 ''' % (not self.propval('visible') and 'hidden' or '', 
        self.build_url('view'), html_escape(rql), req._('full text or RQL query'), req.next_tabindex(),
-       req._('search'), req.next_tabindex()))
+        req.next_tabindex()))
         if self.req.search_state[0] != 'normal':
             self.w(u'<input type="hidden" name="__mode" value="%s"/>'
                    % ':'.join(req.search_state[1]))
@@ -138,9 +138,9 @@ class WFHistoryVComponent(EntityVComponent):
     target = 'subject'
     title = _('Workflow history')
 
-    def call(self, view=None):
+    def cell_call(self, row, col, view=None):
         _ = self.req._
-        eid = self.rset[0][0]
+        eid = self.rset[row][col]
         sel = 'Any FS,TS,WF,D'
         rql = ' ORDERBY D DESC WHERE WF wf_info_for X,'\
               'WF from_state FS, WF to_state TS, WF comment C,'\

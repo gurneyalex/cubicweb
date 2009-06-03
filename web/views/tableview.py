@@ -2,7 +2,7 @@
 
 
 :organization: Logilab
-:copyright: 2001-2008 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
 """
 __docformat__ = "restructuredtext en"
@@ -24,8 +24,29 @@ class TableView(AnyRsetView):
     id = 'table'
     title = _('table')
     finalview = 'final'
+
+    def form_filter(self, divid, displaycols, displayactions, displayfilter,
+                    hidden=True):
+        rqlst = self.rset.syntax_tree()
+        # union not yet supported
+        if len(rqlst.children) != 1:
+            return ()
+        rqlst.save_state()
+        mainvar, baserql = prepare_facets_rqlst(rqlst, self.rset.args)
+        wdgs = [facet.get_widget() for facet in self.vreg.possible_vobjects(
+            'facets', self.req, self.rset, context='tablefilter',
+            filtered_variable=mainvar)]
+        wdgs = [wdg for wdg in wdgs if wdg is not None]
+        rqlst.recover()
+        if wdgs:
+            self._generate_form(divid, baserql, wdgs, hidden,
+                               vidargs={'displaycols': displaycols,
+                                        'displayactions': displayactions,
+                                        'displayfilter': displayfilter})
+            return self.show_hide_actions(divid, not hidden)
+        return ()
     
-    def generate_form(self, divid, baserql, facets, hidden=True, vidargs={}):
+    def _generate_form(self, divid, baserql, fwidgets, hidden=True, vidargs={}):
         """display a form to filter table's content. This should only
         occurs when a context eid is given
         """
@@ -36,15 +57,13 @@ class TableView(AnyRsetView):
                html_escape(dumps([divid, 'table', False, vidargs])))
         self.w(u'<fieldset id="%sForm" class="%s">' % (divid, hidden and 'hidden' or ''))
         self.w(u'<input type="hidden" name="divid" value="%s" />' % divid)
-        filter_hiddens(self.w, facets=','.join(facet.id for facet in facets), baserql=baserql)
+        filter_hiddens(self.w, facets=','.join(wdg.facet.id for wdg in fwidgets), baserql=baserql)
         self.w(u'<table class="filter">\n')
         self.w(u'<tr>\n')
-        for facet in facets:
-            wdg = facet.get_widget()
-            if wdg is not None:
-                self.w(u'<td>')
-                wdg.render(w=self.w)
-                self.w(u'</td>\n')
+        for wdg in fwidgets:
+            self.w(u'<td>')
+            wdg.render(w=self.w)
+            self.w(u'</td>\n')
         self.w(u'</tr>\n')
         self.w(u'</table>\n')
         self.w(u'</fieldset>\n')
@@ -84,7 +103,7 @@ class TableView(AnyRsetView):
         rset = self.rset
         req = self.req
         req.add_js('jquery.tablesorter.js')
-        req.add_css('cubicweb.tablesorter.css')
+        req.add_css(('cubicweb.tablesorter.css', 'cubicweb.tableview.css'))
         rqlst = rset.syntax_tree()
         # get rql description first since the filter form may remove some
         # necessary information
@@ -117,22 +136,8 @@ class TableView(AnyRsetView):
             if title:
                 self.w(u'<h2 class="tableTitle">%s</h2>\n' % title)
             if displayfilter:
-                rqlst.save_state()
-                try:
-                    mainvar, baserql = prepare_facets_rqlst(rqlst, rset.args)
-                except NotImplementedError:
-                    # UNION query
-                    facets = None
-                else:
-                    facets = list(self.vreg.possible_vobjects('facets', req, rset,
-                                                              context='tablefilter',
-                                                              filtered_variable=mainvar))
-                    self.generate_form(divid, baserql, facets, hidden,
-                                       vidargs={'displaycols': displaycols,
-                                                'displayfilter': displayfilter,
-                                                'displayactions': displayactions})
-                    actions += self.show_hide_actions(divid, not hidden)
-                rqlst.recover()
+                actions += self.form_filter(divid, displaycols, displayfilter,
+                                            displayactions)
         elif displayfilter:
             actions += self.show_hide_actions(divid, True)
         self.w(u'<div id="%s"' % divid)
@@ -308,22 +313,9 @@ class InitialTableView(TableView):
             self.w(u'<h2>%s</h2>\n' % title)
         mainindex = self.main_var_index()
         if mainindex is not None:
-            rqlst = self.rset.syntax_tree()
-            # union not yet supported
-            if len(rqlst.children) == 1:
-                rqlst.save_state()
-                mainvar, baserql = prepare_facets_rqlst(rqlst, self.rset.args)
-                facets = list(self.vreg.possible_vobjects('facets', self.req, self.rset,
-                                                          context='tablefilter',
-                                                          filtered_variable=mainvar))
-                
-                if facets:
-                    self.generate_form(divid, baserql, facets, 
-                                       vidargs={'displaycols': displaycols,
-                                                'displayactions': displayactions,
-                                                'displayfilter': True})
-                    actions = self.show_hide_actions(divid, False)
-                rqlst.recover()
+            actions = self.form_filter(divid, displaycols, displayactions, True)
+        else:
+            actions = ()
         if not subvid and 'subvid' in self.req.form:
             subvid = self.req.form.pop('subvid')
         self.view('table', self.req.execute(actrql),
@@ -333,7 +325,7 @@ class InitialTableView(TableView):
         self.w(u'</div>\n')
 
 
-class EditableInitiableTableView(InitialTableView):
+class EditableInitialTableTableView(InitialTableView):
     id = 'editable-initialtable'
     finalview = 'editable-final'
     
