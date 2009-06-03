@@ -1,3 +1,10 @@
+"""
+
+:organization: Logilab
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), license is LGPL v2.
+:contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
+:license: GNU Lesser General Public License, v2.1 - http://www.gnu.org/licenses
+"""
 class Schema :
 
     def __init__(self, schema) :
@@ -24,7 +31,7 @@ SCHEMA = Schema({'societe': ( ('nom','ville'),
                                ] ),
                  })
 
-    
+
 
 DATA = { 'societe': [ ('CETIAD', 'Dijon'),
                       ('EDF_R&D', 'Clamart'),
@@ -58,7 +65,7 @@ class PathParser :
         self._attr = None
         self._rel = None
         self._restrictions = []
-        
+
     def parse(self) :
         self._entity = self._components.next()
         try:
@@ -97,7 +104,7 @@ class PathParser :
             for nom, entity in self.schema.get_relations(self._entity) :
                 yield nom+'/'
                 yield entity+'/'
-    
+
 def ls(path) :
     p = PathParser(SCHEMA,path)
     p.parse()
@@ -113,7 +120,7 @@ class SytPathParser :
         self._e_type = None
         self._restrictions = []
         self._alphabet = list('ABCDEFGHIJKLMNOPQRSTUVWXYZ')
-        
+
     def parse(self):
         self._var = self._alphabet.pop(0)
         self._e_type = self._components.next()
@@ -124,7 +131,7 @@ class SytPathParser :
         except StopIteration :
             pass
         return 'Any %s WHERE %s' % (self._var, ', '.join(self._restrictions))
-    
+
     def process_entity(self) :
         _next = self._components.next()
         if _next in self.schema.get_attrs(self._e_type) :
@@ -147,9 +154,9 @@ class SytPathParser :
                 self._restrictions.append('%s is %s' % (r_var, _next.capitalize()))
             except StopIteration:
                 raise
-        self.process_entity()            
+        self.process_entity()
 
-        
+
 def to_rql(path) :
     p = SytPathParser(SCHEMA,path)
     return p.parse()

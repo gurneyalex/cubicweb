@@ -1,4 +1,10 @@
-"""provide utilies for web (live) unit testing"""
+"""provide utilies for web (live) unit testing
+
+:organization: Logilab
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), license is LGPL v2.
+:contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
+:license: GNU Lesser General Public License, v2.1 - http://www.gnu.org/licenses
+"""
 
 import socket
 import logging
@@ -41,9 +47,9 @@ class LivetestResource(CubicWebRootResource):
                 return static.File(str(datadir), segments[1:])
         # Otherwise we use this single resource
         return self, ()
-    
-    
-    
+
+
+
 def make_site(cube, options=None):
     from cubicweb.etwist import twconfig # trigger configuration registration
     sourcefile = options.sourcefile
@@ -75,7 +81,7 @@ def runserver():
 def saveconf(templhome, port, user, passwd):
     import pickle
     conffile = file(join(templhome, 'test', 'livetest.conf'), 'w')
-    
+
     pickle.dump((port, user, passwd, get_starturl(port, user, passwd)),
                 conffile)
     conffile.close()
@@ -99,8 +105,8 @@ def hijack_twill_output(new_output):
     from twill import browser as twb
     twc.OUT = new_output
     twb.OUT = new_output
-    
-    
+
+
 class LiveTestCase(TestCase):
 
     sourcefile = None
@@ -118,7 +124,7 @@ class LiveTestCase(TestCase):
 
     def tearDown(self):
         self.teardown_db(self.cnx)
-    
+
 
     def setup_db(self, cnx):
         """override setup_db() to setup your environment"""
@@ -141,5 +147,3 @@ class LiveTestCase(TestCase):
 
 if __name__ == '__main__':
     runserver()
-
-

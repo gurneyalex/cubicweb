@@ -3,8 +3,9 @@ publisher to get a full CubicWeb web application
 
 
 :organization: Logilab
-:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), license is LGPL v2.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
+:license: GNU Lesser General Public License, v2.1 - http://www.gnu.org/licenses
 """
 __docformat__ = "restructuredtext en"
 _ = unicode
@@ -12,6 +13,8 @@ _ = unicode
 from decimal import Decimal
 from datetime import datetime, date, timedelta
 from simplejson import dumps
+
+from logilab.common.deprecation import obsolete
 
 from cubicweb.common.uilib import urlquote
 from cubicweb.web._exceptions import *
@@ -62,6 +65,7 @@ def jsonize(function):
         return json_dumps(function(*args, **kwargs))
     return newfunc
 
+@obsolete('use req.build_ajax_replace_url() instead')
 def ajax_replace_url(nodeid, rql, vid=None, swap=False, **extraparams):
     """builds a replacePageChunk-like url
     >>> ajax_replace_url('foo', 'Person P')

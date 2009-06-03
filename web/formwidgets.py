@@ -1,12 +1,14 @@
 """widget classes for form construction
 
 :organization: Logilab
-:copyright: 2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2009 LOGILAB S.A. (Paris, FRANCE), license is LGPL v2.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
+:license: GNU Lesser General Public License, v2.1 - http://www.gnu.org/licenses
 """
 __docformat__ = "restructuredtext en"
 
 from datetime import date
+from warnings import warn
 
 from cubicweb.common import tags
 from cubicweb.web import stdmsgs, INTERNAL_FIELD_VALUE
@@ -109,6 +111,11 @@ class PasswordInput(Input):
         return u'\n'.join(inputs)
 
 
+class PasswordSingleInput(Input):
+    """<input type='password'> without a confirmation field"""
+    type = 'password'
+
+
 class FileInput(Input):
     """<input type='file'>"""
     type = 'file'
@@ -170,8 +177,8 @@ class Select(FieldWidget):
 
     def render(self, form, field):
         name, curvalues, attrs = self._render_attrs(form, field)
-        if not 'size' in attrs and self._multiple:
-            attrs['size'] = '5'
+        if not 'size' in attrs:
+            attrs['size'] = self._multiple and '5' or '1'
         options = []
         optgroup_opened = False
         for label, value in field.vocabulary(form):
@@ -200,6 +207,7 @@ class CheckBox(Input):
     def render(self, form, field):
         name, curvalues, attrs = self._render_attrs(form, field)
         domid = attrs.pop('id', None)
+        sep = attrs.pop('separator', u'<br/>')
         options = []
         for i, (label, value) in enumerate(field.vocabulary(form)):
             iattrs = attrs.copy()
@@ -208,7 +216,7 @@ class CheckBox(Input):
             if value in curvalues:
                 iattrs['checked'] = u'checked'
             tag = tags.input(name=name, type=self.type, value=value, **iattrs)
-            options.append(tag + label + '<br/>')
+            options.append(tag + label + sep)
         return '\n'.join(options)
 
 
@@ -298,26 +306,45 @@ class AutoCompletionWidget(TextInput):
     wdgtype = 'SuggestField'
     loadtype = 'auto'
 
+    def __init__(self, *args, **kwargs):
+        try:
+            self.autocomplete_initfunc = kwargs.pop('autocomplete_initfunc')
+        except KeyError:
+            warn('use autocomplete_initfunc argument of %s constructor '
+                 'instead of relying on autocomplete_initfuncs dictionary on '
+                 'the entity class' % self.__class__.__name__,
+                 DeprecationWarning)
+            self.autocomplete_initfunc = None
+        super(AutoCompletionWidget, self).__init__(*args, **kwargs)
+
     def _render_attrs(self, form, field):
         name, values, attrs = super(AutoCompletionWidget, self)._render_attrs(form, field)
-        if not values[0]:
-            values = (INTERNAL_FIELD_VALUE,)
         init_ajax_attributes(attrs, self.wdgtype, self.loadtype)
         # XXX entity form specific
-        attrs['cubicweb:dataurl'] = self._get_url(form.edited_entity)
+        attrs['cubicweb:dataurl'] = self._get_url(form.edited_entity, field)
         return name, values, attrs
 
-    def _get_url(self, entity):
-        return entity.req.build_url('json', fname=entity.autocomplete_initfuncs[self.rschema],
-                                pageid=entity.req.pageid, mode='remote')
+    def _get_url(self, entity, field):
+        if self.autocomplete_initfunc is None:
+            # XXX for bw compat
+            fname = entity.autocomplete_initfuncs[field.name]
+        else:
+            fname = self.autocomplete_initfunc
+        return entity.req.build_url('json', fname=fname, mode='remote',
+                                    pageid=entity.req.pageid)
 
 
 class StaticFileAutoCompletionWidget(AutoCompletionWidget):
     """XXX describe me"""
     wdgtype = 'StaticFileSuggestField'
 
-    def _get_url(self, entity):
-        return entity.req.datadir_url + entity.autocomplete_initfuncs[self.rschema]
+    def _get_url(self, entity, field):
+        if self.autocomplete_initfunc is None:
+            # XXX for bw compat
+            fname = entity.autocomplete_initfuncs[field.name]
+        else:
+            fname = self.autocomplete_initfunc
+        return entity.req.datadir_url + fname
 
 
 class RestrictedAutoCompletionWidget(AutoCompletionWidget):

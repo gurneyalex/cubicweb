@@ -1,3 +1,10 @@
+"""
+
+:organization: Logilab
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), license is LGPL v2.
+:contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
+:license: GNU Lesser General Public License, v2.1 - http://www.gnu.org/licenses
+"""
 from logilab.common.testlib import unittest_main
 from cubicweb.devtools.apptest import EnvBasedTC
 
@@ -8,7 +15,7 @@ class WorkfloableMixInTC(EnvBasedTC):
                      {'x': s.eid})
         es = self.user().wf_state('activated')
         self.assertEquals(es.state_of[0].name, 'CWUser')
-        
+
     def test_wf_transition(self):
         t = self.add_entity('Transition', name=u'deactivate')
         self.execute('SET X transition_of ET WHERE ET name "Bookmark", X eid %(x)s',
@@ -20,6 +27,6 @@ class WorkfloableMixInTC(EnvBasedTC):
         user = self.user()
         user.change_state(user.wf_state('deactivated').eid)
         self.assertEquals(user.state, 'deactivated')
-    
+
 if __name__ == '__main__':
     unittest_main()

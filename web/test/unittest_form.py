@@ -1,13 +1,22 @@
+"""
+
+:organization: Logilab
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), license is LGPL v2.
+:contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
+:license: GNU Lesser General Public License, v2.1 - http://www.gnu.org/licenses
+"""
+
 from logilab.common.testlib import unittest_main, mock_object
+
 from cubicweb import Binary
 from cubicweb.devtools.testlib import WebTest
-from cubicweb.web.form import EntityFieldsForm, FieldsForm
-from cubicweb.web.formrenderers import FormRenderer
 from cubicweb.web.formfields import (IntField, StringField, RichTextField,
                                      DateTimeField, DateTimePicker,
                                      FileField, EditableFileField)
 from cubicweb.web.formwidgets import PasswordInput
+from cubicweb.web.views.forms import EntityFieldsForm, FieldsForm
 from cubicweb.web.views.workflow import ChangeStateForm
+from cubicweb.web.views.formrenderers import FormRenderer
 
 
 class FieldsFormTC(WebTest):
@@ -26,7 +35,6 @@ class EntityFieldsFormTC(WebTest):
         super(EntityFieldsFormTC, self).setUp()
         self.req = self.request()
         self.entity = self.user(self.req)
-        self.renderer = FormRenderer()
 
     def test_form_field_vocabulary_unrelated(self):
         b = self.add_entity('BlogEntry', title=u'di mascii code', content=u'a best-seller')
@@ -64,7 +72,29 @@ class EntityFieldsFormTC(WebTest):
         self.assertEquals(len(states), 1)
         self.assertEquals(states[0][0], u'deactivated') # list of (combobox view, state eid)
 
+    def test_consider_req_form_params(self):
+        e = self.etype_instance('CWUser')
+        e.eid = 'A'
+        form = EntityFieldsForm(self.request(login=u'toto'), None, entity=e)
+        field = StringField(name='login', eidparam=True)
+        form.append_field(field)
+        form.form_build_context({})
+        self.assertEquals(form.form_field_display_value(field, {}), 'toto')
 
+
+    def test_linkto_field_duplication(self):
+        e = self.etype_instance('CWUser')
+        e.eid = 'A'
+        e.req = self.req
+        geid = self.execute('CWGroup X WHERE X name "users"')[0][0]
+        self.req.form['__linkto'] = 'in_group:%s:subject' % geid
+        form = self.vreg.select_object('forms', 'edition', self.req, None, entity=e)
+        form.content_type = 'text/html'
+        pageinfo = self._check_html(form.form_render(), form, template=None)
+        inputs = pageinfo.find_tag('select', False)
+        self.failUnless(any(attrs for t, attrs in inputs if attrs.get('name') == 'in_group:A'))
+        inputs = pageinfo.find_tag('input', False)
+        self.failIf(any(attrs for t, attrs in inputs if attrs.get('name') == '__linkto'))
 
     # form view tests #########################################################
 
@@ -94,7 +124,8 @@ class EntityFieldsFormTC(WebTest):
 
     def _render_entity_field(self, name, form):
         form.form_build_context({})
-        return form.field_by_name(name).render(form, self.renderer)
+        renderer = FormRenderer(self.req)
+        return form.field_by_name(name).render(form, renderer)
 
     def _test_richtextfield(self, expected):
         class RTFForm(EntityFieldsForm):
@@ -124,8 +155,8 @@ class EntityFieldsFormTC(WebTest):
 
     def test_filefield(self):
         class FFForm(EntityFieldsForm):
-            data = FileField(format_field=StringField(name='data_format'),
-                             encoding_field=StringField(name='data_encoding'))
+            data = FileField(format_field=StringField(name='data_format', max_length=50),
+                             encoding_field=StringField(name='data_encoding', max_length=20))
         file = self.add_entity('File', name=u"pouet.txt", data_encoding=u'UTF-8',
                                data=Binary('new widgets system'))
         form = FFForm(self.req, redirect_path='perdu.com', entity=file)
@@ -133,8 +164,8 @@ class EntityFieldsFormTC(WebTest):
                               '''<input id="data:%(eid)s" name="data:%(eid)s" tabindex="0" type="file" value=""/>
 <a href="javascript: toggleVisibility(&#39;data:%(eid)s-advanced&#39;)" title="show advanced fields"><img src="http://testing.fr/cubicweb/data/puce_down.png" alt="show advanced fields"/></a>
 <div id="data:%(eid)s-advanced" class="hidden">
-<label for="data_format:%(eid)s">data_format</label><input id="data_format:%(eid)s" name="data_format:%(eid)s" tabindex="1" type="text" value="text/plain"/><br/><br/>
-<label for="data_encoding:%(eid)s">data_encoding</label><input id="data_encoding:%(eid)s" name="data_encoding:%(eid)s" tabindex="2" type="text" value="UTF-8"/><br/><br/>
+<label for="data_format:%(eid)s">data_format</label><input id="data_format:%(eid)s" name="data_format:%(eid)s" tabindex="1" type="text" value="text/plain"/><br/>
+<label for="data_encoding:%(eid)s">data_encoding</label><input id="data_encoding:%(eid)s" name="data_encoding:%(eid)s" tabindex="2" type="text" value="UTF-8"/><br/>
 </div>
 <br/>
 <input name="data:%(eid)s__detach" type="checkbox"/>
@@ -144,8 +175,8 @@ detach attached file
 
     def test_editablefilefield(self):
         class EFFForm(EntityFieldsForm):
-            data = EditableFileField(format_field=StringField(name='data_format'),
-                                     encoding_field=StringField(name='data_encoding'))
+            data = EditableFileField(format_field=StringField(name='data_format', max_length=50),
+                                     encoding_field=StringField(name='data_encoding', max_length=20))
             def form_field_encoding(self, field):
                 return 'ascii'
             def form_field_format(self, field):
@@ -157,8 +188,8 @@ detach attached file
                               '''<input id="data:%(eid)s" name="data:%(eid)s" tabindex="0" type="file" value=""/>
 <a href="javascript: toggleVisibility(&#39;data:%(eid)s-advanced&#39;)" title="show advanced fields"><img src="http://testing.fr/cubicweb/data/puce_down.png" alt="show advanced fields"/></a>
 <div id="data:%(eid)s-advanced" class="hidden">
-<label for="data_format:%(eid)s">data_format</label><input id="data_format:%(eid)s" name="data_format:%(eid)s" tabindex="1" type="text" value="text/plain"/><br/><br/>
-<label for="data_encoding:%(eid)s">data_encoding</label><input id="data_encoding:%(eid)s" name="data_encoding:%(eid)s" tabindex="2" type="text" value="UTF-8"/><br/><br/>
+<label for="data_format:%(eid)s">data_format</label><input id="data_format:%(eid)s" name="data_format:%(eid)s" tabindex="1" type="text" value="text/plain"/><br/>
+<label for="data_encoding:%(eid)s">data_encoding</label><input id="data_encoding:%(eid)s" name="data_encoding:%(eid)s" tabindex="2" type="text" value="UTF-8"/><br/>
 </div>
 <br/>
 <input name="data:%(eid)s__detach" type="checkbox"/>

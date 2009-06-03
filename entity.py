@@ -1,8 +1,9 @@
 """Base class for entity objects manipulated in clients
 
 :organization: Logilab
-:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), license is LGPL v2.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
+:license: GNU Lesser General Public License, v2.1 - http://www.gnu.org/licenses
 """
 __docformat__ = "restructuredtext en"
 
@@ -123,7 +124,7 @@ class _metaentity(type):
             for name, widgets in _get_defs('widgets', name, bases, classdict):
                 warn('%s: widgets is deprecated' % name, DeprecationWarning)
                 for rtype, wdgname in widgets.iteritems():
-                    if wdgname in ('URLWidget', 'EmbededURLWidget'):
+                    if wdgname in ('URLWidget', 'EmbededURLWidget', 'RawDynamicComboBoxWidget'):
                         warn('%s widget is deprecated' % wdgname, DeprecationWarning)
                         continue
                     if wdgname == 'StringWidget':
@@ -284,6 +285,23 @@ class Entity(AppRsetObject, dict):
         parents.append(cls.vreg.etype_class('Any'))
         return parents
 
+    @classmethod
+    @cached
+    def _rest_attr_info(cls):
+        mainattr, needcheck = 'eid', True
+        if cls.rest_attr:
+            mainattr = cls.rest_attr
+            needcheck = not cls.e_schema.has_unique_values(mainattr)
+        else:
+            for rschema in cls.e_schema.subject_relations():
+                if rschema.is_final() and rschema != 'eid' and cls.e_schema.has_unique_values(rschema):
+                    mainattr = str(rschema)
+                    needcheck = False
+                    break
+        if mainattr == 'eid':
+            needcheck = False
+        return mainattr, needcheck
+
     def __init__(self, req, rset=None, row=None, col=0):
         AppRsetObject.__init__(self, req, rset, row, col)
         dict.__init__(self)
@@ -362,47 +380,41 @@ class Entity(AppRsetObject, dict):
         # XXX search_state is web specific
         if getattr(self.req, 'search_state', ('normal',))[0] == 'normal':
             kwargs['base_url'] = self.metainformation()['source'].get('base-url')
-        if method is None or method == 'view':
-            kwargs['_restpath'] = self.rest_path()
+        if method in (None, 'view'):
+            try:
+                kwargs['_restpath'] = self.rest_path(kwargs.get('base_url'))
+            except TypeError:
+                warn('%s: rest_path() now take use_ext_eid argument, '
+                     'please update' % self.id, DeprecationWarning)
+                kwargs['_restpath'] = self.rest_path()
         else:
             kwargs['rql'] = 'Any X WHERE X eid %s' % self.eid
         return self.build_url(method, **kwargs)
 
-    def rest_path(self):
+    def rest_path(self, use_ext_eid=False):
         """returns a REST-like (relative) path for this entity"""
         mainattr, needcheck = self._rest_attr_info()
         etype = str(self.e_schema)
-        if mainattr == 'eid':
-            value = self.eid
-        else:
+        path = etype.lower()
+        if mainattr != 'eid':
             value = getattr(self, mainattr)
             if value is None:
-                return '%s/eid/%s' % (etype.lower(), self.eid)
-        if needcheck:
-            # make sure url is not ambiguous
-            rql = 'Any COUNT(X) WHERE X is %s, X %s %%(value)s' % (etype, mainattr)
-            if value is not None:
+                mainattr = 'eid'
+                path += '/eid'
+            elif needcheck:
+                # make sure url is not ambiguous
+                rql = 'Any COUNT(X) WHERE X is %s, X %s %%(value)s' % (
+                    etype, mainattr)
                 nbresults = self.req.execute(rql, {'value' : value})[0][0]
-                # may an assertion that nbresults is not 0 would be a good idea
-                if nbresults != 1: # no ambiguity
-                    return '%s/eid/%s' % (etype.lower(), self.eid)
-        return '%s/%s' % (etype.lower(), self.req.url_quote(value))
-
-    @classmethod
-    def _rest_attr_info(cls):
-        mainattr, needcheck = 'eid', True
-        if cls.rest_attr:
-            mainattr = cls.rest_attr
-            needcheck = not cls.e_schema.has_unique_values(mainattr)
-        else:
-            for rschema in cls.e_schema.subject_relations():
-                if rschema.is_final() and rschema != 'eid' and cls.e_schema.has_unique_values(rschema):
-                    mainattr = str(rschema)
-                    needcheck = False
-                    break
+                if nbresults != 1: # ambiguity?
+                    mainattr = 'eid'
+                    path += '/eid'
         if mainattr == 'eid':
-            needcheck = False
-        return mainattr, needcheck
+            if use_ext_eid:
+                value = self.metainformation()['extid']
+            else:
+                value = self.eid
+        return '%s/%s' % (path, self.req.url_quote(value))
 
     def attr_metadata(self, attr, metadata):
         """return a metadata for an attribute (None if unspecified)"""
@@ -712,9 +724,8 @@ class Entity(AppRsetObject, dict):
         If `eid` is None in one of these couples, it should be
         interpreted as a separator in case vocabulary results are grouped
         """
-        from cubicweb.web.form import EntityFieldsForm
         from logilab.common.testlib import mock_object
-        form = EntityFieldsForm(self.req, entity=self)
+        form = self.vreg.select_object('forms', 'edition', self.req, entity=self)
         field = mock_object(name=rtype, role=role)
         return form.form_field_vocabulary(field, limit)
 

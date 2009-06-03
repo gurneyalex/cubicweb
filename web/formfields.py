@@ -1,8 +1,9 @@
 """field classes for form construction
 
 :organization: Logilab
-:copyright: 2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2009 LOGILAB S.A. (Paris, FRANCE), license is LGPL v2.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
+:license: GNU Lesser General Public License, v2.1 - http://www.gnu.org/licenses
 """
 __docformat__ = "restructuredtext en"
 
@@ -18,6 +19,7 @@ from cubicweb.web import INTERNAL_FIELD_VALUE
 from cubicweb.web.formwidgets import (
     HiddenInput, TextInput, FileInput, PasswordInput, TextArea, FCKEditor,
     Radio, Select, DateTimePicker)
+
 
 class Field(object):
     """field class is introduced to control what's displayed in forms. It makes
@@ -79,16 +81,13 @@ class Field(object):
         self.label = label or name
         self.help = help
         self.required = required
-        if widget is not None:
-            self.widget = widget
-        if isinstance(self.widget, type):
-            self.widget = self.widget()
         self.initial = initial
         self.choices = choices
         self.sort = sort
         self.internationalizable = internationalizable
         self.eidparam = eidparam
         self.role = role
+        self.init_widget(widget)
         # ordering number for this field instance
         self.creation_rank = Field.__creation_rank
         Field.__creation_rank += 1
@@ -100,6 +99,14 @@ class Field(object):
 
     def __repr__(self):
         return self.__unicode__().encode('utf-8')
+
+    def init_widget(self, widget):
+        if widget is None and self.choices:
+            widget = Select()
+        if widget is not None:
+            self.widget = widget
+        if isinstance(self.widget, type):
+            self.widget = self.widget()
 
     def set_name(self, name):
         """automatically set .id and .label when name is set"""
@@ -176,10 +183,21 @@ class Field(object):
         """
         pass
 
+
 class StringField(Field):
+    widget = TextArea
+
     def __init__(self, max_length=None, **kwargs):
+        self.max_length = max_length # must be set before super call
         super(StringField, self).__init__(**kwargs)
-        self.max_length = max_length
+
+    def init_widget(self, widget):
+        if widget is None:
+            if self.choices:
+                widget = Select()
+            elif self.max_length and self.max_length < 257:
+                widget = TextInput()
+        super(StringField, self).init_widget(widget)
         if isinstance(self.widget, TextArea):
             self.init_text_area(self.widget)
 
@@ -213,20 +231,20 @@ class RichTextField(StringField):
         try:
             return req.data[self]
         except KeyError:
+            fkwargs = {}
             if self.use_fckeditor(form):
                 # if fckeditor is used and format field isn't explicitly
                 # deactivated, we want an hidden field for the format
-                widget = HiddenInput()
-                choices = None
+                fkwargs['widget'] = HiddenInput()
+                fkwargs['initial'] = 'text/html'
             else:
                 # else we want a format selector
-                # XXX compute vocabulary
-                widget = Select()
+                fkwargs['widget'] = Select()
                 fcstr = FormatConstraint()
-                choices = [(req._(fmt), fmt) for fmt in fcstr.vocabulary(req=req)]
-                widget.attrs['size'] = 1
-            field = StringField(name=self.name + '_format', widget=widget,
-                                choices=choices)
+                fkwargs['choices'] = fcstr.vocabulary(req=req)
+                fkwargs['internationalizable'] = True
+                fkwargs['initial'] = lambda f: f.form_field_format(self)
+            field = StringField(name=self.name + '_format', **fkwargs)
             req.data[self] = field
             return field
 
@@ -340,6 +358,7 @@ class IntField(Field):
             self.widget.attrs.setdefault('size', 5)
             self.widget.attrs.setdefault('maxlength', 15)
 
+
 class BooleanField(Field):
     widget = Radio
 
@@ -378,6 +397,7 @@ class DateTimeField(DateField):
 class TimeField(DateField):
     format_prop = 'ui.datetime-format'
     widget = TextInput
+
 
 class HiddenInitialValueField(Field):
     def __init__(self, visible_field):
@@ -468,13 +488,10 @@ def guess_field(eschema, rschema, role='subject', skip_meta_attr=True, **kwargs)
             # init StringField parameters according to constraints
             for cstr in constraints:
                 if isinstance(cstr, StaticVocabularyConstraint):
-                    kwargs.setdefault('widget', Select())
                     kwargs.setdefault('choices', cstr.vocabulary)
-                    if card in '?1':
-                        kwargs['widget'].attrs.setdefault('size', 1)
+                    break
+            for cstr in constraints:
                 if isinstance(cstr, SizeConstraint) and cstr.max is not None:
-                    if cstr.max > 257:
-                        kwargs.setdefault('widget', TextArea)
                     kwargs['max_length'] = cstr.max
             return StringField(**kwargs)
         if fieldclass is FileField:
@@ -486,6 +503,7 @@ def guess_field(eschema, rschema, role='subject', skip_meta_attr=True, **kwargs)
         return fieldclass(**kwargs)
     kwargs['role'] = role
     return RelationField.fromcardinality(card, **kwargs)
+
 
 FIELDS = {
     'Boolean':  BooleanField,

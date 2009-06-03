@@ -1,4 +1,11 @@
 # -*- coding: iso-8859-1 -*-
+"""
+
+:organization: Logilab
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), license is LGPL v2.
+:contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
+:license: GNU Lesser General Public License, v2.1 - http://www.gnu.org/licenses
+"""
 import re
 
 from logilab.common.testlib import unittest_main
@@ -43,23 +50,23 @@ class SupervisingTC(EnvBasedTC):
         data = re.sub('/\d+', '/EID', data)
         self.assertTextEquals('''user admin has made the following change(s):
 
-* added euser #EID (toto)
-  http://testing.fr/cubicweb/euser/toto
+* added cwuser #EID (toto)
+  http://testing.fr/cubicweb/cwuser/toto
 
-* added relation in_group from euser #EID to egroup #EID
+* added relation in_group from cwuser #EID to cwgroup #EID
 
 * deleted card #EID (une news !)
 
-* added relation bookmarked_by from bookmark #EID to euser #EID
+* added relation bookmarked_by from bookmark #EID to cwuser #EID
 
 * updated comment #EID (#EID)
   http://testing.fr/cubicweb/comment/EID
 
 * deleted relation comments from comment #EID to card #EID
 
-* changed state of euser #EID (anon)
+* changed state of cwuser #EID (anon)
   from state activated to state deactivated
-  http://testing.fr/cubicweb/euser/anon''',
+  http://testing.fr/cubicweb/cwuser/anon''',
                               data)
         # check prepared email
         op._prepare_email()

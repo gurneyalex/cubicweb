@@ -2,8 +2,9 @@
 cubes development
 
 :organization: Logilab
-:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), license is LGPL v2.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
+:license: GNU Lesser General Public License, v2.1 - http://www.gnu.org/licenses
 """
 __docformat__ = "restructuredtext en"
 
@@ -77,11 +78,11 @@ def cleanup_sys_modules(config):
             if mod.__file__.startswith(path):
                 del sys.modules[name]
                 break
-        # fresh rtags
-        from cubicweb import rtags
-        from cubicweb.web import uicfg
-        rtags.RTAGS[:] = []
-        reload(uicfg)
+    # fresh rtags
+    from cubicweb import rtags
+    from cubicweb.web import uicfg
+    rtags.RTAGS[:] = []
+    reload(uicfg)
 
 def generate_schema_pot(w, cubedir=None):
     """generate a pot file with schema specific i18n messages
@@ -246,7 +247,7 @@ class UpdateCubicWebCatalogCommand(Command):
     It will regenerate cubicweb/i18n/xx.po files. You'll have then to edit those
     files to add translations of newly added messages.
     """
-    name = 'i18nlibupdate'
+    name = 'i18ncubicweb'
 
     def run(self, args):
         """run the command with its specific arguments"""
@@ -307,14 +308,14 @@ class UpdateCubicWebCatalogCommand(Command):
         print 'you can now edit the following files:'
         print '* ' + '\n* '.join(toedit)
         print
-        print "then you'll have to update cubes catalogs using the i18nupdate command"
+        print "then you'll have to update cubes catalogs using the i18ncube command"
 
 
 class UpdateTemplateCatalogCommand(Command):
     """Update i18n catalogs for cubes. If no cube is specified, update
     catalogs of all registered cubes.
     """
-    name = 'i18nupdate'
+    name = 'i18ncube'
     arguments = '[<cube>...]'
 
     def run(self, args):

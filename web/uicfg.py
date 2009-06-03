@@ -1,6 +1,3 @@
-# :organization: Logilab
-# :copyright: 2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
-# :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
 """This module regroups a set of structures that may be used to configure
 various places of the generated web interface.
 
@@ -63,16 +60,17 @@ Actions box configuration
 Automatic form configuration
 ````````````````````````````
 
+:organization: Logilab
+:copyright: 2009 LOGILAB S.A. (Paris, FRANCE), license is LGPL v2.
+:contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
+:license: GNU Lesser General Public License, v2.1 - http://www.gnu.org/licenses
 """
 __docformat__ = "restructuredtext en"
 
+from cubicweb import neg_role
 from cubicweb.rtags import RelationTags, RelationTagsBool, RelationTagsSet
 from cubicweb.web import formwidgets
 
-# primary view configuration ##################################################
-
-def dual_role(role):
-    return 'object' if role == 'subject' else 'subject'
 
 def card_from_role(card, role):
     if role == 'subject':
@@ -80,10 +78,12 @@ def card_from_role(card, role):
     assert role in ('object', 'sobject'), repr(role)
     return card[1]
 
+# primary view configuration ##################################################
+
 def init_primaryview_section(rtag, sschema, rschema, oschema, role):
     if rtag.get(sschema, rschema, oschema, role) is None:
         card = card_from_role(rschema.rproperty(sschema, oschema, 'cardinality'), role)
-        composed = rschema.rproperty(sschema, oschema, 'composite') == dual_role(role)
+        composed = rschema.rproperty(sschema, oschema, 'composite') == neg_role(role)
         if rschema.is_final():
             if rschema.meta or oschema.type in ('Password', 'Bytes'):
                 section = 'hidden'
@@ -97,8 +97,9 @@ def init_primaryview_section(rtag, sschema, rschema, oschema, role):
             section = 'sideboxes'
         rtag.tag_relation((sschema, rschema, oschema, role), section)
 
-primaryview_section = RelationTags(init_primaryview_section,
-                                    frozenset(('attributes', 'relations',
+primaryview_section = RelationTags('primaryview_section',
+                                   init_primaryview_section,
+                                   frozenset(('attributes', 'relations',
                                                'sideboxes', 'hidden')))
 for rtype in ('eid', 'creation_date', 'modification_date',
               'is', 'is_instance_of', 'identity',
@@ -108,6 +109,8 @@ for rtype in ('eid', 'creation_date', 'modification_date',
               'see_also'):
     primaryview_section.tag_subject_of(('*', rtype, '*'), 'hidden')
     primaryview_section.tag_object_of(('*', rtype, '*'), 'hidden')
+primaryview_section.tag_subject_of(('*', 'use_email', '*'), 'attributes')
+primaryview_section.tag_subject_of(('*', 'primary_email', '*'), 'hidden')
 
 for attr in ('name', 'meta', 'final'):
     primaryview_section.tag_attribute(('CWEType', attr), 'hidden')
@@ -140,7 +143,8 @@ def init_primaryview_display_ctrl(rtag, sschema, rschema, oschema, role):
         rtag.tag_relation((sschema, rschema, oschema, role), displayinfo)
     displayinfo.setdefault('label', label)
 
-primaryview_display_ctrl = DisplayCtrlRelationTags(init_primaryview_display_ctrl)
+primaryview_display_ctrl = DisplayCtrlRelationTags('primaryview_display_ctrl',
+                                                   init_primaryview_display_ctrl)
 
 
 # index view configuration ####################################################
@@ -178,7 +182,7 @@ def init_autoform_section(rtag, sschema, rschema, oschema, role):
             section = 'generic'
         rtag.tag_relation((sschema, rschema, oschema, role), section)
 
-autoform_section = RelationTags(init_autoform_section,
+autoform_section = RelationTags('autoform_section', init_autoform_section,
                                 set(('primary', 'secondary', 'generic',
                                      'metadata', 'generated')))
 # use primary and not generated for eid since it has to be an hidden
@@ -217,7 +221,7 @@ autoform_section.tag_subject_of(('*', 'primary_email', '*'), 'generic')
 
 
 # relations'field class
-autoform_field = RelationTags()
+autoform_field = RelationTags('autoform_field')
 
 # relations'field explicit kwargs (given to field's __init__)
 autoform_field_kwargs = RelationTags()
@@ -231,7 +235,7 @@ autoform_field_kwargs.tag_attribute(('Bookmark', 'path'),
 # inlined view flag for non final relations: when True for an entry, the
 # entity(ies) at the other end of the relation will be editable from the
 # form of the edited entity
-autoform_is_inlined = RelationTagsBool()
+autoform_is_inlined = RelationTagsBool('autoform_is_inlined')
 autoform_is_inlined.tag_subject_of(('*', 'use_email', '*'), True)
 autoform_is_inlined.tag_subject_of(('CWRelation', 'relation_type', '*'), True)
 autoform_is_inlined.tag_subject_of(('CWRelation', 'from_entity', '*'), True)
@@ -241,7 +245,7 @@ autoform_is_inlined.tag_subject_of(('CWRelation', 'to_entity', '*'), True)
 # set of tags of the form <action>_on_new on relations. <action> is a
 # schema action (add/update/delete/read), and when such a tag is found
 # permissions checking is by-passed and supposed to be ok
-autoform_permissions_overrides = RelationTagsSet()
+autoform_permissions_overrides = RelationTagsSet('autoform_permissions_overrides')
 
 
 # boxes.EditBox configuration #################################################
@@ -254,7 +258,8 @@ def init_actionbox_appearsin_addmenu(rtag, sschema, rschema, oschema, role):
                rschema.rproperty(sschema, oschema, 'composite') == role:
             rtag.tag_relation((sschema, rschema, oschema, role), True)
 
-actionbox_appearsin_addmenu = RelationTagsBool(init_actionbox_appearsin_addmenu)
+actionbox_appearsin_addmenu = RelationTagsBool('actionbox_appearsin_addmenu',
+                                               init_actionbox_appearsin_addmenu)
 actionbox_appearsin_addmenu.tag_subject_of(('*', 'is', '*'), False)
 actionbox_appearsin_addmenu.tag_object_of(('*', 'is', '*'), False)
 actionbox_appearsin_addmenu.tag_subject_of(('*', 'is_instance_of', '*'), False)
@@ -279,3 +284,4 @@ actionbox_appearsin_addmenu.tag_subject_of(('Transition', 'destination_state', '
 actionbox_appearsin_addmenu.tag_object_of(('*', 'allowed_transition', 'Transition'), True)
 actionbox_appearsin_addmenu.tag_object_of(('*', 'destination_state', 'State'), True)
 actionbox_appearsin_addmenu.tag_subject_of(('State', 'allowed_transition', '*'), True)
+

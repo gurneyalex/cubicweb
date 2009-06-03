@@ -1,3 +1,10 @@
+"""
+
+:organization: Logilab
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), license is LGPL v2.
+:contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
+:license: GNU Lesser General Public License, v2.1 - http://www.gnu.org/licenses
+"""
 from os.path import dirname, join, abspath
 from datetime import datetime, timedelta
 
@@ -77,7 +84,7 @@ class TwoSourcesTC(RepositoryBasedTC):
                            'type': u'Card', 'extid': None})
         externent = rset.get_entity(3, 0)
         metainf = externent.metainformation()
-        self.assertEquals(metainf['source'], {'adapter': 'pyrorql', 'uri': 'extern'})
+        self.assertEquals(metainf['source'], {'adapter': 'pyrorql', 'base-url': 'http://extern.org/', 'uri': 'extern'})
         self.assertEquals(metainf['type'], 'Card')
         self.assert_(metainf['extid'])
         etype = self.execute('Any ETN WHERE X is ET, ET name ETN, X eid %(x)s',
@@ -149,7 +156,7 @@ class TwoSourcesTC(RepositoryBasedTC):
         self.execute('Any X ORDERBY DUMB_SORT(RF) WHERE X title RF')
 
     def test_in_eid(self):
-        iec1 = self.repo.extid2eid(self.repo.sources_by_uri['extern'], ec1,
+        iec1 = self.repo.extid2eid(self.repo.sources_by_uri['extern'], str(ec1),
                                    'Card', self.session)
         rset = self.execute('Any X WHERE X eid IN (%s, %s)' % (iec1, self.ic1))
         self.assertEquals(sorted(r[0] for r in rset.rows), sorted([iec1, self.ic1]))
@@ -235,8 +242,20 @@ class TwoSourcesTC(RepositoryBasedTC):
         states.remove((aff1stateeid, aff1statename))
         notstates = set(tuple(x) for x in self.execute('Any S,SN WHERE S is State, S name SN, NOT X in_state S, X eid %(x)s',
                                                        {'x': aff1}, 'x'))
-        self.set_debug(False)
         self.assertSetEquals(notstates, states)
+
+    def test_absolute_url_base_url(self):
+        ceid = cu.execute('INSERT Card X: X title "without wikiid to get eid based url"')[0][0]
+        cnx2.commit()
+        lc = self.execute('Card X WHERE X title "without wikiid to get eid based url"').get_entity(0, 0)
+        self.assertEquals(lc.absolute_url(), 'http://extern.org/card/eid/%s' % ceid)
+
+    def test_absolute_url_no_base_url(self):
+        cu = cnx3.cursor()
+        ceid = cu.execute('INSERT Card X: X title "without wikiid to get eid based url"')[0][0]
+        cnx3.commit()
+        lc = self.execute('Card X WHERE X title "without wikiid to get eid based url"').get_entity(0, 0)
+        self.assertEquals(lc.absolute_url(), 'http://testing.fr/cubicweb/card/eid/%s' % lc.eid)
 
     def test_nonregr1(self):
         ueid = self.session.user.eid
@@ -250,7 +269,6 @@ class TwoSourcesTC(RepositoryBasedTC):
                             {'x': treid})
         self.assertEquals(len(rset), 1)
         self.assertEquals(rset.rows[0], [self.session.user.eid])
-
 
     def test_nonregr3(self):
         self.execute('DELETE Card X WHERE X eid %(x)s, NOT X multisource_inlined_rel Y', {'x': self.ic1})

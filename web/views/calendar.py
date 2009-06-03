@@ -1,9 +1,12 @@
 """html calendar views
 
 :organization: Logilab
-:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), license is LGPL v2.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
+:license: GNU Lesser General Public License, v2.1 - http://www.gnu.org/licenses
 """
+__docformat__ = "restructuredtext en"
+_ = unicode
 
 from datetime import datetime, date, timedelta
 
@@ -13,9 +16,7 @@ from cubicweb.interfaces import ICalendarable
 from cubicweb.selectors import implements
 from cubicweb.utils import strptime, date_range, todate, todatetime
 from cubicweb.view import EntityView
-from cubicweb.web import ajax_replace_url
 
-_ = unicode
 
 # useful constants & functions ################################################
 
@@ -82,7 +83,8 @@ class hCalView(EntityView):
             task = self.complete_entity(i)
             self.w(u'<div class="vevent">')
             self.w(u'<h3 class="summary">%s</h3>' % html_escape(task.dc_title()))
-            self.w(u'<div class="description">%s</div>' % html_escape(task.dc_description()))
+            self.w(u'<div class="description">%s</div>'
+                   % task.dc_description(format='text/html'))
             if task.start:
                 self.w(u'<abbr class="dtstart" title="%s">%s</abbr>' % (task.start.isoformat(), self.format_date(task.start)))
             if task.stop:
@@ -164,13 +166,15 @@ class OneMonthCal(EntityView):
             else:
                 user = None
             the_dates = []
-            tstart = todate(task.start)
+            tstart = task.start
             if tstart:
+                tstart = todate(task.start)
                 if tstart > lastday:
                     continue
                 the_dates = [tstart]
-            tstop = todate(task.start)
+            tstop = task.stop
             if tstop:
+                tstop = todate(tstop)
                 if tstop < firstday:
                     continue
                 the_dates = [tstop]
@@ -260,10 +264,12 @@ class OneMonthCal(EntityView):
         prevdate = curdate - timedelta(31)
         nextdate = curdate + timedelta(31)
         rql = self.rset.printable_rql()
-        prevlink = ajax_replace_url('onemonthcalid', rql, 'onemonthcal',
-                                    year=prevdate.year, month=prevdate.month)
-        nextlink = ajax_replace_url('onemonthcalid', rql, 'onemonthcal',
-                                    year=nextdate.year, month=nextdate.month)
+        prevlink = self.req.build_ajax_replace_url('onemonthcalid', rql, 'onemonthcal',
+                                                   year=prevdate.year,
+                                                   month=prevdate.month)
+        nextlink = self.req.build_ajax_replace_url('onemonthcalid', rql, 'onemonthcal',
+                                                   year=nextdate.year,
+                                                   month=nextdate.month)
         return prevlink, nextlink
 
     def _build_calendar_cell(self, celldate, rows, curdate):
@@ -348,13 +354,15 @@ class OneWeekCal(EntityView):
                 continue
             done_tasks.append(task)
             the_dates = []
-            tstart = todate(task.start)
-            tstop = todate(task.stop)
+            tstart = task.start
+            tstop = task.stop
             if tstart:
+                tstart = todate(tstart)
                 if tstart > lastday:
                     continue
                 the_dates = [tstart]
             if tstop:
+                tstop = todate(tstop)
                 if tstop < firstday:
                     continue
                 the_dates = [tstop]
@@ -513,9 +521,10 @@ class OneWeekCal(EntityView):
         prevdate = curdate - timedelta(7)
         nextdate = curdate + timedelta(7)
         rql = self.rset.printable_rql()
-        prevlink = ajax_replace_url('oneweekcalid', rql, 'oneweekcal',
-                                    year=prevdate.year, week=prevdate.isocalendar()[1])
-        nextlink = ajax_replace_url('oneweekcalid', rql, 'oneweekcal',
-                                    year=nextdate.year, week=nextdate.isocalendar()[1])
+        prevlink = self.req.build_ajax_replace_url('oneweekcalid', rql, 'oneweekcal',
+                                                   year=prevdate.year,
+                                                   week=prevdate.isocalendar()[1])
+        nextlink = self.req.build_ajax_replace_url('oneweekcalid', rql, 'oneweekcal',
+                                                   year=nextdate.year,
+                                                   week=nextdate.isocalendar()[1])
         return prevlink, nextlink
-

@@ -2,10 +2,12 @@
 or a list of entities of the same type
 
 :organization: Logilab
-:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), license is LGPL v2.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
+:license: GNU Lesser General Public License, v2.1 - http://www.gnu.org/licenses
 """
 __docformat__ = "restructuredtext en"
+_ = unicode
 
 from copy import copy
 
@@ -19,14 +21,11 @@ from cubicweb.utils import make_uid
 from cubicweb.view import EntityView
 from cubicweb.common import tags
 from cubicweb.web import INTERNAL_FIELD_VALUE, stdmsgs, eid_param
-from cubicweb.web.form import CompositeForm, EntityFieldsForm, FormViewMixIn
+from cubicweb.web.form import FormViewMixIn
 from cubicweb.web.formfields import RelationField
 from cubicweb.web.formwidgets import Button, SubmitButton, ResetButton, Select
-from cubicweb.web.formrenderers import (FormRenderer, EntityFormRenderer,
-                                        EntityCompositeFormRenderer,
-                                        EntityInlinedFormRenderer)
+from cubicweb.web.views import forms
 
-_ = unicode
 
 def relation_id(eid, rtype, role, reid):
     """return an identifier for a relation between two entities"""
@@ -52,7 +51,7 @@ class DeleteConfForm(FormViewMixIn, EntityView):
     # else we will only delete the displayed page
     need_navigation = False
 
-    def call(self):
+    def call(self, onsubmit=None):
         """ask for confirmation before real deletion"""
         req, w = self.req, self.w
         _ = req._
@@ -60,17 +59,19 @@ class DeleteConfForm(FormViewMixIn, EntityView):
           % _('this action is not reversible!'))
         # XXX above message should have style of a warning
         w(u'<h4>%s</h4>\n' % _('Do you want to delete the following element(s) ?'))
-        form = CompositeForm(req, domid='deleteconf', copy_nav_params=True,
-                             action=self.build_url('edit'), onsubmit=None,
-                             form_buttons=[Button(stdmsgs.YES, cwaction='delete'),
-                                           Button(stdmsgs.NO, cwaction='cancel')])
+        form = self.vreg.select_object('forms', 'composite', req, domid='deleteconf',
+                                       copy_nav_params=True,
+                                       action=self.build_url('edit'), onsubmit=onsubmit,
+                                       form_buttons=[Button(stdmsgs.YES, cwaction='delete'),
+                                                     Button(stdmsgs.NO, cwaction='cancel')])
         done = set()
         w(u'<ul>\n')
         for entity in self.rset.entities():
             if entity.eid in done:
                 continue
             done.add(entity.eid)
-            subform = EntityFieldsForm(req, entity=entity, set_error_url=False)
+            subform = self.vreg.select_object('forms', 'base', req, entity=entity,
+                                              set_error_url=False)
             form.form_add_subform(subform)
             # don't use outofcontext view or any other that may contain inline edition form
             w(u'<li>%s</li>' % tags.a(entity.view('textoutofcontext'),
@@ -113,14 +114,18 @@ class ClickAndEditFormView(FormViewMixIn, EntityView):
             self.w(value)
             return
         if rschema.is_final():
-            form = self._build_attribute_form(entity, value, rtype, role, reload, row, col, default)
+            form = self._build_attribute_form(entity, value, rtype, role,
+                                              reload, row, col, default)
         else:
-            form = self._build_relation_form(entity, value, rtype, role, row, col, vid, default)
+            form = self._build_relation_form(entity, value, rtype, role,
+                                             row, col, vid, default)
         form.form_add_hidden(u'__maineid', entity.eid)
-        renderer = FormRenderer(display_label=False, display_help=False,
-                                display_fields=[(rtype, role)],
-                                table_class='', button_bar_class='buttonbar',
-                                display_progress_div=False)
+        renderer = self.vreg.select_object('formrenderers', 'base', self.req,
+                                      entity=entity,
+                                      display_label=False, display_help=False,
+                                      display_fields=[(rtype, role)],
+                                      table_class='', button_bar_class='buttonbar',
+                                      display_progress_div=False)
         self.w(form.form_render(renderer=renderer))
 
     def _build_relation_form(self, entity, value, rtype, role, row, col, vid, default):
@@ -128,16 +133,17 @@ class ClickAndEditFormView(FormViewMixIn, EntityView):
         divid = 'd%s' % make_uid('%s-%s' % (rtype, entity.eid))
         event_data = {'divid' : divid, 'eid' : entity.eid, 'rtype' : rtype, 'vid' : vid,
                       'default' : default, 'role' : role}
-        form = EntityFieldsForm(self.req, None, entity=entity, action='#',
-                                domid='%s-form' % divid,
-                                cssstyle='display: none',
-                                onsubmit=("return inlineValidateRelationForm('%(divid)s-form', '%(rtype)s', "
-                                          "'%(role)s', '%(eid)s', '%(divid)s', '%(vid)s', '%(default)s');" %
-                                          event_data),
-                                form_buttons=[SubmitButton(),
-                                              Button(stdmsgs.BUTTON_CANCEL,
-                                                     onclick="cancelInlineEdit(%s,\'%s\',\'%s\')" %\
-                                                         (entity.eid, rtype, divid))])
+        onsubmit = ("return inlineValidateRelationForm('%(divid)s-form', '%(rtype)s', "
+                    "'%(role)s', '%(eid)s', '%(divid)s', '%(vid)s', '%(default)s');"
+                    % event_data)
+        cancelclick = "cancelInlineEdit(%s,\'%s\',\'%s\')" % (
+            entity.eid, rtype, divid)
+        form = self.vreg.select_object('forms', 'base', self.req, entity=entity,
+                                       domid='%s-form' % divid, cssstyle='display: none',
+                                       onsubmit=onsubmit, action='#',
+                                       form_buttons=[SubmitButton(),
+                                                     Button(stdmsgs.BUTTON_CANCEL,
+                                                       onclick=cancelclick)])
         form.append_field(RelationField(name=rtype, role=role, sort=True,
                                         widget=Select(),
                                         label=u' '))
@@ -172,7 +178,6 @@ class EditionFormView(FormViewMixIn, EntityView):
     __select__ = one_line_rset() & non_final_entity() & yes()
 
     title = _('edition')
-    renderer = EntityFormRenderer()
 
     def cell_call(self, row, col, **kwargs):
         entity = self.complete_entity(row, col)
@@ -185,7 +190,7 @@ class EditionFormView(FormViewMixIn, EntityView):
                                        row=entity.row, col=entity.col, entity=entity,
                                        submitmsg=self.submited_message())
         self.init_form(form, entity)
-        self.w(form.form_render(renderer=self.renderer, formvid=u'edition'))
+        self.w(form.form_render(formvid=u'edition'))
 
     def init_form(self, form, entity):
         """customize your form before rendering here"""
@@ -289,7 +294,7 @@ class CopyFormView(EditionFormView):
         return self.req._('entity copied')
 
 
-class TableEditForm(CompositeForm):
+class TableEditForm(forms.CompositeForm):
     id = 'muledit'
     domid = 'entityForm'
     onsubmit = "return validateForm('%s', null);" % domid
@@ -319,7 +324,7 @@ class TableEditFormView(FormViewMixIn, EntityView):
         """
         #self.form_title(entity)
         form = self.vreg.select_object('forms', self.id, self.req, self.rset)
-        self.w(form.form_render(renderer=EntityCompositeFormRenderer()))
+        self.w(form.form_render())
 
 
 class InlineEntityEditionFormView(FormViewMixIn, EntityView):
@@ -350,13 +355,15 @@ class InlineEntityEditionFormView(FormViewMixIn, EntityView):
     def render_form(self, entity, peid, rtype, role, **kwargs):
         """fetch and render the form"""
         form = self.vreg.select_object('forms', 'edition', self.req, None,
-                                       entity=entity, set_error_url=False)
+                                       entity=entity, form_renderer_id='inline',
+                                       set_error_url=False,
+                                       copy_nav_params=False)
         self.add_hiddens(form, entity, peid, rtype, role)
         divid = '%s-%s-%s' % (peid, rtype, entity.eid)
         title = self.schema.rschema(rtype).display_name(self.req, role)
         removejs = self.removejs % (peid, rtype,entity.eid)
-        self.w(form.form_render(renderer=EntityInlinedFormRenderer(), divid=divid,
-                                title=title, removejs=removejs,**kwargs))
+        self.w(form.form_render(divid=divid, title=title, removejs=removejs,
+                                **kwargs))
 
     def add_hiddens(self, form, entity, peid, rtype, role):
         # to ease overriding (see cubes.vcsfile.views.forms for instance)

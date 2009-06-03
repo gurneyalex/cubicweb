@@ -1,3 +1,10 @@
+"""
+
+:organization: Logilab
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), license is LGPL v2.
+:contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
+:license: GNU Lesser General Public License, v2.1 - http://www.gnu.org/licenses
+"""
 from cubicweb.devtools.apptest import EnvBasedTC
 
 class EmailAddressHooksTC(EnvBasedTC):
@@ -22,7 +29,7 @@ class EmailAddressHooksTC(EnvBasedTC):
         self.commit()
         self.assertEquals(self.execute('Any A WHERE U use_email X, U login "admin", X address A')[0][0],
                           'admin@logilab.fr')
-        
+
 
 if __name__ == '__main__':
     from logilab.common.testlib import unittest_main

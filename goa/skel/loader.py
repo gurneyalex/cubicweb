@@ -1,10 +1,17 @@
+"""
+
+:organization: Logilab
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), license is LGPL v2.
+:contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
+:license: GNU Lesser General Public License, v2.1 - http://www.gnu.org/licenses
+"""
 if __name__ == '__main__':
 
     from os.path import dirname, abspath
     from cubicweb import goa
     from cubicweb.goa.goaconfig import GAEConfiguration
     from cubicweb.goa.dbinit import create_user, create_groups
-    
+
     # compute application's root directory
     APPLROOT = dirname(abspath(__file__))
     # apply monkey patches first

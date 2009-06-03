@@ -8,7 +8,6 @@ CubicWeb.require('htmlhelpers.js');
 CubicWeb.require('ajax.js');
 
 //============= filter form functions ========================================//
-
 function copyParam(origparams, newparams, param) {
     var index = findValue(origparams[0], param);
     if (index > -1) {
@@ -30,7 +29,7 @@ function facetFormContent(form) {
         names.push(this.name);
         values.push(this.value);
     });
-    jQuery(form).find('select option[@selected]').each(function () {
+    jQuery(form).find('select option[selected]').each(function () {
 	names.push(this.parentNode.name);
 	values.push(this.value);
     });
@@ -104,7 +103,7 @@ function buildRQL(divid, vid, paginate, vidargs) {
 
 var SELECTED_IMG = baseuri()+"data/black-check.png";
 var UNSELECTED_IMG = baseuri()+"data/no-check-no-border.png";
-var UNSELECTED_BORDER_IMG = baseuri()+"data/black-unchecked.png";
+var UNSELECTED_BORDER_IMG = baseuri()+"data/black-uncheck.png";
 
 function initFacetBoxEvents(root) {
     // facetargs : (divid, vid, paginate, extraargs)
@@ -134,7 +133,7 @@ function initFacetBoxEvents(root) {
 			       this.setAttribute('src', UNSELECTED_BORDER_IMG);
 			    }
 			    else{
-                             this.setAttribute('src', UNSELECTED_IMG);
+			       this.setAttribute('src', UNSELECTED_IMG);
 			    }
 			});
 			var index = parseInt($this.attr('cubicweb:idx'));
@@ -144,7 +143,11 @@ function initFacetBoxEvents(root) {
 			}).length;
 			index += shift;
 			var parent = this.parentNode;
-			jQuery(parent).find('.facetCheckBox:nth('+index+')').after(this);
+			var $insertAfter = jQuery(parent).find('.facetCheckBox:nth('+index+')');
+			if ( ! ($insertAfter.length == 1 && index == 0) ) {
+			    // only rearrange element if necessary
+			    $insertAfter.after(this);
+			}
 		    } else {
 			var lastSelected = facet.find('.facetValueSelected:last');
 			if (lastSelected.length) {

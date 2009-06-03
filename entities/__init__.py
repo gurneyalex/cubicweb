@@ -1,8 +1,9 @@
 """base application's entities class implementation: `AnyEntity`
 
 :organization: Logilab
-:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), license is LGPL v2.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
+:license: GNU Lesser General Public License, v2.1 - http://www.gnu.org/licenses
 """
 __docformat__ = "restructuredtext en"
 
@@ -56,16 +57,6 @@ class AnyEntity(Entity):
         if attr == 'modification_date':
             return '%s DESC' % var
         return None
-
-    @classmethod
-    def __initialize__(cls):
-        super(ANYENTITY, cls).__initialize__() # XXX
-        # set a default_ATTR method for rich text format fields
-        # XXX move this away once the old widgets have been dropped!
-        eschema = cls.e_schema
-        for metaattr, (metadata, attr) in eschema.meta_attributes().iteritems():
-            if metadata == 'format' and not hasattr(cls, 'default_%s' % metaattr):
-                setattr(cls, 'default_%s' % metaattr, cls._default_format)
 
     # meta data api ###########################################################
 
@@ -251,13 +242,13 @@ class AnyEntity(Entity):
 
     @obsolete('use EntityFieldsForm.subject_relation_vocabulary')
     def subject_relation_vocabulary(self, rtype, limit):
-        from cubicweb.web.form import EntityFieldsForm
-        return EntityFieldsForm(self.req, None, entity=self).subject_relation_vocabulary(rtype, limit)
+        form = self.vreg.select_object('forms', 'edition', self.req, entity=self)
+        return form.subject_relation_vocabulary(rtype, limit)
 
     @obsolete('use EntityFieldsForm.object_relation_vocabulary')
     def object_relation_vocabulary(self, rtype, limit):
-        from cubicweb.web.form import EntityFieldsForm
-        return EntityFieldsForm(self.req, None, entity=self).object_relation_vocabulary(rtype, limit)
+        form = self.vreg.select_object('forms', 'edition', self.req, entity=self)
+        return form.object_relation_vocabulary(rtype, limit)
 
     @obsolete('use AutomaticEntityForm.[e]relations_by_category')
     def relations_by_category(self, categories=None, permission=None):
@@ -268,9 +259,6 @@ class AnyEntity(Entity):
     def srelations_by_category(self, categories=None, permission=None):
         from cubicweb.web.views.autoform import AutomaticEntityForm
         return AutomaticEntityForm.esrelations_by_category(self, categories, permission)
-
-    def _default_format(self):
-        return self.req.property_value('ui.default-text-format')
 
     def attribute_values(self, attrname):
         if self.has_eid() or attrname in self:

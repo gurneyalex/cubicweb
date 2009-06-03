@@ -1,4 +1,10 @@
-"""unit tests for cubicweb.devtools.fill module"""
+"""unit tests for cubicweb.devtools.fill module
+
+:organization: Logilab
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), license is LGPL v2.
+:contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
+:license: GNU Lesser General Public License, v2.1 - http://www.gnu.org/licenses
+"""
 
 from logilab.common.testlib import TestCase, unittest_main
 
@@ -20,7 +26,7 @@ class AutoExtendableTC(TestCase):
         for attrname in attrvalues - set(self.attrvalues):
             delattr(_ValueGenerator, attrname)
 
-        
+
     def test_autoextend(self):
         self.failIf('generate_server' in dir(ValueGenerator))
         class MyValueGenerator(ValueGenerator):

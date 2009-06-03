@@ -2,8 +2,9 @@
 restoration).
 
 :organization: Logilab
-:copyright: 2008-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2008-2009 LOGILAB S.A. (Paris, FRANCE), license is LGPL v2.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
+:license: GNU Lesser General Public License, v2.1 - http://www.gnu.org/licenses
 """
 __docformat__ = "restructuredtext en"
 
@@ -54,8 +55,8 @@ class AuthInfo(StartupView):
         values.append('__session=%s' % cookie['__session'].value)
         self.w(u"<p>pass this flag to the client: --cookie='%s'</p>"
                % html_escape('; '.join(values)))
-        
-        
+
+
 
 class ContentInit(StartupView):
     """special management view to initialize content of a repository,
@@ -74,7 +75,7 @@ class ContentInit(StartupView):
         status['stepid'] = stepid
         Put(status)
         self.msg(msg)
-        
+
     def call(self):
         status = _get_status('creation')
         if status.get('finished'):
@@ -149,7 +150,7 @@ class ContentInit(StartupView):
                        '<b>delete all datastore content</b> so process can be '
                        'reinitialized</div>' % html_escape(self.req.base_url()))
         Put(status)
-        
+
     @property
     @cached
     def _migrhandler(self):
@@ -164,12 +165,12 @@ class ContentInit(StartupView):
     def continue_link(self):
         self.w(u'<a href="%s">continue</a><br/>' % html_escape(self.req.url()))
 
-        
+
 class ContentClear(StartupView):
     id = 'contentclear'
     __select__ = none_rset() & match_user_groups('managers')
     skip_etypes = ('CWGroup', 'CWUser')
-    
+
     def call(self):
         # XXX should use unsafe_execute with all hooks deactivated
         # XXX step by catching datastore errors?

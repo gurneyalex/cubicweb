@@ -1,4 +1,11 @@
 # -*- coding: utf-8 -*-
+"""
+
+:organization: Logilab
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), license is LGPL v2.
+:contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
+:license: GNU Lesser General Public License, v2.1 - http://www.gnu.org/licenses
+"""
 #
 # Cubicweb documentation build configuration file, created by
 # sphinx-quickstart on Fri Oct 31 09:10:36 2008.
@@ -53,7 +60,7 @@ release = '3.2'
 today_fmt = '%B %d, %Y'
 
 # List of documents that shouldn't be included in the build.
-#unused_docs = []
+unused_docs = ['D070-modules-cbw-api.en',]
 
 # List of directories, relative to source directories, that shouldn't be searched
 # for source files.

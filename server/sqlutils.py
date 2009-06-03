@@ -1,8 +1,9 @@
 """SQL utilities functions and classes.
 
 :organization: Logilab
-:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), license is LGPL v2.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
+:license: GNU Lesser General Public License, v2.1 - http://www.gnu.org/licenses
 """
 __docformat__ = "restructuredtext en"
 
@@ -111,13 +112,14 @@ def sqldropschema(schema, driver, text_index=True,
         w(indexer.sql_drop_fti())
         w('')
     w(dropschema2sql(schema, prefix=SQL_PREFIX,
-                     skip_entities=skip_entities, skip_relations=skip_relations))
+                     skip_entities=skip_entities,
+                     skip_relations=skip_relations))
     return '\n'.join(output)
 
 try:
     from mx.DateTime import DateTimeType, DateTimeDeltaType
 except ImportError:
-    DateTimeType, DateTimeDeltaType = None
+    DateTimeType = DateTimeDeltaType = None
 
 class SQLAdapterMixIn(object):
     """Mixin for SQL data sources, getting a connection from a configuration

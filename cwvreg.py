@@ -1,8 +1,9 @@
 """extend the generic VRegistry with some cubicweb specific stuff
 
 :organization: Logilab
-:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), license is LGPL v2.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
+:license: GNU Lesser General Public License, v2.1 - http://www.gnu.org/licenses
 """
 __docformat__ = "restructuredtext en"
 _ = unicode
@@ -11,7 +12,7 @@ from logilab.common.decorators import cached, clear_cache
 
 from rql import RQLHelper
 
-from cubicweb import Binary, UnknownProperty, UnknownEid
+from cubicweb import ETYPE_NAME_MAP, Binary, UnknownProperty, UnknownEid
 from cubicweb.vregistry import VRegistry, ObjectNotFound, NoSelectableObject
 from cubicweb.rtags import RTAGS
 
@@ -170,7 +171,10 @@ class CubicWebRegistry(VRegistry):
         # browse ancestors from most specific to most generic and
         # try to find an associated custom entity class
         for baseschema in baseschemas:
-            btype = str(baseschema)
+            try:
+                btype = ETYPE_NAME_MAP[baseschema]
+            except KeyError:
+                btype = str(baseschema)
             try:
                 cls = self.select(self.registry_objects('etypes', btype), etype)
                 break
@@ -245,6 +249,16 @@ class CubicWebRegistry(VRegistry):
                 self.exception('error while trying to list possible %s views for %s',
                                vid, rset)
 
+    def view(self, __vid, req, rset=None, __fallback_vid=None, **kwargs):
+        """shortcut to self.vreg.render method avoiding to pass self.req"""
+        try:
+            view = self.select_view(__vid, req, rset, **kwargs)
+        except NoSelectableObject:
+            if __fallback_vid is None:
+                raise
+            view = self.select_view(__fallback_vid, req, rset, **kwargs)
+        return view.render(**kwargs)
+
     def select_box(self, oid, *args, **kwargs):
         """return the most specific view according to the result set"""
         try:
@@ -266,11 +280,10 @@ class CubicWebRegistry(VRegistry):
         except (NoSelectableObject, ObjectNotFound):
             return
 
-    def select_view(self, __vid, req, rset, **kwargs):
+    def select_view(self, __vid, req, rset=None, **kwargs):
         """return the most specific view according to the result set"""
         views = self.registry_objects('views', __vid)
         return self.select(views, req, rset, **kwargs)
-
 
     # properties handling #####################################################
 
@@ -372,6 +385,8 @@ class MulCnxCubicWebRegistry(CubicWebRegistry):
         default to a dump of the class registered for 'Any'
         """
         usercls = super(MulCnxCubicWebRegistry, self).etype_class(etype)
+        if etype == 'Any':
+            return usercls
         usercls.e_schema = self.schema.eschema(etype)
         return usercls
 
@@ -385,7 +400,14 @@ class MulCnxCubicWebRegistry(CubicWebRegistry):
             vobject.vreg = self
             vobject.schema = self.schema
             vobject.config = self.config
-        return super(MulCnxCubicWebRegistry, self).select(vobjects, *args, **kwargs)
+        selected = super(MulCnxCubicWebRegistry, self).select(vobjects, *args,
+                                                              **kwargs)
+        # redo the same thing on the instance so it won't use equivalent class
+        # attributes (which may change)
+        selected.vreg = self
+        selected.schema = self.schema
+        selected.config = self.config
+        return selected
 
 from datetime import datetime, date, time, timedelta
 

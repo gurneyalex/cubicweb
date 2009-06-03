@@ -1,8 +1,9 @@
 """functions for schema / permissions (de)serialization using RQL
 
 :organization: Logilab
-:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), license is LGPL v2.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
+:license: GNU Lesser General Public License, v2.1 - http://www.gnu.org/licenses
 """
 __docformat__ = "restructuredtext en"
 
@@ -14,6 +15,7 @@ from logilab.common.shellutils import ProgressBar
 from yams import schema as schemamod, buildobjs as ybo
 
 from cubicweb.schema import CONSTRAINTS, ETYPE_NAME_MAP
+from cubicweb.server import sqlutils
 
 def group_mapping(cursor, interactive=True):
     """create a group mapping from an rql cursor
@@ -50,7 +52,7 @@ def group_mapping(cursor, interactive=True):
 def _set_sql_prefix(prefix):
     """3.2.0 migration function: allow to unset/reset SQL_PREFIX"""
     for module in ('checkintegrity', 'migractions', 'schemahooks',
-                   'sources.rql2sql', 'sources.native'):
+                   'sources.rql2sql', 'sources.native', 'sqlutils'):
         try:
             sys.modules['cubicweb.server.%s' % module].SQL_PREFIX = prefix
             print 'changed SQL_PREFIX for %s' % module
@@ -124,7 +126,8 @@ def deserialize_schema(schema, session):
         if etype in ETYPE_NAME_MAP: # XXX <2.45 bw compat
             print 'fixing etype name from %s to %s' % (etype, ETYPE_NAME_MAP[etype])
             # can't use write rql queries at this point, use raw sql
-            session.system_sql('UPDATE CWEType SET name=%(n)s WHERE eid=%(x)s',
+            session.system_sql('UPDATE %(p)sCWEType SET %(p)sname=%%(n)s WHERE %(p)seid=%%(x)s'
+                               % {'p': sqlutils.SQL_PREFIX},
                                {'x': eid, 'n': ETYPE_NAME_MAP[etype]})
             session.system_sql('UPDATE entities SET type=%(n)s WHERE type=%(x)s',
                                {'x': etype, 'n': ETYPE_NAME_MAP[etype]})

@@ -1,15 +1,16 @@
 """Set of HTML base actions
 
 :organization: Logilab
-:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), license is LGPL v2.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
+:license: GNU Lesser General Public License, v2.1 - http://www.gnu.org/licenses
 """
 __docformat__ = "restructuredtext en"
 
 from cubicweb.vregistry import objectify_selector
 from cubicweb.selectors import (EntitySelector,
     one_line_rset, two_lines_rset, one_etype_rset, relation_possible,
-    non_final_entity,
+    nonempty_rset, non_final_entity,
     authenticated_user, match_user_groups, match_search_state,
     has_permission, has_add_permission,
     )
@@ -74,7 +75,7 @@ class SelectAction(Action):
     if accept match.
     """
     id = 'select'
-    __select__ = match_search_state('linksearch') & match_searched_etype()
+    __select__ = match_search_state('linksearch') & nonempty_rset() & match_searched_etype()
 
     title = _('select')
     category = 'mainactions'

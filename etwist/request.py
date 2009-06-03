@@ -1,8 +1,9 @@
 """Twisted request handler for CubicWeb
 
 :organization: Logilab
-:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), license is LGPL v2.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
+:license: GNU Lesser General Public License, v2.1 - http://www.gnu.org/licenses
 """
 __docformat__ = "restructuredtext en"
 
@@ -39,11 +40,11 @@ class CubicWebTwistedRequestAdapter(CubicWebRequestBase):
     def base_url(self):
         """return the root url of the application"""
         return self._base_url
-    
+
     def http_method(self):
         """returns 'POST', 'GET', 'HEAD', etc."""
         return self._twreq.method
-    
+
     def relative_path(self, includeparams=True):
         """return the normalized path of the request (ie at least relative
         to the application's root, but some other normalization may be needed
