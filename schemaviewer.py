@@ -1,8 +1,9 @@
 """an helper class to display CubicWeb schema using ureports
 
 :organization: Logilab
-:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), license is LGPL v2.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
+:license: GNU Lesser General Public License, v2.1 - http://www.gnu.org/licenses
 """
 __docformat__ = "restructuredtext en"
 
@@ -93,10 +94,10 @@ class SchemaViewer(object):
         return data
 
     def eschema_link_url(self, eschema):
-        return self.req.build_url('cwetype/%s?vid=eschema' % eschema)
+        return self.req.build_url('cwetype/%s' % eschema)
 
     def rschema_link_url(self, rschema):
-        return self.req.build_url('cwrtype/%s?vid=eschema' % rschema)
+        return self.req.build_url('cwrtype/%s' % rschema)
 
     def possible_views(self, etype):
         rset = self.req.etype_rset(etype)

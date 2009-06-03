@@ -1,12 +1,13 @@
 """Base class for dynamically loaded objects manipulated in the web interface
 
 :organization: Logilab
-:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), license is LGPL v2.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
+:license: GNU Lesser General Public License, v2.1 - http://www.gnu.org/licenses
 """
 __docformat__ = "restructuredtext en"
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, time
 
 from logilab.common.decorators import classproperty
 from logilab.common.deprecation import obsolete
@@ -17,7 +18,7 @@ from rql.stmts import Union, Select
 from cubicweb import Unauthorized, NoSelectableObject
 from cubicweb.vregistry import VObject, AndSelector
 from cubicweb.selectors import yes
-from cubicweb.utils import UStringIO, ustrftime
+from cubicweb.utils import UStringIO, ustrftime, strptime, todate, todatetime
 
 ONESECOND = timedelta(0, 1, 0)
 
@@ -187,14 +188,8 @@ class AppRsetObject(VObject):
         return rql
 
     def view(self, __vid, rset=None, __fallback_vid=None, **kwargs):
-        """shortcut to self.vreg.render method avoiding to pass self.req"""
-        try:
-            view = self.vreg.select_view(__vid, self.req, rset, **kwargs)
-        except NoSelectableObject:
-            if __fallback_vid is None:
-                raise
-            view = self.vreg.select_view(__fallback_vid, self.req, rset, **kwargs)
-        return view.render(**kwargs)
+        """shortcut to self.vreg.view method avoiding to pass self.req"""
+        return self.vreg.view(__vid, self.req, rset, __fallback_vid, **kwargs)
 
     def initialize_varmaker(self):
         varmaker = self.req.get_page_data('rql_varmaker')
@@ -299,6 +294,35 @@ class AppRsetObject(VObject):
         if num:
             return self.req.property_value('ui.float-format') % num
         return u''
+
+    def parse_datetime(self, value, etype='Datetime'):
+        """get a datetime or time from a string (according to etype)
+        Datetime formatted as Date are accepted
+        """
+        assert etype in ('Datetime', 'Date', 'Time'), etype
+        # XXX raise proper validation error
+        if etype == 'Datetime':
+            format = self.req.property_value('ui.datetime-format')
+            try:
+                return todatetime(strptime(value, format))
+            except ValueError:
+                pass
+        elif etype == 'Time':
+            format = self.req.property_value('ui.time-format')
+            try:
+                # (adim) I can't find a way to parse a Time with a custom format
+                date = strptime(value, format) # this returns a DateTime
+                return time(date.hour, date.minute, date.second)
+            except ValueError:
+                raise ValueError('can\'t parse %r (expected %s)' % (value, format))
+        try:
+            format = self.req.property_value('ui.date-format')
+            dt = strptime(value, format)
+            if etype == 'Datetime':
+                return todatetime(dt)
+            return todate(dt)
+        except ValueError:
+            raise ValueError('can\'t parse %r (expected %s)' % (value, format))
 
     # security related methods ################################################
 

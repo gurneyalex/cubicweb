@@ -1,8 +1,9 @@
 """schema definition related entities
 
 :organization: Logilab
-:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), license is LGPL v2.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
+:license: GNU Lesser General Public License, v2.1 - http://www.gnu.org/licenses
 """
 __docformat__ = "restructuredtext en"
 
@@ -19,7 +20,7 @@ class CWEType(AnyEntity):
     fetch_attrs, fetch_order = fetch_config(['name'])
 
     def dc_title(self):
-        return self.req._(self.name)
+        return u'%s (%s)' % (self.name, self.req._(self.name))
 
     def dc_long_title(self):
         stereotypes = []
@@ -42,7 +43,7 @@ class CWRType(AnyEntity):
     fetch_attrs, fetch_order = fetch_config(['name'])
 
     def dc_title(self):
-        return self.req._(self.name)
+        return u'%s (%s)' % (self.name, self.req._(self.name))
 
     def dc_long_title(self):
         stereotypes = []

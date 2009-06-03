@@ -1,8 +1,9 @@
 """Base class for entity objects manipulated in clients
 
 :organization: Logilab
-:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), license is LGPL v2.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
+:license: GNU Lesser General Public License, v2.1 - http://www.gnu.org/licenses
 """
 __docformat__ = "restructuredtext en"
 
@@ -723,9 +724,8 @@ class Entity(AppRsetObject, dict):
         If `eid` is None in one of these couples, it should be
         interpreted as a separator in case vocabulary results are grouped
         """
-        from cubicweb.web.form import EntityFieldsForm
         from logilab.common.testlib import mock_object
-        form = EntityFieldsForm(self.req, entity=self)
+        form = self.vreg.select_object('forms', 'edition', self.req, entity=self)
         field = mock_object(name=rtype, role=role)
         return form.form_field_vocabulary(field, limit)
 

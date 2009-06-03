@@ -4,8 +4,9 @@
 * workflow entities views (State, Transition, TrInfo)
 
 :organization: Logilab
-:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+:copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), license is LGPL v2.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
+:license: GNU Lesser General Public License, v2.1 - http://www.gnu.org/licenses
 """
 __docformat__ = "restructuredtext en"
 _ = unicode
@@ -21,21 +22,22 @@ from cubicweb.web import stdmsgs, action, component, form
 from cubicweb.web.form import FormViewMixIn
 from cubicweb.web.formfields import StringField,  RichTextField
 from cubicweb.web.formwidgets import HiddenInput, SubmitButton, Button
-from cubicweb.web.views import TmpFileViewMixin
-from cubicweb.web.views.boxes import EditBox
+from cubicweb.web.views import TmpFileViewMixin, forms
 
 
 # IWorkflowable views #########################################################
 
-class ChangeStateForm(form.EntityFieldsForm):
+class ChangeStateForm(forms.EntityFieldsForm):
     id = 'changestate'
+
+    form_renderer_id = 'base' # don't want EntityFormRenderer
+    form_buttons = [SubmitButton(stdmsgs.YES),
+                     Button(stdmsgs.NO, cwaction='cancel')]
 
     __method = StringField(name='__method', initial='set_state',
                            widget=HiddenInput)
     state = StringField(eidparam=True, widget=HiddenInput)
     trcomment = RichTextField(label=_('comment:'), eidparam=True)
-    form_buttons = [SubmitButton(stdmsgs.YES),
-                     Button(stdmsgs.NO, cwaction='cancel')]
 
 
 class ChangeStateFormView(FormViewMixIn, view.EntityView):
