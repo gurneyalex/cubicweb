@@ -16,8 +16,7 @@ from cubicweb.view import StartupView
 from cubicweb.selectors import match_user_groups, implements
 from cubicweb.common.uilib import ureport_as_html
 from cubicweb.web import ajax_replace_url, uicfg, httpcache
-from cubicweb.web.views import tabs
-from cubicweb.web.views.management import SecurityViewMixIn
+from cubicweb.web.views import tabs, management, schema
 
 class ManageView(StartupView):
     id = 'manage'
@@ -31,8 +30,6 @@ class ManageView(StartupView):
                 uicfg.indexview_etype_section.setdefault(eschema, 'schema')
             elif eschema.is_subobject(strict=True):
                 uicfg.indexview_etype_section.setdefault(eschema, 'subobject')
-            elif eschema.meta:
-                uicfg.indexview_etype_section.setdefault(eschema, 'system')
             else:
                 uicfg.indexview_etype_section.setdefault(eschema, 'application')
 
@@ -80,7 +77,7 @@ class ManageView(StartupView):
 
     def folders(self):
         self.w(u'<h4>%s</h4>\n' % self.req._('Browse by category'))
-        self.vreg.select_view('tree', self.req, None).render(w=self.w)
+        self.vreg.select('views', 'tree', self.req).render(w=self.w)
 
     def startup_views(self):
         self.w(u'<h4>%s</h4>\n' % self.req._('Startup views'))
@@ -140,7 +137,8 @@ class ManageView(StartupView):
             label = display_name(req, etype, 'plural')
             nb = req.execute('Any COUNT(X) WHERE X is %s' % etype)[0][0]
             if nb > 1:
-                view = self.vreg.select_view('list', req, req.etype_rset(etype))
+                view = self.vreg.select('views', 'list', req,
+                                        rset=req.etype_rset(etype))
                 url = view.url()
             else:
                 url = self.build_url('view', rql='%s X' % etype)
@@ -204,7 +202,7 @@ class SchemaTabTextView(StartupView):
         self.wview('editable-table', rset, displayfilter=True)
 
 
-class ManagerSchemaPermissionsView(StartupView, SecurityViewMixIn):
+class ManagerSchemaPermissionsView(StartupView, management.SecurityViewMixIn):
     id = 'schema_security'
     __select__ = StartupView.__select__ & match_user_groups('managers')
 
@@ -220,7 +218,7 @@ class ManagerSchemaPermissionsView(StartupView, SecurityViewMixIn):
                    if not eschema.is_final()]
         if not formparams['withmeta']:
             entities = [eschema for eschema in entities
-                        if not eschema.meta]
+                        if not eschema.schema_entity()]
         # compute relations
         relations = []
         if display_relations:
@@ -228,7 +226,7 @@ class ManagerSchemaPermissionsView(StartupView, SecurityViewMixIn):
                          if not (rschema.is_final() or rschema.type in skiprels)]
             if not formparams['withmeta']:
                 relations = [rschema for rschema in relations
-                             if not rschema.meta]
+                             if not rschema.schema_relation()]
         # index
         self.w(u'<div id="schema_security"><a id="index" href="index"/>')
         self.w(u'<h2 class="schema">%s</h2>' % _('index').capitalize())
@@ -259,11 +257,11 @@ class ManagerSchemaPermissionsView(StartupView, SecurityViewMixIn):
             self.w(u'<a id="%s" href="%s"/>' %  (eschema.type, eschema.type))
             self.w(u'<h3 class="schema">%s (%s) ' % (eschema.type, _(eschema.type)))
             url = html_escape(self.build_url('schema', **formparams) + '#index')
-            self.w(u'<a href="%s"><img src="%s" alt="%s"/></a>' % (url,  self.req.external_resource('UP_ICON'), _('up')))
+            self.w(u'<a href="%s"><img src="%s" alt="%s"/></a>' % (
+                url,  self.req.external_resource('UP_ICON'), _('up')))
             self.w(u'</h3>')
             self.w(u'<div style="margin: 0px 1.5em">')
             self.schema_definition(eschema, link=False)
-
             # display entity attributes only if they have some permissions modified
             modified_attrs = []
             for attr, etype in  eschema.attribute_definitions():
@@ -276,10 +274,7 @@ class ManagerSchemaPermissionsView(StartupView, SecurityViewMixIn):
                 for attr in  modified_attrs:
                     self.w(u'<h4 class="schema">%s (%s)</h4> ' % (attr.type, _(attr.type)))
                     self.schema_definition(attr, link=False)
-                self.w(u'</div>')
-            else:
-                self.w(u'</div>')
-
+            self.w(u'</div>')
 
     def display_relations(self, relations, formparams):
         _ = self.req._
@@ -289,16 +284,19 @@ class ManagerSchemaPermissionsView(StartupView, SecurityViewMixIn):
             self.w(u'<a id="%s" href="%s"/>' %  (rschema.type, rschema.type))
             self.w(u'<h3 class="schema">%s (%s) ' % (rschema.type, _(rschema.type)))
             url = html_escape(self.build_url('schema', **formparams) + '#index')
-            self.w(u'<a href="%s"><img src="%s" alt="%s"/></a>' % (url,  self.req.external_resource('UP_ICON'), _('up')))
+            self.w(u'<a href="%s"><img src="%s" alt="%s"/></a>' % (
+                url,  self.req.external_resource('UP_ICON'), _('up')))
             self.w(u'</h3>')
             self.w(u'<div style="margin: 0px 1.5em">')
             subjects = [str(subj) for subj in rschema.subjects()]
-            self.w(u'<div><strong>%s</strong> %s (%s)</div>' % (_('subject_plural:'),
-                                                ', '.join( [str(subj) for subj in rschema.subjects()]),
-                                                ', '.join( [_(str(subj)) for subj in rschema.subjects()])))
-            self.w(u'<div><strong>%s</strong> %s (%s)</div>' % (_('object_plural:'),
-                                                ', '.join( [str(obj) for obj in rschema.objects()]),
-                                                ', '.join( [_(str(obj)) for obj in rschema.objects()])))
+            self.w(u'<div><strong>%s</strong> %s (%s)</div>' % (
+                _('subject_plural:'),
+                ', '.join(str(subj) for subj in rschema.subjects()),
+                ', '.join(_(str(subj)) for subj in rschema.subjects())))
+            self.w(u'<div><strong>%s</strong> %s (%s)</div>' % (
+                _('object_plural:'),
+                ', '.join(str(obj) for obj in rschema.objects()),
+                ', '.join(_(str(obj)) for obj in rschema.objects())))
             self.schema_definition(rschema, link=False)
             self.w(u'</div>')
 
@@ -308,13 +306,13 @@ class SchemaUreportsView(StartupView):
 
     def call(self):
         from cubicweb.schemaviewer import SchemaViewer
-        skipmeta = int(self.req.form.get('skipmeta', True))
-        schema = self.schema
+        if int(self.req.form.get('skipmeta', True)):
+            skip = schema.SKIP_TYPES
+        else:
+            skip = ()
         viewer = SchemaViewer(self.req)
-        layout = viewer.visit_schema(schema, display_relations=True,
-                                     skiprels=('is', 'is_instance_of', 'identity',
-                                               'owned_by', 'created_by'),
-                                     skipmeta=skipmeta)
+        layout = viewer.visit_schema(self.schema, display_relations=True,
+                                     skiptypes=skip)
         self.w(ureport_as_html(layout))
 
 
