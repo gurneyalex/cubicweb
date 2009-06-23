@@ -31,9 +31,22 @@ from yams import schema
 schema.use_py_datetime()
 nodes.use_py_datetime()
 
-_ = unicode
+#  set of meta-relations available for every entity types
+META_RELATIONS_TYPES = set((
+    'owned_by', 'created_by', 'is', 'is_instance_of', 'identity',
+    'eid', 'creation_date', 'modification_date', 'has_text',
+    )))
 
-BASEGROUPS = ('managers', 'users', 'guests', 'owners')
+#  set of entity and relation types used to build the schema
+SCHEMA_TYPES = set((
+    'CWEType', 'CWRType', 'CWAttribute', 'CWRelation',
+    'CWConstraint', 'CWConstraintType', 'RQLExpression',
+    'relation_type', 'from_entity', 'to_entity',
+    'constrained_by', 'cstrtype',
+    # XXX those are not really "schema" entity types
+    #     but we usually don't want them as @* targets
+    'CWProperty', 'CWPermission', 'State', 'Transition',
+    ))
 
 _LOGGER = getLogger('cubicweb.schemaloader')
 
@@ -49,31 +62,6 @@ def bw_normalize_etype(etype):
         warn(msg, DeprecationWarning, stacklevel=4)
         etype = ETYPE_NAME_MAP[etype]
     return etype
-
-# monkey path yams.builder.RelationDefinition to support a new wildcard type '@'
-# corresponding to system entity (ie meta but not schema)
-def _actual_types(self, schema, etype):
-    # two bits of error checking & reporting :
-    if type(etype) not in (str, list, tuple):
-        raise RuntimeError, ('Entity types must not be instances but strings or'
-                             ' list/tuples thereof. Ex. (bad, good) : '
-                             'SubjectRelation(Foo), SubjectRelation("Foo"). '
-                             'Hence, %r is not acceptable.' % etype)
-    # real work :
-    if etype == '**':
-        return self._pow_etypes(schema)
-    if isinstance(etype, (tuple, list)):
-        return etype
-    if '*' in etype or '@' in etype:
-        assert len(etype) in (1, 2)
-        etypes = ()
-        if '*' in etype:
-            etypes += tuple(self._wildcard_etypes(schema))
-        if '@' in etype:
-            etypes += tuple(system_etypes(schema))
-        return etypes
-    return (etype,)
-ybo.RelationDefinition._actual_types = _actual_types
 
 
 ## cubicweb provides a RichString class for convenience
@@ -243,7 +231,7 @@ def system_etypes(schema):
     """return system entity types only: skip final, schema and application entities
     """
     for eschema in schema.entities():
-        if eschema.is_final() or eschema.schema_entity() or not eschema.meta:
+        if eschema.is_final() or eschema.schema_entity():
             continue
         yield eschema.type
 
@@ -282,6 +270,15 @@ class CubicWebEntitySchema(EntitySchema):
             if rschema.type == 'has_text':
                 continue
             yield rschema, attrschema
+
+    def main_attribute(self):
+        """convenience method that returns the *main* (i.e. the first non meta)
+        attribute defined in the entity schema
+        """
+        for rschema, _ in self.attribute_definitions():
+            if not (rschema in META_RELATIONS_TYPES
+                    or self.is_metadata(rschema)):
+                return rschema
 
     def add_subject_relation(self, rschema):
         """register the relation schema as possible subject relation"""
@@ -322,7 +319,7 @@ class CubicWebEntitySchema(EntitySchema):
 
     def schema_entity(self):
         """return True if this entity type is used to build the schema"""
-        return self.type in self.schema.schema_entity_types()
+        return self.type in SCHEMA_TYPES
 
     def check_perm(self, session, action, eid=None):
         # NB: session may be a server session or a request object
@@ -359,6 +356,9 @@ class CubicWebRelationSchema(RelationSchema):
             eid = getattr(rdef, 'eid', None)
         self.eid = eid
 
+    @property
+    def meta(self):
+        return self.type in META_RELATIONS_TYPES
 
     def update(self, subjschema, objschema, rdef):
         super(CubicWebRelationSchema, self).update(subjschema, objschema, rdef)
@@ -397,8 +397,8 @@ class CubicWebRelationSchema(RelationSchema):
                (target == 'object' and card[1])
 
     def schema_relation(self):
-        return self.type in ('relation_type', 'from_entity', 'to_entity',
-                             'constrained_by', 'cstrtype')
+        """return True if this relation type is used to build the schema"""
+        return self.type in SCHEMA_TYPES
 
     def physical_mode(self):
         """return an appropriate mode for physical storage of this relation type:
@@ -457,14 +457,6 @@ class CubicWebSchema(Schema):
         rschema = self.add_relation_type(ybo.RelationType('identity', meta=True))
         rschema.final = False
         rschema.set_default_groups()
-
-    def schema_entity_types(self):
-        """return the list of entity types used to build the schema"""
-        return frozenset(('CWEType', 'CWRType', 'CWAttribute', 'CWRelation',
-                          'CWConstraint', 'CWConstraintType', 'RQLExpression',
-                          # XXX those are not really "schema" entity types
-                          #     but we usually don't want them as @* targets
-                          'CWProperty', 'CWPermission', 'State', 'Transition'))
 
     def add_entity_type(self, edef):
         edef.name = edef.name.encode()
