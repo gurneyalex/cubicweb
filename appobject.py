@@ -151,7 +151,8 @@ class AppRsetObject(VObject):
         # try to get page boundaries from the navigation component
         # XXX we should probably not have a ref to this component here (eg in
         #     cubicweb.common)
-        nav = self.vreg.select_component('navigation', self.req, self.rset)
+        nav = self.vreg.select_object('components', 'navigation', self.req,
+                                      rset=self.rset)
         if nav:
             start, stop = nav.page_boundaries()
             rql = self._limit_offset_rql(stop - start, start)
@@ -189,7 +190,8 @@ class AppRsetObject(VObject):
 
     def view(self, __vid, rset=None, __fallback_vid=None, **kwargs):
         """shortcut to self.vreg.view method avoiding to pass self.req"""
-        return self.vreg.view(__vid, self.req, rset, __fallback_vid, **kwargs)
+        return self.vreg.render(__vid, self.req, __fallback_vid, rset=rset,
+                                **kwargs)
 
     def initialize_varmaker(self):
         varmaker = self.req.get_page_data('rql_varmaker')
@@ -202,11 +204,18 @@ class AppRsetObject(VObject):
 
     controller = 'view'
 
-    def build_url(self, method=None, **kwargs):
+    def build_url(self, *args, **kwargs):
         """return an absolute URL using params dictionary key/values as URL
         parameters. Values are automatically URL quoted, and the
         publishing method to use may be specified or will be guessed.
         """
+        # use *args since we don't want first argument to be "anonymous" to
+        # avoid potential clash with kwargs
+        if args:
+            assert len(args) == 1, 'only 0 or 1 non-named-argument expected'
+            method = args[0]
+        else:
+            method = None
         # XXX I (adim) think that if method is passed explicitly, we should
         #     not try to process it and directly call req.build_url()
         if method is None:
