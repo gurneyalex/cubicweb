@@ -219,8 +219,8 @@ class EditRelationBoxTemplate(ReloadableMixIn, EntityBoxTemplate):
             return entity.unrelated(self.rtype, self.etype, get_role(self)).entities()
         # in other cases, use vocabulary functions
         entities = []
-        form = self.vreg.select_object('forms', 'edition', self.req, self.rset,
-                                       row=self.row or 0)
+        form = self.vreg.select('forms', 'edition', self.req, rset=self.rset,
+                                row=self.row or 0)
         field = form.field_by_name(self.rtype, get_role(self), entity.e_schema)
         for _, eid in form.form_field_vocabulary(field):
             if eid is not None:
