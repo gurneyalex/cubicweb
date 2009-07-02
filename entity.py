@@ -368,13 +368,20 @@ class Entity(AppRsetObject, dict):
     def has_perm(self, action):
         return self.e_schema.has_perm(self.req, action, self.eid)
 
-    def view(self, vid, __registry='views', **kwargs):
+    def view(self, vid, **kwargs):
         """shortcut to apply a view on this entity"""
-        return self.vreg.render(__registry, vid, self.req, rset=self.rset,
+        return self.vreg.render(vid, self.req, rset=self.rset,
                                 row=self.row, col=self.col, **kwargs)
 
-    def absolute_url(self, method=None, **kwargs):
+    def absolute_url(self, *args, **kwargs):
         """return an absolute url to view this entity"""
+        # use *args since we don't want first argument to be "anonymous" to
+        # avoid potential clash with kwargs
+        if args:
+            assert len(args) == 1, 'only 0 or 1 non-named-argument expected'
+            method = args[0]
+        else:
+            method = None
         # in linksearch mode, we don't want external urls else selecting
         # the object for use in the relation is tricky
         # XXX search_state is web specific
@@ -478,7 +485,7 @@ class Entity(AppRsetObject, dict):
         assert self.has_eid()
         execute = self.req.execute
         for rschema in self.e_schema.subject_relations():
-            if rschema.meta or rschema.is_final():
+            if rschema.is_final() or rschema.meta:
                 continue
             # skip already defined relations
             if getattr(self, rschema.type):
@@ -725,7 +732,7 @@ class Entity(AppRsetObject, dict):
         interpreted as a separator in case vocabulary results are grouped
         """
         from logilab.common.testlib import mock_object
-        form = self.vreg.select_object('forms', 'edition', self.req, entity=self)
+        form = self.vreg.select('forms', 'edition', self.req, entity=self)
         field = mock_object(name=rtype, role=role)
         return form.form_field_vocabulary(field, limit)
 

@@ -287,7 +287,7 @@ class yes(Selector):
 
 @objectify_selector
 @lltrace
-def none_rset(cls, req, rset=None, *args, **kwargs):
+def none_rset(cls, req, rset=None, **kwargs):
     """accept no result set (e.g. given rset is None)"""
     if rset is None:
         return 1
@@ -295,7 +295,7 @@ def none_rset(cls, req, rset=None, *args, **kwargs):
 
 @objectify_selector
 @lltrace
-def any_rset(cls, req, rset=None, *args, **kwargs):
+def any_rset(cls, req, rset=None, **kwargs):
     """accept result set, whatever the number of result it contains"""
     if rset is not None:
         return 1
@@ -303,7 +303,7 @@ def any_rset(cls, req, rset=None, *args, **kwargs):
 
 @objectify_selector
 @lltrace
-def nonempty_rset(cls, req, rset=None, *args, **kwargs):
+def nonempty_rset(cls, req, rset=None, **kwargs):
     """accept any non empty result set"""
     if rset is not None and rset.rowcount:
         return 1
@@ -311,7 +311,7 @@ def nonempty_rset(cls, req, rset=None, *args, **kwargs):
 
 @objectify_selector
 @lltrace
-def empty_rset(cls, req, rset=None, *args, **kwargs):
+def empty_rset(cls, req, rset=None, **kwargs):
     """accept empty result set"""
     if rset is not None and rset.rowcount == 0:
         return 1
@@ -319,7 +319,7 @@ def empty_rset(cls, req, rset=None, *args, **kwargs):
 
 @objectify_selector
 @lltrace
-def one_line_rset(cls, req, rset=None, row=None, *args, **kwargs):
+def one_line_rset(cls, req, rset=None, row=None, **kwargs):
     """if row is specified, accept result set with a single line of result,
     else accepts anyway
     """
@@ -329,7 +329,7 @@ def one_line_rset(cls, req, rset=None, row=None, *args, **kwargs):
 
 @objectify_selector
 @lltrace
-def two_lines_rset(cls, req, rset=None, *args, **kwargs):
+def two_lines_rset(cls, req, rset=None, **kwargs):
     """accept result set with *at least* two lines of result"""
     if rset is not None and rset.rowcount > 1:
         return 1
@@ -337,7 +337,7 @@ def two_lines_rset(cls, req, rset=None, *args, **kwargs):
 
 @objectify_selector
 @lltrace
-def two_cols_rset(cls, req, rset=None, *args, **kwargs):
+def two_cols_rset(cls, req, rset=None, **kwargs):
     """accept result set with at least one line and two columns of result"""
     if rset is not None and rset.rowcount and len(rset.rows[0]) > 1:
         return 1
@@ -345,7 +345,7 @@ def two_cols_rset(cls, req, rset=None, *args, **kwargs):
 
 @objectify_selector
 @lltrace
-def paginated_rset(cls, req, rset=None, *args, **kwargs):
+def paginated_rset(cls, req, rset=None, **kwargs):
     """accept result set with more lines than the page size.
 
     Page size is searched in (respecting order):
@@ -366,7 +366,7 @@ def paginated_rset(cls, req, rset=None, *args, **kwargs):
 
 @objectify_selector
 @lltrace
-def sorted_rset(cls, req, rset=None, row=None, col=0, **kwargs):
+def sorted_rset(cls, req, rset=None, **kwargs):
     """accept sorted result set"""
     rqlst = rset.syntax_tree()
     if len(rqlst.children) > 1 or not rqlst.children[0].orderby:
@@ -375,7 +375,7 @@ def sorted_rset(cls, req, rset=None, row=None, col=0, **kwargs):
 
 @objectify_selector
 @lltrace
-def one_etype_rset(cls, req, rset=None, row=None, col=0, *args, **kwargs):
+def one_etype_rset(cls, req, rset=None, col=0, **kwargs):
     """accept result set where entities in the specified column (or 0) are all
     of the same type
     """
@@ -387,7 +387,7 @@ def one_etype_rset(cls, req, rset=None, row=None, col=0, *args, **kwargs):
 
 @objectify_selector
 @lltrace
-def two_etypes_rset(cls, req, rset=None, row=None, col=0, **kwargs):
+def two_etypes_rset(cls, req, rset=None, col=0, **kwargs):
     """accept result set where entities in the specified column (or 0) are not
     of the same type
     """
@@ -573,7 +573,7 @@ class appobject_selectable(Selector):
 
     def __call__(self, cls, req, rset=None, *args, **kwargs):
         try:
-            cls.vreg.select_object(self.registry, self.oid, req, rset, *args, **kwargs)
+            cls.vreg.select(self.registry, self.oid, req, rset=rset, **kwargs)
             return 1
         except NoSelectableObject:
             return 0
@@ -934,6 +934,7 @@ class rql_condition(EntitySelector):
 
     def __repr__(self):
         return u'<rql_condition "%s" at %x>' % (self.rql, id(self))
+
 
 class but_etype(EntitySelector):
     """accept if the given entity types are not found in the result set.
