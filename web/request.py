@@ -61,6 +61,7 @@ def list_form_param(form, param, pop=False):
 
 class CubicWebRequestBase(DBAPIRequest):
     """abstract HTTP request, should be extended according to the HTTP backend"""
+    json_request = False # to be set to True by json controllers
 
     def __init__(self, vreg, https, form=None):
         super(CubicWebRequestBase, self).__init__(vreg)
@@ -451,6 +452,9 @@ class CubicWebRequestBase(DBAPIRequest):
                             % filename)
 
     # high level methods for HTML headers management ##########################
+
+    def add_onload(self, jscode):
+        self.html_headers.add_onload(jscode, self.json_request)
 
     def add_js(self, jsfiles, localfile=True):
         """specify a list of JS files to include in the HTML headers
