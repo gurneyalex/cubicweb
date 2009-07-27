@@ -85,6 +85,8 @@ class FormRenderer(AppRsetObject):
         return '\n'.join(data)
 
     def render_label(self, form, field):
+        if field.label is None:
+            return u''
         label = self.req._(field.label)
         attrs = {'for': form.context[field]['id']}
         if field.required:
@@ -188,22 +190,29 @@ class FormRenderer(AppRsetObject):
         return fields
 
     def _render_fields(self, fields, w, form):
-        w(u'<table class="%s">' % self.table_class)
+        byfieldset = {}
         for field in fields:
-            w(u'<tr>')
-            if self.display_label:
-                w(u'<th class="labelCol">%s</th>' % self.render_label(form, field))
-            error = form.form_field_error(field)
-            if error:
-                w(u'<td class="error">')
-                w(error)
-            else:
-                w(u'<td>')
-            w(field.render(form, self))
-            if self.display_help:
-                w(self.render_help(form, field))
-            w(u'</td></tr>')
-        w(u'</table>')
+            byfieldset.setdefault(field.fieldset, []).append(field)
+        for fieldset, fields in byfieldset.iteritems():
+            w(u'<fieldset class="%s">' % (fieldset or u'default'))
+            if fieldset:
+                w(u'<legend>%s</legend>' % self.req._(fieldset))
+            w(u'<table class="%s">' % self.table_class)
+            for field in fields:
+                w(u'<tr id="%s_%s">' % (field.name, field.role))
+                if self.display_label:
+                    w(u'<th class="labelCol">%s</th>' % self.render_label(form, field))
+                error = form.form_field_error(field)
+                if error:
+                    w(u'<td class="error">')
+                    w(error)
+                else:
+                    w(u'<td>')
+                w(field.render(form, self))
+                if self.display_help:
+                    w(self.render_help(form, field))
+                w(u'</td></tr>')
+            w(u'</table></fieldset>')
 
     def render_buttons(self, w, form):
         if not form.form_buttons:
