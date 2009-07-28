@@ -327,8 +327,8 @@ class UpdateTemplateCatalogCommand(Command):
 
 
 def update_cubes_catalogs(cubes):
-    toedit = []
     for cubedir in cubes:
+        toedit = []
         if not isdir(cubedir):
             print '-> ignoring %s that is not a directory.' % cubedir
             continue
@@ -337,12 +337,14 @@ def update_cubes_catalogs(cubes):
         except Exception:
             import traceback
             traceback.print_exc()
-            print '-> Error while updating catalogs for cube', cubedir
-    # instructions pour la suite
-    print '-> regenerated this cube\'s .po catalogs.'
-    print '\nYou can now edit the following files:'
-    print '* ' + '\n* '.join(toedit)
-    print 'when you are done, run "cubicweb-ctl i18ninstance yourinstance".'
+            print '-> error while updating catalogs for cube', cubedir
+        else:
+            # instructions pour la suite
+            print '-> regenerated .po catalogs for cube %s.' % cubedir
+            print '\nYou can now edit the following files:'
+            print '* ' + '\n* '.join(toedit)
+            print ('When you are done, run "cubicweb-ctl i18ninstance '
+                   '<yourinstance>" to see changes in your instances.')
 
 def update_cube_catalogs(cubedir):
     import shutil
