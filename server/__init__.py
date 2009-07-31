@@ -15,8 +15,40 @@ from os.path import join, exists
 
 from logilab.common.modutils import LazyObject
 
+# server-side debugging #########################################################
+
 # server debugging flag
-DEBUG = False
+DBG_RQL = 1 # rql execution information
+DBG_SQL = 2 # executed sql
+DBG_REPO = 4 # repository events
+DBG_MORE = 8 # repository events
+
+
+# 2: + executed sql
+# 3: + additional debug information
+DEBUG = 0
+def set_debug(debugmode):
+    global DEBUG
+    if not debugmode:
+        DEBUG = 0
+        return
+    if isinstance(debugmode, basestring):
+        debugmode = globals()[debugmode]
+    DEBUG |= debugmode
+
+def debugged(func):
+    """decorator to activate debug mode"""
+    def wrapped(*args, **kwargs):
+        global DEBUG
+        DEBUG = True
+        try:
+            return func(*args, **kwargs)
+        finally:
+            DEBUG = False
+    return wrapped
+
+
+# database initialization ######################################################
 
 def init_repository(config, interactive=True, drop=False, vreg=None):
     """initialise a repository database by creating tables add filling them
@@ -92,14 +124,12 @@ def init_repository(config, interactive=True, drop=False, vreg=None):
         else:
             login, pwd = unicode(source['db-user']), source['db-password']
     print '-> inserting default user and default groups.'
-    needisfix = []
-    for group in BASE_GROUPS:
+    # sort for eid predicatability as expected in some server tests
+    for group in sorted(BASE_GROUPS):
         rset = session.execute('INSERT CWGroup X: X name %(name)s',
                                {'name': unicode(group)})
-        needisfix.append( (rset.rows[0][0], rset.description[0][0]) )
     rset = session.execute('INSERT CWUser X: X login %(login)s, X upassword %(pwd)s',
                            {'login': login, 'pwd': pwd})
-    needisfix.append( (rset.rows[0][0], rset.description[0][0]) )
     session.execute('SET U in_group G WHERE G name "managers"')
     session.commit()
     # reloging using the admin user
@@ -109,13 +139,6 @@ def init_repository(config, interactive=True, drop=False, vreg=None):
     handler = config.migration_handler(schema, interactive=False,
                                        cnx=cnx, repo=repo)
     initialize_schema(config, schema, handler)
-    # admin user and groups have been added before schema entities, fix the 'is'
-    # relation
-    for eid, etype in needisfix:
-        handler.session.unsafe_execute('SET X is E WHERE X eid %(x)s, E name %(name)s',
-                                       {'x': eid, 'name': etype}, 'x')
-        handler.session.unsafe_execute('SET X is_instance_of E WHERE X eid %(x)s, E name %(name)s',
-                                       {'x': eid, 'name': etype}, 'x')
     # insert versions
     handler.cmd_add_entity('CWProperty', pkey=u'system.version.cubicweb',
                            value=unicode(config.cubicweb_version()))
@@ -123,6 +146,15 @@ def init_repository(config, interactive=True, drop=False, vreg=None):
         handler.cmd_add_entity('CWProperty',
                                pkey=u'system.version.%s' % cube.lower(),
                                value=unicode(config.cube_version(cube)))
+    # some entities have been added before schema entities, fix the 'is' and
+    # 'is_instance_of' relations
+    for rtype in ('is', 'is_instance_of'):
+        handler.sqlexec(
+            'INSERT INTO %s_relation '
+            'SELECT X.eid, ET.cw_eid FROM entities as X, cw_CWEType as ET '
+            'WHERE X.type=ET.cw_name AND NOT EXISTS('
+            '      SELECT 1 from is_relation '
+            '      WHERE eid_from=X.eid AND eid_to=ET.cw_eid)' % rtype)
     # yoo !
     cnx.commit()
     config.enabled_sources = None
@@ -161,20 +193,6 @@ def initialize_schema(config, schema, mhandler, event='create'):
     for path in reversed(paths):
         mhandler.exec_event_script('post%s' % event, path)
 
-def set_debug(debugmode):
-    global DEBUG
-    DEBUG = debugmode
-
-def debugged(func):
-    """decorator to activate debug mode"""
-    def wrapped(*args, **kwargs):
-        global DEBUG
-        DEBUG = True
-        try:
-            return func(*args, **kwargs)
-        finally:
-            DEBUG = False
-    return wrapped
 
 # sqlite'stored procedures have to be registered at connexion opening time
 SQL_CONNECT_HOOKS = {}

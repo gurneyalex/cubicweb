@@ -24,6 +24,8 @@ from cubicweb.server.utils import cleanup_solutions
 from cubicweb.server.rqlannotation import SQLGenAnnotator, set_qdata
 from cubicweb.server.ssplanner import add_types_restriction
 
+READ_ONLY_RTYPES = set(('eid', 'has_text', 'is', 'is_instance_of', 'identity'))
+
 def empty_rset(session, rql, args, rqlst=None):
     """build an empty result set object"""
     return ResultSet([], rql, args, rqlst=rqlst)
@@ -67,7 +69,7 @@ def check_read_access(schema, user, rqlst, solution):
     if rqlst.where is not None:
         for rel in rqlst.where.iget_nodes(Relation):
             # XXX has_text may have specific perm ?
-            if rel.r_type in ('is', 'is_instance_of', 'has_text', 'identity', 'eid'):
+            if rel.r_type in READ_ONLY_RTYPES:
                 continue
             if not schema.rschema(rel.r_type).has_access(user, 'read'):
                 raise Unauthorized('read', rel.r_type)
@@ -189,8 +191,6 @@ class ExecutionPlan(object):
 
         return rqlst to actually execute
         """
-        #if server.DEBUG:
-        #    print '------- preprocessing', union.as_string('utf8')
         noinvariant = set()
         if security and not self.session.is_super_session:
             self._insert_security(union, noinvariant)
@@ -373,7 +373,7 @@ class InsertPlan(ExecutionPlan):
         for relation in rqlst.main_relations:
             lhs, rhs = relation.get_variable_parts()
             rtype = relation.r_type
-            if rtype in ('eid', 'has_text', 'is', 'is_instance_of', 'identity'):
+            if rtype in READ_ONLY_RTYPES:
                 raise QueryError("can't assign to %s" % rtype)
             try:
                 edef = to_build[str(lhs)]
@@ -586,9 +586,9 @@ class QuerierHelper(object):
         always use substitute arguments in queries (eg avoid query such as
         'Any X WHERE X eid 123'!)
         """
-        if server.DEBUG:
+        if server.DEBUG & (server.DBG_RQL | server.DBG_RQL):
             print '*'*80
-            print rql
+            print 'QUERIER INPUT', rql
         # parse the query and binds variables
         if eid_key is not None:
             if not isinstance(eid_key, (tuple, list)):
