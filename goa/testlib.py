@@ -42,7 +42,7 @@ except ImportError, exc:
 
 
 from cubicweb.devtools.fake import FakeRequest
-from cubicweb.goa.goavreg import GAERegistry
+from cubicweb.goa.goavreg import GAEVregistry
 from cubicweb.goa.goaconfig import GAEConfiguration
 from cubicweb.goa.dbinit import (create_user, create_groups, fix_entities,
                               init_persistent_schema, insert_versions)
@@ -115,7 +115,7 @@ class GAEBasedTC(TestCase):
         self.config.init_log(logging.CRITICAL)
         self.schema = self.config.load_schema(self.MODEL_CLASSES,
                                               self.load_schema_hook)
-        self.vreg = GAERegistry(self.config)
+        self.vreg = GAEVregistry(self.config)
         self.vreg.schema = self.schema
         self.vreg.load_module(db)
         from cubicweb.goa.appobjects import sessions
@@ -131,7 +131,7 @@ class GAEBasedTC(TestCase):
                 self.vreg.load_module(module)
         for cls in self.MODEL_CLASSES:
             self.vreg.load_object(cls)
-        self.session_manager = self.vreg.select_component('sessionmanager')
+        self.session_manager = self.vreg.select('components', 'sessionmanager')
         if need_ds_init:
             # create default groups and create entities according to the schema
             create_groups()

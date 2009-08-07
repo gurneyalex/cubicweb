@@ -1,4 +1,4 @@
-"""module defining the root handler for a lax application. You should not have
+"""module defining the root handler for a lax instance. You should not have
 to change anything here.
 
 :organization: Logilab
@@ -8,7 +8,7 @@ to change anything here.
 """
 __docformat__ = "restructuredtext en"
 
-# compute application's root directory
+# compute instance's root directory
 from os.path import dirname, abspath
 APPLROOT = dirname(abspath(__file__))
 
@@ -16,26 +16,26 @@ APPLROOT = dirname(abspath(__file__))
 from cubicweb import goa
 goa.do_monkey_patch()
 
-# get application's configuration (will be loaded from app.conf file)
+# get instance's configuration (will be loaded from app.conf file)
 from cubicweb.goa.goaconfig import GAEConfiguration
 GAEConfiguration.ext_resources['JAVASCRIPTS'].append('DATADIR/goa.js')
 config = GAEConfiguration('toto', APPLROOT)
 
 # dynamic objects registry
-from cubicweb.goa.goavreg import GAERegistry
-vreg = GAERegistry(config, debug=goa.MODE == 'dev')
+from cubicweb.goa.goavreg import GAEVregistry
+vreg = GAEVregistry(config, debug=goa.MODE == 'dev')
 
 # trigger automatic classes registration (metaclass magic), should be done
 # before schema loading
 import custom
 
-# load application'schema
+# load instance'schema
 vreg.schema = config.load_schema()
 
 # load dynamic objects
 vreg.load(APPLROOT)
 
-# call the postinit so custom get a chance to do application specific stuff
+# call the postinit so custom get a chance to do instance specific stuff
 custom.postinit(vreg)
 
 from cubicweb.wsgi.handler import CubicWebWSGIApplication

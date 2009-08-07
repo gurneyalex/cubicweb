@@ -5,16 +5,17 @@
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
 :license: GNU Lesser General Public License, v2.1 - http://www.gnu.org/licenses
 """
-__docformat__ = "restructuredtext en"
+__docformat__ = 'restructuredtext en'
 
 import sys
 import os
 
 from logilab.common.configuration import Configuration
 from logilab.common.clcommands import register_commands, cmd_run, pop_arg
+from logilab.common.shellutils import ASK
 
 from cubicweb import AuthenticationError, ExecutionError, ConfigurationError, underline_title
-from cubicweb.toolsutils import Command, CommandHandler, confirm
+from cubicweb.toolsutils import Command, CommandHandler
 from cubicweb.server import SOURCE_TYPES
 from cubicweb.server.utils import ask_source_config
 from cubicweb.server.serverconfig import USER_OPTIONS, ServerConfiguration
@@ -58,10 +59,10 @@ def source_cnx(source, dbname=None, special_privs=False, verbose=True):
 
 def system_source_cnx(source, dbms_system_base=False,
                       special_privs='CREATE/DROP DATABASE', verbose=True):
-    """shortcut to get a connextion to the application system database
+    """shortcut to get a connextion to the instance system database
     defined in the given config. If <dbms_system_base> is True,
     connect to the dbms system database instead (for task such as
-    create/drop the application database)
+    create/drop the instance database)
     """
     if dbms_system_base:
         from logilab.common.adbh import get_adv_func_helper
@@ -73,7 +74,9 @@ def _db_sys_cnx(source, what, db=None, user=None, verbose=True):
     """return a connection on the RDMS system table (to create/drop a user
     or a database
     """
+    import logilab.common as lgp
     from logilab.common.adbh import get_adv_func_helper
+    lgp.USE_MX_DATETIME = False
     special_privs = ''
     driver = source['db-driver']
     helper = get_adv_func_helper(driver)
@@ -117,7 +120,7 @@ class RepositoryCreateHandler(CommandHandler):
     cfgname = 'repository'
 
     def bootstrap(self, cubes, inputlevel=0):
-        """create an application by copying files from the given cube and by
+        """create an instance by copying files from the given cube and by
         asking information necessary to build required configuration files
         """
         config = self.config
@@ -137,7 +140,7 @@ class RepositoryCreateHandler(CommandHandler):
             if cube in SOURCE_TYPES:
                 sourcescfg[cube] = ask_source_config(cube, inputlevel)
         print
-        while confirm('Enter another source ?', default_is_yes=False):
+        while ASK.confirm('Enter another source ?', default_is_yes=False):
             available = sorted(stype for stype in SOURCE_TYPES
                                if not stype in cubes)
             while True:
@@ -167,7 +170,7 @@ class RepositoryCreateHandler(CommandHandler):
         config.write_bootstrap_cubes_file(cubes)
 
     def postcreate(self):
-        if confirm('Do you want to run db-create to create the "system database" ?'):
+        if ASK.confirm('Run db-create to create the system database ?'):
             verbosity = (self.config.mode == 'installed') and 'y' or 'n'
             cmd_run('db-create', self.config.appid, '--verbose=%s' % verbosity)
         else:
@@ -180,12 +183,12 @@ class RepositoryDeleteHandler(CommandHandler):
     cfgname = 'repository'
 
     def cleanup(self):
-        """remove application's configuration and database"""
+        """remove instance's configuration and database"""
         from logilab.common.adbh import get_adv_func_helper
         source = self.config.sources()['system']
         dbname = source['db-name']
         helper = get_adv_func_helper(source['db-driver'])
-        if confirm('Delete database %s ?' % dbname):
+        if ASK.confirm('Delete database %s ?' % dbname):
             user = source['db-user'] or None
             cnx = _db_sys_cnx(source, 'DROP DATABASE', user=user)
             cursor = cnx.cursor()
@@ -194,7 +197,7 @@ class RepositoryDeleteHandler(CommandHandler):
                 print '-> database %s dropped.' % dbname
                 # XXX should check we are not connected as user
                 if user and helper.users_support and \
-                       confirm('Delete user %s ?' % user, default_is_yes=False):
+                       ASK.confirm('Delete user %s ?' % user, default_is_yes=False):
                     cursor.execute('DROP USER %s' % user)
                     print '-> user %s dropped.' % user
                 cnx.commit()
@@ -229,26 +232,26 @@ class RepositoryStopHandler(CommandHandler):
 
 
 # repository specific commands ################################################
-class CreateApplicationDBCommand(Command):
-    """Create the system database of an application (run after 'create').
+class CreateInstanceDBCommand(Command):
+    """Create the system database of an instance (run after 'create').
 
     You will be prompted for a login / password to use to connect to
     the system database.  The given user should have almost all rights
     on the database (ie a super user on the dbms allowed to create
     database, users, languages...).
 
-    <application>
-      the identifier of the application to initialize.
+    <instance>
+      the identifier of the instance to initialize.
     """
     name = 'db-create'
-    arguments = '<application>'
+    arguments = '<instance>'
 
     options = (
-        ("create-db",
-         {'short': 'c', 'type': "yn", 'metavar': '<y or n>',
+        ('create-db',
+         {'short': 'c', 'type': 'yn', 'metavar': '<y or n>',
           'default': True,
           'help': 'create the database (yes by default)'}),
-        ("verbose",
+        ('verbose',
          {'short': 'v', 'type' : 'yn', 'metavar': '<verbose>',
           'default': 'n',
           'help': 'verbose mode: will ask all possible configuration questions',
@@ -260,14 +263,14 @@ class CreateApplicationDBCommand(Command):
         from logilab.common.adbh import get_adv_func_helper
         from indexer import get_indexer
         verbose = self.get('verbose')
-        appid = pop_arg(args, msg="No application specified !")
+        appid = pop_arg(args, msg='No instance specified !')
         config = ServerConfiguration.config_for(appid)
         create_db = self.config.create_db
         source = config.sources()['system']
         driver = source['db-driver']
         helper = get_adv_func_helper(driver)
         if create_db:
-            print '\n'+underline_title('Creating the "system database"')
+            print '\n'+underline_title('Creating the system database')
             # connect on the dbms system base to create our base
             dbcnx = _db_sys_cnx(source, 'CREATE DATABASE and / or USER', verbose=verbose)
             cursor = dbcnx.cursor()
@@ -275,12 +278,12 @@ class CreateApplicationDBCommand(Command):
                 if helper.users_support:
                     user = source['db-user']
                     if not helper.user_exists(cursor, user) and \
-                           confirm('Create db user %s ?' % user, default_is_yes=False):
+                           ASK.confirm('Create db user %s ?' % user, default_is_yes=False):
                         helper.create_user(source['db-user'], source['db-password'])
                         print '-> user %s created.' % user
                 dbname = source['db-name']
                 if dbname in helper.list_databases(cursor):
-                    if confirm('Database %s already exists -- do you want to drop it ?' % dbname):
+                    if ASK.confirm('Database %s already exists -- do you want to drop it ?' % dbname):
                         cursor.execute('DROP DATABASE %s' % dbname)
                     else:
                         return
@@ -306,30 +309,30 @@ class CreateApplicationDBCommand(Command):
                 helper.create_language(cursor, extlang)
         cursor.close()
         cnx.commit()
-        print '-> database for application %s created and necessary extensions installed.' % appid
+        print '-> database for instance %s created and necessary extensions installed.' % appid
         print
-        if confirm('Do you want to run db-init to initialize the "system database" ?'):
+        if ASK.confirm('Run db-init to initialize the system database ?'):
             cmd_run('db-init', config.appid)
         else:
             print ('-> nevermind, you can do it later with '
                    '"cubicweb-ctl db-init %s".' % self.config.appid)
 
 
-class InitApplicationCommand(Command):
-    """Initialize the system database of an application (run after 'db-create').
+class InitInstanceCommand(Command):
+    """Initialize the system database of an instance (run after 'db-create').
 
     You will be prompted for a login / password to use to connect to
     the system database.  The given user should have the create tables,
     and grant permissions.
 
-    <application>
-      the identifier of the application to initialize.
+    <instance>
+      the identifier of the instance to initialize.
     """
     name = 'db-init'
-    arguments = '<application>'
+    arguments = '<instance>'
 
     options = (
-        ("drop",
+        ('drop',
          {'short': 'd', 'action': 'store_true',
           'default': False,
           'help': 'insert drop statements to remove previously existant \
@@ -337,27 +340,27 @@ tables, indexes... (no by default)'}),
         )
 
     def run(self, args):
-        print '\n'+underline_title('Initializing the "system database"')
+        print '\n'+underline_title('Initializing the system database')
         from cubicweb.server import init_repository
-        appid = pop_arg(args, msg="No application specified !")
+        appid = pop_arg(args, msg='No instance specified !')
         config = ServerConfiguration.config_for(appid)
         init_repository(config, drop=self.config.drop)
 
 
-class GrantUserOnApplicationCommand(Command):
+class GrantUserOnInstanceCommand(Command):
     """Grant a database user on a repository system database.
 
-    <application>
-      the identifier of the application
+    <instance>
+      the identifier of the instance
     <user>
       the database's user requiring grant access
     """
     name = 'db-grant-user'
-    arguments = '<application> <user>'
+    arguments = '<instance> <user>'
 
     options = (
-        ("set-owner",
-         {'short': 'o', 'type' : "yn", 'metavar' : '<yes or no>',
+        ('set-owner',
+         {'short': 'o', 'type' : 'yn', 'metavar' : '<yes or no>',
           'default' : False,
           'help': 'Set the user as tables owner if yes (no by default).'}
          ),
@@ -365,8 +368,8 @@ class GrantUserOnApplicationCommand(Command):
     def run(self, args):
         """run the command with its specific arguments"""
         from cubicweb.server.sqlutils import sqlexec, sqlgrants
-        appid = pop_arg(args, 1, msg="No application specified !")
-        user = pop_arg(args, msg="No user specified !")
+        appid = pop_arg(args, 1, msg='No instance specified !')
+        user = pop_arg(args, msg='No user specified !')
         config = ServerConfiguration.config_for(appid)
         source = config.sources()['system']
         set_owner = self.config.set_owner
@@ -383,22 +386,22 @@ class GrantUserOnApplicationCommand(Command):
             print '-> an error occured:', ex
         else:
             cnx.commit()
-            print '-> rights granted to %s on application %s.' % (appid, user)
+            print '-> rights granted to %s on instance %s.' % (appid, user)
 
 class ResetAdminPasswordCommand(Command):
     """Reset the administrator password.
 
-    <application>
-      the identifier of the application
+    <instance>
+      the identifier of the instance
     """
     name = 'reset-admin-pwd'
-    arguments = '<application>'
+    arguments = '<instance>'
 
     def run(self, args):
         """run the command with its specific arguments"""
         from cubicweb.server.sqlutils import sqlexec, SQL_PREFIX
         from cubicweb.server.utils import crypt_password, manager_userpasswd
-        appid = pop_arg(args, 1, msg="No application specified !")
+        appid = pop_arg(args, 1, msg='No instance specified !')
         config = ServerConfiguration.config_for(appid)
         sourcescfg = config.read_sources_file()
         try:
@@ -431,31 +434,37 @@ class ResetAdminPasswordCommand(Command):
 
 
 class StartRepositoryCommand(Command):
-    """Start an CubicWeb RQL server for a given application.
+    """Start an CubicWeb RQL server for a given instance.
 
     The server will be accessible through pyro
 
-    <application>
-      the identifier of the application to initialize.
+    <instance>
+      the identifier of the instance to initialize.
     """
     name = 'start-repository'
-    arguments = '<application>'
+    arguments = '<instance>'
 
     options = (
-        ("debug",
+        ('debug',
          {'short': 'D', 'action' : 'store_true',
           'help': 'start server in debug mode.'}),
         )
 
     def run(self, args):
         from cubicweb.server.server import RepositoryServer
-        appid = pop_arg(args, msg="No application specified !")
+        appid = pop_arg(args, msg='No instance specified !')
         config = ServerConfiguration.config_for(appid)
         debug = self.config.debug
         # create the server
         server = RepositoryServer(config, debug)
         # go ! (don't daemonize in debug mode)
-        if not debug and server.daemonize(config['pid-file']) == -1:
+        pidfile = config['pid-file']
+        # ensure the directory where the pid-file should be set exists (for
+        # instance /var/run/cubicweb may be deleted on computer restart)
+        piddir = os.path.dirname(pidfile)
+        if not os.path.exists(piddir):
+            os.makedirs(piddir)
+        if not debug and server.daemonize(pidfile) == -1:
             return
         uid = config['uid']
         if uid is not None:
@@ -471,6 +480,7 @@ class StartRepositoryCommand(Command):
 
 
 def _remote_dump(host, appid, output, sudo=False):
+    # XXX generate unique/portable file name
     dmpcmd = 'cubicweb-ctl db-dump -o /tmp/%s.dump %s' % (appid, appid)
     if sudo:
         dmpcmd = 'sudo %s' % (dmpcmd)
@@ -488,21 +498,24 @@ def _remote_dump(host, appid, output, sudo=False):
         raise ExecutionError('Error while retrieving the dump')
     rmcmd = 'ssh -t %s "rm -f /tmp/%s.dump"' % (host, appid)
     print rmcmd
-    if os.system(rmcmd) and not confirm(
+    if os.system(rmcmd) and not ASK.confirm(
         'An error occured while deleting remote dump. Continue anyway?'):
         raise ExecutionError('Error while deleting remote dump')
 
 def _local_dump(appid, output):
     config = ServerConfiguration.config_for(appid)
     # schema=1 to avoid unnecessary schema loading
-    mih = config.migration_handler(connect=False, schema=1)
+    mih = config.migration_handler(connect=False, schema=1, verbosity=1)
     mih.backup_database(output, askconfirm=False)
+    mih.shutdown()
 
-def _local_restore(appid, backupfile, drop):
+def _local_restore(appid, backupfile, drop, systemonly=True):
     config = ServerConfiguration.config_for(appid)
+    config.verbosity = 1 # else we won't be asked for confirmation on problems
+    config.repairing = 1 # don't check versions
     # schema=1 to avoid unnecessary schema loading
-    mih = config.migration_handler(connect=False, schema=1)
-    mih.restore_database(backupfile, drop)
+    mih = config.migration_handler(connect=False, schema=1, verbosity=1)
+    mih.restore_database(backupfile, drop, systemonly, askconfirm=False)
     repo = mih.repo_connect()
     # version of the database
     dbversions = repo.get_versions()
@@ -512,7 +525,7 @@ def _local_restore(appid, backupfile, drop):
         return
     # version of installed software
     eversion = dbversions['cubicweb']
-    status = application_status(config, eversion, dbversions)
+    status = instance_status(config, eversion, dbversions)
     # * database version > installed software
     if status == 'needsoftupgrade':
         print "database is using some earlier version than installed software!"
@@ -530,7 +543,7 @@ def _local_restore(appid, backupfile, drop):
     #   ok!
 
 
-def application_status(config, cubicwebapplversion, vcconf):
+def instance_status(config, cubicwebapplversion, vcconf):
     cubicwebversion = config.cubicweb_version()
     if cubicwebapplversion > cubicwebversion:
         return 'needsoftupgrade'
@@ -540,12 +553,12 @@ def application_status(config, cubicwebapplversion, vcconf):
         try:
             softversion = config.cube_version(cube)
         except ConfigurationError:
-            print "-> Error: no cube version information for %s, please check that the cube is installed." % cube
+            print '-> Error: no cube version information for %s, please check that the cube is installed.' % cube
             continue
         try:
             applversion = vcconf[cube]
         except KeyError:
-            print "-> Error: no cube version information for %s in version configuration." % cube
+            print '-> Error: no cube version information for %s in version configuration.' % cube
             continue
         if softversion == applversion:
             continue
@@ -557,18 +570,18 @@ def application_status(config, cubicwebapplversion, vcconf):
 
 
 class DBDumpCommand(Command):
-    """Backup the system database of an application.
+    """Backup the system database of an instance.
 
-    <application>
-      the identifier of the application to backup
+    <instance>
+      the identifier of the instance to backup
       format [[user@]host:]appname
     """
     name = 'db-dump'
-    arguments = '<application>'
+    arguments = '<instance>'
 
     options = (
-        ("output",
-         {'short': 'o', 'type' : "string", 'metavar' : '<file>',
+        ('output',
+         {'short': 'o', 'type' : 'string', 'metavar' : '<file>',
           'default' : None,
           'help': 'Specify the backup file where the backup will be stored.'}
          ),
@@ -580,7 +593,7 @@ class DBDumpCommand(Command):
         )
 
     def run(self, args):
-        appid = pop_arg(args, 1, msg="No application specified !")
+        appid = pop_arg(args, 1, msg='No instance specified !')
         if ':' in appid:
             host, appid = appid.split(':')
             _remote_dump(host, appid, self.config.output, self.config.sudo)
@@ -589,50 +602,58 @@ class DBDumpCommand(Command):
 
 
 class DBRestoreCommand(Command):
-    """Restore the system database of an application.
+    """Restore the system database of an instance.
 
-    <application>
-      the identifier of the application to restore
+    <instance>
+      the identifier of the instance to restore
     """
     name = 'db-restore'
-    arguments = '<application> <backupfile>'
+    arguments = '<instance> <backupfile>'
 
     options = (
-        ("no-drop",
-         {'short': 'n', 'action' : 'store_true',
-          'default' : False,
+        ('no-drop',
+         {'short': 'n', 'action' : 'store_true', 'default' : False,
           'help': 'for some reason the database doesn\'t exist and so '
           'should not be dropped.'}
+         ),
+        ('restore-all',
+         {'short': 'r', 'action' : 'store_true', 'default' : False,
+          'help': 'restore everything, eg not only the system source database '
+          'but also data for all sources supporting backup/restore and custom '
+          'instance data. In that case, <backupfile> is expected to be the '
+          'timestamp of the backup to restore, not a file'}
          ),
         )
 
     def run(self, args):
-        appid = pop_arg(args, 1, msg="No application specified !")
-        backupfile = pop_arg(args, msg="No backup file specified !")
-        _local_restore(appid, backupfile, not self.config.no_drop)
+        appid = pop_arg(args, 1, msg='No instance specified !')
+        backupfile = pop_arg(args, msg='No backup file or timestamp specified !')
+        _local_restore(appid, backupfile,
+                       drop=not self.config.no_drop,
+                       systemonly=not self.config.restore_all)
 
 
 class DBCopyCommand(Command):
-    """Copy the system database of an application (backup and restore).
+    """Copy the system database of an instance (backup and restore).
 
-    <src-application>
-      the identifier of the application to backup
+    <src-instance>
+      the identifier of the instance to backup
       format [[user@]host:]appname
 
-    <dest-application>
-      the identifier of the application to restore
+    <dest-instance>
+      the identifier of the instance to restore
     """
     name = 'db-copy'
-    arguments = '<src-application> <dest-application>'
+    arguments = '<src-instance> <dest-instance>'
 
     options = (
-        ("no-drop",
+        ('no-drop',
          {'short': 'n', 'action' : 'store_true',
           'default' : False,
           'help': 'For some reason the database doesn\'t exist and so '
           'should not be dropped.'}
          ),
-        ("keep-dump",
+        ('keep-dump',
          {'short': 'k', 'action' : 'store_true',
           'default' : False,
           'help': 'Specify that the dump file should not be automatically removed.'}
@@ -646,9 +667,11 @@ class DBCopyCommand(Command):
 
     def run(self, args):
         import tempfile
-        srcappid = pop_arg(args, 1, msg="No source application specified !")
-        destappid = pop_arg(args, msg="No destination application specified !")
-        output = tempfile.mktemp()
+        srcappid = pop_arg(args, 1, msg='No source instance specified !')
+        destappid = pop_arg(args, msg='No destination instance specified !')
+        # XXX -system necessary to match file name modified on source restore.
+        # should not have to expect this.
+        _, output = tempfile.mkstemp('-system.sql')
         if ':' in srcappid:
             host, srcappid = srcappid.split(':')
             _remote_dump(host, srcappid, output, self.config.sudo)
@@ -662,60 +685,66 @@ class DBCopyCommand(Command):
 
 
 class CheckRepositoryCommand(Command):
-    """Check integrity of the system database of an application.
+    """Check integrity of the system database of an instance.
 
-    <application>
-      the identifier of the application to check
+    <instance>
+      the identifier of the instance to check
     """
     name = 'db-check'
-    arguments = '<application>'
+    arguments = '<instance>'
 
     options = (
-        ("checks",
-         {'short': 'c', 'type' : "csv", 'metavar' : '<check list>',
+        ('checks',
+         {'short': 'c', 'type' : 'csv', 'metavar' : '<check list>',
           'default' : ('entities', 'relations', 'metadata', 'schema', 'text_index'),
           'help': 'Comma separated list of check to run. By default run all \
 checks, i.e. entities, relations, text_index and metadata.'}
          ),
 
-        ("autofix",
-         {'short': 'a', 'type' : "yn", 'metavar' : '<yes or no>',
+        ('autofix',
+         {'short': 'a', 'type' : 'yn', 'metavar' : '<yes or no>',
           'default' : False,
           'help': 'Automatically correct integrity problems if this option \
 is set to "y" or "yes", else only display them'}
          ),
-        ("reindex",
-         {'short': 'r', 'type' : "yn", 'metavar' : '<yes or no>',
+        ('reindex',
+         {'short': 'r', 'type' : 'yn', 'metavar' : '<yes or no>',
           'default' : False,
           'help': 're-indexes the database for full text search if this \
 option is set to "y" or "yes" (may be long for large database).'}
+         ),
+        ('force',
+         {'short': 'f', 'action' : 'store_true',
+          'default' : False,
+          'help': 'don\'t check instance is up to date.'}
          ),
 
         )
 
     def run(self, args):
         from cubicweb.server.checkintegrity import check
-        appid = pop_arg(args, 1, msg="No application specified !")
+        appid = pop_arg(args, 1, msg='No instance specified !')
         config = ServerConfiguration.config_for(appid)
+        config.repairing = self.config.force
         repo, cnx = repo_cnx(config)
         check(repo, cnx,
               self.config.checks, self.config.reindex, self.config.autofix)
 
 
 class RebuildFTICommand(Command):
-    """Rebuild the full-text index of the system database of an application.
+    """Rebuild the full-text index of the system database of an instance.
 
-    <application>
-      the identifier of the application to rebuild
+    <instance>
+      the identifier of the instance to rebuild
     """
     name = 'db-rebuild-fti'
-    arguments = '<application>'
+    arguments = '<instance>'
 
     options = ()
 
     def run(self, args):
         from cubicweb.server.checkintegrity import reindex_entities
-        appid = pop_arg(args, 1, msg="No application specified !")
+        appid = pop_arg(args, 1, msg='No instance specified !')
         config = ServerConfiguration.config_for(appid)
         repo, cnx = repo_cnx(config)
         session = repo._get_session(cnx.sessionid, setpool=True)
@@ -723,28 +752,28 @@ class RebuildFTICommand(Command):
         cnx.commit()
 
 
-class SynchronizeApplicationSchemaCommand(Command):
+class SynchronizeInstanceSchemaCommand(Command):
     """Synchronize persistent schema with cube schema.
 
     Will synchronize common stuff between the cube schema and the
     actual persistent schema, but will not add/remove any entity or relation.
 
-    <application>
-      the identifier of the application to synchronize.
+    <instance>
+      the identifier of the instance to synchronize.
     """
     name = 'schema-sync'
-    arguments = '<application>'
+    arguments = '<instance>'
 
     def run(self, args):
-        appid = pop_arg(args, msg="No application specified !")
+        appid = pop_arg(args, msg='No instance specified !')
         config = ServerConfiguration.config_for(appid)
         mih = config.migration_handler()
         mih.cmd_synchronize_schema()
 
 
-register_commands( (CreateApplicationDBCommand,
-                    InitApplicationCommand,
-                    GrantUserOnApplicationCommand,
+register_commands( (CreateInstanceDBCommand,
+                    InitInstanceCommand,
+                    GrantUserOnInstanceCommand,
                     ResetAdminPasswordCommand,
                     StartRepositoryCommand,
                     DBDumpCommand,
@@ -752,5 +781,5 @@ register_commands( (CreateApplicationDBCommand,
                     DBCopyCommand,
                     CheckRepositoryCommand,
                     RebuildFTICommand,
-                    SynchronizeApplicationSchemaCommand,
+                    SynchronizeInstanceSchemaCommand,
                     ) )

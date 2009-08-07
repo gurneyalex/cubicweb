@@ -64,11 +64,12 @@ your system.
 
 On a Unix system, the instances are usually stored in the directory
 :file:`/etc/cubicweb.d/`. During development, the :file:`~/etc/cubicweb.d/`
-directory is looked up, as well as the paths in :envvar:`CW_REGISTRY`
+directory is looked up, as well as the paths in :envvar:`CW_INSTANCES_DIR`
 environment variable.
 
-The term application can refer to an instance or to a cube, depending on the
-context. This book will try to avoid using this term and use *cube* and
+The term application is used to refer at "something that should do something as a
+whole", eg more like a project and so can refer to an instance or to a cube,
+depending on the context. This book will try to use *application*, *cube* and
 *instance* as appropriate.
 
 Data Repository
@@ -154,7 +155,7 @@ an identifier in this registry. You may have more than one object sharing an
 identifier in the same registry, At runtime, appobjects are selected in the
 vregistry according to the context.
 
-Application objects are stored in the registry using a two level hierarchy :
+Application objects are stored in the registry using a two-level hierarchy :
 
   object's `__registry__` : object's `id` : [list of app objects]
 
@@ -166,7 +167,7 @@ The `vregistry`
 At startup, the `registry` or registers base, inspects a number of directories
 looking for compatible classes definition. After a recording process, the objects
 are assigned to registers so that they can be selected dynamically while the
-application is running.
+instance is running.
 
 Selectors
 ~~~~~~~~~
@@ -215,7 +216,7 @@ The RQL query language
 
 **No need for a complicated ORM when you have a powerful query language**
 
-All the persistant data in a CubicWeb application is retrieved and modified by using the
+All the persistent data in a CubicWeb instance is retrieved and modified by using the
 Relation Query Language.
 
 This query language is inspired by SQL but is on a higher level in order to

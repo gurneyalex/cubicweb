@@ -17,9 +17,7 @@ def entity_name(session, eid):
 
 def entity_attr(session, eid, attr):
     """return an arbitrary attribute of the entity with the given eid"""
-    rset = session.execute('Any N WHERE X eid %%(x)s, X %s N' % attr,
-                           {'x': eid}, 'x')
-    return rset[0][0]
+    return getattr(session.entity_from_eid(eid), attr)
 
 def rproperty(session, rtype, eidfrom, eidto, rprop):
     rschema = session.repo.schema[rtype]
@@ -76,6 +74,8 @@ def previous_state(session, eid):
     relation hooks, the relation may has been deleted at this point, so
     we have handle that
     """
+    if eid in session.transaction_data.get('neweids', ()):
+        return
     pending = session.transaction_data.get('pendingrelations', ())
     for eidfrom, rtype, eidto in reversed(pending):
         if rtype == 'in_state' and eidfrom == eid:

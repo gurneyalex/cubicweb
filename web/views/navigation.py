@@ -11,7 +11,7 @@ _ = unicode
 from rql.nodes import VariableRef, Constant
 
 from logilab.mtconverter import xml_escape
-from logilab.common.deprecation import obsolete
+from logilab.common.deprecation import deprecated
 
 from cubicweb.interfaces import IPrevNext
 from cubicweb.selectors import (paginated_rset, sorted_rset,
@@ -47,6 +47,7 @@ class PageNavigation(NavigationComponent):
 
     def index_display(self, start, stop):
         return u'%s - %s' % (start+1, stop+1)
+
 
 class SortedNavigation(NavigationComponent):
     """sorted navigation apply if navigation is needed (according to page size)
@@ -147,27 +148,27 @@ class SortedNavigation(NavigationComponent):
 
 def limit_rset_using_paged_nav(self, req, rset, w, forcedisplay=False,
                                show_all_option=True, page_size=None):
-    showall = forcedisplay or req.form.get('__force_display') is not None
-    nav = not showall and self.vreg.select_component('navigation', req, rset,
-                                                     page_size=page_size)
-    if nav:
-        # get boundaries before component rendering
-        start, stop = nav.page_boundaries()
-        nav.render(w=w)
-        params = dict(req.form)
-        nav.clean_params(params)
-        # make a link to see them all
-        if show_all_option:
-            url = xml_escape(self.build_url(__force_display=1, **params))
-            w(u'<p><a href="%s">%s</a></p>\n'
-              % (url, req._('show %s results') % len(rset)))
-        rset.limit(offset=start, limit=stop-start, inplace=True)
+    if not (forcedisplay or req.form.get('__force_display') is not None):
+        nav = self.vreg['components'].select_object('navigation', req,
+                                      rset=rset, page_size=page_size)
+        if nav:
+            # get boundaries before component rendering
+            start, stop = nav.page_boundaries()
+            nav.render(w=w)
+            params = dict(req.form)
+            nav.clean_params(params)
+            # make a link to see them all
+            if show_all_option:
+                url = xml_escape(self.build_url(__force_display=1, **params))
+                w(u'<p><a href="%s">%s</a></p>\n'
+                  % (url, req._('show %s results') % len(rset)))
+            rset.limit(offset=start, limit=stop-start, inplace=True)
 
 
 # monkey patch base View class to add a .pagination(req, rset, w, forcedisplay)
 # method to be called on view's result set and printing pages index in the view
 from cubicweb.view import View
-View.pagination = obsolete('.pagination is deprecated, use paginate')(limit_rset_using_paged_nav)
+View.pagination = deprecated('.pagination is deprecated, use paginate')(limit_rset_using_paged_nav)
 
 def paginate(view, show_all_option=True, w=None, page_size=None):
     limit_rset_using_paged_nav(view, view.req, view.rset, w or view.w,

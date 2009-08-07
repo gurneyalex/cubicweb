@@ -7,9 +7,30 @@
 """
 __docformat__ = "restructuredtext en"
 
+from datetime import datetime
+
+from cubicweb import RepositoryError
 from cubicweb.common.uilib import soup2xhtml
 from cubicweb.server.hooksmanager import Hook
 from cubicweb.server.pool import PreCommitOperation
+
+
+class SetModificationDateOnStateChange(Hook):
+    """update entity's modification date after changing its state"""
+    events = ('after_add_relation',)
+    accepts = ('in_state',)
+
+    def call(self, session, fromeid, rtype, toeid):
+        if fromeid in session.transaction_data.get('neweids', ()):
+            # new entity, not needed
+            return
+        entity = session.entity_from_eid(fromeid)
+        try:
+            entity.set_attributes(modification_date=datetime.now())
+        except RepositoryError, ex:
+            # usually occurs if entity is coming from a read-only source
+            # (eg ldap user)
+            self.warning('cant change modification date for %s: %s', entity, ex)
 
 
 class AddUpdateCWUserHook(Hook):

@@ -20,7 +20,7 @@ def _get_group(groupname):
         try:
             group = Get(key)
         except datastore_errors.EntityNotFoundError:
-            raise Exception('can\'t find required group %s, is your application '
+            raise Exception('can\'t find required group %s, is your instance '
                             'correctly initialized (eg did you run the '
                             'initialization script) ?' % groupname)
         _GROUP_CACHE[groupname] = group
@@ -86,14 +86,13 @@ def fix_entities(schema):
 def init_persistent_schema(ssession, schema):
     execute = ssession.unsafe_execute
     rql = ('INSERT CWEType X: X name %(name)s, X description %(descr)s,'
-           'X final FALSE, X meta %(meta)s')
+           'X final FALSE')
     eschema = schema.eschema('CWEType')
-    execute(rql, {'name': u'CWEType', 'descr': unicode(eschema.description),
-                  'meta': eschema.meta})
+    execute(rql, {'name': u'CWEType', 'descr': unicode(eschema.description)})
     for eschema in schema.entities():
         if eschema.is_final() or eschema == 'CWEType':
             continue
-        execute(rql, {'name': unicode(eschema), 'meta': eschema.meta,
+        execute(rql, {'name': unicode(eschema),
                       'descr': unicode(eschema.description)})
 
 def insert_versions(ssession, config):

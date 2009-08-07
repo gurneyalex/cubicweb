@@ -39,12 +39,11 @@ class PrimaryView(EntityView):
 
     def cell_call(self, row, col):
         self.row = row
-        # XXX move render_entity implementation here
-        self.render_entity(self.complete_entity(row, col))
         self.maxrelated = self.req.property_value('navigation.related-limit')
+        entity = self.complete_entity(row, col)
+        self.render_entity(entity)
 
     def render_entity(self, entity):
-        """return html to display the given entity"""
         self.render_entity_title(entity)
         self.render_entity_metadata(entity)
         # entity's attributes and relations, excluding meta data
@@ -54,23 +53,9 @@ class PrimaryView(EntityView):
             self.w(u'<table width="100%"><tr><td style="width: 75%">')
         self.w(u'<div class="mainInfo">')
         self.content_navigation_components('navcontenttop')
-        try:
-            self.render_entity_attributes(entity)
-        except TypeError, e: # XXX bw compat
-            if 'render_entity' not in e.args[0]:
-                raise
-            warn('siderelations argument of render_entity_attributes is '
-                 'deprecated (%s)' % self.__class__)
-            self.render_entity_attributes(entity, [])
+        self.render_entity_attributes(entity)
         if self.main_related_section:
-            try:
-                self.render_entity_relations(entity)
-            except TypeError, e: # XXX bw compat
-                if 'render_entity' not in e.args[0]:
-                    raise
-                warn('siderelations argument of render_entity_relations is '
-                     'deprecated')
-                self.render_entity_relations(entity, [])
+            self.render_entity_relations(entity)
         self.w(u'</div>')
         # side boxes
         if boxes or hasattr(self, 'render_side_related'):
@@ -84,12 +69,10 @@ class PrimaryView(EntityView):
             self.w(u'</td></tr></table>')
         self.content_navigation_components('navcontentbottom')
 
-
     def content_navigation_components(self, context):
         self.w(u'<div class="%s">' % context)
-        for comp in self.vreg.possible_vobjects('contentnavigation',
-                                                self.req, self.rset, row=self.row,
-                                                view=self, context=context):
+        for comp in self.vreg['contentnavigation'].possible_vobjects(
+            self.req, rset=self.rset, row=self.row, view=self, context=context):
             try:
                 comp.render(w=self.w, row=self.row, view=self)
             except NotImplementedError:
@@ -164,9 +147,9 @@ class PrimaryView(EntityView):
             label = display_name(self.req, rschema.type, role)
             vid = dispctrl.get('vid', 'sidebox')
             sideboxes.append( (label, rset, vid) )
-        sideboxes += self.vreg.possible_vobjects('boxes', self.req, self.rset,
-                                                 row=self.row, view=self,
-                                                 context='incontext')
+        sideboxes += self.vreg['boxes'].possible_vobjects(
+            self.req, rset=self.rset, row=self.row, view=self,
+            context='incontext')
         return sideboxes
 
     def _section_def(self, entity, where):
@@ -241,3 +224,21 @@ class RelatedView(EntityView):
             self.w(u'[<a href="%s">%s</a>]' % (self.build_url(rql=rql),
                                                self.req._('see them all')))
             self.w(u'</div>')
+
+## default primary ui configuration ###########################################
+
+for rtype in ('eid', 'creation_date', 'modification_date', 'cwuri',
+              'is', 'is_instance_of', 'identity',
+              'owned_by', 'created_by',
+              'in_state', 'wf_info_for', 'require_permission',
+              'from_entity', 'to_entity',
+              'see_also'):
+    uicfg.primaryview_section.tag_subject_of(('*', rtype, '*'), 'hidden')
+    uicfg.primaryview_section.tag_object_of(('*', rtype, '*'), 'hidden')
+uicfg.primaryview_section.tag_subject_of(('*', 'use_email', '*'), 'attributes')
+uicfg.primaryview_section.tag_subject_of(('*', 'primary_email', '*'), 'hidden')
+
+for attr in ('name', 'final'):
+    uicfg.primaryview_section.tag_attribute(('CWEType', attr), 'hidden')
+for attr in ('name', 'final', 'symetric', 'inlined'):
+    uicfg.primaryview_section.tag_attribute(('CWRType', attr), 'hidden')

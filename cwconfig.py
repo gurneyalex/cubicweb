@@ -22,6 +22,7 @@ from threading import Lock
 from os.path import exists, join, expanduser, abspath, normpath, basename, isdir
 
 from logilab.common.decorators import cached
+from logilab.common.deprecation import deprecated
 from logilab.common.logging_ext import set_log_methods, init_log
 from logilab.common.configuration import (Configuration, Method,
                                           ConfigurationMixIn, merge_options)
@@ -141,7 +142,7 @@ class CubicWebNoAppConfiguration(ConfigurationMixIn):
     name = None
     # log messages format (see logging module documentation for available keys)
     log_format = '%(asctime)s - (%(name)s) %(levelname)s: %(message)s'
-    # nor remove vobjects based on unused interface
+    # nor remove appobjects based on unused interface
     cleanup_interface_sobjects = True
 
     if os.environ.get('APYCOT_ROOT'):
@@ -149,7 +150,7 @@ class CubicWebNoAppConfiguration(ConfigurationMixIn):
         CUBES_DIR = '%(APYCOT_ROOT)s/local/share/cubicweb/cubes/' % os.environ
         # create __init__ file
         file(join(CUBES_DIR, '__init__.py'), 'w').close()
-    elif exists(join(CW_SOFTWARE_ROOT, '.hg')):
+    elif exists(join(CW_SOFTWARE_ROOT, '.hg')) or os.environ.get('CW_MODE') == 'user':
         mode = 'dev'
         CUBES_DIR = abspath(normpath(join(CW_SOFTWARE_ROOT, '../cubes')))
     else:
@@ -168,14 +169,7 @@ class CubicWebNoAppConfiguration(ConfigurationMixIn):
          {'type' : 'string',
           'default': '',
           'help': 'Pyro name server\'s host. If not set, will be detected by a \
-broadcast query',
-          'group': 'pyro-name-server', 'inputlevel': 1,
-          }),
-        ('pyro-ns-port',
-         {'type' : 'int',
-          'default': None,
-          'help': 'Pyro name server\'s listening port. If not set, default \
-port will be used.',
+broadcast query. It may contains port information using <host>:<port> notation.',
           'group': 'pyro-name-server', 'inputlevel': 1,
           }),
         ('pyro-ns-group',
@@ -221,7 +215,7 @@ this option is set to yes",
           'group': 'appobjects', 'inputlevel': 2,
           }),
         )
-    # static and class methods used to get application independant resources ##
+    # static and class methods used to get instance independant resources ##
 
     @staticmethod
     def cubicweb_version():
@@ -247,7 +241,7 @@ this option is set to yes",
 
     @classmethod
     def i18n_lib_dir(cls):
-        """return application's i18n directory"""
+        """return instance's i18n directory"""
         if cls.mode in ('dev', 'test') and not os.environ.get('APYCOT_ROOT'):
             return join(CW_SOFTWARE_ROOT, 'i18n')
         return join(cls.shared_dir(), 'i18n')
@@ -418,24 +412,24 @@ this option is set to yes",
             except Exception, ex:
                 cls.warning("can't init cube %s: %s", cube, ex)
 
-    cubicweb_vobject_path = set(['entities'])
-    cube_vobject_path = set(['entities'])
+    cubicweb_appobject_path = set(['entities'])
+    cube_appobject_path = set(['entities'])
 
     @classmethod
     def build_vregistry_path(cls, templpath, evobjpath=None, tvobjpath=None):
         """given a list of directories, return a list of sub files and
-        directories that should be loaded by the application objects registry.
+        directories that should be loaded by the instance objects registry.
 
         :param evobjpath:
           optional list of sub-directories (or files without the .py ext) of
           the cubicweb library that should be tested and added to the output list
-          if they exists. If not give, default to `cubicweb_vobject_path` class
+          if they exists. If not give, default to `cubicweb_appobject_path` class
           attribute.
         :param tvobjpath:
           optional list of sub-directories (or files without the .py ext) of
           directories given in `templpath` that should be tested and added to
           the output list if they exists. If not give, default to
-          `cube_vobject_path` class attribute.
+          `cube_appobject_path` class attribute.
         """
         vregpath = cls.build_vregistry_cubicweb_path(evobjpath)
         vregpath += cls.build_vregistry_cube_path(templpath, tvobjpath)
@@ -445,7 +439,7 @@ this option is set to yes",
     def build_vregistry_cubicweb_path(cls, evobjpath=None):
         vregpath = []
         if evobjpath is None:
-            evobjpath = cls.cubicweb_vobject_path
+            evobjpath = cls.cubicweb_appobject_path
         for subdir in evobjpath:
             path = join(CW_SOFTWARE_ROOT, subdir)
             if exists(path):
@@ -456,7 +450,7 @@ this option is set to yes",
     def build_vregistry_cube_path(cls, templpath, tvobjpath=None):
         vregpath = []
         if tvobjpath is None:
-            tvobjpath = cls.cube_vobject_path
+            tvobjpath = cls.cube_appobject_path
         for directory in templpath:
             for subdir in tvobjpath:
                 path = join(directory, subdir)
@@ -539,8 +533,10 @@ class CubicWebConfiguration(CubicWebNoAppConfiguration):
 
     # for some commands (creation...) we don't want to initialize gettext
     set_language = True
-    # set this to true to avoid false error message while creating an application
+    # set this to true to avoid false error message while creating an instance
     creating = False
+    # set this to true to allow somethings which would'nt be possible
+    repairing = False
 
     options = CubicWebNoAppConfiguration.options + (
         ('log-file',
@@ -564,7 +560,7 @@ class CubicWebConfiguration(CubicWebNoAppConfiguration):
           }),
         ('sender-name',
          {'type' : 'string',
-          'default': Method('default_application_id'),
+          'default': Method('default_instance_id'),
           'help': 'name used as HELO name for outgoing emails from the \
 repository.',
           'group': 'email', 'inputlevel': 2,
@@ -581,49 +577,49 @@ the repository',
     @classmethod
     def runtime_dir(cls):
         """run time directory for pid file..."""
-        return env_path('CW_RUNTIME', cls.RUNTIME_DIR, 'run time')
+        return env_path('CW_RUNTIME_DIR', cls.RUNTIME_DIR, 'run time')
 
     @classmethod
     def registry_dir(cls):
         """return the control directory"""
-        return env_path('CW_REGISTRY', cls.REGISTRY_DIR, 'registry')
+        return env_path('CW_INSTANCES_DIR', cls.REGISTRY_DIR, 'registry')
 
     @classmethod
     def instance_data_dir(cls):
         """return the instance data directory"""
-        return env_path('CW_INSTANCE_DATA',
+        return env_path('CW_INSTANCES_DATA_DIR',
                         cls.INSTANCE_DATA_DIR or cls.REGISTRY_DIR,
                         'additional data')
 
     @classmethod
     def migration_scripts_dir(cls):
         """cubicweb migration scripts directory"""
-        return env_path('CW_MIGRATION', cls.MIGRATION_DIR, 'migration')
+        return env_path('CW_MIGRATION_DIR', cls.MIGRATION_DIR, 'migration')
 
     @classmethod
     def config_for(cls, appid, config=None):
-        """return a configuration instance for the given application identifier
+        """return a configuration instance for the given instance identifier
         """
-        config = config or guess_configuration(cls.application_home(appid))
+        config = config or guess_configuration(cls.instance_home(appid))
         configcls = configuration_cls(config)
         return configcls(appid)
 
     @classmethod
     def possible_configurations(cls, appid):
         """return the name of possible configurations for the given
-        application id
+        instance id
         """
-        home = cls.application_home(appid)
+        home = cls.instance_home(appid)
         return possible_configurations(home)
 
     @classmethod
-    def application_home(cls, appid):
-        """return the home directory of the application with the given
-        application id
+    def instance_home(cls, appid):
+        """return the home directory of the instance with the given
+        instance id
         """
         home = join(cls.registry_dir(), appid)
         if not exists(home):
-            raise ConfigurationError('no such application %s (check it exists with "cubicweb-ctl list")' % appid)
+            raise ConfigurationError('no such instance %s (check it exists with "cubicweb-ctl list")' % appid)
         return home
 
     MODES = ('common', 'repository', 'Any', 'web')
@@ -637,14 +633,14 @@ the repository',
 
     # default configuration methods ###########################################
 
-    def default_application_id(self):
-        """return the application identifier, useful for option which need this
+    def default_instance_id(self):
+        """return the instance identifier, useful for option which need this
         as default value
         """
         return self.appid
 
     def default_log_file(self):
-        """return default path to the log file of the application'server"""
+        """return default path to the log file of the instance'server"""
         if self.mode == 'dev':
             basepath = '/tmp/%s-%s' % (basename(self.appid), self.name)
             path = basepath + '.log'
@@ -660,10 +656,10 @@ the repository',
         return '/var/log/cubicweb/%s-%s.log' % (self.appid, self.name)
 
     def default_pid_file(self):
-        """return default path to the pid file of the application'server"""
+        """return default path to the pid file of the instance'server"""
         return join(self.runtime_dir(), '%s-%s.pid' % (self.appid, self.name))
 
-    # instance methods used to get application specific resources #############
+    # instance methods used to get instance specific resources #############
 
     def __init__(self, appid):
         self.appid = appid
@@ -722,7 +718,7 @@ the repository',
         self._cubes = self.reorder_cubes(list(self._cubes) + cubes)
 
     def main_config_file(self):
-        """return application's control configuration file"""
+        """return instance's control configuration file"""
         return join(self.apphome, '%s.conf' % self.name)
 
     def save(self):
@@ -739,7 +735,7 @@ the repository',
         return md5.new(';'.join(infos)).hexdigest()
 
     def load_site_cubicweb(self):
-        """load (web?) application's specific site_cubicweb file"""
+        """load instance's specific site_cubicweb file"""
         for path in reversed([self.apphome] + self.cubes_path()):
             sitefile = join(path, 'site_cubicweb.py')
             if exists(sitefile) and not sitefile in self._site_loaded:
@@ -762,7 +758,7 @@ the repository',
             self.load_defaults()
 
     def load_configuration(self):
-        """load application's configuration files"""
+        """load instance's configuration files"""
         super(CubicWebConfiguration, self).load_configuration()
         if self.apphome and self.set_language:
             # init gettext
@@ -774,14 +770,14 @@ the repository',
             return
         self._logging_initialized = True
         CubicWebNoAppConfiguration.init_log(self, logthreshold, debug,
-                                         logfile=self.get('log-file'))
+                                            logfile=self.get('log-file'))
         # read a config file if it exists
         logconfig = join(self.apphome, 'logging.conf')
         if exists(logconfig):
             logging.fileConfig(logconfig)
 
     def available_languages(self, *args):
-        """return available translation for an application, by looking for
+        """return available translation for an instance, by looking for
         compiled catalog
 
         take *args to be usable as a vocabulary method
@@ -861,6 +857,6 @@ the repository',
 
 set_log_methods(CubicWebConfiguration, logging.getLogger('cubicweb.configuration'))
 
-# alias to get a configuration instance from an application id
-application_configuration = CubicWebConfiguration.config_for
-
+# alias to get a configuration instance from an instance id
+instance_configuration = CubicWebConfiguration.config_for
+application_configuration = deprecated('use instance_configuration')(instance_configuration)

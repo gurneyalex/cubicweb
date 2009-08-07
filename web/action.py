@@ -6,17 +6,16 @@
 :license: GNU Lesser General Public License, v2.1 - http://www.gnu.org/licenses
 """
 __docformat__ = "restructuredtext en"
+_ = unicode
 
 from cubicweb import target
 from cubicweb.selectors import (partial_relation_possible, match_search_state,
                                 one_line_rset, partial_may_add_relation, yes,
                                 accepts_compat, condition_compat, deprecate)
-from cubicweb.appobject import AppRsetObject
-
-_ = unicode
+from cubicweb.appobject import AppObject
 
 
-class Action(AppRsetObject):
+class Action(AppObject):
     """abstract action. Handle the .search_states attribute to match
     request search state.
     """

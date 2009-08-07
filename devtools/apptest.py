@@ -1,4 +1,4 @@
-"""This module provides misc utilities to test applications
+"""This module provides misc utilities to test instances
 
 :organization: Logilab
 :copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), license is LGPL v2.
@@ -15,7 +15,7 @@ from logilab.common.testlib import TestCase
 from logilab.common.pytest import nocoverage
 from logilab.common.umessage import message_from_string
 
-from logilab.common.deprecation import deprecated_function
+from logilab.common.deprecation import deprecated
 
 from cubicweb.devtools import init_test_database, TestServerConfiguration, ApptestConfiguration
 from cubicweb.devtools._apptest import TestEnvironment
@@ -34,6 +34,14 @@ class Email:
     def message(self):
         return message_from_string(self.msg)
 
+    @property
+    def subject(self):
+        return self.message.get('Subject')
+
+    @property
+    def content(self):
+        return self.message.get_payload(decode=True)
+
     def __repr__(self):
         return '<Email to %s with subject %s>' % (','.join(self.recipients),
                                                   self.message.get('Subject'))
@@ -51,7 +59,7 @@ cwconfig.SMTP = MockSMTP
 
 
 def get_versions(self, checkversions=False):
-    """return the a dictionary containing cubes used by this application
+    """return the a dictionary containing cubes used by this instance
     as key with their version as value, including cubicweb version. This is a
     public method, not requiring a session id.
 
@@ -167,7 +175,7 @@ class EnvBasedTC(TestCase):
 
     def etype_instance(self, etype, req=None):
         req = req or self.request()
-        e = self.env.vreg.etype_class(etype)(req, None, None)
+        e = self.env.vreg['etypes'].etype_class(etype)(req)
         e.eid = None
         return e
 
@@ -216,21 +224,21 @@ class EnvBasedTC(TestCase):
         self.vreg.config.global_set_option(optname, value)
 
     def pviews(self, req, rset):
-        return sorted((a.id, a.__class__) for a in self.vreg.possible_views(req, rset))
+        return sorted((a.id, a.__class__) for a in self.vreg['views'].possible_views(req, rset=rset))
 
     def pactions(self, req, rset, skipcategories=('addrelated', 'siteactions', 'useractions')):
-        return [(a.id, a.__class__) for a in self.vreg.possible_vobjects('actions', req, rset)
+        return [(a.id, a.__class__) for a in self.vreg['actions'].possible_vobjects(req, rset=rset)
                 if a.category not in skipcategories]
 
     def pactions_by_cats(self, req, rset, categories=('addrelated',)):
-        return [(a.id, a.__class__) for a in self.vreg.possible_vobjects('actions', req, rset)
+        return [(a.id, a.__class__) for a in self.vreg['actions'].possible_vobjects(req, rset=rset)
                 if a.category in categories]
 
-    paddrelactions = deprecated_function(pactions_by_cats)
+    paddrelactions = deprecated()(pactions_by_cats)
 
     def pactionsdict(self, req, rset, skipcategories=('addrelated', 'siteactions', 'useractions')):
         res = {}
-        for a in self.vreg.possible_vobjects('actions', req, rset):
+        for a in self.vreg['actions'].possible_vobjects(req, rset=rset):
             if a.category not in skipcategories:
                 res.setdefault(a.category, []).append(a.__class__)
         return res
@@ -241,7 +249,7 @@ class EnvBasedTC(TestCase):
         dump = simplejson.dumps
         args = [dump(arg) for arg in args]
         req = self.request(fname=fname, pageid='123', arg=args)
-        ctrl = self.env.app.select_controller('json', req)
+        ctrl = self.vreg['controllers'].select('json', req)
         return ctrl.publish(), req
 
     # default test setup and teardown #########################################
@@ -286,7 +294,7 @@ else:
         def setUp(self):
             super(ControllerTC, self).setUp()
             self.req = self.request()
-            self.ctrl = self.env.app.select_controller('edit', self.req)
+            self.ctrl = self.vreg['controllers'].select('edit', self.req)
 
         def publish(self, req):
             assert req is self.ctrl.req
@@ -300,7 +308,7 @@ else:
 
         def expect_redirect_publish(self, req=None):
             if req is not None:
-                self.ctrl = self.env.app.select_controller('edit', req)
+                self.ctrl = self.vreg['controllers'].select('edit', req)
             else:
                 req = self.req
             try:
@@ -398,7 +406,7 @@ class RepositoryBasedTC(TestCase):
         rset.vreg = self.vreg
         rset.req = self.session
         # call to set_pool is necessary to avoid pb when using
-        # application entities for convenience
+        # instance entities for convenience
         self.session.set_pool()
         return rset
 
@@ -449,7 +457,6 @@ class RepositoryBasedTC(TestCase):
     pactionsdict = EnvBasedTC.pactionsdict.im_func
 
     # default test setup and teardown #########################################
-    copy_schema = False
 
     def _prepare(self):
         MAILBOX[:] = [] # reset mailbox
@@ -462,16 +469,6 @@ class RepositoryBasedTC(TestCase):
         self.__close = repo.close
         self.cnxid = self.cnx.sessionid
         self.session = repo._sessions[self.cnxid]
-        if self.copy_schema:
-            # XXX copy schema since hooks may alter it and it may be not fully
-            #     cleaned (missing some schema synchronization support)
-            try:
-                origschema = repo.__schema
-            except AttributeError:
-                repo.__schema = origschema = repo.schema
-            repo.schema = deepcopy(origschema)
-            repo.set_schema(repo.schema) # reset hooks
-            repo.vreg.update_schema(repo.schema)
         self.cnxs = []
         # reset caches, they may introduce bugs among tests
         repo._type_source_cache = {}

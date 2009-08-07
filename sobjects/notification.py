@@ -14,7 +14,7 @@ from time import time
 try:
     from socket import gethostname
 except ImportError:
-    def gethostname():
+    def gethostname(): # gae
         return 'XXX'
 
 from logilab.common.textutils import normalize_text
@@ -62,7 +62,7 @@ class RecipientsFinder(Component):
 class RenderAndSendNotificationView(PreCommitOperation):
     """delay rendering of notification view until precommit"""
     def precommit_event(self):
-        if self.view.rset[0][0] in self.session.transaction_data.get('pendingeids', ()):
+        if self.view.rset and self.view.rset[0][0] in self.session.transaction_data.get('pendingeids', ()):
             return # entity added and deleted in the same transaction
         self.view.render_and_send(**getattr(self, 'viewargs', {}))
 
@@ -76,8 +76,8 @@ class StatusChangeHook(Hook):
             return
         rset = entity.related('wf_info_for')
         try:
-            view = session.vreg.select_view('notif_status_change',
-                                            session, rset, row=0)
+            view = session.vreg['views'].select('notif_status_change', session,
+                                                rset=rset, row=0)
         except RegistryException:
             return
         comment = entity.printable_value('comment', format='text/plain')
@@ -100,7 +100,7 @@ class RelationChangeHook(Hook):
         rset = session.eid_rset(fromeid)
         vid = 'notif_%s_%s' % (self.event,  rtype)
         try:
-            view = session.vreg.select_view(vid, session, rset, row=0)
+            view = session.vreg['views'].select(vid, session, rset=rset, row=0)
         except RegistryException:
             return
         RenderAndSendNotificationView(session, view=view)
@@ -117,7 +117,7 @@ class EntityChangeHook(Hook):
         rset = entity.as_rset()
         vid = 'notif_%s' % self.event
         try:
-            view = session.vreg.select_view(vid, session, rset, row=0)
+            view = session.vreg['views'].select(vid, session, rset=rset, row=0)
         except RegistryException:
             return
         RenderAndSendNotificationView(session, view=view)
@@ -133,14 +133,17 @@ class NotificationView(EntityView):
     * set a content attribute to define the content of the email (unless you
       override call)
     """
+    # XXX refactor this class to work with len(rset) > 1
+
     msgid_timestamp = True
 
     def recipients(self):
-        finder = self.vreg.select_component('recipients_finder', self.req, self.rset)
+        finder = self.vreg['components'].select('recipients_finder', self.req,
+                                  rset=self.rset)
         return finder.recipients()
 
     def subject(self):
-        entity = self.entity(0, 0)
+        entity = self.entity(self.row or 0, self.col or 0)
         subject = self.req._(self.message)
         etype = entity.dc_type()
         eid = entity.eid
@@ -153,7 +156,7 @@ class NotificationView(EntityView):
         return self.req.actual_session().user.login
 
     def context(self, **kwargs):
-        entity = self.entity(0, 0)
+        entity = self.entity(self.row or 0, self.col or 0)
         for key, val in kwargs.iteritems():
             if val and isinstance(val, unicode) and val.strip():
                kwargs[key] = self.req._(val)
@@ -183,15 +186,19 @@ class NotificationView(EntityView):
                  DeprecationWarning, stacklevel=1)
             lang = self.vreg.property_value('ui.language')
             recipients = zip(recipients, repeat(lang))
-        entity = self.entity(0, 0)
-        # if the view is using timestamp in message ids, no way to reference
-        # previous email
-        if not self.msgid_timestamp:
-            refs = [self.construct_message_id(eid)
-                    for eid in entity.notification_references(self)]
+        if self.rset is not None:
+            entity = self.entity(self.row or 0, self.col or 0)
+            # if the view is using timestamp in message ids, no way to reference
+            # previous email
+            if not self.msgid_timestamp:
+                refs = [self.construct_message_id(eid)
+                        for eid in entity.notification_references(self)]
+            else:
+                refs = ()
+            msgid = self.construct_message_id(entity.eid)
         else:
             refs = ()
-        msgid = self.construct_message_id(entity.eid)
+            msgid = None
         userdata = self.req.user_data()
         origlang = self.req.lang
         for emailaddr, lang in recipients:
@@ -277,7 +284,7 @@ url: %(url)s
 """
 
     def context(self, **kwargs):
-        entity = self.entity(0, 0)
+        entity = self.entity(self.row or 0, self.col or 0)
         content = entity.printable_value(self.content_attr, format='text/plain')
         if content:
             contentformat = getattr(entity, self.content_attr + '_format', 'text/rest')
@@ -285,7 +292,7 @@ url: %(url)s
         return super(ContentAddedView, self).context(content=content, **kwargs)
 
     def subject(self):
-        entity = self.entity(0, 0)
+        entity = self.entity(self.row or 0, self.col or 0)
         return  u'%s #%s (%s)' % (self.req.__('New %s' % entity.e_schema),
                                   entity.eid, self.user_login())
 

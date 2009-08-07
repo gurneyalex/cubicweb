@@ -11,10 +11,10 @@ from warnings import warn
 from datetime import datetime
 
 from logilab.mtconverter import xml_escape
-from yams.constraints import SizeConstraint, StaticVocabularyConstraint
+from yams.constraints import (SizeConstraint, StaticVocabularyConstraint,
+                              FormatConstraint)
 
-from cubicweb.schema import FormatConstraint
-from cubicweb.utils import ustrftime, compute_cardinality
+from cubicweb.utils import ustrftime
 from cubicweb.common import tags, uilib
 from cubicweb.web import INTERNAL_FIELD_VALUE
 from cubicweb.web.formwidgets import (
@@ -63,6 +63,8 @@ class Field(object):
     :role:
        when the field is linked to an entity attribute or relation, tells the
        role of the entity in the relation (eg 'subject' or 'object')
+    :fieldset:
+       optional fieldset to which this field belongs to
 
     """
     # default widget associated to this class of fields. May be overriden per
@@ -76,7 +78,7 @@ class Field(object):
     def __init__(self, name=None, id=None, label=None, help=None,
                  widget=None, required=False, initial=None,
                  choices=None, sort=True, internationalizable=False,
-                 eidparam=False, role='subject'):
+                 eidparam=False, role='subject', fieldset=None):
         self.name = name
         self.id = id or name
         self.label = label or name
@@ -88,6 +90,7 @@ class Field(object):
         self.internationalizable = internationalizable
         self.eidparam = eidparam
         self.role = role
+        self.fieldset = fieldset
         self.init_widget(widget)
         # ordering number for this field instance
         self.creation_rank = Field.__creation_rank
@@ -158,7 +161,13 @@ class Field(object):
         """render this field, which is part of form, using the given form
         renderer
         """
-        return self.get_widget(form).render(form, self)
+        widget = self.get_widget(form)
+        try:
+            return widget.render(form, self, renderer)
+        except TypeError:
+            warn('widget.render now take the renderer as third argument, please update %s implementation'
+                 % widget.__class__.__name__, DeprecationWarning)
+            return widget.render(form, self)
 
     def vocabulary(self, form):
         """return vocabulary for this field. This method will be called by
@@ -288,7 +297,7 @@ class RichTextField(StringField):
             result = format_field.render(form, renderer)
         else:
             result = u''
-        return result + self.get_widget(form).render(form, self)
+        return result + self.get_widget(form).render(form, self, renderer)
 
 
 class FileField(StringField):
@@ -308,7 +317,7 @@ class FileField(StringField):
             yield self.encoding_field
 
     def render(self, form, renderer):
-        wdgs = [self.get_widget(form).render(form, self)]
+        wdgs = [self.get_widget(form).render(form, self, renderer)]
         if self.format_field or self.encoding_field:
             divid = '%s-advanced' % form.context[self]['name']
             wdgs.append(u'<a href="%s" title="%s"><img src="%s" alt="%s"/></a>' %
@@ -362,7 +371,7 @@ class EditableFileField(FileField):
                             'You can either submit a new file using the browse button above'
                             ', or edit file content online with the widget below.')
                     wdgs.append(u'<p><b>%s</b></p>' % msg)
-                    wdgs.append(TextArea(setdomid=False).render(form, self))
+                    wdgs.append(TextArea(setdomid=False).render(form, self, renderer))
                     # XXX restore form context?
         return '\n'.join(wdgs)
 
@@ -444,7 +453,7 @@ class RelationField(Field):
         # first see if its specified by __linkto form parameters
         linkedto = entity.linked_to(self.name, self.role)
         if linkedto:
-            entities = (req.eid_rset(eid).get_entity(0, 0) for eid in linkedto)
+            entities = (req.entity_from_eid(eid) for eid in linkedto)
             return [(entity.view('combobox'), entity.eid) for entity in entities]
         # it isn't, check if the entity provides a method to get correct values
         res = []
@@ -465,14 +474,26 @@ class RelationField(Field):
         return value
 
 
+class CompoundField(Field):
+    def __init__(self, fields, *args, **kwargs):
+        super(CompoundField, self).__init__(*args, **kwargs)
+        self.fields = fields
+
+    def subfields(self, form):
+        return self.fields
+
+    def actual_fields(self, form):
+        return [self] + list(self.fields)
+
+
 def guess_field(eschema, rschema, role='subject', skip_meta_attr=True, **kwargs):
     """return the most adapated widget to edit the relation
     'subjschema rschema objschema' according to information found in the schema
     """
     fieldclass = None
+    card = eschema.cardinality(rschema, role)
     if role == 'subject':
         targetschema = rschema.objects(eschema)[0]
-        card = compute_cardinality(eschema, rschema, role)
         help = rschema.rproperty(eschema, targetschema, 'description')
         if rschema.is_final():
             if rschema.rproperty(eschema, targetschema, 'internationalizable'):
@@ -482,7 +503,6 @@ def guess_field(eschema, rschema, role='subject', skip_meta_attr=True, **kwargs)
             kwargs.setdefault('initial', get_default)
     else:
         targetschema = rschema.subjects(eschema)[0]
-        card = compute_cardinality(eschema, rschema, role)
         help = rschema.rproperty(targetschema, eschema, 'description')
     kwargs['required'] = card in '1+'
     kwargs['name'] = rschema.type

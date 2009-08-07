@@ -2,7 +2,7 @@
 
 * noresult, final
 * primary, sidebox
-* secondary, oneline, incontext, outofcontext, text
+* oneline, incontext, outofcontext, text
 * list
 
 
@@ -20,7 +20,8 @@ from rql import nodes
 from logilab.mtconverter import TransformError, xml_escape, xml_escape
 
 from cubicweb import NoSelectableObject
-from cubicweb.selectors import yes, empty_rset
+from cubicweb.selectors import yes, empty_rset, one_etype_rset
+from cubicweb.schema import display_name
 from cubicweb.view import EntityView, AnyRsetView, View
 from cubicweb.common.uilib import cut, printable_value
 
@@ -100,6 +101,7 @@ class FinalView(AnyRsetView):
         self.wdata(printable_value(self.req, etype, value, props, displaytime=displaytime))
 
 
+# XXX deprecated
 class SecondaryView(EntityView):
     id = 'secondary'
     title = _('secondary')
@@ -179,9 +181,6 @@ class MetaDataView(EntityView):
         self.w(u'</div>')
 
 
-# new default views for finner control in general views , to use instead of
-# oneline / secondary
-
 class InContextTextView(TextView):
     id = 'textincontext'
     title = None # not listed as a possible view
@@ -236,6 +235,7 @@ class ListView(EntityView):
 
         :param listid: the DOM id to use for the root element
         """
+        # XXX much of the behaviour here should probably be outside this view
         if subvid is None and 'subvid' in self.req.form:
             subvid = self.req.form.pop('subvid') # consume it
         if listid:
@@ -257,28 +257,6 @@ class ListView(EntityView):
         self.w(u'<li>')
         self.wview(self.item_vid, self.rset, row=row, col=col, vid=vid, **kwargs)
         self.w(u'</li>\n')
-
-    def url(self):
-        """overrides url method so that by default, the view list is called
-        with sorted entities
-        """
-        coltypes = self.rset.column_types(0)
-        # don't want to generate the rql if there is some restriction on
-        # something else than the entity type
-        if len(coltypes) == 1:
-            # XXX norestriction is not correct here. For instance, in cases like
-            # Any P,N WHERE P is Project, P name N
-            # norestriction should equal True
-            restr = self.rset.syntax_tree().children[0].where
-            norestriction = (isinstance(restr, nodes.Relation) and
-                             restr.is_types_restriction())
-            if norestriction:
-                etype = iter(coltypes).next()
-                return self.build_url(etype.lower(), vid=self.id)
-        if len(self.rset) == 1:
-            entity = self.rset.get_entity(0, 0)
-            return self.build_url(entity.rest_path(), vid=self.id)
-        return self.build_url(rql=self.rset.printable_rql(), vid=self.id)
 
 
 class ListItemView(EntityView):
@@ -305,6 +283,31 @@ class SimpleListView(ListItemView):
     """list without bullets"""
     id = 'simplelist'
     redirect_vid = 'incontext'
+
+
+class AdaptedListView(EntityView):
+    """list of entities of the same type"""
+    id = 'adaptedlist'
+    __select__ = EntityView.__select__ & one_etype_rset()
+    item_vid = 'adaptedlistitem'
+
+    @property
+    def title(self):
+        etype = iter(self.rset.column_types(0)).next()
+        return display_name(self.req, etype, form='plural')
+
+    def call(self, **kwargs):
+        """display a list of entities by calling their <item_vid> view"""
+        if not 'vtitle' in self.req.form:
+            self.w(u'<h1>%s</h1>' % self.title)
+        super(AdaptedListView, self).call(**kwargs)
+
+    def cell_call(self, row, col=0, vid=None, **kwargs):
+        self.wview(self.item_vid, self.rset, row=row, col=col, vid=vid, **kwargs)
+
+
+class AdaptedListItemView(ListItemView):
+    id = 'adaptedlistitem'
 
 
 class CSVView(SimpleListView):

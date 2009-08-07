@@ -13,7 +13,7 @@ from logilab.mtconverter import xml_escape
 from simplejson import dumps
 
 from cubicweb.common import tags
-from cubicweb.appobject import AppRsetObject
+from cubicweb.appobject import AppObject
 from cubicweb.selectors import entity_implements, yes
 from cubicweb.web import eid_param
 from cubicweb.web import formwidgets as fwdgs
@@ -21,7 +21,7 @@ from cubicweb.web.widgets import checkbox
 from cubicweb.web.formfields import HiddenInitialValueField
 
 
-class FormRenderer(AppRsetObject):
+class FormRenderer(AppObject):
     """basic renderer displaying fields in a two columns table label | value
 
     +--------------+--------------+
@@ -85,6 +85,8 @@ class FormRenderer(AppRsetObject):
         return '\n'.join(data)
 
     def render_label(self, form, field):
+        if field.label is None:
+            return u''
         label = self.req._(field.label)
         attrs = {'for': form.context[field]['id']}
         if field.required:
@@ -188,22 +190,40 @@ class FormRenderer(AppRsetObject):
         return fields
 
     def _render_fields(self, fields, w, form):
-        w(u'<table class="%s">' % self.table_class)
+        byfieldset = {}
         for field in fields:
-            w(u'<tr>')
-            if self.display_label:
-                w(u'<th class="labelCol">%s</th>' % self.render_label(form, field))
-            error = form.form_field_error(field)
-            if error:
-                w(u'<td class="error">')
-                w(error)
-            else:
-                w(u'<td>')
-            w(field.render(form, self))
-            if self.display_help:
-                w(self.render_help(form, field))
-            w(u'</td></tr>')
-        w(u'</table>')
+            byfieldset.setdefault(field.fieldset, []).append(field)
+        if form.fieldsets_in_order:
+            fieldsets = form.fieldsets_in_order
+        else:
+            fieldsets = byfieldset.keys()
+        for fieldset in fieldsets:
+            try:
+                fields = byfieldset.pop(fieldset)
+            except KeyError:
+                self.warning('no such fieldset: %s (%s)', fieldset, form)
+                continue
+            w(u'<fieldset class="%s">' % (fieldset or u'default'))
+            if fieldset:
+                w(u'<legend>%s</legend>' % self.req._(fieldset))
+            w(u'<table class="%s">' % self.table_class)
+            for field in fields:
+                w(u'<tr class="%s_%s_row">' % (field.name, field.role))
+                if self.display_label:
+                    w(u'<th class="labelCol">%s</th>' % self.render_label(form, field))
+                error = form.form_field_error(field)
+                if error:
+                    w(u'<td class="error">')
+                    w(error)
+                else:
+                    w(u'<td>')
+                w(field.render(form, self))
+                if self.display_help:
+                    w(self.render_help(form, field))
+                w(u'</td></tr>')
+            w(u'</table></fieldset>')
+        if byfieldset:
+            self.warning('unused fieldsets: %s', ', '.join(byfieldset))
 
     def render_buttons(self, w, form):
         if not form.form_buttons:
@@ -286,22 +306,42 @@ class EntityCompositeFormRenderer(FormRenderer):
     """specific renderer for multiple entities edition form (muledit)"""
     id = 'composite'
 
+    _main_display_fields = None
+
     def render_fields(self, w, form, values):
         if not form.is_subform:
             w(u'<table class="listing">')
+            subfields = [field for field in form.forms[0].fields
+                         if self.display_field(form, field)
+                         and field.is_visible()]
+            if subfields:
+                # main form, display table headers
+                w(u'<tr class="header">')
+                w(u'<th align="left">%s</th>' %
+                  tags.input(type='checkbox',
+                             title=self.req._('toggle check boxes'),
+                             onclick="setCheckboxesState('eid', this.checked)"))
+                for field in subfields:
+                    w(u'<th>%s</th>' % self.req._(field.label))
+                w(u'</tr>')
         super(EntityCompositeFormRenderer, self).render_fields(w, form, values)
         if not form.is_subform:
             w(u'</table>')
+            if self._main_display_fields:
+                super(EntityCompositeFormRenderer, self)._render_fields(
+                    self._main_display_fields, w, form)
 
     def _render_fields(self, fields, w, form):
         if form.is_subform:
             entity = form.edited_entity
             values = form.form_previous_values
             qeid = eid_param('eid', entity.eid)
-            cbsetstate = "setCheckboxesState2('eid', %s, 'checked')" % xml_escape(dumps(entity.eid))
+            cbsetstate = "setCheckboxesState2('eid', %s, 'checked')" % \
+                         xml_escape(dumps(entity.eid))
             w(u'<tr class="%s">' % (entity.row % 2 and u'even' or u'odd'))
             # XXX turn this into a widget used on the eid field
-            w(u'<td>%s</td>' % checkbox('eid', entity.eid, checked=qeid in values))
+            w(u'<td>%s</td>' % checkbox('eid', entity.eid,
+                                        checked=qeid in values))
             for field in fields:
                 error = form.form_field_error(field)
                 if error:
@@ -309,22 +349,17 @@ class EntityCompositeFormRenderer(FormRenderer):
                     w(error)
                 else:
                     w(u'<td>')
-                if isinstance(field.widget, (fwdgs.Select, fwdgs.CheckBox, fwdgs.Radio)):
+                if isinstance(field.widget, (fwdgs.Select, fwdgs.CheckBox,
+                                             fwdgs.Radio)):
                     field.widget.attrs['onchange'] = cbsetstate
                 elif isinstance(field.widget, fwdgs.Input):
                     field.widget.attrs['onkeypress'] = cbsetstate
+                # XXX else
                 w(u'<div>%s</div>' % field.render(form, self))
-                w(u'</td>')
+                w(u'</td>\n')
+            w(u'</tr>')
         else:
-            # main form, display table headers
-            w(u'<tr class="header">')
-            w(u'<th align="left">%s</th>'
-              % tags.input(type='checkbox', title=self.req._('toggle check boxes'),
-                           onclick="setCheckboxesState('eid', this.checked)"))
-            for field in self.forms[0].fields:
-                if self.display_field(form, field) and field.is_visible():
-                    w(u'<th>%s</th>' % self.req._(field.label))
-        w(u'</tr>')
+            self._main_display_fields = fields
 
 
 class EntityFormRenderer(EntityBaseFormRenderer):
@@ -435,8 +470,6 @@ class EntityFormRenderer(EntityBaseFormRenderer):
         """create a form to edit entity's inlined relations"""
         if not hasattr(form, 'inlined_relations'):
             return
-        entity = form.edited_entity
-        __ = self.req.__
         for rschema, targettypes, role in form.inlined_relations():
             # show inline forms only if there's one possible target type
             # for rschema
@@ -447,37 +480,42 @@ class EntityFormRenderer(EntityBaseFormRenderer):
                 continue
             targettype = targettypes[0].type
             if form.should_inline_relation_form(rschema, targettype, role):
-                w(u'<div id="inline%sslot">' % rschema)
-                existant = entity.has_eid() and entity.related(rschema)
-                if existant:
-                    # display inline-edition view for all existing related entities
-                    w(form.view('inline-edition', existant, rtype=rschema, role=role,
-                                ptype=entity.e_schema, peid=entity.eid))
-                if role == 'subject':
-                    card = rschema.rproperty(entity.e_schema, targettype, 'cardinality')[0]
-                else:
-                    card = rschema.rproperty(targettype, entity.e_schema, 'cardinality')[1]
-                # there is no related entity and we need at least one: we need to
-                # display one explicit inline-creation view
-                if form.should_display_inline_creation_form(rschema, existant, card):
-                    w(form.view('inline-creation', None, etype=targettype,
-                                peid=entity.eid, ptype=entity.e_schema,
-                                rtype=rschema, role=role))
-                # we can create more than one related entity, we thus display a link
-                # to add new related entities
-                if form.should_display_add_new_relation_link(rschema, existant, card):
-                    divid = "addNew%s%s%s:%s" % (targettype, rschema, role, entity.eid)
-                    w(u'<div class="inlinedform" id="%s" cubicweb:limit="true">'
-                      % divid)
-                    js = "addInlineCreationForm('%s', '%s', '%s', '%s')" % (
-                        entity.eid, targettype, rschema, role)
-                    if card in '1?':
-                        js = "toggleVisibility('%s'); %s" % (divid, js)
-                    w(u'<a class="addEntity" id="add%s:%slink" href="javascript: %s" >+ %s.</a>'
-                      % (rschema, entity.eid, js, __('add a %s' % targettype)))
-                    w(u'</div>')
-                    w(u'<div class="trame_grise">&nbsp;</div>')
-                w(u'</div>')
+                self.inline_relation_form(w, form, rschema, targettype, role)
+
+    def inline_relation_form(self, w, form, rschema, targettype, role):
+        entity = form.edited_entity
+        __ = self.req.__
+        w(u'<div id="inline%sslot">' % rschema)
+        existant = entity.has_eid() and entity.related(rschema)
+        if existant:
+            # display inline-edition view for all existing related entities
+            w(form.view('inline-edition', existant, rtype=rschema, role=role,
+                        ptype=entity.e_schema, peid=entity.eid))
+        if role == 'subject':
+            card = rschema.rproperty(entity.e_schema, targettype, 'cardinality')[0]
+        else:
+            card = rschema.rproperty(targettype, entity.e_schema, 'cardinality')[1]
+        # there is no related entity and we need at least one: we need to
+        # display one explicit inline-creation view
+        if form.should_display_inline_creation_form(rschema, existant, card):
+            w(form.view('inline-creation', None, etype=targettype,
+                        peid=entity.eid, ptype=entity.e_schema,
+                        rtype=rschema, role=role))
+        # we can create more than one related entity, we thus display a link
+        # to add new related entities
+        if form.should_display_add_new_relation_link(rschema, existant, card):
+            divid = "addNew%s%s%s:%s" % (targettype, rschema, role, entity.eid)
+            w(u'<div class="inlinedform" id="%s" cubicweb:limit="true">'
+              % divid)
+            js = "addInlineCreationForm('%s', '%s', '%s', '%s')" % (
+                entity.eid, targettype, rschema, role)
+            if card in '1?':
+                js = "toggleVisibility('%s'); %s" % (divid, js)
+            w(u'<a class="addEntity" id="add%s:%slink" href="javascript: %s" >+ %s.</a>'
+              % (rschema, entity.eid, js, __('add a %s' % targettype)))
+            w(u'</div>')
+            w(u'<div class="trame_grise">&nbsp;</div>')
+        w(u'</div>')
 
 
 class EntityInlinedFormRenderer(EntityFormRenderer):

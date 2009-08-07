@@ -14,14 +14,15 @@ from logging import getLogger
 from warnings import warn
 
 from logilab.common.decorators import cached, clear_cache, monkeypatch
-from logilab.common.deprecation import obsolete
+from logilab.common.deprecation import deprecated
 from logilab.common.compat import any
 
 from yams import BadSchemaDefinition, buildobjs as ybo
 from yams.schema import Schema, ERSchema, EntitySchema, RelationSchema
-from yams.constraints import BaseConstraint, StaticVocabularyConstraint
-from yams.reader import (CONSTRAINTS, RelationFileReader, PyFileReader,
-                         SchemaLoader)
+from yams.constraints import (BaseConstraint, StaticVocabularyConstraint,
+                              FormatConstraint)
+from yams.reader import (CONSTRAINTS, PyFileReader, SchemaLoader,
+                         obsolete as yobsolete, cleanup_sys_modules)
 
 from rql import parse, nodes, RQLSyntaxError, TypeResolverException
 
@@ -33,7 +34,22 @@ from yams import schema
 schema.use_py_datetime()
 nodes.use_py_datetime()
 
-BASEGROUPS = ('managers', 'users', 'guests', 'owners')
+PURE_VIRTUAL_RTYPES = set(('identity', 'has_text',))
+VIRTUAL_RTYPES = set(('eid', 'identity', 'has_text',))
+
+#  set of meta-relations available for every entity types
+META_RTYPES = set((
+    'owned_by', 'created_by', 'is', 'is_instance_of', 'identity',
+    'eid', 'creation_date', 'modification_date', 'has_text', 'cwuri',
+    ))
+
+#  set of entity and relation types used to build the schema
+SCHEMA_TYPES = set((
+    'CWEType', 'CWRType', 'CWAttribute', 'CWRelation',
+    'CWConstraint', 'CWConstraintType', 'RQLExpression',
+    'relation_type', 'from_entity', 'to_entity',
+    'constrained_by', 'cstrtype',
+    ))
 
 _LOGGER = getLogger('cubicweb.schemaloader')
 
@@ -50,75 +66,6 @@ def bw_normalize_etype(etype):
         etype = ETYPE_NAME_MAP[etype]
     return etype
 
-# monkey path yams.builder.RelationDefinition to support a new wildcard type '@'
-# corresponding to system entity (ie meta but not schema)
-def _actual_types(self, schema, etype):
-    # two bits of error checking & reporting :
-    if type(etype) not in (str, list, tuple):
-        raise RuntimeError, ('Entity types must not be instances but strings or'
-                             ' list/tuples thereof. Ex. (bad, good) : '
-                             'SubjectRelation(Foo), SubjectRelation("Foo"). '
-                             'Hence, %r is not acceptable.' % etype)
-    # real work :
-    if etype == '**':
-        return self._pow_etypes(schema)
-    if isinstance(etype, (tuple, list)):
-        return etype
-    if '*' in etype or '@' in etype:
-        assert len(etype) in (1, 2)
-        etypes = ()
-        if '*' in etype:
-            etypes += tuple(self._wildcard_etypes(schema))
-        if '@' in etype:
-            etypes += tuple(system_etypes(schema))
-        return etypes
-    return (etype,)
-ybo.RelationDefinition._actual_types = _actual_types
-
-
-## cubicweb provides a RichString class for convenience
-class RichString(ybo.String):
-    """Convenience RichString attribute type
-    The following declaration::
-
-      class Card(EntityType):
-          content = RichString(fulltextindexed=True, default_format='text/rest')
-
-    is equivalent to::
-
-      class Card(EntityType):
-          content_format = String(meta=True, internationalizable=True,
-                                 default='text/rest', constraints=[format_constraint])
-          content  = String(fulltextindexed=True)
-    """
-    def __init__(self, default_format='text/plain', format_constraints=None, **kwargs):
-        self.default_format = default_format
-        self.format_constraints = format_constraints or [format_constraint]
-        super(RichString, self).__init__(**kwargs)
-
-PyFileReader.context['RichString'] = RichString
-
-## need to monkeypatch yams' _add_relation function to handle RichString
-yams_add_relation = ybo._add_relation
-@monkeypatch(ybo)
-def _add_relation(relations, rdef, name=None, insertidx=None):
-    if isinstance(rdef, RichString):
-        format_attrdef = ybo.String(meta=True, internationalizable=True,
-                                    default=rdef.default_format, maxsize=50,
-                                    constraints=rdef.format_constraints)
-        yams_add_relation(relations, format_attrdef, name+'_format', insertidx)
-    yams_add_relation(relations, rdef, name, insertidx)
-
-
-yams_EntityType_add_relation = ybo.EntityType.add_relation
-@monkeypatch(ybo.EntityType)
-def add_relation(self, rdef, name=None):
-    yams_EntityType_add_relation(self, rdef, name)
-    if isinstance(rdef, RichString) and not rdef in self._defined:
-        format_attr_name = (name or rdef.name) + '_format'
-        rdef = self.get_relations(format_attr_name).next()
-        self._ensure_relation_type(rdef)
-
 def display_name(req, key, form=''):
     """return a internationalized string for the key (schema entity or relation
     name) in a given form
@@ -131,7 +78,7 @@ def display_name(req, key, form=''):
     # ensure unicode
     # added .lower() in case no translation are available
     return unicode(req._(key)).lower()
-__builtins__['display_name'] = obsolete('display_name should be imported from cubicweb.schema')(display_name)
+__builtins__['display_name'] = deprecated('display_name should be imported from cubicweb.schema')(display_name)
 
 def ERSchema_display_name(self, req, form=''):
     """return a internationalized string for the entity/relation type name in
@@ -253,7 +200,7 @@ def system_etypes(schema):
     """return system entity types only: skip final, schema and application entities
     """
     for eschema in schema.entities():
-        if eschema.is_final() or eschema.schema_entity() or not eschema.meta:
+        if eschema.is_final() or eschema.schema_entity():
             continue
         yield eschema.type
 
@@ -293,6 +240,15 @@ class CubicWebEntitySchema(EntitySchema):
                 continue
             yield rschema, attrschema
 
+    def main_attribute(self):
+        """convenience method that returns the *main* (i.e. the first non meta)
+        attribute defined in the entity schema
+        """
+        for rschema, _ in self.attribute_definitions():
+            if not (rschema in META_RTYPES
+                    or self.is_metadata(rschema)):
+                return rschema
+
     def add_subject_relation(self, rschema):
         """register the relation schema as possible subject relation"""
         super(CubicWebEntitySchema, self).add_subject_relation(rschema)
@@ -300,10 +256,11 @@ class CubicWebEntitySchema(EntitySchema):
 
     def del_subject_relation(self, rtype):
         super(CubicWebEntitySchema, self).del_subject_relation(rtype)
-        self._update_has_text(False)
+        self._update_has_text(True)
 
-    def _update_has_text(self, need_has_text=None):
+    def _update_has_text(self, deletion=False):
         may_need_has_text, has_has_text = False, False
+        need_has_text = None
         for rschema in self.subject_relations():
             if rschema.is_final():
                 if rschema == 'has_text':
@@ -321,10 +278,9 @@ class CubicWebEntitySchema(EntitySchema):
                     may_need_has_text = True
                 else:
                     need_has_text = False
-                    break
         if need_has_text is None:
             need_has_text = may_need_has_text
-        if need_has_text and not has_has_text:
+        if need_has_text and not has_has_text and not deletion:
             rdef = ybo.RelationDefinition(self.type, 'has_text', 'String')
             self.schema.add_relation_def(rdef)
         elif not need_has_text and has_has_text:
@@ -332,7 +288,7 @@ class CubicWebEntitySchema(EntitySchema):
 
     def schema_entity(self):
         """return True if this entity type is used to build the schema"""
-        return self.type in self.schema.schema_entity_types()
+        return self.type in SCHEMA_TYPES
 
     def check_perm(self, session, action, eid=None):
         # NB: session may be a server session or a request object
@@ -370,6 +326,9 @@ class CubicWebRelationSchema(RelationSchema):
             eid = getattr(rdef, 'eid', None)
         self.eid = eid
 
+    @property
+    def meta(self):
+        return self.type in META_RTYPES
 
     def update(self, subjschema, objschema, rdef):
         super(CubicWebRelationSchema, self).update(subjschema, objschema, rdef)
@@ -408,8 +367,8 @@ class CubicWebRelationSchema(RelationSchema):
                (target == 'object' and card[1])
 
     def schema_relation(self):
-        return self.type in ('relation_type', 'from_entity', 'to_entity',
-                             'constrained_by', 'cstrtype')
+        """return True if this relation type is used to build the schema"""
+        return self.type in SCHEMA_TYPES
 
     def physical_mode(self):
         """return an appropriate mode for physical storage of this relation type:
@@ -446,7 +405,7 @@ class CubicWebSchema(Schema):
 
 
     :type name: str
-    :ivar name: name of the schema, usually the application identifier
+    :ivar name: name of the schema, usually the instance identifier
 
     :type base: str
     :ivar base: path of the directory where the schema is defined
@@ -459,23 +418,15 @@ class CubicWebSchema(Schema):
         self._eid_index = {}
         super(CubicWebSchema, self).__init__(*args, **kwargs)
         ybo.register_base_types(self)
-        rschema = self.add_relation_type(ybo.RelationType('eid', meta=True))
+        rschema = self.add_relation_type(ybo.RelationType('eid'))
         rschema.final = True
         rschema.set_default_groups()
-        rschema = self.add_relation_type(ybo.RelationType('has_text', meta=True))
+        rschema = self.add_relation_type(ybo.RelationType('has_text'))
         rschema.final = True
         rschema.set_default_groups()
-        rschema = self.add_relation_type(ybo.RelationType('identity', meta=True))
+        rschema = self.add_relation_type(ybo.RelationType('identity'))
         rschema.final = False
         rschema.set_default_groups()
-
-    def schema_entity_types(self):
-        """return the list of entity types used to build the schema"""
-        return frozenset(('CWEType', 'CWRType', 'CWAttribute', 'CWRelation',
-                          'CWConstraint', 'CWConstraintType', 'RQLExpression',
-                          # XXX those are not really "schema" entity types
-                          #     but we usually don't want them as @* targets
-                          'CWProperty', 'CWPermission', 'State', 'Transition'))
 
     def add_entity_type(self, edef):
         edef.name = edef.name.encode()
@@ -534,6 +485,7 @@ class CubicWebSchema(Schema):
         for k, v in self._eid_index.items():
             if v == (subjtype, rtype, objtype):
                 del self._eid_index[k]
+                break
         super(CubicWebSchema, self).del_relation_def(subjtype, rtype, objtype)
 
     def del_entity_type(self, etype):
@@ -564,6 +516,11 @@ class RQLVocabularyConstraint(BaseConstraint):
 
     def __init__(self, restriction):
         self.restriction = restriction
+
+    def check_consistency(self, subjschema, objschema, rdef):
+        if objschema.is_final():
+            raise BadSchemaDefinition("unique constraint doesn't apply to "
+                                      "final entity type")
 
     def serialize(self):
         return self.restriction
@@ -799,7 +756,7 @@ class ERQLExpression(RQLExpression):
             return self._check(session, x=eid)
         return self._check(session)
 
-PyFileReader.context['ERQLExpression'] = ERQLExpression
+PyFileReader.context['ERQLExpression'] = yobsolete(ERQLExpression)
 
 class RRQLExpression(RQLExpression):
     def __init__(self, expression, mainvars=None, eid=None):
@@ -843,9 +800,10 @@ class RRQLExpression(RQLExpression):
             kwargs['o'] = toeid
         return self._check(session, **kwargs)
 
-PyFileReader.context['RRQLExpression'] = RRQLExpression
+PyFileReader.context['RRQLExpression'] = yobsolete(RRQLExpression)
 
 # workflow extensions #########################################################
+from yams.buildobjs import _add_relation as yams_add_relation
 
 class workflowable_definition(ybo.metadefinition):
     """extends default EntityType's metaclass to add workflow relations
@@ -875,23 +833,6 @@ PyFileReader.context['WorkflowableEntityType'] = WorkflowableEntityType
 
 # schema loading ##############################################################
 
-class CubicWebRelationFileReader(RelationFileReader):
-    """cubicweb specific relation file reader, handling additional RQL
-    constraints on a relation definition
-    """
-
-    def handle_constraint(self, rdef, constraint_text):
-        """arbitrary constraint is an rql expression for cubicweb"""
-        if not rdef.constraints:
-            rdef.constraints = []
-        rdef.constraints.append(RQLVocabularyConstraint(constraint_text))
-
-    def process_properties(self, rdef, relation_def):
-        if 'inline' in relation_def:
-            rdef.inlined = True
-        RelationFileReader.process_properties(self, rdef, relation_def)
-
-
 CONSTRAINTS['RQLConstraint'] = RQLConstraint
 CONSTRAINTS['RQLUniqueConstraint'] = RQLUniqueConstraint
 CONSTRAINTS['RQLVocabularyConstraint'] = RQLVocabularyConstraint
@@ -903,8 +844,6 @@ class BootstrapSchemaLoader(SchemaLoader):
     the persistent schema
     """
     schemacls = CubicWebSchema
-    SchemaLoader.file_handlers.update({'.rel' : CubicWebRelationFileReader,
-                                       })
 
     def load(self, config, path=(), **kwargs):
         """return a Schema instance from the schema definition read
@@ -927,7 +866,7 @@ class BootstrapSchemaLoader(SchemaLoader):
 
 class CubicWebSchemaLoader(BootstrapSchemaLoader):
     """cubicweb specific schema loader, automatically adding metadata to the
-    application's schema
+    instance's schema
     """
 
     def load(self, config, **kwargs):
@@ -936,10 +875,14 @@ class CubicWebSchemaLoader(BootstrapSchemaLoader):
         """
         self.info('loading %s schemas', ', '.join(config.cubes()))
         if config.apphome:
-            path = reversed([config.apphome] + config.cubes_path())
+            path = tuple(reversed([config.apphome] + config.cubes_path()))
         else:
-            path = reversed(config.cubes_path())
-        return super(CubicWebSchemaLoader, self).load(config, path=path, **kwargs)
+            path = tuple(reversed(config.cubes_path()))
+        try:
+            return super(CubicWebSchemaLoader, self).load(config, path=path, **kwargs)
+        finally:
+            # we've to cleanup modules imported from cubicweb.schemas as well
+            cleanup_sys_modules([self.lib_directory])
 
     def _load_definition_files(self, cubes):
         for filepath in (join(self.lib_directory, 'bootstrap.py'),
@@ -954,49 +897,22 @@ class CubicWebSchemaLoader(BootstrapSchemaLoader):
                 self.handle_file(filepath)
 
 
-# _() is just there to add messages to the catalog, don't care about actual
-# translation
-PERM_USE_TEMPLATE_FORMAT = _('use_template_format')
-
-class FormatConstraint(StaticVocabularyConstraint):
-    need_perm_formats = [_('text/cubicweb-page-template')]
-
-    regular_formats = (_('text/rest'),
-                       _('text/html'),
-                       _('text/plain'),
-                       )
-    def __init__(self):
-        pass
-
-    def serialize(self):
-        """called to make persistent valuable data of a constraint"""
-        return None
-
-    @classmethod
-    def deserialize(cls, value):
-        """called to restore serialized data of a constraint. Should return
-        a `cls` instance
-        """
-        return cls()
-
-    def vocabulary(self, entity=None, req=None):
-        if req is None and entity is not None:
-            req = entity.req
-        if req is not None and req.user.has_permission(PERM_USE_TEMPLATE_FORMAT):
-            return self.regular_formats + tuple(self.need_perm_formats)
-        return self.regular_formats
-
-    def __str__(self):
-        return 'value in (%s)' % u', '.join(repr(unicode(word)) for word in self.vocabulary())
-
-
-format_constraint = FormatConstraint()
-CONSTRAINTS['FormatConstraint'] = FormatConstraint
-PyFileReader.context['format_constraint'] = format_constraint
-
 set_log_methods(CubicWebSchemaLoader, getLogger('cubicweb.schemaloader'))
 set_log_methods(BootstrapSchemaLoader, getLogger('cubicweb.bootstrapschemaloader'))
 set_log_methods(RQLExpression, getLogger('cubicweb.schema'))
+
+# _() is just there to add messages to the catalog, don't care about actual
+# translation
+PERM_USE_TEMPLATE_FORMAT = _('use_template_format')
+NEED_PERM_FORMATS = [_('text/cubicweb-page-template')]
+
+@monkeypatch(FormatConstraint)
+def vocabulary(self, entity=None, req=None):
+    if req is None and entity is not None:
+        req = entity.req
+    if req is not None and req.user.has_permission(PERM_USE_TEMPLATE_FORMAT):
+        return self.regular_formats + tuple(NEED_PERM_FORMATS)
+    return self.regular_formats
 
 # XXX monkey patch PyFileReader.import_erschema until bw_normalize_etype is
 # necessary

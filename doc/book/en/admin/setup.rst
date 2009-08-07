@@ -39,7 +39,7 @@ You can now install the required packages with the following command::
   apt-get install cubicweb cubicweb-dev
 
 `cubicweb` installs the framework itself, allowing you to create
-new applications.
+new instances.
 
 `cubicweb-dev` installs the development environment allowing you to
 develop new cubes.
@@ -69,22 +69,29 @@ extension::
   hg fclone http://www.logilab.org/hg/forests/cubicweb
 
 See :ref:`MercurialPresentation` for more details about Mercurial.
+When cloning a repository, you might be set in a development branch
+(the 'default' branch). You should check that the branches of the
+repositories are set to 'stable' (using `hg up stable` for each one)
+if you do not intend to develop the framework itself.
 
 In both cases, make sure you have installed the dependencies (see appendixes for
 the list).
 
-Postgres installation
-`````````````````````
+PostgreSQL installation
+```````````````````````
 
-Please refer to the `Postgresql project online documentation`_.
+Please refer to the `PostgreSQL project online documentation`_.
 
-.. _`Postgresql project online documentation`: http://www.postgresql.org/
+.. _`PostgreSQL project online documentation`: http://www.postgresql.org/
 
-You need to install the three following packages: `postgres-8.3`,
-`postgres-contrib-8.3` and `postgresql-plpython-8.3`.
+You need to install the three following packages: `postgresql-8.3`,
+`postgresql-contrib-8.3` and `postgresql-plpython-8.3`.
 
 
-Then you can install:
+Other dependencies
+``````````````````
+
+You can also install:
 
 * `pyro` if you wish the repository to be accessible through Pyro
   or if the client and the server are not running on the same machine
@@ -105,19 +112,20 @@ the path to the forest ``cubicweb``:
 Add the following lines to either `.bashrc` or `.bash_profile` to configure
 your development environment ::
 
-  export PYTHONPATH=/full/path/to/cubicweb-forest
+    export PYTHONPATH=/full/path/to/cubicweb-forest
 
-If you installed the debian packages, no configuration is required.
-Your new cubes will be placed in `/usr/share/cubicweb/cubes` and
-your applications will be placed in `/etc/cubicweb.d`.
+If you installed *CubicWeb* with packages, no configuration is required and your
+new cubes will be placed in `/usr/share/cubicweb/cubes` and your instances
+will be placed in `/etc/cubicweb.d`.
 
-To use others directories then you will have to configure the
-following environment variables as follows::
+You may run a system-wide install of *CubicWeb* in "user mode" and use it for
+development by setting the following environment variable::
 
+    export CW_MODE=user
     export CW_CUBES_PATH=~/lib/cubes
-    export CW_REGISTRY=~/etc/cubicweb.d/
-    export CW_INSTANCE_DATA=$CW_REGISTRY
-    export CW_RUNTIME=/tmp
+    export CW_INSTANCES_DIR=~/etc/cubicweb.d/
+    export CW_INSTANCES_DATA_DIR=$CW_INSTANCES_DIR
+    export CW_RUNTIME_DIR=/tmp
 
 .. note::
     The values given above are our suggestions but of course
@@ -129,22 +137,22 @@ Databases configuration
 
 
 
-.. _ConfigurationPostgres:
+.. _ConfigurationPostgresql:
 
-Postgres configuration
-``````````````````````
+PostgreSQL configuration
+````````````````````````
 
 .. note::
-    If you already have an existing cluster and postgres server
+    If you already have an existing cluster and PostgreSQL server
     running, you do not need to execute the initilization step
-    of your Postgres database.
+    of your PostgreSQL database.
 
-* First, initialize the database Postgres with the command ``initdb``.
+* First, initialize the database PostgreSQL with the command ``initdb``.
   ::
 
     $ initdb -D /path/to/pgsql
 
-  Once initialized, start the database server Postgres
+  Once initialized, start the database server PostgreSQL
   with the command::
 
     $ postgres -D /path/to/psql
@@ -176,7 +184,7 @@ Postgres configuration
 
   This login/password will be requested when you will create an
   instance with `cubicweb-ctl create` to initialize the database of
-  your application.
+  your instance.
 
 .. note::
     The authentication method can be configured in ``pg_hba.conf``.
@@ -194,12 +202,16 @@ Postgres configuration
 
 MySql configuration
 ```````````````````
-Yout must add the following lines in /etc/mysql/my.cnf file::
+Yout must add the following lines in ``/etc/mysql/my.cnf`` file::
 
     transaction-isolation = READ-COMMITTED
     default-storage-engine=INNODB
     default-character-set=utf8
     max_allowed_packet = 128M
+
+.. note::
+    It is unclear whether mysql supports indexed string of arbitrary lenght or
+    not.
 
 Pyro configuration
 ------------------

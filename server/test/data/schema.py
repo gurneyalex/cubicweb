@@ -5,7 +5,12 @@
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
 :license: GNU Lesser General Public License, v2.1 - http://www.gnu.org/licenses
 """
-from cubicweb.schema import format_constraint
+from yams.buildobjs import (EntityType, RelationType, RelationDefinition,
+                            SubjectRelation, ObjectRelation,
+                            RichString, String, Int, Boolean, Datetime)
+from yams.constraints import SizeConstraint
+from cubicweb.schema import (WorkflowableEntityType, RQLConstraint,
+                             ERQLExpression, RRQLExpression)
 
 class Affaire(WorkflowableEntityType):
     permissions = {
@@ -20,10 +25,8 @@ class Affaire(WorkflowableEntityType):
                  constraints=[SizeConstraint(16)])
     sujet = String(fulltextindexed=True,
                    constraints=[SizeConstraint(256)])
-    descr_format = String(meta=True, internationalizable=True,
-                                default='text/rest', constraints=[format_constraint])
-    descr = String(fulltextindexed=True,
-                   description=_('more detailed description'))
+    descr = RichString(fulltextindexed=True,
+                       description=_('more detailed description'))
 
     duration = Int()
     invoiced = Int()
@@ -63,8 +66,8 @@ class SubDivision(Division):
     __specializes_schema__ = True
     travaille_subdivision = ObjectRelation('Personne')
 
-_euser = import_schema('base').CWUser
-_euser.__relations__[0].fulltextindexed = True
+from cubicweb.schemas.base import CWUser
+CWUser.get_relations('login').next().fulltextindexed = True
 
 class Note(EntityType):
     date = String(maxsize=10)
@@ -73,7 +76,7 @@ class Note(EntityType):
 
     migrated_from = SubjectRelation('Note')
     attachment = SubjectRelation(('File', 'Image'))
-    inline1 = SubjectRelation('Affaire', inlined=True)
+    inline1 = SubjectRelation('Affaire', inlined=True, cardinality='?*')
     todo_by = SubjectRelation('CWUser')
 
 class Personne(EntityType):
@@ -95,7 +98,7 @@ class Personne(EntityType):
     travaille = SubjectRelation('Societe')
     concerne = SubjectRelation('Affaire')
     connait = SubjectRelation('Personne')
-    inline2 = SubjectRelation('Affaire', inlined=True)
+    inline2 = SubjectRelation('Affaire', inlined=True, cardinality='?*')
     comments = ObjectRelation('Comment')
 
 
@@ -131,14 +134,14 @@ class travaille(RelationType):
         'delete': ('managers', RRQLExpression('O owned_by U')),
         }
 
-class para(AttributeRelationType):
+class para(RelationType):
     permissions = {
         'read':   ('managers', 'users', 'guests'),
         'add':    ('managers', ERQLExpression('X in_state S, S name "todo"')),
         'delete': ('managers', ERQLExpression('X in_state S, S name "todo"')),
         }
 
-class test(AttributeRelationType):
+class test(RelationType):
     permissions = {'read': ('managers', 'users', 'guests'),
                    'delete': ('managers',),
                    'add': ('managers',)}
@@ -164,7 +167,12 @@ class multisource_crossed_rel(RelationDefinition):
     object = 'Note'
 
 
-class see_also(RelationDefinition):
+class see_also_1(RelationDefinition):
+    name = 'see_also'
+    subject = object = 'Folder'
+
+class see_also_2(RelationDefinition):
+    name = 'see_also'
     subject = ('Bookmark', 'Note')
     object = ('Bookmark', 'Note')
 
@@ -177,14 +185,13 @@ class ecrit_par_1(RelationDefinition):
     subject = 'Note'
     object ='Personne'
     constraints = [RQLConstraint('E concerns P, X version_of P')]
+    cardinality = '?*'
 
 class ecrit_par_2(RelationDefinition):
     name = 'ecrit_par'
     subject = 'Note'
     object ='CWUser'
-
-class see_also(RelationDefinition):
-    subject = object = 'Folder'
+    cardinality='?*'
 
 
 class copain(RelationDefinition):
@@ -199,7 +206,7 @@ class filed_under(RelationDefinition):
     object = 'Folder'
 
 class require_permission(RelationDefinition):
-    subject = ('Card', 'Note')
+    subject = ('Card', 'Note', 'Personne')
     object = 'CWPermission'
 
 class require_state(RelationDefinition):

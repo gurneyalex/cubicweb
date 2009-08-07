@@ -8,7 +8,7 @@
 __docformat__ = "restructuredtext en"
 _ = unicode
 
-from cubicweb.vregistry import objectify_selector
+from cubicweb.appobject import objectify_selector
 from cubicweb.selectors import (EntitySelector,
     one_line_rset, two_lines_rset, one_etype_rset, relation_possible,
     nonempty_rset, non_final_entity,
@@ -67,7 +67,7 @@ def addable_etype_empty_rset(cls, req, rset=None, **kwargs):
                 return 1
     return 0
 
-# generic primary actions #####################################################
+# generic 'main' actions #######################################################
 
 class SelectAction(Action):
     """base class for link search actions. By default apply on
@@ -147,7 +147,7 @@ class MultipleEditAction(Action):
         return self.build_url('view', rql=self.rset.rql, vid='muledit')
 
 
-# generic secondary actions ###################################################
+# generic "more" actions #######################################################
 
 class ManagePermissionsAction(Action):
     id = 'managepermission'
@@ -287,8 +287,41 @@ class ManageAction(ManagersAction):
     title = _('manage')
     order = 20
 
+class SiteInfoAction(ManagersAction):
+    id = 'siteinfo'
+    title = _('info')
+    order = 30
+    __select__ = match_user_groups('users','managers')
+
 
 from logilab.common.deprecation import class_moved
 from cubicweb.web.views.bookmark import FollowAction
 FollowAction = class_moved(FollowAction)
 
+## default actions ui configuration ###########################################
+
+addmenu = uicfg.actionbox_appearsin_addmenu
+addmenu.tag_subject_of(('*', 'is', '*'), False)
+addmenu.tag_object_of(('*', 'is', '*'), False)
+addmenu.tag_subject_of(('*', 'is_instance_of', '*'), False)
+addmenu.tag_object_of(('*', 'is_instance_of', '*'), False)
+addmenu.tag_subject_of(('*', 'identity', '*'), False)
+addmenu.tag_object_of(('*', 'identity', '*'), False)
+addmenu.tag_subject_of(('*', 'owned_by', '*'), False)
+addmenu.tag_subject_of(('*', 'created_by', '*'), False)
+addmenu.tag_subject_of(('*', 'require_permission', '*'), False)
+addmenu.tag_subject_of(('*', 'wf_info_for', '*'), False)
+addmenu.tag_object_of(('*', 'wf_info_for', '*'), False)
+addmenu.tag_object_of(('*', 'state_of', 'CWEType'), True)
+addmenu.tag_object_of(('*', 'transition_of', 'CWEType'), True)
+addmenu.tag_object_of(('*', 'relation_type', 'CWRType'), True)
+addmenu.tag_object_of(('*', 'from_entity', 'CWEType'), False)
+addmenu.tag_object_of(('*', 'to_entity', 'CWEType'), False)
+addmenu.tag_object_of(('*', 'in_group', 'CWGroup'), True)
+addmenu.tag_object_of(('*', 'owned_by', 'CWUser'), False)
+addmenu.tag_object_of(('*', 'created_by', 'CWUser'), False)
+addmenu.tag_object_of(('*', 'bookmarked_by', 'CWUser'), True)
+addmenu.tag_subject_of(('Transition', 'destination_state', '*'), True)
+addmenu.tag_object_of(('*', 'allowed_transition', 'Transition'), True)
+addmenu.tag_object_of(('*', 'destination_state', 'State'), True)
+addmenu.tag_subject_of(('State', 'allowed_transition', '*'), True)

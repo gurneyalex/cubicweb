@@ -8,7 +8,7 @@
 __docformat__ = "restructuredtext en"
 
 import os
-from tempfile import mktemp
+import tempfile
 
 from rql import nodes
 
@@ -81,6 +81,8 @@ def vid_from_rset(req, rset, schema):
             if req.search_state[0] == 'normal':
                 return 'primary'
             return 'outofcontext-search'
+        if len(rset.column_types(0)) == 1:
+            return 'adaptedlist'
         return 'list'
     return 'table'
 
@@ -109,7 +111,7 @@ class TmpFileViewMixin(object):
 
     def cell_call(self, row=0, col=0):
         self.row, self.col = row, col # in case one need it
-        tmpfile = mktemp('.png')
+        _, tmpfile = tempfile.mkstemp('.png')
         try:
             self._generate(tmpfile)
             self.w(open(tmpfile).read())

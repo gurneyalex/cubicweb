@@ -18,6 +18,7 @@ from cubicweb import Unauthorized, view
 from cubicweb.selectors import (implements, has_related_entities,
                                 relation_possible, match_form_params)
 from cubicweb.interfaces import IWorkflowable
+from cubicweb.view import EntityView
 from cubicweb.web import stdmsgs, action, component, form
 from cubicweb.web.form import FormViewMixIn
 from cubicweb.web.formfields import StringField,  RichTextField
@@ -48,13 +49,12 @@ class ChangeStateFormView(FormViewMixIn, view.EntityView):
     def cell_call(self, row, col):
         entity = self.entity(row, col)
         state = entity.in_state[0]
-        transition = self.req.eid_rset(self.req.form['treid']).get_entity(0, 0)
+        transition = self.req.entity_from_eid(self.req.form['treid'])
         dest = transition.destination()
         _ = self.req._
-        form = self.vreg.select_object('forms', 'changestate', self.req,
-                                       self.rset, row=row, col=col,
-                                       entity=entity,
-                                       redirect_path=self.redirectpath(entity))
+        form = self.vreg.select('forms', 'changestate', self.req, rset=self.rset,
+                                row=row, col=col, entity=entity,
+                                redirect_path=self.redirectpath(entity))
         self.w(form.error_message())
         self.w(u'<h4>%s %s</h4>\n' % (_(transition.name),
                                       entity.view('oneline')))
@@ -69,12 +69,9 @@ class ChangeStateFormView(FormViewMixIn, view.EntityView):
         return entity.rest_path()
 
 
-class WFHistoryVComponent(component.EntityVComponent):
-    """display the workflow history for entities supporting it"""
+class WFHistoryView(EntityView):
     id = 'wfhistory'
-    __select__ = (component.EntityVComponent.__select__
-                  & relation_possible('wf_info_for', role='object'))
-    context = 'navcontentbottom'
+    __select__ = relation_possible('wf_info_for', role='object')
     title = _('Workflow history')
 
     def cell_call(self, row, col, view=None):
@@ -104,6 +101,16 @@ class WFHistoryVComponent(component.EntityVComponent):
                        displaycols=displaycols, headers=headers)
 
 
+class WFHistoryVComponent(component.EntityVComponent):
+    """display the workflow history for entities supporting it"""
+    id = 'wfhistory'
+    __select__ = WFHistoryView.__select__ & component.EntityVComponent.__select__
+    context = 'navcontentbottom'
+    title = _('Workflow history')
+
+    def cell_call(self, row, col, view=None):
+        self.wview('wfhistory', self.rset, row=row, col=col, view=view)
+
 # workflow entity types views #################################################
 
 class CellView(view.EntityView):
@@ -111,7 +118,7 @@ class CellView(view.EntityView):
     __select__ = implements('TrInfo')
 
     def cell_call(self, row, col, cellvid=None):
-        self.w(self.entity(row, col).printable_value('comment'))
+        self.w(self.entity(row, col).view('reledit', rtype='comment'))
 
 
 class StateInContextView(view.EntityView):

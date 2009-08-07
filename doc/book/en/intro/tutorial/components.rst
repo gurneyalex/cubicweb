@@ -11,7 +11,7 @@ Standard library
 A library of standard cubes are available from `CubicWeb Forge`_
 Cubes provide entities and views.
 
-The available application entities are:
+The available application entities in standard cubes are:
 
 * addressbook: PhoneNumber and PostalAddress
 
@@ -39,11 +39,12 @@ The available application entities are:
 * zone: Zone (to define places within larger places, for example a
   city in a state in a country)
 
+.. _`CubicWeb Forge`: http://www.cubicweb.org/project/
 
 Adding comments to BlogDemo
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-To import a cube in your application just change the line in the
+To import a cube in your instance just change the line in the
 ``__pkginfo__.py`` file and verify that the cube you are planning
 to use is listed by the command ``cubicweb-ctl list``.
 For example::
@@ -51,7 +52,7 @@ For example::
     __use__ = ('comment',)
 
 will make the ``Comment`` entity available in your ``BlogDemo``
-application.
+cube.
 
 Change the schema to add a relationship between ``BlogEntry`` and
 ``Comment`` and you are done. Since the comment cube defines the
@@ -67,13 +68,12 @@ Synchronize the data model
 Once you modified your data model, you need to synchronize the
 database with your model. For this purpose, *CubicWeb* provides
 a very useful command ``cubicweb-ctl shell blogdemo`` which
-launches an interactive migration Python shell. (see
-:ref:`cubicweb-ctl` for more details))
-As you modified a relation from the `BlogEntry` schema,
-run the following command:
+launches an interactive shell where you can enter migration
+commands. (see :ref:`cubicweb-ctl` for more details))
+As you added the cube named `comment`, you need to run:
+
 ::
 
-  synchronize_rschema('BlogEntry')
+  add_cube('comment')
 
-You can now start your application and add comments to each
-`BlogEntry`.
+You can now start your instance and comment your blog entries.

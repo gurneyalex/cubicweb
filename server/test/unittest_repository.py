@@ -20,7 +20,7 @@ from yams.constraints import UniqueConstraint
 
 from cubicweb import BadConnectionId, RepositoryError, ValidationError, UnknownEid, AuthenticationError
 from cubicweb.schema import CubicWebSchema, RQLConstraint
-from cubicweb.dbapi import connect, repo_connect
+from cubicweb.dbapi import connect, repo_connect, multiple_connections_unfix
 from cubicweb.devtools.apptest import RepositoryBasedTC
 from cubicweb.devtools.repotest import tuplify
 from cubicweb.server import repository
@@ -226,12 +226,12 @@ class RepositoryTC(RepositoryBasedTC):
         # check order of attributes is respected
         self.assertListEquals([r.type for r in schema.eschema('CWAttribute').ordered_relations()
                                if not r.type in ('eid', 'is', 'is_instance_of', 'identity',
-                                                 'creation_date', 'modification_date',
+                                                 'creation_date', 'modification_date', 'cwuri',
                                                  'owned_by', 'created_by')],
-                              ['relation_type', 'from_entity', 'to_entity', 'constrained_by',
+                              ['relation_type', 'from_entity', 'in_basket', 'to_entity', 'constrained_by',
                                'cardinality', 'ordernum',
                                'indexed', 'fulltextindexed', 'internationalizable',
-                               'defaultval', 'description_format', 'description'])
+                               'defaultval', 'description', 'description_format'])
 
         self.assertEquals(schema.eschema('CWEType').main_attribute(), 'name')
         self.assertEquals(schema.eschema('State').main_attribute(), 'name')
@@ -276,13 +276,17 @@ class RepositoryTC(RepositoryBasedTC):
 
     def _pyro_client(self, done):
         cnx = connect(self.repo.config.appid, u'admin', 'gingkow')
-        # check we can get the schema
-        schema = cnx.get_schema()
-        self.assertEquals(schema.__hashmode__, None)
-        cu = cnx.cursor()
-        rset = cu.execute('Any U,G WHERE U in_group G')
-        cnx.close()
-        done.append(True)
+        try:
+            # check we can get the schema
+            schema = cnx.get_schema()
+            self.assertEquals(schema.__hashmode__, None)
+            cu = cnx.cursor()
+            rset = cu.execute('Any U,G WHERE U in_group G')
+            cnx.close()
+            done.append(True)
+        finally:
+            # connect monkey path some method by default, remove them
+            multiple_connections_unfix()
 
     def test_internal_api(self):
         repo = self.repo
@@ -328,6 +332,16 @@ class RepositoryTC(RepositoryBasedTC):
         no_is_rset = self.execute('Any X WHERE NOT X is ET')
         self.failIf(no_is_rset, no_is_rset.description)
 
+#     def test_perfo(self):
+#         self.set_debug(True)
+#         from time import time, clock
+#         t, c = time(), clock()
+#         try:
+#             self.create_user('toto')
+#         finally:
+#             self.set_debug(False)
+#         print 'test time: %.3f (time) %.3f (cpu)' % ((time() - t), clock() - c)
+
 
 class DataHelpersTC(RepositoryBasedTC):
 
@@ -357,7 +371,7 @@ class DataHelpersTC(RepositoryBasedTC):
         self.assertRaises(UnknownEid, self.repo.type_from_eid, -2, self.session)
 
     def test_add_delete_info(self):
-        entity = self.repo.vreg.etype_class('Personne')(self.session, None, None)
+        entity = self.repo.vreg['etypes'].etype_class('Personne')(self.session)
         entity.eid = -1
         entity.complete = lambda x: None
         self.repo.add_info(self.session, entity, self.repo.sources_by_uri['system'])

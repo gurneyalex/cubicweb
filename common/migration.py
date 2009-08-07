@@ -1,5 +1,4 @@
-"""utility to ease migration of application version to newly installed
-version
+"""utilities for instances migration
 
 :organization: Logilab
 :copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), license is LGPL v2.
@@ -11,11 +10,12 @@ __docformat__ = "restructuredtext en"
 import sys
 import os
 import logging
-from tempfile import mktemp
+import tempfile
 from os.path import exists, join, basename, splitext
 
 from logilab.common.decorators import cached
 from logilab.common.configuration import REQUIRED, read_old_config
+from logilab.common.shellutils import ASK
 
 from cubicweb import ConfigurationError
 
@@ -70,11 +70,10 @@ def execscript_confirm(scriptpath):
     ability to show the script's content
     """
     while True:
-        confirm = raw_input('** execute %r (Y/n/s[how]) ?' % scriptpath)
-        confirm = confirm.strip().lower()
-        if confirm in ('n', 'no'):
+        answer = ASK.ask('Execute %r ?' % scriptpath, ('Y','n','show'), 'Y')
+        if answer == 'n':
             return False
-        elif confirm in ('s', 'show'):
+        elif answer == 'show':
             stream = open(scriptpath)
             scriptcontent = stream.read()
             stream.close()
@@ -153,11 +152,15 @@ class MigrationHelper(object):
                 migrdir = self.config.cube_migration_scripts_dir(cube)
             scripts = filter_scripts(self.config, migrdir, fromversion, toversion)
             if scripts:
+                prevversion = None
                 for version, script in scripts:
+                    # take care to X.Y.Z_Any.py / X.Y.Z_common.py: we've to call
+                    # cube_upgraded once all script of X.Y.Z have been executed
+                    if prevversion is not None and version != prevversion:
+                        self.cube_upgraded(cube, version)
+                    prevversion = version
                     self.process_script(script)
-                    self.cube_upgraded(cube, version)
-                if version != toversion:
-                    self.cube_upgraded(cube, toversion)
+                self.cube_upgraded(cube, toversion)
             else:
                 self.cube_upgraded(cube, toversion)
 
@@ -169,7 +172,7 @@ class MigrationHelper(object):
 
     def interact(self, args, kwargs, meth):
         """execute the given method according to user's confirmation"""
-        msg = 'execute command: %s(%s) ?' % (
+        msg = 'Execute command: %s(%s) ?' % (
             meth.__name__[4:],
             ', '.join([repr(arg) for arg in args] +
                       ['%s=%r' % (n,v) for n,v in kwargs.items()]))
@@ -185,26 +188,24 @@ class MigrationHelper(object):
 
         if `retry` is true the r[etry] answer may return 2
         """
-        print question,
-        possibleanswers = 'Y/n'
+        possibleanswers = ['Y','n']
         if abort:
-            possibleanswers += '/a[bort]'
+            possibleanswers.append('abort')
         if shell:
-            possibleanswers += '/s[hell]'
+            possibleanswers.append('shell')
         if retry:
-            possibleanswers += '/r[etry]'
+            possibleanswers.append('retry')
         try:
-            confirm = raw_input('(%s): ' % ( possibleanswers, ))
-            answer = confirm.strip().lower()
+            answer = ASK.ask(question, possibleanswers, 'Y')
         except (EOFError, KeyboardInterrupt):
             answer = 'abort'
-        if answer in ('n', 'no'):
+        if answer == 'n':
             return False
-        if answer in ('r', 'retry'):
+        if answer == 'retry':
             return 2
-        if answer in ('a', 'abort'):
+        if answer == 'abort':
             raise SystemExit(1)
-        if shell and answer in ('s', 'shell'):
+        if shell and answer == 'shell':
             self.interactive_shell()
             return self.confirm(question)
         return True
@@ -337,7 +338,7 @@ type "exit" or Ctrl-D to quit the shell and resume operation"""
         configfile = self.config.main_config_file()
         if self._option_changes:
             read_old_config(self.config, self._option_changes, configfile)
-        newconfig = mktemp()
+        _, newconfig = tempfile.mkstemp()
         for optdescr in self._option_changes:
             if optdescr[0] == 'added':
                 optdict = self.config.get_option_def(optdescr[1])

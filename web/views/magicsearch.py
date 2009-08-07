@@ -42,7 +42,7 @@ def translate_rql_tree(rqlst, translations, schema):
     :param translations: the reverted l10n dict
 
     :type schema: `cubicweb.schema.Schema`
-    :param schema: the application's schema
+    :param schema: the instance's schema
     """
     # var_types is used as a map : var_name / var_type
     vartypes = {}
@@ -94,7 +94,7 @@ def resolve_ambiguities(var_types, ambiguous_nodes, schema):
     :param ambiguous_nodes: a map : relation_node / (var_name, available_translations)
 
     :type schema: `cubicweb.schema.Schema`
-    :param schema: the application's schema
+    :param schema: the instance's schema
     """
     # Now, try to resolve ambiguous translations
     for relation, (var_name, translations_found) in ambiguous_nodes.items():
@@ -170,10 +170,7 @@ class QueryTranslator(BaseQueryProcessor):
     """
     priority = 2
     def preprocess_query(self, uquery, req):
-        try:
-            rqlst = parse(uquery, print_errors=False)
-        except (RQLSyntaxError, BadRQLQuery), err:
-            return uquery,
+        rqlst = parse(uquery, print_errors=False)
         schema = self.vreg.schema
         # rql syntax tree will be modified in place if necessary
         translate_rql_tree(rqlst, trmap(self.config, schema, req.lang), schema)
@@ -204,7 +201,7 @@ class QSPreProcessor(BaseQueryProcessor):
             elif len(words) == 3:
                 args = self._three_words_query(*words)
             else:
-                args = self._multiple_words_query(words)
+                raise
         return args
 
     def _get_entity_type(self, word):
@@ -291,11 +288,6 @@ class QSPreProcessor(BaseQueryProcessor):
                                   self._complete_rql(word3, etype, searchattr=rtype))
         return rql, {'text': word3}
 
-    def _multiple_words_query(self, words):
-        """specific process for more than 3 words query"""
-        return ' '.join(words),
-
-
     def _expand_shortcut(self, etype, rtype, searchstr):
         """Expands shortcut queries on a non final relation to use has_text or
         the main attribute (according to possible entity type) if '%' is used in the
@@ -356,8 +348,7 @@ class MagicSearchComponent(Component):
         super(MagicSearchComponent, self).__init__(req, rset)
         processors = []
         self.by_name = {}
-        for processorcls in self.vreg.registry_objects('components',
-                                                       'magicsearch_processor'):
+        for processorcls in self.vreg['components']['magicsearch_processor']:
             # instantiation needed
             processor = processorcls()
             processors.append(processor)

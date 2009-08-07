@@ -1,4 +1,4 @@
-"""twisted server for CubicWeb web applications
+"""twisted server for CubicWeb web instances
 
 :organization: Logilab
 :copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), license is LGPL v2.
@@ -8,21 +8,24 @@
 __docformat__ = "restructuredtext en"
 
 import sys
+import os
 import select
 from time import mktime
 from datetime import date, timedelta
 from urlparse import urlsplit, urlunsplit
+import hotshot
 
 from twisted.application import service, strports
+from twisted.scripts._twistd_unix import daemonize
 from twisted.internet import reactor, task, threads
 from twisted.internet.defer import maybeDeferred
 from twisted.web2 import channel, http, server, iweb
 from twisted.web2 import static, resource, responsecode
 
-from cubicweb import ObjectNotFound
+from cubicweb import ObjectNotFound, CW_EVENT_MANAGER
 from cubicweb.web import (AuthenticationError, NotFound, Redirect,
-                       RemoteCallFailed, DirectResponse, StatusResponse,
-                       ExplicitLogin)
+                          RemoteCallFailed, DirectResponse, StatusResponse,
+                          ExplicitLogin)
 from cubicweb.web.application import CubicWebPublisher
 
 from cubicweb.etwist.request import CubicWebTwistedRequestAdapter
@@ -33,12 +36,12 @@ def start_task(interval, func):
     lc.start(interval)
 
 def start_looping_tasks(repo):
-    for interval, func in repo._looping_tasks:
+    for interval, func, args in repo._looping_tasks:
         repo.info('starting twisted task %s with interval %.2fs',
                   func.__name__, interval)
-        def catch_error_func(repo=repo, func=func):
+        def catch_error_func(repo=repo, func=func, args=args):
             try:
-                func()
+                func(*args)
             except:
                 repo.exception('error in looping task')
         start_task(interval, catch_error_func)
@@ -106,13 +109,14 @@ class CubicWebRootResource(resource.PostableResource):
                 self.pyro_listen_timeout = 0.02
                 start_task(1, self.pyro_loop_event)
             self.appli.repo.start_looping_tasks()
-        try:
-            self.url_rewriter = self.appli.vreg.select_component('urlrewriter')
-        except ObjectNotFound:
-            self.url_rewriter = None
+        self.set_url_rewriter()
+        CW_EVENT_MANAGER.bind('after-registry-reload', self.set_url_rewriter)
         interval = min(config['cleanup-session-time'] or 120,
                        config['cleanup-anonymous-session-time'] or 720) / 2.
         start_task(interval, self.appli.session_handler.clean_sessions)
+
+    def set_url_rewriter(self):
+        self.url_rewriter = self.appli.vreg['components'].select_object('urlrewriter')
 
     def shutdown_event(self):
         """callback fired when the server is shutting down to properly
@@ -271,35 +275,6 @@ class CubicWebRootResource(resource.PostableResource):
             content = self.appli.need_login_content(req)
         return http.Response(code, req.headers_out, content)
 
-
-# This part gets run when you run this file via: "twistd -noy demo.py"
-def main(appid, cfgname):
-    """Starts an cubicweb  twisted server for an application
-
-    appid: application's identifier
-    cfgname: name of the configuration to use (twisted or all-in-one)
-    """
-    from cubicweb.cwconfig import CubicWebConfiguration
-    from cubicweb.etwist import twconfig # trigger configuration registration
-    config = CubicWebConfiguration.config_for(appid, cfgname)
-    # XXX why calling init_available_cubes here ?
-    config.init_available_cubes()
-    # create the site and application objects
-    if '-n' in sys.argv: # debug mode
-        cubicweb = CubicWebRootResource(config, debug=True)
-    else:
-        cubicweb = CubicWebRootResource(config)
-    #toplevel = vhost.VHostURIRewrite(base_url, cubicweb)
-    toplevel = cubicweb
-    website = server.Site(toplevel)
-    application = service.Application("cubicweb")
-    # serve it via standard HTTP on port set in the configuration
-    s = strports.service('tcp:%04d' % (config['port'] or 8080),
-                         channel.HTTPFactory(website))
-    s.setServiceParent(application)
-    return application
-
-
 from twisted.python import failure
 from twisted.internet import defer
 from twisted.web2 import fileupload
@@ -359,7 +334,7 @@ set_log_methods(CubicWebRootResource, getLogger('cubicweb.twisted'))
 def _gc_debug():
     import gc
     from pprint import pprint
-    from cubicweb.vregistry import VObject
+    from cubicweb.appobject import AppObject
     gc.collect()
     count = 0
     acount = 0
@@ -367,7 +342,7 @@ def _gc_debug():
     for obj in gc.get_objects():
         if isinstance(obj, CubicWebTwistedRequestAdapter):
             count += 1
-        elif isinstance(obj, VObject):
+        elif isinstance(obj, AppObject):
             acount += 1
         else:
             try:
@@ -381,3 +356,28 @@ def _gc_debug():
     ocount = sorted(ocount.items(), key=lambda x: x[1], reverse=True)[:20]
     pprint(ocount)
     print 'UNREACHABLE', gc.garbage
+
+def run(config, debug):
+    # create the site
+    root_resource = CubicWebRootResource(config, debug)
+    website = server.Site(root_resource)
+    # serve it via standard HTTP on port set in the configuration
+    port = config['port'] or 8080
+    reactor.listenTCP(port, channel.HTTPFactory(website))
+    baseurl = config['base-url'] or config.default_base_url()
+    logger = getLogger('cubicweb.twisted')
+    logger.info('instance started on %s', baseurl)
+    if not debug:
+        daemonize()
+        if config['pid-file']:
+            # ensure the directory where the pid-file should be set exists (for
+            # instance /var/run/cubicweb may be deleted on computer restart)
+            piddir = os.path.dirname(config['pid-file'])
+            if not os.path.exists(piddir):
+                os.makedirs(piddir)
+            file(config['pid-file'], 'w').write(str(os.getpid()))
+    if config['profile']:
+        prof = hotshot.Profile(config['profile'])
+        prof.runcall(reactor.run)
+    else:
+        reactor.run()

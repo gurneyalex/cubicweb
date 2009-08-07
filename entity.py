@@ -12,7 +12,7 @@ from warnings import warn
 from logilab.common import interface
 from logilab.common.compat import all
 from logilab.common.decorators import cached
-from logilab.common.deprecation import obsolete
+from logilab.common.deprecation import deprecated
 from logilab.mtconverter import TransformData, TransformError, xml_escape
 
 from rql.utils import rqlvar_maker
@@ -20,16 +20,12 @@ from rql.utils import rqlvar_maker
 from cubicweb import Unauthorized
 from cubicweb.rset import ResultSet
 from cubicweb.selectors import yes
-from cubicweb.appobject import AppRsetObject
+from cubicweb.appobject import AppObject
 from cubicweb.schema import RQLVocabularyConstraint, RQLConstraint, bw_normalize_etype
 
-try:
-    from cubicweb.common.uilib import printable_value, soup2xhtml
-    from cubicweb.common.mixins import MI_REL_TRIGGERS
-    from cubicweb.common.mttransforms import ENGINE
-except ImportError:
-    # missing -common
-    MI_REL_TRIGGERS = {}
+from cubicweb.common.uilib import printable_value, soup2xhtml
+from cubicweb.common.mixins import MI_REL_TRIGGERS
+from cubicweb.common.mttransforms import ENGINE
 
 _marker = object()
 
@@ -136,7 +132,7 @@ class _metaentity(type):
         return super(_metaentity, mcs).__new__(mcs, name, bases, classdict)
 
 
-class Entity(AppRsetObject, dict):
+class Entity(AppObject, dict):
     """an entity instance has e_schema automagically set on
     the class and instances has access to their issuing cursor.
 
@@ -170,15 +166,6 @@ class Entity(AppRsetObject, dict):
     skip_copy_for = ()
     # class attributes set automatically at registration time
     e_schema = None
-
-    @classmethod
-    def registered(cls, registry):
-        """build class using descriptor at registration time"""
-        assert cls.id is not None
-        super(Entity, cls).registered(registry)
-        if cls.id != 'Any':
-            cls.__initialize__()
-        return cls
 
     MODE_TAGS = set(('link', 'create'))
     CATEGORY_TAGS = set(('primary', 'secondary', 'generic', 'generated')) # , 'metadata'))
@@ -269,7 +256,7 @@ class Entity(AppRsetObject, dict):
                     continue
                 if card == '?':
                     restrictions[-1] += '?' # left outer join if not mandatory
-                destcls = cls.vreg.etype_class(desttype)
+                destcls = cls.vreg['etypes'].etype_class(desttype)
                 destcls._fetch_restrictions(var, varmaker, destcls.fetch_attrs,
                                             selection, orderby, restrictions,
                                             user, ordermethod, visited=visited)
@@ -281,8 +268,9 @@ class Entity(AppRsetObject, dict):
     @classmethod
     @cached
     def parent_classes(cls):
-        parents = [cls.vreg.etype_class(e.type) for e in cls.e_schema.ancestors()]
-        parents.append(cls.vreg.etype_class('Any'))
+        parents = [cls.vreg['etypes'].etype_class(e.type)
+                   for e in cls.e_schema.ancestors()]
+        parents.append(cls.vreg['etypes'].etype_class('Any'))
         return parents
 
     @classmethod
@@ -303,7 +291,7 @@ class Entity(AppRsetObject, dict):
         return mainattr, needcheck
 
     def __init__(self, req, rset=None, row=None, col=0):
-        AppRsetObject.__init__(self, req, rset, row, col)
+        AppObject.__init__(self, req, rset, row, col)
         dict.__init__(self)
         self._related_cache = {}
         if rset is not None:
@@ -370,11 +358,18 @@ class Entity(AppRsetObject, dict):
 
     def view(self, vid, __registry='views', **kwargs):
         """shortcut to apply a view on this entity"""
-        return self.vreg.render(__registry, vid, self.req, rset=self.rset,
-                                row=self.row, col=self.col, **kwargs)
+        return self.vreg[__registry].render(vid, self.req, rset=self.rset,
+                                            row=self.row, col=self.col, **kwargs)
 
-    def absolute_url(self, method=None, **kwargs):
+    def absolute_url(self, *args, **kwargs):
         """return an absolute url to view this entity"""
+        # use *args since we don't want first argument to be "anonymous" to
+        # avoid potential clash with kwargs
+        if args:
+            assert len(args) == 1, 'only 0 or 1 non-named-argument expected'
+            method = args[0]
+        else:
+            method = None
         # in linksearch mode, we don't want external urls else selecting
         # the object for use in the relation is tricky
         # XXX search_state is web specific
@@ -478,7 +473,7 @@ class Entity(AppRsetObject, dict):
         assert self.has_eid()
         execute = self.req.execute
         for rschema in self.e_schema.subject_relations():
-            if rschema.meta or rschema.is_final():
+            if rschema.is_final() or rschema.meta:
                 continue
             # skip already defined relations
             if getattr(self, rschema.type):
@@ -644,7 +639,8 @@ class Entity(AppRsetObject, dict):
             if not self.is_saved():
                 return None
             rql = "Any A WHERE X eid %%(x)s, X %s A" % name
-            # XXX should we really use unsafe_execute here??
+            # XXX should we really use unsafe_execute here? I think so (syt),
+            # see #344874
             execute = getattr(self.req, 'unsafe_execute', self.req.execute)
             try:
                 rset = execute(rql, {'x': self.eid}, 'x')
@@ -678,7 +674,10 @@ class Entity(AppRsetObject, dict):
             pass
         assert self.has_eid()
         rql = self.related_rql(rtype, role)
-        rset = self.req.execute(rql, {'x': self.eid}, 'x')
+        # XXX should we really use unsafe_execute here? I think so (syt),
+        # see #344874
+        execute = getattr(self.req, 'unsafe_execute', self.req.execute)
+        rset = execute(rql, {'x': self.eid}, 'x')
         self.set_related_cache(rtype, role, rset)
         return self.related(rtype, role, limit, entities)
 
@@ -695,13 +694,13 @@ class Entity(AppRsetObject, dict):
         if len(targettypes) > 1:
             fetchattrs_list = []
             for ttype in targettypes:
-                etypecls = self.vreg.etype_class(ttype)
+                etypecls = self.vreg['etypes'].etype_class(ttype)
                 fetchattrs_list.append(set(etypecls.fetch_attrs))
             fetchattrs = reduce(set.intersection, fetchattrs_list)
             rql = etypecls.fetch_rql(self.req.user, [restriction], fetchattrs,
                                      settype=False)
         else:
-            etypecls = self.vreg.etype_class(targettypes[0])
+            etypecls = self.vreg['etypes'].etype_class(targettypes[0])
             rql = etypecls.fetch_rql(self.req.user, [restriction], settype=False)
         # optimisation: remove ORDERBY if cardinality is 1 or ? (though
         # greater_card return 1 for those both cases)
@@ -716,7 +715,7 @@ class Entity(AppRsetObject, dict):
 
     # generic vocabulary methods ##############################################
 
-    @obsolete('see new form api')
+    @deprecated('see new form api')
     def vocabulary(self, rtype, role='subject', limit=None):
         """vocabulary functions must return a list of couples
         (label, eid) that will typically be used to fill the
@@ -726,7 +725,7 @@ class Entity(AppRsetObject, dict):
         interpreted as a separator in case vocabulary results are grouped
         """
         from logilab.common.testlib import mock_object
-        form = self.vreg.select_object('forms', 'edition', self.req, entity=self)
+        form = self.vreg.select('forms', 'edition', self.req, entity=self)
         field = mock_object(name=rtype, role=role)
         return form.form_field_vocabulary(field, limit)
 
@@ -757,7 +756,7 @@ class Entity(AppRsetObject, dict):
         else:
             restriction += [cstr.restriction for cstr in constraints
                             if isinstance(cstr, RQLConstraint)]
-        etypecls = self.vreg.etype_class(targettype)
+        etypecls = self.vreg['etypes'].etype_class(targettype)
         rql = etypecls.fetch_rql(self.req.user, restriction,
                                  mainvar=searchedvar, ordermethod=ordermethod)
         # ensure we have an order defined
@@ -784,7 +783,7 @@ class Entity(AppRsetObject, dict):
     def relation_cached(self, rtype, role):
         """return true if the given relation is already cached on the instance
         """
-        return '%s_%s' % (rtype, role) in self._related_cache
+        return self._related_cache.get('%s_%s' % (rtype, role))
 
     def related_cache(self, rtype, role, entities=True, limit=None):
         """return values for the given relation if it's cached on the instance,

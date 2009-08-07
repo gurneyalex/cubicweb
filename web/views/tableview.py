@@ -34,8 +34,8 @@ class TableView(AnyRsetView):
             return ()
         rqlst.save_state()
         mainvar, baserql = prepare_facets_rqlst(rqlst, self.rset.args)
-        wdgs = [facet.get_widget() for facet in self.vreg.possible_vobjects(
-            'facets', self.req, self.rset, context='tablefilter',
+        wdgs = [facet.get_widget() for facet in self.vreg['facets'].possible_vobjects(
+            self.req, rset=self.rset, context='tablefilter',
             filtered_variable=mainvar)]
         wdgs = [wdg for wdg in wdgs if wdg is not None]
         rqlst.recover()
@@ -143,7 +143,7 @@ class TableView(AnyRsetView):
             actions += self.show_hide_actions(divid, True)
         self.w(u'<div id="%s"' % divid)
         if displayactions:
-            for action in self.vreg.possible_actions(req, self.rset).get('mainactions', ()):
+            for action in self.vreg['actions'].possible_actions(req, self.rset).get('mainactions', ()):
                 actions.append( (action.url(), req._(action.title), action.html_class(), None) )
             self.w(u' cubicweb:displayactions="1">') # close <div tag
         else:

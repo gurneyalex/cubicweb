@@ -9,13 +9,11 @@ __docformat__ = "restructuredtext en"
 
 from warnings import warn
 
-from logilab.common.deprecation import deprecated_function, obsolete
+from logilab.common.deprecation import deprecated
 from logilab.common.decorators import cached
 
 from cubicweb import Unauthorized, typed_eid
 from cubicweb.entity import Entity
-from cubicweb.utils import dump_class
-from cubicweb.schema import FormatConstraint
 
 from cubicweb.interfaces import IBreadCrumbs, IFeed
 
@@ -26,19 +24,6 @@ class AnyEntity(Entity):
     """
     id = 'Any'
     __implements__ = (IBreadCrumbs, IFeed)
-
-    @classmethod
-    def selected(cls, etype):
-        """the special Any entity is used as the default factory, so
-        the actual class has to be constructed at selection time once we
-        have an actual entity'type
-        """
-        if cls.id == etype:
-            return cls
-        usercls = dump_class(cls, etype)
-        usercls.id = etype
-        usercls.__initialize__()
-        return usercls
 
     fetch_attrs = ('modification_date',)
     @classmethod
@@ -240,22 +225,22 @@ class AnyEntity(Entity):
             wdg = widget(cls.vreg, tschema, rschema, cls, 'object')
         return wdg
 
-    @obsolete('use EntityFieldsForm.subject_relation_vocabulary')
+    @deprecated('use EntityFieldsForm.subject_relation_vocabulary')
     def subject_relation_vocabulary(self, rtype, limit):
-        form = self.vreg.select_object('forms', 'edition', self.req, entity=self)
+        form = self.vreg.select('forms', 'edition', self.req, entity=self)
         return form.subject_relation_vocabulary(rtype, limit)
 
-    @obsolete('use EntityFieldsForm.object_relation_vocabulary')
+    @deprecated('use EntityFieldsForm.object_relation_vocabulary')
     def object_relation_vocabulary(self, rtype, limit):
-        form = self.vreg.select_object('forms', 'edition', self.req, entity=self)
+        form = self.vreg.select('forms', 'edition', self.req, entity=self)
         return form.object_relation_vocabulary(rtype, limit)
 
-    @obsolete('use AutomaticEntityForm.[e]relations_by_category')
+    @deprecated('use AutomaticEntityForm.[e]relations_by_category')
     def relations_by_category(self, categories=None, permission=None):
         from cubicweb.web.views.autoform import AutomaticEntityForm
         return AutomaticEntityForm.erelations_by_category(self, categories, permission)
 
-    @obsolete('use AutomaticEntityForm.[e]srelations_by_category')
+    @deprecated('use AutomaticEntityForm.[e]srelations_by_category')
     def srelations_by_category(self, categories=None, permission=None):
         from cubicweb.web.views.autoform import AutomaticEntityForm
         return AutomaticEntityForm.esrelations_by_category(self, categories, permission)

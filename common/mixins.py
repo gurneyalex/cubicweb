@@ -8,7 +8,7 @@
 """
 __docformat__ = "restructuredtext en"
 
-from logilab.common.deprecation import obsolete
+from logilab.common.deprecation import deprecated
 from logilab.common.decorators import cached
 
 from cubicweb import typed_eid
@@ -155,7 +155,7 @@ class TreeMixIn(object):
 
     def root(self):
         """return the root object"""
-        return self.req.eid_rset(self.path()[0]).get_entity(0, 0)
+        return self.req.entity_from_eid(self.path()[0])
 
 
 class WorkflowableMixIn(object):
@@ -242,9 +242,9 @@ class WorkflowableMixIn(object):
 
     # specific vocabulary methods #############################################
 
-    @obsolete('use EntityFieldsForm.subject_in_state_vocabulary')
+    @deprecated('use EntityFieldsForm.subject_in_state_vocabulary')
     def subject_in_state_vocabulary(self, rschema, limit=None):
-        form = self.vreg.select_object('forms', 'edition', self.req, entity=self)
+        form = self.vreg.select('forms', 'edition', self.req, entity=self)
         return form.subject_in_state_vocabulary(rschema, limit)
 
 

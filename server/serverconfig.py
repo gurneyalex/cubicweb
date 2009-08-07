@@ -85,8 +85,8 @@ class ServerConfiguration(CubicWebConfiguration):
         SCHEMAS_LIB_DIR = '/usr/share/cubicweb/schemas/'
         BACKUP_DIR = '/var/lib/cubicweb/backup/'
 
-    cubicweb_vobject_path = CubicWebConfiguration.cubicweb_vobject_path | set(['sobjects'])
-    cube_vobject_path = CubicWebConfiguration.cube_vobject_path | set(['sobjects', 'hooks'])
+    cubicweb_appobject_path = CubicWebConfiguration.cubicweb_appobject_path | set(['sobjects'])
+    cube_appobject_path = CubicWebConfiguration.cube_appobject_path | set(['sobjects', 'hooks'])
 
     options = merge_options((
         # ctl configuration
@@ -165,13 +165,15 @@ notified of every changes.',
           'group': 'email', 'inputlevel': 2,
           }),
         # pyro server.serverconfig
-        ('pyro-port',
+        ('pyro-host',
          {'type' : 'int',
           'default': None,
-          'help': 'Pyro server port. If not set, it will be choosen randomly',
+          'help': 'Pyro server host, if not detectable correctly through \
+gethostname(). It may contains port information using <host>:<port> notation, \
+and if not set, it will be choosen randomly',
           'group': 'pyro-server', 'inputlevel': 2,
           }),
-        ('pyro-id', # XXX reuse pyro-application-id
+        ('pyro-id', # XXX reuse pyro-instance-id
          {'type' : 'string',
           'default': None,
           'help': 'identifier of the repository in the pyro name server',
@@ -180,7 +182,7 @@ notified of every changes.',
         ) + CubicWebConfiguration.options)
 
     # read the schema from the database
-    read_application_schema = True
+    read_instance_schema = True
     bootstrap_schema = True
 
     # check user's state at login time
@@ -193,7 +195,7 @@ notified of every changes.',
     schema_hooks = True
     notification_hooks = True
     security_hooks = True
-    application_hooks = True
+    instance_hooks = True
 
     # should some hooks be deactivated during [pre|post]create script execution
     free_wheel = False
@@ -208,21 +210,16 @@ notified of every changes.',
 
     @classmethod
     def schemas_lib_dir(cls):
-        """application schema directory"""
+        """instance schema directory"""
         return env_path('CW_SCHEMA_LIB', cls.SCHEMAS_LIB_DIR, 'schemas')
 
-    @classmethod
-    def backup_dir(cls):
-        """backup directory where a stored db backups before migration"""
-        return env_path('CW_BACKUP', cls.BACKUP_DIR, 'run time')
-
     def bootstrap_cubes(self):
-        from logilab.common.textutils import get_csv
+        from logilab.common.textutils import splitstrip
         for line in file(join(self.apphome, 'bootstrap_cubes')):
             line = line.strip()
             if not line or line.startswith('#'):
                 continue
-            self.init_cubes(self.expand_cubes(get_csv(line)))
+            self.init_cubes(self.expand_cubes(splitstrip(line)))
             break
         else:
             # no cubes
@@ -269,25 +266,8 @@ notified of every changes.',
 
     def load_hooks(self, vreg):
         hooks = {}
-        for path in reversed([self.apphome] + self.cubes_path()):
-            hooksfile = join(path, 'application_hooks.py')
-            if exists(hooksfile):
-                self.warning('application_hooks.py is deprecated, use dynamic '
-                             'objects to register hooks (%s)', hooksfile)
-                context = {}
-                # Use execfile rather than `load_module_from_name` because
-                # the latter gets fooled by the `sys.modules` cache when
-                # loading different configurations one after the other
-                # (another fix would have been to do :
-                #    sys.modules.pop('applications_hooks')
-                #  or to modify load_module_from_name so that it provides
-                #  a use_cache optional parameter
-                execfile(hooksfile, context, context)
-                for event, hooksdef in context['HOOKS'].items():
-                    for ertype, hookcbs in hooksdef.items():
-                        hooks.setdefault(event, {}).setdefault(ertype, []).extend(hookcbs)
         try:
-            apphookdefs = vreg.registry_objects('hooks')
+            apphookdefs = vreg['hooks'].all_objects()
         except RegistryNotFound:
             return hooks
         for hookdef in apphookdefs:
@@ -342,9 +322,11 @@ notified of every changes.',
         clear_cache(self, 'sources')
 
     def migration_handler(self, schema=None, interactive=True,
-                          cnx=None, repo=None, connect=True):
+                          cnx=None, repo=None, connect=True, verbosity=None):
         """return a migration handler instance"""
         from cubicweb.server.migractions import ServerMigrationHelper
+        if verbosity is None:
+            verbosity = getattr(self, 'verbosity', 0)
         return ServerMigrationHelper(self, schema, interactive=interactive,
                                      cnx=cnx, repo=repo, connect=connect,
-                                     verbosity=getattr(self, 'verbosity', 0))
+                                     verbosity=verbosity)

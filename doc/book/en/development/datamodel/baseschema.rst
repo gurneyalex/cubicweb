@@ -1,9 +1,9 @@
 
-Pre-defined schemas in the library
-----------------------------------
+Pre-defined entities in the library
+-----------------------------------
 
 The library defines a set of entity schemas that are required by the system
-or commonly used in *CubicWeb* applications.
+or commonly used in *CubicWeb* instances.
 
 
 Entity types used to store the schema
@@ -18,7 +18,7 @@ Entity types used to manage users and permissions
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 * `CWUser`, system users
 * `CWGroup`, users groups
-* `CWPermission`, used to configure the security of the application
+* `CWPermission`, used to configure the security of the instance
 
 Entity types used to manage workflows
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -28,11 +28,11 @@ Entity types used to manage workflows
 
 Other entity types
 ~~~~~~~~~~~~~~~~~~
-* `CWCache`
-* `CWProperty`, used to configure the application
+* `CWCache`, cache entities used to improve performances
+* `CWProperty`, used to configure the instance
 
 * `EmailAddress`, email address, used by the system to send notifications
   to the users and also used by others optionnals schemas
 
 * `Bookmark`, an entity type used to allow a user to customize his links within
-  the application
+  the instance

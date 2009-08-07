@@ -14,9 +14,78 @@ import sys
 from os.path import join, exists
 
 from logilab.common.modutils import LazyObject
+from logilab.common.textutils import splitstrip
 
-# server debugging flag
-DEBUG = False
+# server-side debugging #########################################################
+
+# server debugging flags. They may be combined using binary operators.
+DBG_NONE = 0 # no debug information
+DBG_RQL = 1  # rql execution information
+DBG_SQL = 2  # executed sql
+DBG_REPO = 4 # repository events
+DBG_MORE = 8 # repository events
+
+# current debug mode
+DEBUG = 0
+
+def set_debug(debugmode):
+    """change the repository debugging mode"""
+    global DEBUG
+    if not debugmode:
+        DEBUG = 0
+        return
+    if isinstance(debugmode, basestring):
+        for mode in splitstrip(debugmode, sep='|'):
+            DEBUG |= globals()[mode]
+    else:
+        DEBUG |= debugmode
+
+
+class debugged(object):
+    """repository debugging context manager / decorator
+
+    Can be used either as a context manager:
+
+    >>> with debugged(server.DBG_RQL | server.DBG_REPO):
+    ...     # some code in which you want to debug repository activity,
+    ...     # seing information about RQL being executed an repository events.
+
+    or as a function decorator:
+
+    >>> @debugged(server.DBG_RQL | server.DBG_REPO)
+    ... def some_function():
+    ...     # some code in which you want to debug repository activity,
+    ...     # seing information about RQL being executed an repository events
+
+    debug mode will be reseted at its original value when leaving the "with"
+    block or the decorated function
+    """
+    def __init__(self, debugmode):
+        self.debugmode = debugmode
+        self._clevel = None
+
+    def __enter__(self):
+        """enter with block"""
+        self._clevel = DEBUG
+        set_debug(self.debugmode)
+
+    def __exit__(self, exctype, exc, traceback):
+        """leave with block"""
+        set_debug(self._clevel)
+        return traceback is None
+
+    def __call__(self, func):
+        """decorate function"""
+        def wrapped(*args, **kwargs):
+            _clevel = DEBUG
+            set_debug(self.debugmode)
+            try:
+                return func(*args, **kwargs)
+            finally:
+                set_debug(self._clevel)
+        return wrapped
+
+# database initialization ######################################################
 
 def init_repository(config, interactive=True, drop=False, vreg=None):
     """initialise a repository database by creating tables add filling them
@@ -24,16 +93,16 @@ def init_repository(config, interactive=True, drop=False, vreg=None):
     a initial user)
     """
     from glob import glob
-    from cubicweb.schema import BASEGROUPS
+    from yams import BASE_GROUPS
     from cubicweb.dbapi import in_memory_cnx
     from cubicweb.server.repository import Repository
     from cubicweb.server.utils import manager_userpasswd
     from cubicweb.server.sqlutils import sqlexec, sqlschema, sqldropschema
     # configuration to avoid db schema loading and user'state checking
     # on connection
-    read_application_schema = config.read_application_schema
+    read_instance_schema = config.read_instance_schema
     bootstrap_schema = config.bootstrap_schema
-    config.read_application_schema = False
+    config.read_instance_schema = False
     config.creating = True
     config.bootstrap_schema = True
     config.consider_user_state = False
@@ -92,11 +161,12 @@ def init_repository(config, interactive=True, drop=False, vreg=None):
         else:
             login, pwd = unicode(source['db-user']), source['db-password']
     print '-> inserting default user and default groups.'
-    for group in BASEGROUPS:
-        rset = session.execute('INSERT CWGroup X: X name %(name)s',
-                               {'name': unicode(group)})
-    rset = session.execute('INSERT CWUser X: X login %(login)s, X upassword %(pwd)s',
-                           {'login': login, 'pwd': pwd})
+    # sort for eid predicatability as expected in some server tests
+    for group in sorted(BASE_GROUPS):
+        session.execute('INSERT CWGroup X: X name %(name)s',
+                        {'name': unicode(group)})
+    session.execute('INSERT CWUser X: X login %(login)s, X upassword %(pwd)s',
+                    {'login': login, 'pwd': pwd})
     session.execute('SET U in_group G WHERE G name "managers"')
     session.commit()
     # reloging using the admin user
@@ -136,11 +206,11 @@ def init_repository(config, interactive=True, drop=False, vreg=None):
     session.close()
     # restore initial configuration
     config.creating = False
-    config.read_application_schema = read_application_schema
+    config.read_instance_schema = read_instance_schema
     config.bootstrap_schema = bootstrap_schema
     config.consider_user_state = True
     config.set_language = True
-    print '-> database for application %s initialized.' % config.appid
+    print '-> database for instance %s initialized.' % config.appid
 
 
 def initialize_schema(config, schema, mhandler, event='create'):
@@ -152,7 +222,7 @@ def initialize_schema(config, schema, mhandler, event='create'):
     # execute cubes pre<event> script if any
     for path in reversed(paths):
         mhandler.exec_event_script('pre%s' % event, path)
-    # enter application'schema into the database
+    # enter instance'schema into the database
     serialize_schema(mhandler.rqlcursor, schema)
     # execute cubicweb's post<event> script
     mhandler.exec_event_script('post%s' % event)
@@ -160,20 +230,6 @@ def initialize_schema(config, schema, mhandler, event='create'):
     for path in reversed(paths):
         mhandler.exec_event_script('post%s' % event, path)
 
-def set_debug(debugmode):
-    global DEBUG
-    DEBUG = debugmode
-
-def debugged(func):
-    """decorator to activate debug mode"""
-    def wrapped(*args, **kwargs):
-        global DEBUG
-        DEBUG = True
-        try:
-            return func(*args, **kwargs)
-        finally:
-            DEBUG = False
-    return wrapped
 
 # sqlite'stored procedures have to be registered at connexion opening time
 SQL_CONNECT_HOOKS = {}

@@ -19,6 +19,8 @@ from Cookie import SimpleCookie
 from logilab.common.clcommands import Command, register_commands, main_run
 
 from cubicweb.common.uilib import remove_html_tags
+from cubicweb.web.views.schema import SKIP_TYPES
+
 APPLROOT = osp.abspath(osp.join(osp.dirname(osp.abspath(__file__)), '..'))
 
 
@@ -26,11 +28,11 @@ def initialize_vregistry(applroot):
     # apply monkey patches first
     from cubicweb.goa import do_monkey_patch
     do_monkey_patch()
-    from cubicweb.goa.goavreg import GAERegistry
+    from cubicweb.goa.goavreg import GAEVregistry
     from cubicweb.goa.goaconfig import GAEConfiguration
     #WebConfiguration.ext_resources['JAVASCRIPTS'].append('DATADIR/goa.js')
     config = GAEConfiguration('toto', applroot)
-    vreg = GAERegistry(config)
+    vreg = GAEVregistry(config)
     vreg.set_schema(config.load_schema())
     return vreg
 
@@ -57,19 +59,17 @@ class GenerateSchemaCommand(LaxCommand):
         assert not args, 'no argument expected'
         from yams import schema2dot
         schema = self.vreg.schema
-        skip_rels = ('owned_by', 'created_by', 'identity', 'is', 'is_instance_of')
         path = osp.join(APPLROOT, 'data', 'schema.png')
         schema2dot.schema2dot(schema, path, #size=size,
-                              skiprels=skip_rels, skipmeta=True)
+                              skiptypes=SKIP_TYPES)
         print 'generated', path
         path = osp.join(APPLROOT, 'data', 'metaschema.png')
-        schema2dot.schema2dot(schema, path, #size=size,
-                              skiprels=skip_rels, skipmeta=False)
+        schema2dot.schema2dot(schema, path)
         print 'generated', path
 
 
 class PopulateDataDirCommand(LaxCommand):
-    """populate application's data directory according to used cubes"""
+    """populate instance's data directory according to used cubes"""
     name = 'populatedata'
 
     def _run(self, args):
@@ -118,7 +118,7 @@ class GetSessionIdHandler(urllib2.HTTPRedirectHandler):
 
 
 class URLCommand(LaxCommand):
-    """abstract class for commands doing stuff by accessing the web application
+    """abstract class for commands doing stuff by accessing the web instance
     """
     min_args = max_args = 1
     arguments = '<site url>'

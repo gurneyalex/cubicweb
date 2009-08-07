@@ -7,12 +7,36 @@
 """
 __docformat__ = "restructuredtext en"
 
+from os.path import join, splitext
 from datetime import datetime, timedelta
 from logging import getLogger
 
-from cubicweb import set_log_methods
+from cubicweb import set_log_methods, server
+from cubicweb.schema import VIRTUAL_RTYPES
 from cubicweb.server.sqlutils import SQL_PREFIX
 
+
+def dbg_st_search(uri, union, varmap, args, cachekey=None, prefix='rql for'):
+    if server.DEBUG & server.DBG_RQL:
+        print '  %s %s source: %s' % (prefix, uri, union.as_string())
+        if varmap:
+            print '    using varmap', varmap
+        if server.DEBUG & server.DBG_MORE:
+            print '    args', args
+            print '    cache key', cachekey
+            print '    solutions', ','.join(str(s.solutions)
+                                            for s in union.children)
+    # return true so it can be used as assertion (and so be killed by python -O)
+    return True
+
+def dbg_results(results):
+    if server.DEBUG & server.DBG_RQL:
+        if len(results) > 10:
+            print '  -->', results[:10], '...', len(results)
+        else:
+            print '  -->', results
+    # return true so it can be used as assertion (and so be killed by python -O)
+    return True
 
 class TimedCache(dict):
     def __init__(self, ttlm, ttls=0):
@@ -53,7 +77,7 @@ class AbstractSource(object):
     uri = None
     # a reference to the system information helper
     repo = None
-    # a reference to the application'schema (may differs from the source'schema)
+    # a reference to the instance'schema (may differs from the source'schema)
     schema = None
 
     def __init__(self, repo, appschema, source_config, *args, **kwargs):
@@ -70,6 +94,42 @@ class AbstractSource(object):
     def init(self):
         """method called by the repository once ready to handle request"""
         pass
+
+    def backup_file(self, backupfile=None, timestamp=None):
+        """return a unique file name for a source's dump
+
+        either backupfile or timestamp (used to generated a backup file name if
+        needed) should be specified.
+        """
+        if backupfile is None:
+            config = self.repo.config
+            return join(config.appdatahome, 'backup',
+                        '%s-%s-%s.dump' % (config.appid, timestamp, self.uri))
+        # backup file is the system database backup file, add uri to it if not
+        # already there
+        base, ext = splitext(backupfile)
+        if not base.endswith('-%s' % self.uri):
+            return '%s-%s%s' % (base, self.uri, ext)
+        return backupfile
+
+    def backup(self, confirm, backupfile=None, timestamp=None,
+               askconfirm=False):
+        """method called to create a backup of source's data"""
+        pass
+
+    def restore(self, confirm, backupfile=None, timestamp=None, drop=True,
+               askconfirm=False):
+        """method called to restore a backup of source's data"""
+        pass
+
+    def close_pool_connections(self):
+        for pool in self.repo.pools:
+            pool._cursors.pop(self.uri, None)
+            pool.source_cnxs[self.uri][1].close()
+
+    def open_pool_connections(self):
+        for pool in self.repo.pools:
+            pool.source_cnxs[self.uri] = (self, self.get_connection())
 
     def reset_caches(self):
         """method called during test to reset potential source caches"""
@@ -95,7 +155,7 @@ class AbstractSource(object):
         return cmp(self.uri, other.uri)
 
     def set_schema(self, schema):
-        """set the application'schema"""
+        """set the instance'schema"""
         self.schema = schema
 
     def support_entity(self, etype, write=False):
@@ -163,7 +223,7 @@ class AbstractSource(object):
         # delete relations referencing one of those eids
         eidcolum = SQL_PREFIX + 'eid'
         for rschema in self.schema.relations():
-            if rschema.is_final() or rschema.type == 'identity':
+            if rschema.is_final() or rschema.type in VIRTUAL_RTYPES:
                 continue
             if rschema.inlined:
                 column = SQL_PREFIX + rschema.type
@@ -253,8 +313,7 @@ class AbstractSource(object):
         .executemany().
         """
         res = self.syntax_tree_search(session, union, args, varmap=varmap)
-        session.pool.source('system')._manual_insert(res, table, session)
-
+        session.pool.source('system').manual_insert(res, table, session)
 
     # system source don't have to implement the two methods below
 
@@ -266,7 +325,7 @@ class AbstractSource(object):
         This method must return the an Entity instance representation of this
         entity.
         """
-        entity = self.repo.vreg.etype_class(etype)(session, None)
+        entity = self.repo.vreg['etypes'].etype_class(etype)(session)
         entity.set_eid(eid)
         return entity
 
