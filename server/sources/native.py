@@ -25,9 +25,10 @@ from indexer import get_indexer
 
 from cubicweb import UnknownEid, AuthenticationError, Binary, server
 from cubicweb.server.utils import crypt_password
-from cubicweb.server.sqlutils import SQL_PREFIX, SQLAdapterMixIn
+from cubicweb.server.sqlutils import (SQL_PREFIX, SQLAdapterMixIn,
+                                      sql_source_backup, sql_source_restore)
 from cubicweb.server.rqlannotation import set_qdata
-from cubicweb.server.sources import AbstractSource
+from cubicweb.server.sources import AbstractSource, dbg_st_search, dbg_results
 from cubicweb.server.sources.rql2sql import SQLGenerator
 
 
@@ -43,7 +44,7 @@ class LogCursor(object):
         """Execute a query.
         it's a function just so that it shows up in profiling
         """
-        if server.DEBUG:
+        if server.DEBUG & server.DBG_SQL:
             print 'exec', query, args
         try:
             self.cu.execute(str(query), args)
@@ -57,6 +58,7 @@ class LogCursor(object):
 
     def fetchone(self):
         return self.cu.fetchone()
+
 
 def make_schema(selected, solution, table, typemap):
     """return a sql schema to store RQL query result"""
@@ -73,6 +75,7 @@ def make_schema(selected, solution, table, typemap):
             # assert not schema(ttype).is_final()
             sql.append('%s %s' % (name, typemap['Int']))
     return ','.join(sql), varmap
+
 
 def _modified_sql(table, etypes):
     # XXX protect against sql injection
@@ -170,9 +173,7 @@ class NativeSQLSource(SQLAdapterMixIn, AbstractSource):
             self.get_connection = lambda: ConnectionWrapper(self)
             self.check_connection = lambda cnx: cnx
             def pool_reset(cnx):
-                if cnx._cnx is not None:
-                    cnx._cnx.close()
-                    cnx._cnx = None
+                cnx.close()
             self.pool_reset = pool_reset
 
     @property
@@ -188,8 +189,9 @@ class NativeSQLSource(SQLAdapterMixIn, AbstractSource):
 
     def clear_eid_cache(self, eid, etype):
         """clear potential caches for the given eid"""
-        self._cache.pop('%s X WHERE X eid %s' % (etype, eid), None)
+        self._cache.pop('Any X WHERE X eid %s, X is %s' % (eid, etype), None)
         self._cache.pop('Any X WHERE X eid %s' % eid, None)
+        self._cache.pop('Any %s' % eid, None)
 
     def sqlexec(self, session, sql, args=None):
         """execute the query and return its result"""
@@ -205,6 +207,18 @@ class NativeSQLSource(SQLAdapterMixIn, AbstractSource):
         pool.pool_reset()
         self.repo._free_pool(pool)
 
+    def backup(self, confirm, backupfile=None, timestamp=None,
+               askconfirm=False):
+        """method called to create a backup of source's data"""
+        backupfile = self.backup_file(backupfile, timestamp)
+        sql_source_backup(self, self, confirm, backupfile, askconfirm)
+
+    def restore(self, confirm, backupfile=None, timestamp=None, drop=True,
+               askconfirm=False):
+        """method called to restore a backup of source's data"""
+        backupfile = self.backup_file(backupfile, timestamp)
+        sql_source_restore(self, self, confirm, backupfile, drop, askconfirm)
+
     def init(self):
         self.init_creating()
         pool = self.repo._get_pool()
@@ -219,7 +233,7 @@ class NativeSQLSource(SQLAdapterMixIn, AbstractSource):
 
     def map_attribute(self, etype, attr, cb):
         self._rql_sqlgen.attr_map['%s.%s' % (etype, attr)] = cb
-        
+
     # ISource interface #######################################################
 
     def compile_rql(self, rql):
@@ -231,7 +245,7 @@ class NativeSQLSource(SQLAdapterMixIn, AbstractSource):
         return rqlst
 
     def set_schema(self, schema):
-        """set the application'schema"""
+        """set the instance'schema"""
         self._cache = Cache(self.repo.config['rql-cache-size'])
         self.cache_hit, self.cache_miss, self.no_cache = 0, 0, 0
         self.schema = schema
@@ -292,13 +306,7 @@ class NativeSQLSource(SQLAdapterMixIn, AbstractSource):
         necessary to fetch the results (but not the results themselves)
         may be cached using this key.
         """
-        if server.DEBUG:
-            print 'RQL FOR NATIVE SOURCE', self.uri, cachekey
-            if varmap:
-                print 'USING VARMAP', varmap
-            print union.as_string()
-            if args: print 'ARGS', args
-            print 'SOLUTIONS', ','.join(str(s.solutions) for s in union.children)
+        assert dbg_st_search(self.uri, union, varmap, args, cachekey)
         # remember number of actually selected term (sql generation may append some)
         if cachekey is None:
             self.no_cache += 1
@@ -323,10 +331,9 @@ class NativeSQLSource(SQLAdapterMixIn, AbstractSource):
             self.info("request failed '%s' ... retry with a new cursor", sql)
             session.pool.reconnect(self)
             cursor = self.doexec(session, sql, args)
-        res = self.process_result(cursor)
-        if server.DEBUG:
-            print '------>', res
-        return res
+        results = self.process_result(cursor)
+        assert dbg_results(results)
+        return results
 
     def flying_insert(self, table, session, union, args=None, varmap=None):
         """similar as .syntax_tree_search, but inserts data in the
@@ -334,23 +341,18 @@ class NativeSQLSource(SQLAdapterMixIn, AbstractSource):
         source whose the given cursor come from). If not possible,
         inserts all data by calling .executemany().
         """
-        if self.uri == 'system':
-            if server.DEBUG:
-                print 'FLYING RQL FOR SOURCE', self.uri
-                if varmap:
-                    print 'USING VARMAP', varmap
-                print union.as_string()
-                print 'SOLUTIONS', ','.join(str(s.solutions) for s in union.children)
-            # generate sql queries if we are able to do so
-            sql, query_args = self._rql_sqlgen.generate(union, args, varmap)
-            query = 'INSERT INTO %s %s' % (table, sql.encode(self.encoding))
-            self.doexec(session, query, self.merge_args(args, query_args))
-        else:
-            super(NativeSQLSource, self).flying_insert(table, session, union,
-                                                       args, varmap)
+        assert dbg_st_search(
+            self.uri, union, varmap, args,
+            prefix='ON THE FLY temp data insertion into %s from' % table)
+        # generate sql queries if we are able to do so
+        sql, query_args = self._rql_sqlgen.generate(union, args, varmap)
+        query = 'INSERT INTO %s %s' % (table, sql.encode(self.encoding))
+        self.doexec(session, query, self.merge_args(args, query_args))
 
-    def _manual_insert(self, results, table, session):
+    def manual_insert(self, results, table, session):
         """insert given result into a temporary table on the system source"""
+        if server.DEBUG & server.DBG_RQL:
+            print '  manual insertion of', res, 'into', table
         if not results:
             return
         query_args = ['%%(%s)s' % i for i in xrange(len(results[0]))]
@@ -417,24 +419,28 @@ class NativeSQLSource(SQLAdapterMixIn, AbstractSource):
             sql = self.sqlgen.delete('%s_relation' % rtype, attrs)
         self.doexec(session, sql, attrs)
 
-    def doexec(self, session, query, args=None):
+    def doexec(self, session, query, args=None, rollback=True):
         """Execute a query.
         it's a function just so that it shows up in profiling
         """
-        if server.DEBUG:
-            print 'exec', query, args
         cursor = session.pool[self.uri]
+        if server.DEBUG & server.DBG_SQL:
+            cnx = session.pool.connection(self.uri)
+            # getattr to get the actual connection if cnx is a ConnectionWrapper
+            # instance
+            print 'exec', query, args, getattr(cnx, '_cnx', cnx)
         try:
             # str(query) to avoid error if it's an unicode string
             cursor.execute(str(query), args)
         except Exception, ex:
             self.critical("sql: %r\n args: %s\ndbms message: %r",
                           query, args, ex.args[0])
-            try:
-                session.pool.connection(self.uri).rollback()
-                self.critical('transaction has been rollbacked')
-            except:
-                pass
+            if rollback:
+                try:
+                    session.pool.connection(self.uri).rollback()
+                    self.critical('transaction has been rollbacked')
+                except:
+                    pass
             raise
         return cursor
 
@@ -442,7 +448,7 @@ class NativeSQLSource(SQLAdapterMixIn, AbstractSource):
         """Execute a query.
         it's a function just so that it shows up in profiling
         """
-        if server.DEBUG:
+        if server.DEBUG & server.DBG_SQL:
             print 'execmany', query, 'with', len(args), 'arguments'
         cursor = session.pool[self.uri]
         try:

@@ -22,7 +22,7 @@ import os
 from os.path import join, exists
 from datetime import datetime
 
-from logilab.common.deprecation import deprecated_function, obsolete
+from logilab.common.deprecation import deprecated
 from logilab.common.decorators import cached, clear_cache
 from logilab.common.adbh import get_adv_func_helper
 
@@ -30,7 +30,7 @@ from yams.constraints import SizeConstraint
 from yams.schema2sql import eschema2sql, rschema2sql
 
 from cubicweb import AuthenticationError, ETYPE_NAME_MAP
-from cubicweb.schema import CubicWebRelationSchema
+from cubicweb.schema import META_RTYPES, VIRTUAL_RTYPES, CubicWebRelationSchema
 from cubicweb.dbapi import get_repository, repo_connect
 from cubicweb.common.migration import MigrationHelper, yes
 
@@ -109,61 +109,26 @@ class ServerMigrationHelper(MigrationHelper):
 
     def backup_database(self, backupfile=None, askconfirm=True):
         config = self.config
-        source = config.sources()['system']
-        helper = get_adv_func_helper(source['db-driver'])
-        date = datetime.now().strftime('%Y-%m-%d_%H:%M:%S')
-        app = config.appid
-        backupfile = backupfile or join(config.backup_dir(),
-                                        '%s-%s.dump' % (app, date))
-        if exists(backupfile):
-            if not self.confirm('a backup already exists for %s, overwrite it?' % app):
-                return
-        elif askconfirm and not self.confirm('backup %s database?' % app):
-            return
-        cmd = helper.backup_command(source['db-name'], source.get('db-host'),
-                                    source.get('db-user'), backupfile,
-                                    keepownership=False)
-        while True:
-            print cmd
-            if os.system(cmd):
-                print 'error while backuping the base'
-                answer = self.confirm('continue anyway?',
-                                      shell=False, abort=False, retry=True)
-                if not answer:
-                    raise SystemExit(1)
-                if answer == 1: # 1: continue, 2: retry
-                    break
-            else:
-                from cubicweb.toolsutils import restrict_perms_to_user
-                print 'database backup:', backupfile
-                restrict_perms_to_user(backupfile, self.info)
-                break
+        repo = self.repo_connect()
+        timestamp = datetime.now().strftime('%Y-%m-%d_%H:%M:%S')
+        for source in repo.sources:
+            source.backup(self.confirm, backupfile, timestamp,
+                          askconfirm=askconfirm)
+        repo.hm.call_hooks('server_backup', repo=repo, timestamp=timestamp)
 
-    def restore_database(self, backupfile, drop=True):
+    def restore_database(self, backupfile, drop=True, systemonly=True,
+                         askconfirm=True):
         config = self.config
-        source = config.sources()['system']
-        helper = get_adv_func_helper(source['db-driver'])
-        app = config.appid
-        if not exists(backupfile):
-            raise Exception("backup file %s doesn't exist" % backupfile)
-        if self.confirm('restore %s database from %s ?' % (app, backupfile)):
-            for cmd in helper.restore_commands(source['db-name'], source.get('db-host'),
-                                               source.get('db-user'), backupfile,
-                                               source['db-encoding'],
-                                               keepownership=False, drop=drop):
-                while True:
-                    print cmd
-                    if os.system(cmd):
-                        print 'error while restoring the base'
-                        answer = self.confirm('continue anyway?',
-                                              shell=False, abort=False, retry=True)
-                        if not answer:
-                            raise SystemExit(1)
-                        if answer == 1: # 1: continue, 2: retry
-                            break
-                    else:
-                        break
-            print 'database restored'
+        repo = self.repo_connect()
+        if systemonly:
+            repo.system_source.restore(self.confirm, backupfile=backupfile,
+                                       drop=drop, askconfirm=askconfirm)
+        else:
+            # in that case, backup file is expected to be a time stamp
+            for source in repo.sources:
+                source.backup(self.confirm, timestamp=backupfile, drop=drop,
+                              askconfirm=askconfirm)
+            repo.hm.call_hooks('server_restore', repo=repo, timestamp=backupfile)
 
     @property
     def cnx(self):
@@ -234,9 +199,9 @@ class ServerMigrationHelper(MigrationHelper):
                         'fsschema': self.fs_schema,
                         'session' : self.session,
                         'repo' : self.repo,
-                        'synchronize_schema': deprecated_function(self.cmd_sync_schema_props_perms),
-                        'synchronize_eschema': deprecated_function(self.cmd_sync_schema_props_perms),
-                        'synchronize_rschema': deprecated_function(self.cmd_sync_schema_props_perms),
+                        'synchronize_schema': deprecated()(self.cmd_sync_schema_props_perms),
+                        'synchronize_eschema': deprecated()(self.cmd_sync_schema_props_perms),
+                        'synchronize_rschema': deprecated()(self.cmd_sync_schema_props_perms),
                         })
         return context
 
@@ -276,7 +241,7 @@ class ServerMigrationHelper(MigrationHelper):
 
     def _synchronize_permissions(self, ertype):
         """permission synchronization for an entity or relation type"""
-        if ertype in ('eid', 'has_text', 'identity'):
+        if ertype in VIRTUAL_RTYPES:
             return
         newrschema = self.fs_schema[ertype]
         teid = self.repo.schema[ertype].eid
@@ -478,7 +443,7 @@ class ServerMigrationHelper(MigrationHelper):
     def cmd_add_cubes(self, cubes, update_database=True):
         """update_database is telling if the database schema should be updated
         or if only the relevant eproperty should be inserted (for the case where
-        a cube has been extracted from an existing application, so the
+        a cube has been extracted from an existing instance, so the
         cube schema is already in there)
         """
         newcubes = super(ServerMigrationHelper, self).cmd_add_cubes(cubes)
@@ -622,7 +587,7 @@ class ServerMigrationHelper(MigrationHelper):
         # register entity's attributes
         for rschema, attrschema in eschema.attribute_definitions():
             # ignore those meta relations, they will be automatically added
-            if rschema.type in ('eid', 'creation_date', 'modification_date'):
+            if rschema.type in META_RTYPES:
                 continue
             if not rschema.type in applschema:
                 # need to add the relation type and to commit to get it
@@ -638,12 +603,12 @@ class ServerMigrationHelper(MigrationHelper):
             for rschema in eschema.subject_relations():
                 # attribute relation have already been processed and
                 # 'owned_by'/'created_by' will be automatically added
-                if rschema.final or rschema.type in ('owned_by', 'created_by', 'is', 'is_instance_of'):
+                if rschema.final or rschema.type in META_RTYPES:
                     continue
                 rtypeadded = rschema.type in applschema
                 for targetschema in rschema.objects(etype):
                     # ignore relations where the targeted type is not in the
-                    # current application schema
+                    # current instance schema
                     targettype = targetschema.type
                     if not targettype in applschema and targettype != etype:
                         continue
@@ -663,7 +628,7 @@ class ServerMigrationHelper(MigrationHelper):
                 rtypeadded = rschema.type in applschema or rschema.type in added
                 for targetschema in rschema.subjects(etype):
                     # ignore relations where the targeted type is not in the
-                    # current application schema
+                    # current instance schema
                     targettype = targetschema.type
                     # don't check targettype != etype since in this case the
                     # relation has already been added as a subject relation
@@ -729,6 +694,22 @@ class ServerMigrationHelper(MigrationHelper):
             self.commit()
             self.rqlexecall(ss.rdef2rql(rschema),
                             ask_confirm=self.verbosity>=2)
+            if rtype in META_RTYPES:
+                # if the relation is in META_RTYPES, ensure we're adding it for
+                # all entity types *in the persistent schema*, not only those in
+                # the fs schema
+                for etype in self.repo.schema.entities():
+                    if not etype in self.fs_schema:
+                        # get sample object type and rproperties
+                        objtypes = rschema.objects()
+                        assert len(objtypes) == 1
+                        objtype = objtypes[0]
+                        props = rschema.rproperties(
+                            rschema.subjects(objtype)[0], objtype)
+                        assert props
+                        self.rqlexecall(ss.rdef2rql(rschema, etype, objtype, props),
+                                        ask_confirm=self.verbosity>=2)
+
         if commit:
             self.commit()
 
@@ -873,7 +854,7 @@ class ServerMigrationHelper(MigrationHelper):
         if commit:
             self.commit()
 
-    @obsolete('use sync_schema_props_perms(ertype, syncprops=False)')
+    @deprecated('use sync_schema_props_perms(ertype, syncprops=False)')
     def cmd_synchronize_permissions(self, ertype, commit=True):
         self.cmd_sync_schema_props_perms(ertype, syncprops=False, commit=commit)
 
@@ -949,7 +930,7 @@ class ServerMigrationHelper(MigrationHelper):
 
     def cmd_set_state(self, eid, statename, commit=False):
         self.session.set_pool() # ensure pool is set
-        entity = self.session.eid_rset(eid).get_entity(0, 0)
+        entity = self.session.entity_from_eid(eid)
         entity.change_state(entity.wf_state(statename).eid)
         if commit:
             self.commit()

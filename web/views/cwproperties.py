@@ -64,6 +64,7 @@ class CWPropertyPrimaryView(primary.PrimaryView):
 
 
 class SystemCWPropertiesForm(FormViewMixIn, StartupView):
+    """site-wide properties edition form"""
     id = 'systempropertiesform'
     __select__ = none_rset() & match_user_groups('managers')
 
@@ -94,7 +95,6 @@ class SystemCWPropertiesForm(FormViewMixIn, StartupView):
         return status
 
     def call(self, **kwargs):
-        """The default view representing the application's index"""
         self.req.add_js(('cubicweb.edition.js', 'cubicweb.preferences.js', 'cubicweb.ajax.js'))
         self.req.add_css('cubicweb.preferences.css')
         vreg = self.vreg
@@ -180,7 +180,7 @@ class SystemCWPropertiesForm(FormViewMixIn, StartupView):
         if key in values:
             entity = self.cwprops_rset.get_entity(values[key], 0)
         else:
-            entity = self.vreg.etype_class('CWProperty')(self.req, None, None)
+            entity = self.vreg['etypes'].etype_class('CWProperty')(self.req)
             entity.eid = self.req.varmaker.next()
             entity['pkey'] = key
             entity['value'] = self.vreg.property_value(key)
@@ -188,11 +188,11 @@ class SystemCWPropertiesForm(FormViewMixIn, StartupView):
 
     def form(self, formid, keys, splitlabel=False):
         buttons = [SubmitButton()]
-        form = self.vreg.select_object('forms', 'composite', self.req,
-                                  domid=formid, action=self.build_url(),
-                                  form_buttons=buttons,
-                                  onsubmit="return validatePrefsForm('%s')" % formid,
-                                  submitmsg=self.req._('changes applied'))
+        form = self.vreg['forms'].select(
+            'composite', self.req, domid=formid, action=self.build_url(),
+            form_buttons=buttons,
+            onsubmit="return validatePrefsForm('%s')" % formid,
+            submitmsg=self.req._('changes applied'))
         path = self.req.relative_path()
         if '?' in path:
             path, params = path.split('?', 1)
@@ -200,8 +200,8 @@ class SystemCWPropertiesForm(FormViewMixIn, StartupView):
         form.form_add_hidden('__redirectpath', path)
         for key in keys:
             self.form_row(form, key, splitlabel)
-        renderer = self.vreg.select_object('formrenderers', 'cwproperties', self.req,
-                                           display_progress_div=False)
+        renderer = self.vreg['formrenderers'].select('cwproperties', self.req,
+                                                     display_progress_div=False)
         return form.form_render(renderer=renderer)
 
     def form_row(self, form, key, splitlabel):
@@ -210,8 +210,8 @@ class SystemCWPropertiesForm(FormViewMixIn, StartupView):
             label = key.split('.')[-1]
         else:
             label = key
-        subform = self.vreg.select_object('forms', 'base', self.req, entity=entity,
-                                     mainform=False)
+        subform = self.vreg['forms'].select('base', self.req, entity=entity,
+                                            mainform=False)
         subform.append_field(PropertyValueField(name='value', label=label,
                                                 eidparam=True))
         subform.vreg = self.vreg
@@ -226,6 +226,7 @@ def is_user_prefs(cls, req, rset=None, row=None, col=0, **kwargs):
 
 
 class CWPropertiesForm(SystemCWPropertiesForm):
+    """user's preferences properties edition form"""
     id = 'propertiesform'
     __select__ = (
         (none_rset() & match_user_groups('users','managers'))
@@ -259,7 +260,7 @@ class CWPropertiesForm(SystemCWPropertiesForm):
 
 class PlaceHolderWidget(object):
 
-    def render(self, form, field):
+    def render(self, form, field, renderer):
         domid = form.context[field]['id']
         # empty span as well else html validation fail (label is refering to
         # this id)
@@ -272,7 +273,7 @@ class NotEditableWidget(object):
         self.value = value
         self.msg = msg
 
-    def render(self, form, field):
+    def render(self, form, field, renderer):
         domid = form.context[field]['id']
         value = '<span class="value" id="%s">%s</span>' % (domid, self.value)
         if self.msg:
@@ -291,7 +292,7 @@ class PropertyKeyField(StringField):
         wdg.attrs['tabindex'] = form.req.next_tabindex()
         wdg.attrs['onchange'] = "javascript:setPropValueWidget('%s', %s)" % (
             form.edited_entity.eid, form.req.next_tabindex())
-        return wdg.render(form, self)
+        return wdg.render(form, self, renderer)
 
     def vocabulary(self, form):
         entity = form.edited_entity
@@ -312,7 +313,7 @@ class PropertyValueField(StringField):
         wdg = self.get_widget(form)
         if tabindex is not None:
             wdg.attrs['tabindex'] = tabindex
-        return wdg.render(form, self)
+        return wdg.render(form, self, renderer)
 
     def form_init(self, form):
         entity = form.edited_entity

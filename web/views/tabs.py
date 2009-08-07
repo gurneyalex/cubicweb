@@ -86,7 +86,7 @@ class TabsMixin(LazyViewMixin):
         selected_tabs = []
         for tab in tabs:
             try:
-                self.vreg.select_view(tab, self.req, self.rset)
+                self.vreg['views'].select(tab, self.req, rset=self.rset)
                 selected_tabs.append(tab)
             except NoSelectableObject:
                 continue
@@ -107,11 +107,8 @@ class TabsMixin(LazyViewMixin):
         active_tab = self.active_tab(tabs, default)
         # build the html structure
         w = self.w
-        if entity:
-            w(u'<div id="entity-tabs-%s">' % entity.eid)
-        else:
-            uid = make_uid('tab')
-            w(u'<div id="entity-tabs-%s">' % uid)
+        uid = entity and entity.eid or make_uid('tab')
+        w(u'<div id="entity-tabs-%s">' % uid)
         w(u'<ul>')
         for tab in tabs:
             w(u'<li>')
@@ -132,14 +129,14 @@ class TabsMixin(LazyViewMixin):
             w(u'</div>')
         # call the set_tab() JS function *after* each tab is generated
         # because the callback binding needs to be done before
-        self.req.add_onload(u"""
-   jQuery('#entity-tabs-%(eeid)s > ul').tabs( { selected: %(tabindex)s });
-   set_tab('%(vid)s', '%(cookiename)s');
- """ % {'tabindex'   : tabs.index(active_tab),
-        'vid'        : active_tab,
-        'eeid'       : (entity and entity.eid or uid),
-        'cookiename' : self.cookie_name})
-
+        # XXX make work history: true
+        self.req.add_onload(u'''
+  jQuery('#entity-tabs-%(eeid)s > ul').tabs( { selected: %(tabindex)s });
+  set_tab('%(vid)s', '%(cookiename)s');
+''' % {'tabindex'   : tabs.index(active_tab),
+       'vid'        : active_tab,
+       'eeid'       : (entity and entity.eid or uid),
+       'cookiename' : self.cookie_name})
 
 class EntityRelationView(EntityView):
     """view displaying entity related stuff.

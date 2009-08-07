@@ -25,8 +25,6 @@ class CWEType(AnyEntity):
     def dc_long_title(self):
         stereotypes = []
         _ = self.req._
-        if self.meta:
-            stereotypes.append(_('meta'))
         if self.final:
             stereotypes.append(_('final'))
         if stereotypes:
@@ -48,8 +46,6 @@ class CWRType(AnyEntity):
     def dc_long_title(self):
         stereotypes = []
         _ = self.req._
-        if self.meta:
-            stereotypes.append(_('meta'))
         if self.symetric:
             stereotypes.append(_('symetric'))
         if self.inlined:
@@ -115,6 +111,18 @@ class CWRelation(AnyEntity):
         if self.relation_type:
             return self.relation_type[0].rest_path(), {}
         return super(CWRelation, self).after_deletion_path()
+
+    @property
+    def rtype(self):
+        return self.relation_type[0]
+
+    @property
+    def stype(self):
+        return self.from_entity[0]
+
+    @property
+    def otype(self):
+        return self.to_entity[0]
 
 
 class CWAttribute(CWRelation):

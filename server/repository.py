@@ -5,7 +5,7 @@ data sources. Most of the work is actually done in helper classes. The
 repository mainly:
 
 * brings these classes all together to provide a single access
-  point to a cubicweb application.
+  point to a cubicweb instance.
 * handles session management
 * provides method for pyro registration, to call if pyro is enabled
 
@@ -28,14 +28,14 @@ from logilab.common.decorators import cached
 from yams import BadSchemaDefinition
 from rql import RQLSyntaxError
 
-from cubicweb import (CW_SOFTWARE_ROOT, UnknownEid, AuthenticationError,
+from cubicweb import (CW_SOFTWARE_ROOT, CW_MIGRATION_MAP, CW_EVENT_MANAGER,
+                      UnknownEid, AuthenticationError, ExecutionError,
                       ETypeNotSupportedBySources, RTypeNotSupportedBySources,
                       BadConnectionId, Unauthorized, ValidationError,
-                      ExecutionError, typed_eid,
-                      CW_MIGRATION_MAP)
-from cubicweb.cwvreg import CubicWebRegistry
-from cubicweb.schema import CubicWebSchema
-
+                      typed_eid)
+from cubicweb.cwvreg import CubicWebVRegistry
+from cubicweb.schema import VIRTUAL_RTYPES, CubicWebSchema
+from cubicweb import server
 from cubicweb.server.utils import RepoThread, LoopTask
 from cubicweb.server.pool import ConnectionsPool, LateOperation, SingleLastOperation
 from cubicweb.server.session import Session, InternalSession
@@ -115,7 +115,6 @@ def del_existing_rel_if_needed(session, eidfrom, rtype, eidto):
     # the web interface but may occurs during test or dbapi connection (though
     # not expected for this).  So: don't do it, we pretend to ensure repository
     # consistency.
-    # XXX should probably not use unsafe_execute!
     if card[0] in '1?':
         rschema = session.repo.schema.rschema(rtype)
         if not rschema.inlined:
@@ -138,7 +137,7 @@ class Repository(object):
     def __init__(self, config, vreg=None, debug=False):
         self.config = config
         if vreg is None:
-            vreg = CubicWebRegistry(config, debug)
+            vreg = CubicWebVRegistry(config, debug)
         self.vreg = vreg
         self.pyro_registered = False
         self.info('starting repository from %s', self.config.apphome)
@@ -179,12 +178,12 @@ class Repository(object):
         # open some connections pools
         self._available_pools = Queue.Queue()
         self._available_pools.put_nowait(ConnectionsPool(self.sources))
-        if config.read_application_schema:
-            # normal start: load the application schema from the database
+        if config.read_instance_schema:
+            # normal start: load the instance schema from the database
             self.fill_schema()
         elif config.bootstrap_schema:
             # usually during repository creation
-            self.warning("set fs application'schema as bootstrap schema")
+            self.warning("set fs instance'schema as bootstrap schema")
             config.bootstrap_cubes()
             self.set_bootstrap_schema(self.config.load_schema())
             # need to load the Any and CWUser entity types
@@ -197,7 +196,7 @@ class Repository(object):
                                 'cubicweb.entities.authobjs')
         else:
             # test start: use the file system schema (quicker)
-            self.warning("set fs application'schema")
+            self.warning("set fs instance'schema")
             config.bootstrap_cubes()
             self.set_schema(self.config.load_schema())
         if not config.creating:
@@ -217,15 +216,19 @@ class Repository(object):
         # close initialization pool and reopen fresh ones for proper
         # initialization now that we know cubes
         self._get_pool().close(True)
+        # list of available pools (we can't iterated on Queue instance)
+        self.pools = []
         for i in xrange(config['connections-pool-size']):
-            self._available_pools.put_nowait(ConnectionsPool(self.sources))
+            self.pools.append(ConnectionsPool(self.sources))
+            self._available_pools.put_nowait(self.pools[-1])
         self._shutting_down = False
-        if not config.creating:
-            # call application level initialisation hooks
+        if not (config.creating or config.repairing):
+            # call instance level initialisation hooks
             self.hm.call_hooks('server_startup', repo=self)
             # register a task to cleanup expired session
             self.looping_task(self.config['session-time']/3.,
                               self.clean_sessions)
+        CW_EVENT_MANAGER.bind('after-registry-load', self.reset_hooks)
 
     # internals ###############################################################
 
@@ -245,11 +248,14 @@ class Repository(object):
             # full reload of all appobjects
             self.vreg.reset()
             self.vreg.set_schema(schema)
-        self.hm.set_schema(schema)
+        self.reset_hooks()
+
+    def reset_hooks(self):
+        self.hm.set_schema(self.schema)
         self.hm.register_system_hooks(self.config)
-        # application specific hooks
-        if self.config.application_hooks:
-            self.info('loading application hooks')
+        # instance specific hooks
+        if self.config.instance_hooks:
+            self.info('loading instance hooks')
             self.hm.register_hooks(self.config.load_hooks(self.vreg))
 
     def fill_schema(self):
@@ -297,32 +303,32 @@ class Repository(object):
         config.usergroup_hooks = False
         config.schema_hooks = False
         config.notification_hooks = False
-        config.application_hooks = False
+        config.instance_hooks = False
         self.set_schema(schema, resetvreg=False)
         config.core_hooks = True
         config.usergroup_hooks = True
         config.schema_hooks = True
         config.notification_hooks = True
-        config.application_hooks = True
+        config.instance_hooks = True
 
     def start_looping_tasks(self):
         assert isinstance(self._looping_tasks, list), 'already started'
-        for i, (interval, func) in enumerate(self._looping_tasks):
-            self._looping_tasks[i] = task = LoopTask(interval, func)
+        for i, (interval, func, args) in enumerate(self._looping_tasks):
+            self._looping_tasks[i] = task = LoopTask(interval, func, args)
             self.info('starting task %s with interval %.2fs', task.name,
                       interval)
             task.start()
         # ensure no tasks will be further added
         self._looping_tasks = tuple(self._looping_tasks)
 
-    def looping_task(self, interval, func):
+    def looping_task(self, interval, func, *args):
         """register a function to be called every `interval` seconds.
 
         looping tasks can only be registered during repository initialization,
         once done this method will fail.
         """
         try:
-            self._looping_tasks.append( (interval, func) )
+            self._looping_tasks.append( (interval, func, args) )
         except AttributeError:
             raise RuntimeError("can't add looping task once the repository is started")
 
@@ -426,7 +432,7 @@ class Repository(object):
 
     def _build_user(self, session, eid):
         """return a CWUser entity for user with the given eid"""
-        cls = self.vreg.etype_class('CWUser')
+        cls = self.vreg['etypes'].etype_class('CWUser')
         rql = cls.fetch_rql(session.user, ['X eid %(x)s'])
         rset = session.execute(rql, {'x': eid}, 'x')
         assert len(rset) == 1, rset
@@ -441,7 +447,7 @@ class Repository(object):
     # public (dbapi) interface ################################################
 
     def get_schema(self):
-        """return the application schema. This is a public method, not
+        """return the instance schema. This is a public method, not
         requiring a session id
         """
         try:
@@ -452,17 +458,18 @@ class Repository(object):
             self.schema.__hashmode__ = None
 
     def get_cubes(self):
-        """return the list of cubes used by this application. This is a
+        """return the list of cubes used by this instance. This is a
         public method, not requiring a session id.
         """
-        versions = self.get_versions(not self.config.creating)
+        versions = self.get_versions(not (self.config.creating
+                                          or self.config.repairing))
         cubes = list(versions)
         cubes.remove('cubicweb')
         return cubes
 
     @cached
     def get_versions(self, checkversions=False):
-        """return the a dictionary containing cubes used by this application
+        """return the a dictionary containing cubes used by this instance
         as key with their version as value, including cubicweb version. This is a
         public method, not requiring a session id.
         """
@@ -485,7 +492,7 @@ class Repository(object):
                     else:
                         fsversion = self.config.cubicweb_version()
                     if version < fsversion:
-                        msg = ('application has %s version %s but %s '
+                        msg = ('instance has %s version %s but %s '
                                'is installed. Run "cubicweb-ctl upgrade".')
                         raise ExecutionError(msg % (cube, version, fsversion))
         finally:
@@ -529,7 +536,7 @@ class Repository(object):
                                    {'login': login})):
                 raise ValidationError(None, {'login': errmsg % login})
             # we have to create the user
-            user = self.vreg.etype_class('CWUser')(session, None)
+            user = self.vreg['etypes'].etype_class('CWUser')(session, None)
             if isinstance(password, unicode):
                 # password should *always* be utf8 encoded
                 password = password.encode('UTF8')
@@ -929,9 +936,10 @@ class Repository(object):
         """
         rql = []
         eschema = self.schema.eschema(etype)
+        pendingrtypes = session.transaction_data.get('pendingrtypes', ())
         for rschema, targetschemas, x in eschema.relation_definitions():
             rtype = rschema.type
-            if rtype == 'identity':
+            if rtype in VIRTUAL_RTYPES or rtype in pendingrtypes:
                 continue
             var = '%s%s' % (rtype.upper(), x.upper())
             if x == 'subject':
@@ -984,6 +992,8 @@ class Repository(object):
         source = self.locate_etype_source(etype)
         # attribute an eid to the entity before calling hooks
         entity.set_eid(self.system_source.create_eid(session))
+        if server.DEBUG & server.DBG_REPO:
+            print 'ADD entity', etype, entity.eid, dict(entity)
         entity._is_saved = False # entity has an eid but is not yet saved
         relations = []
         # if inlined relations are specified, fill entity's related cache to
@@ -991,11 +1001,10 @@ class Repository(object):
         for attr in entity.keys():
             rschema = eschema.subject_relation(attr)
             if not rschema.is_final(): # inlined relation
-                entity.set_related_cache(attr, 'subject',
-                                         entity.req.eid_rset(entity[attr]))
                 relations.append((attr, entity[attr]))
         if source.should_call_hooks:
             self.hm.call_hooks('before_add_entity', etype, session, entity)
+        entity.edited_attributes = entity.keys()
         entity.set_defaults()
         entity.check(creation=True)
         source.add_entity(session, entity)
@@ -1006,7 +1015,21 @@ class Repository(object):
             extid = None
         self.add_info(session, entity, source, extid, complete=False)
         entity._is_saved = True # entity has an eid and is saved
-        #print 'added', entity#, entity.items()
+        # prefill entity relation caches
+        session.set_entity_cache(entity)
+        for rschema in eschema.subject_relations():
+            rtype = str(rschema)
+            if rtype in VIRTUAL_RTYPES:
+                continue
+            if rschema.is_final():
+                entity.setdefault(rtype, None)
+            else:
+                entity.set_related_cache(rtype, 'subject', session.empty_rset())
+        for rschema in eschema.object_relations():
+            rtype = str(rschema)
+            if rtype in VIRTUAL_RTYPES:
+                continue
+            entity.set_related_cache(rtype, 'object', session.empty_rset())
         # trigger after_add_entity after after_add_relation
         if source.should_call_hooks:
             self.hm.call_hooks('after_add_entity', etype, session, entity)
@@ -1014,18 +1037,23 @@ class Repository(object):
             for attr, value in relations:
                 self.hm.call_hooks('before_add_relation', attr, session,
                                     entity.eid, attr, value)
+                session.update_rel_cache_add(entity.eid, attr, value)
                 self.hm.call_hooks('after_add_relation', attr, session,
                                     entity.eid, attr, value)
         return entity.eid
 
-    def glob_update_entity(self, session, entity):
+    def glob_update_entity(self, session, entity, edited_attributes):
         """replace an entity in the repository
         the type and the eid of an entity must not be changed
         """
-        #print 'update', entity
-        entity.check()
         etype = str(entity.e_schema)
+        if server.DEBUG & server.DBG_REPO:
+            print 'UPDATE entity', etype, entity.eid, \
+                  dict(entity), edited_attributes
+        entity.edited_attributes = edited_attributes
+        entity.check()
         eschema = entity.e_schema
+        session.set_entity_cache(entity)
         only_inline_rels, need_fti_update = True, False
         relations = []
         for attr in entity.keys():
@@ -1041,10 +1069,12 @@ class Repository(object):
                 previous_value = entity.related(attr)
                 if previous_value:
                     previous_value = previous_value[0][0] # got a result set
-                    self.hm.call_hooks('before_delete_relation', attr, session,
-                                       entity.eid, attr, previous_value)
-                entity.set_related_cache(attr, 'subject',
-                                         entity.req.eid_rset(entity[attr]))
+                    if previous_value == entity[attr]:
+                        previous_value = None
+                    else:
+                        self.hm.call_hooks('before_delete_relation', attr,
+                                           session, entity.eid, attr,
+                                           previous_value)
                 relations.append((attr, entity[attr], previous_value))
         source = self.source_from_eid(entity.eid, session)
         if source.should_call_hooks:
@@ -1066,19 +1096,31 @@ class Repository(object):
                                     entity)
         if source.should_call_hooks:
             for attr, value, prevvalue in relations:
+                # if the relation is already cached, update existant cache
+                relcache = entity.relation_cached(attr, 'subject')
                 if prevvalue:
                     self.hm.call_hooks('after_delete_relation', attr, session,
                                        entity.eid, attr, prevvalue)
+                    if relcache is not None:
+                        session.update_rel_cache_del(entity.eid, attr, prevvalue)
                 del_existing_rel_if_needed(session, entity.eid, attr, value)
+                if relcache is not None:
+                    session.update_rel_cache_add(entity.eid, attr, value)
+                else:
+                    entity.set_related_cache(attr, 'subject',
+                                             session.eid_rset(value))
                 self.hm.call_hooks('after_add_relation', attr, session,
                                     entity.eid, attr, value)
 
     def glob_delete_entity(self, session, eid):
         """delete an entity and all related entities from the repository"""
-        #print 'deleting', eid
         # call delete_info before hooks
         self._prepare_delete_info(session, eid)
         etype, uri, extid = self.type_and_source_from_eid(eid, session)
+        if server.DEBUG & server.DBG_REPO:
+            print 'DELETE entity', etype, eid
+            if eid == 937:
+                server.DEBUG |= (server.DBG_SQL | server.DBG_RQL | server.DBG_MORE)
         source = self.sources_by_uri[uri]
         if source.should_call_hooks:
             self.hm.call_hooks('before_delete_entity', etype, session, eid)
@@ -1090,32 +1132,32 @@ class Repository(object):
 
     def glob_add_relation(self, session, subject, rtype, object):
         """add a relation to the repository"""
-        assert subject is not None
-        assert rtype
-        assert object is not None
+        if server.DEBUG & server.DBG_REPO:
+            print 'ADD relation', subject, rtype, object
         source = self.locate_relation_source(session, subject, rtype, object)
-        #print 'adding', subject, rtype, object, 'to', source
         if source.should_call_hooks:
             del_existing_rel_if_needed(session, subject, rtype, object)
             self.hm.call_hooks('before_add_relation', rtype, session,
                                subject, rtype, object)
         source.add_relation(session, subject, rtype, object)
+        rschema = self.schema.rschema(rtype)
+        session.update_rel_cache_add(subject, rtype, object, rschema.symetric)
         if source.should_call_hooks:
             self.hm.call_hooks('after_add_relation', rtype, session,
                                subject, rtype, object)
 
     def glob_delete_relation(self, session, subject, rtype, object):
         """delete a relation from the repository"""
-        assert subject is not None
-        assert rtype
-        assert object is not None
+        if server.DEBUG & server.DBG_REPO:
+            print 'DELETE relation', subject, rtype, object
         source = self.locate_relation_source(session, subject, rtype, object)
-        #print 'delete rel', subject, rtype, object
         if source.should_call_hooks:
             self.hm.call_hooks('before_delete_relation', rtype, session,
                                subject, rtype, object)
         source.delete_relation(session, subject, rtype, object)
-        if self.schema.rschema(rtype).symetric:
+        rschema = self.schema.rschema(rtype)
+        session.update_rel_cache_del(subject, rtype, object, rschema.symetric)
+        if rschema.symetric:
             # on symetric relation, we can't now in which sense it's
             # stored so try to delete both
             source.delete_relation(session, object, rtype, subject)
@@ -1128,35 +1170,15 @@ class Repository(object):
 
     def pyro_register(self, host=''):
         """register the repository as a pyro object"""
-        from Pyro import core
-        port = self.config['pyro-port']
-        nshost, nsgroup = self.config['pyro-ns-host'], self.config['pyro-ns-group']
-        nsgroup = ':' + nsgroup
-        core.initServer(banner=0)
-        daemon = core.Daemon(host=host, port=port)
-        daemon.useNameServer(self.pyro_nameserver(nshost, nsgroup))
-        # use Delegation approach
-        impl = core.ObjBase()
-        impl.delegateTo(self)
-        nsid = self.config['pyro-id'] or self.config.appid
-        daemon.connect(impl, '%s.%s' % (nsgroup, nsid))
+        from logilab.common.pyro_ext import register_object
+        appid = self.config['pyro-id'] or self.config.appid
+        daemon = register_object(self, appid, self.config['pyro-ns-group'],
+                                 self.config['pyro-host'],
+                                 self.config['pyro-ns-host'])
         msg = 'repository registered as a pyro object using group %s and id %s'
-        self.info(msg, nsgroup, nsid)
+        self.info(msg, self.config['pyro-ns-group'], appid)
         self.pyro_registered = True
         return daemon
-
-    def pyro_nameserver(self, host=None, group=None):
-        """locate and bind the the name server to the daemon"""
-        from Pyro import naming, errors
-        # locate the name server
-        nameserver = naming.NameServerLocator().getNS(host)
-        if group is not None:
-            # make sure our namespace group exists
-            try:
-                nameserver.createGroup(group)
-            except errors.NamingError:
-                pass
-        return nameserver
 
     # multi-sources planner helpers ###########################################
 
@@ -1181,21 +1203,9 @@ class Repository(object):
 
 def pyro_unregister(config):
     """unregister the repository from the pyro name server"""
-    nshost, nsgroup = config['pyro-ns-host'], config['pyro-ns-group']
+    from logilab.common.pyro_ext import ns_unregister
     appid = config['pyro-id'] or config.appid
-    from Pyro import core, naming, errors
-    core.initClient(banner=False)
-    try:
-        nameserver = naming.NameServerLocator().getNS(nshost)
-    except errors.PyroError, ex:
-        # name server not responding
-        config.error('can\'t locate pyro name server: %s', ex)
-        return
-    try:
-        nameserver.unregister(':%s.%s' % (nsgroup, appid))
-        config.info('%s unregistered from pyro name server', appid)
-    except errors.NamingError:
-        config.warning('%s already unregistered from pyro name server', appid)
+    ns_unregister(appid, config['pyro-ns-group'], config['pyro-ns-host'])
 
 
 from logging import getLogger

@@ -44,7 +44,7 @@ class QueryTranslatorTC(EnvBasedTC):
         super(QueryTranslatorTC, self).setUp()
         self.req = self.env.create_request()
         self.vreg.config.translations = {'en': _translate}
-        proc = self.vreg.select_component('magicsearch', self.req)
+        proc = self.vreg['components'].select('magicsearch', self.req)
         self.proc = [p for p in proc.processors if isinstance(p, QueryTranslator)][0]
 
     def test_basic_translations(self):
@@ -69,7 +69,7 @@ class QSPreProcessorTC(EnvBasedTC):
         super(QSPreProcessorTC, self).setUp()
         self.vreg.config.translations = {'en': _translate}
         self.req = self.request()
-        proc = self.vreg.select_component('magicsearch', self.req)
+        proc = self.vreg['components'].select('magicsearch', self.req)
         self.proc = [p for p in proc.processors if isinstance(p, QSPreProcessor)][0]
         self.proc.req = self.req
 
@@ -147,11 +147,6 @@ class QSPreProcessorTC(EnvBasedTC):
                           ('CWUser C WHERE C use_email C1, C1 alias LIKE %(text)s', {'text': '%Logilab'}))
         self.assertRaises(BadRQLQuery, transform, 'word1', 'word2', 'word3')
 
-    def test_multiple_words_query(self):
-        """tests multiple_words_query()"""
-        self.assertEquals(self.proc._multiple_words_query(['a', 'b', 'c', 'd', 'e']),
-                          ('a b c d e',))
-
     def test_quoted_queries(self):
         """tests how quoted queries are handled"""
         queries = [
@@ -174,10 +169,11 @@ class QSPreProcessorTC(EnvBasedTC):
             (u'Utilisateur P', (u"CWUser P",)),
             (u'Utilisateur cubicweb', (u'CWUser C WHERE C has_text %(text)s', {'text': u'cubicweb'})),
             (u'CWUser prÃ©nom cubicweb', (u'CWUser C WHERE C firstname %(text)s', {'text': 'cubicweb'},)),
-            (u'Any X WHERE X is Something', (u"Any X WHERE X is Something",)),
             ]
         for query, expected in queries:
             self.assertEquals(self.proc.preprocess_query(query, self.req), expected)
+        self.assertRaises(BadRQLQuery,
+                          self.proc.preprocess_query, 'Any X WHERE X is Something', self.req)
 
 
 
@@ -191,7 +187,7 @@ class ProcessorChainTC(EnvBasedTC):
         super(ProcessorChainTC, self).setUp()
         self.vreg.config.translations = {'en': _translate}
         self.req = self.request()
-        self.proc = self.vreg.select_component('magicsearch', self.req)
+        self.proc = self.vreg['components'].select('magicsearch', self.req)
 
     def test_main_preprocessor_chain(self):
         """tests QUERY_PROCESSOR"""

@@ -1,9 +1,9 @@
 """twisted server configurations:
 
-* the "twisted" configuration to get a web application running in a standalone
+* the "twisted" configuration to get a web instance running in a standalone
   twisted web server which talk to a repository server using Pyro
 
-* the "all-in-one" configuration to get a web application running in a twisted
+* the "all-in-one" configuration to get a web instance running in a twisted
   web server integrating a repository server in the same process (only available
   if the repository part of the software is installed
 
@@ -19,7 +19,7 @@ from os.path import join
 from cubicweb.web.webconfig import WebConfiguration, merge_options, Method
 
 class TwistedConfiguration(WebConfiguration):
-    """web application (in a twisted web server) client of a RQL server"""
+    """web instance (in a twisted web server) client of a RQL server"""
     name = 'twisted'
 
     options = merge_options((
@@ -81,14 +81,14 @@ try:
     from cubicweb.server.serverconfig import ServerConfiguration
 
     class AllInOneConfiguration(TwistedConfiguration, ServerConfiguration):
-        """repository and web application in the same twisted process"""
+        """repository and web instance in the same twisted process"""
         name = 'all-in-one'
         repo_method = 'inmemory'
         options = merge_options(TwistedConfiguration.options
                                 + ServerConfiguration.options)
 
-        cubicweb_vobject_path = TwistedConfiguration.cubicweb_vobject_path | ServerConfiguration.cubicweb_vobject_path
-        cube_vobject_path = TwistedConfiguration.cube_vobject_path | ServerConfiguration.cube_vobject_path
+        cubicweb_appobject_path = TwistedConfiguration.cubicweb_appobject_path | ServerConfiguration.cubicweb_appobject_path
+        cube_appobject_path = TwistedConfiguration.cube_appobject_path | ServerConfiguration.cube_appobject_path
         def pyro_enabled(self):
             """tell if pyro is activated for the in memory repository"""
             return self['pyro-server']

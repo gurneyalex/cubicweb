@@ -44,7 +44,7 @@ def how_many_dict(schema, cursor, how_many, skip):
     # compute how many entities by type we need to be able to satisfy relation constraint
     relmap = {}
     for rschema in schema.relations():
-        if rschema.meta or rschema.is_final(): # skip meta relations
+        if rschema.is_final():
             continue
         for subj, obj in rschema.iter_rdefs():
             card = rschema.rproperty(subj, obj, 'cardinality')
@@ -172,7 +172,8 @@ class WebTest(EnvBasedTC):
         return validator.parse_string(output.strip())
 
 
-    def view(self, vid, rset, req=None, template='main-template', **kwargs):
+    def view(self, vid, rset=None, req=None, template='main-template',
+             **kwargs):
         """This method tests the view `vid` on `rset` using `template`
 
         If no error occured while rendering the view, the HTML is analyzed
@@ -183,7 +184,9 @@ class WebTest(EnvBasedTC):
         """
         req = req or rset and rset.req or self.request()
         req.form['vid'] = vid
-        view = self.vreg.select_view(vid, req, rset, **kwargs)
+        kwargs['rset'] = rset
+        viewsreg = self.vreg['views']
+        view = viewsreg.select(vid, req, **kwargs)
         # set explicit test description
         if rset is not None:
             self.set_description("testing %s, mod=%s (%s)" % (
@@ -194,9 +197,11 @@ class WebTest(EnvBasedTC):
         if template is None: # raw view testing, no template
             viewfunc = view.render
         else:
-            templateview = self.vreg.select_view(template, req, rset, view=view, **kwargs)
             kwargs['view'] = view
-            viewfunc = lambda **k: self.vreg.main_template(req, template, **kwargs)
+            templateview = viewsreg.select(template, req, **kwargs)
+            viewfunc = lambda **k: viewsreg.main_template(req, template,
+                                                          **kwargs)
+        kwargs.pop('rset')
         return self._test_view(viewfunc, view, template, kwargs)
 
 
@@ -268,7 +273,8 @@ class WebTest(EnvBasedTC):
         req = rset.req
         only_once_vids = ('primary', 'secondary', 'text')
         req.data['ex'] = ValueError("whatever")
-        for vid, views in self.vreg.registry('views').items():
+        viewsvreg = self.vreg['views']
+        for vid, views in viewsvreg.items():
             if vid[0] == '_':
                 continue
             if rset.rowcount > 1 and vid in only_once_vids:
@@ -278,7 +284,7 @@ class WebTest(EnvBasedTC):
                      and not issubclass(view, NotificationView)]
             if views:
                 try:
-                    view = self.vreg.select(views, req, rset)
+                    view = viewsvreg.select_best(views, req, rset=rset)
                     if view.linkable():
                         yield view
                     else:
@@ -291,19 +297,19 @@ class WebTest(EnvBasedTC):
     def list_actions_for(self, rset):
         """returns the list of actions that can be applied on `rset`"""
         req = rset.req
-        for action in self.vreg.possible_objects('actions', req, rset):
+        for action in self.vreg['actions'].possible_objects(req, rset=rset):
             yield action
 
     def list_boxes_for(self, rset):
         """returns the list of boxes that can be applied on `rset`"""
         req = rset.req
-        for box in self.vreg.possible_objects('boxes', req, rset):
+        for box in self.vreg['boxes'].possible_objects(req, rset=rset):
             yield box
 
     def list_startup_views(self):
         """returns the list of startup views"""
         req = self.request()
-        for view in self.vreg.possible_views(req, None):
+        for view in self.vreg['views'].possible_views(req, None):
             if view.category == 'startupview':
                 yield view.id
             else:
@@ -371,9 +377,9 @@ class RealDBTest(WebTest):
                 rset2 = rset.limit(limit=1, offset=row)
                 yield rset2
 
-def not_selected(vreg, vobject):
+def not_selected(vreg, appobject):
     try:
-        vreg._selected[vobject.__class__] -= 1
+        vreg._selected[appobject.__class__] -= 1
     except (KeyError, AttributeError):
         pass
 
@@ -381,26 +387,29 @@ def vreg_instrumentize(testclass):
     from cubicweb.devtools.apptest import TestEnvironment
     env = testclass._env = TestEnvironment('data', configcls=testclass.configcls,
                                            requestcls=testclass.requestcls)
-    vreg = env.vreg
-    vreg._selected = {}
-    orig_select = vreg.__class__.select
-    def instr_select(self, *args, **kwargs):
-        selected = orig_select(self, *args, **kwargs)
+    for reg in env.vreg.values():
+        reg._selected = {}
         try:
-            self._selected[selected.__class__] += 1
-        except KeyError:
-            self._selected[selected.__class__] = 1
-        except AttributeError:
-            pass # occurs on vreg used to restore database
-        return selected
-    vreg.__class__.select = instr_select
+            orig_select_best = reg.__class__.__orig_select_best
+        except:
+            orig_select_best = reg.__class__.select_best
+        def instr_select_best(self, *args, **kwargs):
+            selected = orig_select_best(self, *args, **kwargs)
+            try:
+                self._selected[selected.__class__] += 1
+            except KeyError:
+                self._selected[selected.__class__] = 1
+            except AttributeError:
+                pass # occurs on reg used to restore database
+            return selected
+        reg.__class__.select_best = instr_select_best
+        reg.__class__.__orig_select_best = orig_select_best
 
 def print_untested_objects(testclass, skipregs=('hooks', 'etypes')):
-    vreg = testclass._env.vreg
-    for registry, vobjectsdict in vreg.items():
-        if registry in skipregs:
+    for regname, reg in testclass._env.vreg.iteritems():
+        if regname in skipregs:
             continue
-        for vobjects in vobjectsdict.values():
-            for vobject in vobjects:
-                if not vreg._selected.get(vobject):
-                    print 'not tested', registry, vobject
+        for appobjects in reg.itervalues():
+            for appobject in appobjects:
+                if not reg._selected.get(appobject):
+                    print 'not tested', regname, appobject

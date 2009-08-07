@@ -100,20 +100,39 @@ class RequestSessionMixIn(object):
                          [(etype,)])
         return self.decorate_rset(rset)
 
-    def entity_from_eid(self, eid, etype=None):
-        rset = self.eid_rset(eid, etype)
-        if rset:
-            return rset.get_entity(0, 0)
-        else:
-            return None
+    def empty_rset(self):
+        """return a result set for the given eid without doing actual query
+        (we have the eid, we can suppose it exists and user has access to the
+        entity)
+        """
+        from cubicweb.rset import ResultSet
+        return self.decorate_rset(ResultSet([], 'Any X WHERE X eid -1'))
 
+    def entity_from_eid(self, eid, etype=None):
+        try:
+            return self.entity_cache(eid)
+        except KeyError:
+            rset = self.eid_rset(eid, etype)
+            entity = rset.get_entity(0, 0)
+            self.set_entity_cache(entity)
+            return entity
+
+    def entity_cache(self, eid):
+        raise KeyError
+    def set_entity_cache(self, entity):
+        pass
     # url generation methods ##################################################
 
-    def build_url(self, method, base_url=None, **kwargs):
+    def build_url(self, *args, **kwargs):
         """return an absolute URL using params dictionary key/values as URL
         parameters. Values are automatically URL quoted, and the
         publishing method to use may be specified or will be guessed.
         """
+        # use *args since we don't want first argument to be "anonymous" to
+        # avoid potential clash with kwargs
+        assert len(args) == 1, 'only 0 or 1 non-named-argument expected'
+        method = args[0]
+        base_url = kwargs.pop('base_url', None)
         if base_url is None:
             base_url = self.base_url()
         if '_restpath' in kwargs:
@@ -193,7 +212,7 @@ class RequestSessionMixIn(object):
     # abstract methods to override according to the web front-end #############
 
     def base_url(self):
-        """return the root url of the application"""
+        """return the root url of the instance"""
         raise NotImplementedError
 
     def decorate_rset(self, rset):
@@ -298,3 +317,49 @@ def target(obj):
 def underline_title(title, car='-'):
     return title+'\n'+(car*len(title))
 
+
+class CubicWebEventManager(object):
+    """simple event / callback manager.
+
+    Typical usage to register a callback::
+
+      >>> from cubicweb import CW_EVENT_MANAGER
+      >>> CW_EVENT_MANAGER.bind('after-registry-reload', mycallback)
+
+    Typical usage to emit an event::
+
+      >>> from cubicweb import CW_EVENT_MANAGER
+      >>> CW_EVENT_MANAGER.emit('after-registry-reload')
+
+    emit() accepts an additional context parameter that will be passed
+    to the callback if specified (and only in that case)
+    """
+    def __init__(self):
+        self.callbacks = {}
+
+    def bind(self, event, callback, *args, **kwargs):
+        self.callbacks.setdefault(event, []).append( (callback, args, kwargs) )
+
+    def emit(self, event, context=None):
+        for callback, args, kwargs in self.callbacks.get(event, ()):
+            if context is None:
+                callback(*args, **kwargs)
+            else:
+                callback(context, *args, **kwargs)
+
+CW_EVENT_MANAGER = CubicWebEventManager()
+
+def onevent(event):
+    """decorator to ease event / callback binding
+
+    >>> from cubicweb import onevent
+    >>> @onevent('before-registry-reload')
+    ... def mycallback():
+    ...     print 'hello'
+    ...
+    >>>
+    """
+    def _decorator(func):
+        CW_EVENT_MANAGER.bind(event, func)
+        return func
+    return _decorator

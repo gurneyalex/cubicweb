@@ -23,7 +23,8 @@ from rql.utils import rqlvar_maker
 from cubicweb import dbapi, server
 from cubicweb import BadConnectionId, UnknownEid, ConnectionError
 from cubicweb.cwconfig import register_persistent_options
-from cubicweb.server.sources import AbstractSource, ConnectionWrapper, TimedCache
+from cubicweb.server.sources import (AbstractSource, ConnectionWrapper,
+                                     TimedCache, dbg_st_search, dbg_results)
 
 class ReplaceByInOperator(Exception):
     def __init__(self, eids):
@@ -78,14 +79,7 @@ class PyroRQLSource(AbstractSource):
          {'type' : 'string',
           'default': None,
           'help': 'Pyro name server\'s host. If not set, default to the value \
-from all_in_one.conf.',
-          'group': 'pyro-source', 'inputlevel': 1,
-          }),
-        ('pyro-ns-port',
-         {'type' : 'int',
-          'default': None,
-          'help': 'Pyro name server\'s listening port. If not set, default to \
-the value from all_in_one.conf.',
+from all_in_one.conf. It may contains port information using <host>:<port> notation.',
           'group': 'pyro-source', 'inputlevel': 1,
           }),
         ('pyro-ns-group',
@@ -213,13 +207,12 @@ repository (default to 5 minutes).',
     def _get_connection(self):
         """open and return a connection to the source"""
         nshost = self.config.get('pyro-ns-host') or self.repo.config['pyro-ns-host']
-        nsport = self.config.get('pyro-ns-port') or self.repo.config['pyro-ns-port']
         nsgroup = self.config.get('pyro-ns-group') or self.repo.config['pyro-ns-group']
         #cnxprops = ConnectionProperties(cnxtype=self.config['cnx-type'])
         return dbapi.connect(database=self.config['pyro-ns-id'],
                              login=self.config['cubicweb-user'],
                              password=self.config['cubicweb-password'],
-                             host=nshost, port=nsport, group=nsgroup,
+                             host=nshost, group=nsgroup,
                              setvreg=False) #cnxprops=cnxprops)
 
     def get_connection(self):
@@ -253,13 +246,14 @@ repository (default to 5 minutes).',
 
     def syntax_tree_search(self, session, union, args=None, cachekey=None,
                            varmap=None):
-        #assert not varmap, (varmap, union)
+        assert dbg_st_search(self.uri, union, varmap, args, cachekey)
         rqlkey = union.as_string(kwargs=args)
         try:
             results = self._query_cache[rqlkey]
         except KeyError:
             results = self._syntax_tree_search(session, union, args)
             self._query_cache[rqlkey] = results
+        assert dbg_results(results)
         return results
 
     def _syntax_tree_search(self, session, union, args):
@@ -270,11 +264,6 @@ repository (default to 5 minutes).',
         """
         if not args is None:
             args = args.copy()
-        if server.DEBUG:
-            print 'RQL FOR PYRO SOURCE', self.uri
-            print union.as_string()
-            if args: print 'ARGS', args
-            print 'SOLUTIONS', ','.join(str(s.solutions) for s in union.children)
         # get cached cursor anyway
         cu = session.pool[self.uri]
         if cu is None:
@@ -286,10 +275,10 @@ repository (default to 5 minutes).',
             rql, cachekey = RQL2RQL(self).generate(session, union, args)
         except UnknownEid, ex:
             if server.DEBUG:
-                print 'unknown eid', ex, 'no results'
+                print '  unknown eid', ex, 'no results'
             return []
-        if server.DEBUG:
-            print 'TRANSLATED RQL', rql
+        if server.DEBUG & server.DBG_RQL:
+            print '  translated rql', rql
         try:
             rset = cu.execute(rql, args, cachekey)
         except Exception, ex:
@@ -325,11 +314,6 @@ repository (default to 5 minutes).',
             results = rows
         else:
             results = []
-        if server.DEBUG:
-            if len(results)>10:
-                print '--------------->', results[:10], '...', len(results)
-            else:
-                print '--------------->', results
         return results
 
     def _entity_relations_and_kwargs(self, session, entity):

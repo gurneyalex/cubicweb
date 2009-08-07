@@ -15,7 +15,6 @@ from smtplib import SMTP
 import simplejson
 
 from logilab.common.decorators import cached
-from logilab.mtconverter import xml_escape
 
 from cubicweb import NoSelectableObject, ValidationError, ObjectNotFound, typed_eid
 from cubicweb.utils import strptime
@@ -33,16 +32,6 @@ try:
 except ImportError: # gae
     HAS_SEARCH_RESTRICTION = False
 
-
-def xhtml_wrap(self, source):
-    # XXX factor out, watch view.py ~ Maintemplate.doctype
-    if self.req.xhtml_browser():
-        dt = STRICT_DOCTYPE
-    else:
-        dt = STRICT_DOCTYPE_NOEXT
-    head = u'<?xml version="1.0"?>\n' + dt
-    return head + u'<div xmlns="http://www.w3.org/1999/xhtml" xmlns:cubicweb="http://www.logilab.org/2008/cubicweb">%s</div>' % source.strip()
-
 def jsonize(func):
     """decorator to sets correct content_type and calls `simplejson.dumps` on
     results
@@ -58,7 +47,8 @@ def xhtmlize(func):
     def wrapper(self, *args, **kwargs):
         self.req.set_content_type(self.req.html_content_type())
         result = func(self, *args, **kwargs)
-        return xhtml_wrap(self, result)
+        return ''.join((self.req.document_surrounding_div(), result.strip(),
+                        u'</div>'))
     wrapper.__name__ = func.__name__
     return wrapper
 
@@ -78,7 +68,7 @@ class LoginController(Controller):
     id = 'login'
 
     def publish(self, rset=None):
-        """log in the application"""
+        """log in the instance"""
         if self.config['auth-mode'] == 'http':
             # HTTP authentication
             raise ExplicitLogin()
@@ -91,7 +81,7 @@ class LogoutController(Controller):
     id = 'logout'
 
     def publish(self, rset=None):
-        """logout from the application"""
+        """logout from the instance"""
         return self.appli.session_handler.logout(self.req)
 
 
@@ -109,7 +99,8 @@ class ViewController(Controller):
         self.add_to_breadcrumbs(view)
         self.validate_cache(view)
         template = self.appli.main_template_id(self.req)
-        return self.vreg.main_template(self.req, template, rset=rset, view=view)
+        return self.vreg['views'].main_template(self.req, template,
+                                                rset=rset, view=view)
 
     def _select_view_and_rset(self, rset):
         req = self.req
@@ -128,12 +119,12 @@ class ViewController(Controller):
                 req.set_message(req._("error while handling __method: %s") % req._(ex))
         vid = req.form.get('vid') or vid_from_rset(req, rset, self.schema)
         try:
-            view = self.vreg.select_view(vid, req, rset)
+            view = self.vreg['views'].select(vid, req, rset=rset)
         except ObjectNotFound:
             self.warning("the view %s could not be found", vid)
             req.set_message(req._("The view %s could not be found") % vid)
             vid = vid_from_rset(req, rset, self.schema)
-            view = self.vreg.select_view(vid, req, rset)
+            view = self.vreg['views'].select(vid, req, rset=rset)
         except NoSelectableObject:
             if rset:
                 req.set_message(req._("The view %s can not be applied to this query") % vid)
@@ -141,7 +132,7 @@ class ViewController(Controller):
                 req.set_message(req._("You have no access to this view or it's not applyable to current data"))
             self.warning("the view %s can not be applied to this query", vid)
             vid = vid_from_rset(req, rset, self.schema)
-            view = self.vreg.select_view(vid, req, rset)
+            view = self.vreg['views'].select(vid, req, rset=rset)
         return view, rset
 
     def add_to_breadcrumbs(self, view):
@@ -179,6 +170,7 @@ class ViewController(Controller):
 
 
 def _validation_error(req, ex):
+    req.cnx.rollback()
     forminfo = req.get_session_data(req.form.get('__errorurl'), pop=True)
     foreid = ex.entity
     eidmap = req.data.get('eidmap', {})
@@ -191,20 +183,17 @@ def _validation_error(req, ex):
 def _validate_form(req, vreg):
     # XXX should use the `RemoteCallFailed` mechanism
     try:
-        ctrl = vreg.select(vreg.registry_objects('controllers', 'edit'),
-                           req=req)
+        ctrl = vreg['controllers'].select('edit', req=req)
     except NoSelectableObject:
         return (False, {None: req._('not authorized')})
     try:
         ctrl.publish(None)
     except ValidationError, ex:
-        req.cnx.rollback()
         return (False, _validation_error(req, ex))
     except Redirect, ex:
         try:
             req.cnx.commit() # ValidationError may be raise on commit
         except ValidationError, ex:
-            req.cnx.rollback()
             return (False, _validation_error(req, ex))
         else:
             return (True, ex.location)
@@ -218,18 +207,21 @@ def _validate_form(req, vreg):
 class FormValidatorController(Controller):
     id = 'validateform'
 
+    def response(self, domid, status, args):
+        self.req.set_content_type('text/html')
+        jsargs = simplejson.dumps( (status, args) )
+        return """<script type="text/javascript">
+ window.parent.handleFormValidationResponse('%s', null, null, %s);
+</script>""" %  (domid, jsargs)
+
     def publish(self, rset=None):
         self.req.json_request = True
         # XXX unclear why we have a separated controller here vs
         # js_validate_form on the json controller
         status, args = _validate_form(self.req, self.vreg)
-        self.req.set_content_type('text/html')
-        jsarg = simplejson.dumps( (status, args) )
         domid = self.req.form.get('__domid', 'entityForm').encode(
             self.req.encoding)
-        return """<script type="text/javascript">
- window.parent.handleFormValidationResponse('%s', null, null, %s);
-</script>""" %  (domid, simplejson.dumps( (status, args) ))
+        return self.response(domid, status, args)
 
 
 class JSonController(Controller):
@@ -263,6 +255,8 @@ class JSonController(Controller):
         except RemoteCallFailed:
             raise
         except Exception, ex:
+            import traceback
+            traceback.print_exc()
             self.exception('an exception occured while calling js_%s(%s): %s',
                            fname, args, ex)
             raise RemoteCallFailed(repr(ex))
@@ -315,10 +309,10 @@ class JSonController(Controller):
             rset = None
         vid = req.form.get('vid') or vid_from_rset(req, rset, self.schema)
         try:
-            view = self.vreg.select_view(vid, req, rset)
+            view = self.vreg['views'].select(vid, req, rset=rset)
         except NoSelectableObject:
             vid = req.form.get('fallbackvid', 'noresult')
-            view = self.vreg.select_view(vid, req, rset)
+            view = self.vreg['views'].select(vid, req, rset=rset)
         divid = req.form.get('divid', 'pageContent')
         # we need to call pagination before with the stream set
         stream = view.set_stream()
@@ -345,11 +339,10 @@ class JSonController(Controller):
     @xhtmlize
     def js_prop_widget(self, propkey, varname, tabindex=None):
         """specific method for CWProperty handling"""
-        entity = self.vreg.etype_class('CWProperty')(self.req, None, None)
+        entity = self.vreg['etypes'].etype_class('CWProperty')(self.req)
         entity.eid = varname
         entity['pkey'] = propkey
-        form = self.vreg.select_object('forms', 'edition', self.req, None,
-                                       entity=entity)
+        form = self.vreg['forms'].select('edition', self.req, entity=entity)
         form.form_build_context()
         vfield = form.field_by_name('value')
         renderer = FormRenderer(self.req)
@@ -362,7 +355,7 @@ class JSonController(Controller):
             rset = self._exec(rql)
         else:
             rset = None
-        comp = self.vreg.select_object(registry, compid, self.req, rset)
+        comp = self.vreg[registry].select(compid, self.req, rset=rset)
         if extraargs is None:
             extraargs = {}
         else: # we receive unicode keys which is not supported by the **syntax
@@ -374,9 +367,9 @@ class JSonController(Controller):
     @check_pageid
     @xhtmlize
     def js_inline_creation_form(self, peid, ttype, rtype, role):
-        view = self.vreg.select_view('inline-creation', self.req, None,
-                                     etype=ttype, peid=peid, rtype=rtype,
-                                     role=role)
+        view = self.vreg['views'].select('inline-creation', self.req,
+                                         etype=ttype, peid=peid, rtype=rtype,
+                                         role=role)
         return view.render(etype=ttype, peid=peid, rtype=rtype, role=role)
 
     @jsonize
@@ -404,7 +397,7 @@ class JSonController(Controller):
     @jsonize
     def js_reledit_form(self, eid, rtype, role, default, lzone):
         """XXX we should get rid of this and use loadxhtml"""
-        entity = self.req.eid_rset(eid).get_entity(0, 0)
+        entity = self.req.entity_from_eid(eid)
         return entity.view('reledit', rtype=rtype, role=role,
                            default=default, landing_zone=lzone)
 
@@ -570,7 +563,8 @@ class SendMailController(Controller):
         self.smtp.sendmail(helo_addr, [recipient], msg.as_string())
 
     def publish(self, rset=None):
-        # XXX this allow anybody with access to an cubicweb application to use it as a mail relay
+        # XXX this allows users with access to an cubicweb instance to use it as
+        # a mail relay
         body = self.req.form['mailbody']
         subject = self.req.form['subject']
         for recipient in self.recipients():

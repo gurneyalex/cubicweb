@@ -14,7 +14,7 @@ cube::
 
 This will create in the cubes directory (``/path/to/forest/cubes`` for Mercurial
 installation, ``/usr/share/cubicweb/cubes`` for debian packages installation)
-a directory named ``blog`` reflecting the structure described in :ref:`cubesConcepts`.
+a directory named ``blog`` reflecting the structure described in :ref:`Concepts`.
 
 .. _DefineDataModel:
 
@@ -60,39 +60,39 @@ zero`). For completeness, remember that ``+`` means `one or more`.
 Create your instance
 --------------------
 
-To use this cube as an application and create a new instance named ``blogdemo``, do::
+To use this cube as an instance and create a new instance named ``blogdemo``, do::
 
   cubicweb-ctl create blog blogdemo
 
 
 This command will create the corresponding database and initialize it.
 
-Welcome to your web application
+Welcome to your web instance
 -------------------------------
 
-Start your application in debug mode with the following command: ::
+Start your instance in debug mode with the following command: ::
 
   cubicweb-ctl start -D blogdemo
 
 
-You can now access your web application to create blogs and post messages
+You can now access your web instance to create blogs and post messages
 by visiting the URL http://localhost:8080/.
 
-A login form will appear. By default, the application will not allow anonymous
-users to enter the application. To login, you need then use the admin account
+A login form will appear. By default, the instance will not allow anonymous
+users to enter the instance. To login, you need then use the admin account
 you created at the time you initialized the database with ``cubicweb-ctl
 create``.
 
 .. image:: ../../images/login-form.png
 
 
-Once authenticated, you can start playing with your application
+Once authenticated, you can start playing with your instance
 and create entities.
 
 .. image:: ../../images/blog-demo-first-page.png
 
-Please notice that so far, the *CubicWeb* franework managed all aspects of
-the web application based on the schema provided at first.
+Please notice that so far, the *CubicWeb* framework managed all aspects of
+the web application based on the schema provided at the beginning.
 
 
 Add entities
@@ -222,7 +222,7 @@ that the date we see is the publication date.
 
 To do so, please apply the following changes:
 
-.. code-block:: python
+.. sourcecode:: python
 
   from cubicweb.web.views import baseviews
 
@@ -251,7 +251,7 @@ To do so, please apply the following changes:
             self.render_entity_relations(entity, siderelations)
 
 .. note::
-  When a view is modified, it is not required to restart the application
+  When a view is modified, it is not required to restart the instance
   server. Save the Python file and reload the page in your web browser
   to view the changes.
 
@@ -268,6 +268,7 @@ data, we have to recover the entity from its (row,col)-coordinates.
 The view has a ``self.w()`` method that is used to output data, in our
 example HTML output.
 
-You can find more details about views and selectors in :ref:`ViewDefinition`.
+.. note::
+   You can find more details about views and selectors in :ref:`ViewDefinition`.
 
 

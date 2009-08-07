@@ -255,10 +255,10 @@ class HTMLHead(UStringIO):
         # 1/ variable declaration if any
         if self.jsvars:
             from simplejson import dumps
-            w(u'<script type="text/javascript">\n')
+            w(u'<script type="text/javascript"><!--//--><![CDATA[//><!--\n')
             for var, value in self.jsvars:
                 w(u'%s = %s;\n' % (var, dumps(value)))
-            w(u'</script>\n')
+            w(u'//--><!]]></script>\n')
         # 2/ css files
         for cssfile, media in self.cssfiles:
             w(u'<link rel="stylesheet" type="text/css" media="%s" href="%s"/>\n' %
@@ -321,23 +321,8 @@ class HTMLStream(object):
 
 
 class AcceptMixIn(object):
-    """Mixin class for vobjects defining the 'accepts' attribute describing
+    """Mixin class for appobjects defining the 'accepts' attribute describing
     a set of supported entity type (Any by default).
     """
     # XXX deprecated, no more necessary
-
-def get_schema_property(eschema, rschema, role, property):
-    # XXX use entity.e_schema.role_rproperty(role, rschema, property, tschemas[0]) once yams > 0.23.0 is out
-    if role == 'subject':
-        targetschema = rschema.objects(eschema)[0]
-        return rschema.rproperty(eschema, targetschema, property)
-    targetschema = rschema.subjects(eschema)[0]
-    return rschema.rproperty(targetschema, eschema, property)
-
-def compute_cardinality(eschema, rschema, role):
-    if role == 'subject':
-        targetschema = rschema.objects(eschema)[0]
-        return rschema.rproperty(eschema, targetschema, 'cardinality')[0]
-    targetschema = rschema.subjects(eschema)[0]
-    return rschema.rproperty(targetschema, eschema, 'cardinality')[1]
 

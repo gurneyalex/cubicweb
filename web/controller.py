@@ -71,6 +71,7 @@ class Controller(AppObject):
     registered = require_group_compat(AppObject.registered)
 
     def __init__(self, *args, **kwargs):
+        self.appli = kwargs.pop('appli', None)
         super(Controller, self).__init__(*args, **kwargs)
         # attributes use to control after edition redirection
         self._after_deletion_path = None
@@ -86,14 +87,16 @@ class Controller(AppObject):
 
     def process_rql(self, rql):
         """execute rql if specified"""
+        # XXX assigning to self really necessary?
+        self.rset = None
         if rql:
             self.ensure_ro_rql(rql)
             if not isinstance(rql, unicode):
                 rql = unicode(rql, self.req.encoding)
-            pp = self.vreg.select_component('magicsearch', self.req)
-            self.rset = pp.process_query(rql, self.req)
-            return self.rset
-        return None
+            pp = self.vreg['components'].select_object('magicsearch', self.req)
+            if pp is not None:
+                self.rset = pp.process_query(rql, self.req)
+        return self.rset
 
     def check_expected_params(self, params):
         """check that the given list of parameters are specified in the form
@@ -121,7 +124,7 @@ class Controller(AppObject):
         redirect_info = set()
         eidtypes = tuple(eidtypes)
         for eid, etype in eidtypes:
-            entity = self.req.eid_rset(eid, etype).get_entity(0, 0)
+            entity = self.req.entity_from_eid(eid, etype)
             path, params = entity.after_deletion_path()
             redirect_info.add( (path, tuple(params.iteritems())) )
             entity.delete()

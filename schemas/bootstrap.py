@@ -1,36 +1,38 @@
-"""core CubicWeb schema necessary for bootstrapping the actual application's schema
+"""core CubicWeb schema necessary for bootstrapping the actual instance's schema
 
 :organization: Logilab
 :copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), license is LGPL v2.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
 :license: GNU Lesser General Public License, v2.1 - http://www.gnu.org/licenses
 """
+__docformat__ = "restructuredtext en"
+_ = unicode
 
-from cubicweb.schema import format_constraint
-
+from yams.buildobjs import (EntityType, RelationType, SubjectRelation,
+                            ObjectRelation, RichString, String, Boolean, Int)
+from cubicweb.schema import RQLConstraint
+from cubicweb.schemas import META_ETYPE_PERMS, META_RTYPE_PERMS
 
 # not restricted since as "is" is handled as other relations, guests need
 # access to this
-class CWEType(MetaEntityType):
-    """define an entity type, used to build the application schema"""
+class CWEType(EntityType):
+    """define an entity type, used to build the instance schema"""
+    permissions = META_ETYPE_PERMS
     name = String(required=True, indexed=True, internationalizable=True,
                   unique=True, maxsize=64)
     description = RichString(internationalizable=True,
                              description=_('semantic description of this entity type'))
-    meta = Boolean(description=_('is it an application entity type or not ?'))
     # necessary to filter using RQL
     final = Boolean(description=_('automatic'))
 
 
-class CWRType(MetaEntityType):
-    """define a relation type, used to build the application schema"""
+class CWRType(EntityType):
+    """define a relation type, used to build the instance schema"""
+    permissions = META_ETYPE_PERMS
     name = String(required=True, indexed=True, internationalizable=True,
                   unique=True, maxsize=64)
-    description_format = String(meta=True, internationalizable=True, maxsize=50,
-                                default='text/plain', constraints=[format_constraint])
-    description = String(internationalizable=True,
-                         description=_('semantic description of this relation type'))
-    meta = Boolean(description=_('is it an application relation type or not ?'))
+    description = RichString(internationalizable=True,
+                             description=_('semantic description of this relation type'))
     symetric = Boolean(description=_('is this relation equivalent in both direction ?'))
     inlined = Boolean(description=_('is this relation physically inlined? you should know what you\'re doing if you are changing this!'))
     fulltext_container = String(description=_('if full text content of subject/object entity '
@@ -40,12 +42,13 @@ class CWRType(MetaEntityType):
     final = Boolean(description=_('automatic'))
 
 
-class CWAttribute(MetaEntityType):
+class CWAttribute(EntityType):
     """define a final relation: link a final relation type from a non final
     entity to a final entity type.
 
-    used to build the application schema
+    used to build the instance schema
     """
+    permissions = META_ETYPE_PERMS
     relation_type = SubjectRelation('CWRType', cardinality='1*',
                                     constraints=[RQLConstraint('O final TRUE')],
                                     composite='object')
@@ -67,10 +70,8 @@ class CWAttribute(MetaEntityType):
     internationalizable = Boolean(description=_('is this attribute\'s value translatable'))
     defaultval = String(maxsize=256)
 
-    description_format = String(meta=True, internationalizable=True, maxsize=50,
-                                default='text/plain', constraints=[format_constraint])
-    description = String(internationalizable=True,
-                         description=_('semantic description of this attribute'))
+    description = RichString(internationalizable=True,
+                             description=_('semantic description of this attribute'))
 
 
 CARDINALITY_VOCAB = [_('?*'), _('1*'), _('+*'), _('**'),
@@ -78,12 +79,13 @@ CARDINALITY_VOCAB = [_('?*'), _('1*'), _('+*'), _('**'),
                      _('?1'), _('11'), _('+1'), _('*1'),
                      _('??'), _('1?'), _('+?'), _('*?')]
 
-class CWRelation(MetaEntityType):
+class CWRelation(EntityType):
     """define a non final relation: link a non final relation type from a non
     final entity to a non final entity type.
 
-    used to build the application schema
+    used to build the instance schema
     """
+    permissions = META_ETYPE_PERMS
     relation_type = SubjectRelation('CWRType', cardinality='1*',
                                     constraints=[RQLConstraint('O final FALSE')],
                                     composite='object')
@@ -107,15 +109,14 @@ class CWRelation(MetaEntityType):
                        vocabulary=('', _('subject'), _('object')),
                        maxsize=8, default=None)
 
-    description_format = String(meta=True, internationalizable=True, maxsize=50,
-                                default='text/plain', constraints=[format_constraint])
-    description = String(internationalizable=True,
-                         description=_('semantic description of this relation'))
+    description = RichString(internationalizable=True,
+                             description=_('semantic description of this relation'))
 
 
 # not restricted since it has to be read when checking allowed transitions
-class RQLExpression(MetaEntityType):
+class RQLExpression(EntityType):
     """define a rql expression used to define permissions"""
+    permissions = META_ETYPE_PERMS
     exprtype = String(required=True, vocabulary=['ERQLExpression', 'RRQLExpression'])
     mainvars = String(maxsize=8,
                       description=_('name of the main variables which should be '
@@ -140,21 +141,24 @@ class RQLExpression(MetaEntityType):
                                         description=_('rql expression allowing to update entities of this type'))
 
 
-class CWConstraint(MetaEntityType):
+class CWConstraint(EntityType):
     """define a schema constraint"""
+    permissions = META_ETYPE_PERMS
     cstrtype = SubjectRelation('CWConstraintType', cardinality='1*')
     value = String(description=_('depends on the constraint type'))
 
 
-class CWConstraintType(MetaEntityType):
+class CWConstraintType(EntityType):
     """define a schema constraint type"""
+    permissions = META_ETYPE_PERMS
     name = String(required=True, indexed=True, internationalizable=True,
                   unique=True, maxsize=64)
 
 
 # not restricted since it has to be read when checking allowed transitions
-class CWGroup(MetaEntityType):
+class CWGroup(EntityType):
     """define a CubicWeb users group"""
+    permissions = META_ETYPE_PERMS
     name = String(required=True, indexed=True, internationalizable=True,
                   unique=True, maxsize=64)
 
@@ -169,40 +173,55 @@ class CWGroup(MetaEntityType):
 
 
 
-class relation_type(MetaRelationType):
+class relation_type(RelationType):
     """link a relation definition to its relation type"""
+    permissions = META_RTYPE_PERMS
     inlined = True
-class from_entity(MetaRelationType):
+
+class from_entity(RelationType):
     """link a relation definition to its subject entity type"""
+    permissions = META_RTYPE_PERMS
     inlined = True
-class to_entity(MetaRelationType):
+
+class to_entity(RelationType):
     """link a relation definition to its object entity type"""
+    permissions = META_RTYPE_PERMS
     inlined = True
-class constrained_by(MetaRelationType):
+
+class constrained_by(RelationType):
     """constraints applying on this relation"""
+    permissions = META_RTYPE_PERMS
 
-class cstrtype(MetaRelationType):
+class cstrtype(RelationType):
     """constraint factory"""
+    permissions = META_RTYPE_PERMS
     inlined = True
 
-class read_permission(MetaRelationType):
+class read_permission(RelationType):
     """core relation giving to a group the permission to read an entity or
     relation type
     """
-class add_permission(MetaRelationType):
+    permissions = META_RTYPE_PERMS
+
+class add_permission(RelationType):
     """core relation giving to a group the permission to add an entity or
     relation type
     """
-class delete_permission(MetaRelationType):
+    permissions = META_RTYPE_PERMS
+
+class delete_permission(RelationType):
     """core relation giving to a group the permission to delete an entity or
     relation type
     """
-class update_permission(MetaRelationType):
+    permissions = META_RTYPE_PERMS
+
+class update_permission(RelationType):
     """core relation giving to a group the permission to update an entity type
     """
+    permissions = META_RTYPE_PERMS
 
 
-class is_(MetaRelationType):
+class is_(RelationType):
     """core relation indicating the type of an entity
     """
     name = 'is'
@@ -214,10 +233,10 @@ class is_(MetaRelationType):
         'delete': (),
         }
     cardinality = '1*'
-    subject = '**'
+    subject = '*'
     object = 'CWEType'
 
-class is_instance_of(MetaRelationType):
+class is_instance_of(RelationType):
     """core relation indicating the types (including specialized types)
     of an entity
     """
@@ -229,10 +248,10 @@ class is_instance_of(MetaRelationType):
         'delete': (),
         }
     cardinality = '+*'
-    subject = '**'
+    subject = '*'
     object = 'CWEType'
 
-class specializes(MetaRelationType):
+class specializes(RelationType):
     name = 'specializes'
     permissions = {
         'read':   ('managers', 'users', 'guests'),

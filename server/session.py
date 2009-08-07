@@ -11,7 +11,7 @@ import sys
 import threading
 from time import time
 
-from logilab.common.deprecation import obsolete
+from logilab.common.deprecation import deprecated
 from rql.nodes import VariableRef, Function, ETYPE_PYOBJ_MAP, etype_from_pyobj
 from yams import BASE_TYPES
 
@@ -40,8 +40,6 @@ def _make_description(selected, args, solution):
         description.append(term.get_type(solution, args))
     return description
 
-from rql import stmts
-assert hasattr(stmts.Union, 'get_variable_variables'), "You need RQL > 0.18.3"
 
 class Session(RequestSessionMixIn):
     """tie session id, user, connections pool and other session data all
@@ -75,21 +73,81 @@ class Session(RequestSessionMixIn):
     def __str__(self):
         return '<%ssession %s (%s 0x%x)>' % (self.cnxtype, self.user.login,
                                              self.id, id(self))
+
+    @property
+    def schema(self):
+        return self.repo.schema
+
+    def add_relation(self, fromeid, rtype, toeid):
+        if self.is_super_session:
+            self.repo.glob_add_relation(self, fromeid, rtype, toeid)
+            return
+        self.is_super_session = True
+        try:
+            self.repo.glob_add_relation(self, fromeid, rtype, toeid)
+        finally:
+            self.is_super_session = False
+
+    def update_rel_cache_add(self, subject, rtype, object, symetric=False):
+        self._update_entity_rel_cache_add(subject, rtype, 'subject', object)
+        if symetric:
+            self._update_entity_rel_cache_add(object, rtype, 'subject', subject)
+        else:
+            self._update_entity_rel_cache_add(object, rtype, 'object', subject)
+
+    def update_rel_cache_del(self, subject, rtype, object, symetric=False):
+        self._update_entity_rel_cache_del(subject, rtype, 'subject', object)
+        if symetric:
+            self._update_entity_rel_cache_del(object, rtype, 'object', object)
+        else:
+            self._update_entity_rel_cache_del(object, rtype, 'object', subject)
+
+    def _rel_cache(self, eid, rtype, role):
+        try:
+            entity = self.entity_cache(eid)
+        except KeyError:
+            return
+        return entity.relation_cached(rtype, role)
+
+    def _update_entity_rel_cache_add(self, eid, rtype, role, targeteid):
+        rcache = self._rel_cache(eid, rtype, role)
+        if rcache is not None:
+            rset, entities = rcache
+            rset.rows.append([targeteid])
+            if isinstance(rset.description, list): # else description not set
+                rset.description.append([self.describe(targeteid)[0]])
+            rset.rowcount += 1
+            targetentity = self.entity_from_eid(targeteid)
+            entities.append(targetentity)
+
+    def _update_entity_rel_cache_del(self, eid, rtype, role, targeteid):
+        rcache = self._rel_cache(eid, rtype, role)
+        if rcache is not None:
+            rset, entities = rcache
+            for idx, row in enumerate(rset.rows):
+                if row[0] == targeteid:
+                    break
+            else:
+                raise Exception('cache inconsistency for %s %s %s %s' %
+                                (eid, rtype, role, targeteid))
+            del rset.rows[idx]
+            if isinstance(rset.description, list): # else description not set
+                del rset.description[idx]
+            del entities[idx]
+            rset.rowcount -= 1
+
     # resource accessors ######################################################
 
     def actual_session(self):
         """return the original parent session if any, else self"""
         return self
 
-    def etype_class(self, etype):
-        """return an entity class for the given entity type"""
-        return self.vreg.etype_class(etype)
-
-    def system_sql(self, sql, args=None):
+    def system_sql(self, sql, args=None, rollback_on_failure=True):
         """return a sql cursor on the system database"""
         if not sql.split(None, 1)[0].upper() == 'SELECT':
             self.mode = 'write'
-        return self.pool.source('system').doexec(self, sql, args)
+        return self.pool.source('system').doexec(self, sql, args,
+                                                 rollback=rollback_on_failure)
 
     def set_language(self, language):
         """i18n configuration for translation"""
@@ -207,15 +265,40 @@ class Session(RequestSessionMixIn):
     # request interface #######################################################
 
     def set_entity_cache(self, entity):
-        # no entity cache in the server, too high risk of inconsistency
-        # between pre/post hooks
-        pass
+        # XXX session level caching may be a pb with multiple repository
+        #     instances, but 1. this is probably not the only one :$ and 2. it
+        #     may be an acceptable risk. Anyway we could activate it or not
+        #     according to a configuration option
+        try:
+            self.transaction_data['ecache'].setdefault(entity.eid, entity)
+        except KeyError:
+            self.transaction_data['ecache'] = ecache = {}
+            ecache[entity.eid] = entity
 
     def entity_cache(self, eid):
-        raise KeyError(eid)
+        try:
+            return self.transaction_data['ecache'][eid]
+        except:
+            raise
+
+    def cached_entities(self):
+        return self.transaction_data.get('ecache', {}).values()
+
+    def drop_entity_cache(self, eid=None):
+        if eid is None:
+            self.transaction_data.pop('ecache', None)
+        else:
+            del self.transaction_data['ecache'][eid]
 
     def base_url(self):
-        return self.repo.config['base-url'] or u''
+        url = self.repo.config['base-url']
+        if not url:
+            try:
+                url = self.repo.config.default_base_url()
+            except AttributeError: # default_base_url() might not be available
+                self.warning('missing base-url definition in server config')
+                url = u''
+        return url
 
     def from_controller(self):
         """return the id (string) of the controller issuing the request (no
@@ -255,7 +338,7 @@ class Session(RequestSessionMixIn):
         self.set_pool()
         return csession
 
-    def unsafe_execute(self, rql, kwargs=None, eid_key=None, build_descr=False,
+    def unsafe_execute(self, rql, kwargs=None, eid_key=None, build_descr=True,
                        propagate=False):
         """like .execute but with security checking disabled (this method is
         internal to the server, it's not part of the db-api)
@@ -468,7 +551,12 @@ class Session(RequestSessionMixIn):
             description.append(tuple(row_descr))
         return description
 
-    @obsolete('use direct access to session.transaction_data')
+    @deprecated("use vreg['etypes'].etype_class(etype)")
+    def etype_class(self, etype):
+        """return an entity class for the given entity type"""
+        return self.vreg['etypes'].etype_class(etype)
+
+    @deprecated('use direct access to session.transaction_data')
     def query_data(self, key, default=None, setdefault=False, pop=False):
         if setdefault:
             assert not pop
@@ -478,10 +566,10 @@ class Session(RequestSessionMixIn):
         else:
             return self.transaction_data.get(key, default)
 
-    @obsolete('use entity_from_eid(eid, etype=None)')
+    @deprecated('use entity_from_eid(eid, etype=None)')
     def entity(self, eid):
         """return a result set for the given eid"""
-        return self.eid_rset(eid).get_entity(0, 0)
+        return self.entity_from_eid(eid)
 
 
 class ChildSession(Session):

@@ -53,7 +53,7 @@ class EditController(ViewController):
             for eid in req.edited_eids():
                 formparams = req.extract_entity_params(eid)
                 if methodname is not None:
-                    entity = req.eid_rset(eid).get_entity(0, 0)
+                    entity = req.entity_from_eid(eid)
                     method = getattr(entity, methodname)
                     method(formparams)
                 eid = self.edit_entity(formparams)
@@ -81,7 +81,7 @@ class EditController(ViewController):
     def edit_entity(self, formparams, multiple=False):
         """edit / create / copy an entity and return its eid"""
         etype = formparams['__type']
-        entity = self.vreg.etype_class(etype)(self.req, None, None)
+        entity = self.vreg['etypes'].etype_class(etype)(self.req)
         entity.eid = eid = self._get_eid(formparams['eid'])
         edited = self.req.form.get('__maineid') == formparams['eid']
         # let a chance to do some entity specific stuff.

@@ -18,7 +18,7 @@ from itertools import count
 from rql.utils import rqlvar_maker
 
 from logilab.common.decorators import cached
-from logilab.common.deprecation import obsolete
+from logilab.common.deprecation import deprecated
 
 from logilab.mtconverter import xml_escape
 
@@ -26,6 +26,7 @@ from cubicweb.dbapi import DBAPIRequest
 from cubicweb.common.mail import header
 from cubicweb.common.uilib import remove_html_tags
 from cubicweb.utils import SizeConstrainedList, HTMLHead
+from cubicweb.view import STRICT_DOCTYPE
 from cubicweb.web import (INTERNAL_FIELD_VALUE, LOGGER, NothingToEdit,
                           RequestError, StatusResponse)
 
@@ -80,7 +81,7 @@ class CubicWebRequestBase(DBAPIRequest):
         # to create a relation with another)
         self.search_state = ('normal',)
         # tabindex generator
-        self.tabindexgen = count()
+        self.tabindexgen = count(1)
         self.next_tabindex = self.tabindexgen.next
         # page id, set by htmlheader template
         self.pageid = None
@@ -515,7 +516,7 @@ class CubicWebRequestBase(DBAPIRequest):
         return self.base_url() + self.relative_path(includeparams)
 
     def _datadir_url(self):
-        """return url of the application's data directory"""
+        """return url of the instance's data directory"""
         return self.base_url() + 'data%s/' % self.vreg.config.instance_md5_version()
 
     def selected(self, url):
@@ -538,8 +539,7 @@ class CubicWebRequestBase(DBAPIRequest):
     def from_controller(self):
         """return the id (string) of the controller issuing the request"""
         controller = self.relative_path(False).split('/', 1)[0]
-        registered_controllers = (ctrl.id for ctrl in
-                                  self.vreg.registry_objects('controllers'))
+        registered_controllers = self.vreg['controllers'].keys()
         if controller in registered_controllers:
             return controller
         return 'view'
@@ -587,7 +587,7 @@ class CubicWebRequestBase(DBAPIRequest):
 
     def relative_path(self, includeparams=True):
         """return the normalized path of the request (ie at least relative
-        to the application's root, but some other normalization may be needed
+        to the instance's root, but some other normalization may be needed
         so that the returned path may be used to compare to generated urls
 
         :param includeparams:
@@ -629,7 +629,7 @@ class CubicWebRequestBase(DBAPIRequest):
                            auth, ex.__class__.__name__, ex)
         return None, None
 
-    @obsolete("use parse_accept_header('Accept-Language')")
+    @deprecated("use parse_accept_header('Accept-Language')")
     def header_accept_language(self):
         """returns an ordered list of preferred languages"""
         return [value.split('-')[0] for value in
@@ -699,6 +699,14 @@ class CubicWebRequestBase(DBAPIRequest):
         return useragent and 'MSIE' in useragent
 
     def xhtml_browser(self):
+        """return True if the browser is considered as xhtml compatible.
+
+        If the instance is configured to always return text/html and not
+        application/xhtml+xml, this method will always return False, even though
+        this is semantically different
+        """
+        if self.vreg.config['force-html-content-type']:
+            return False
         useragent = self.useragent()
         # * MSIE/Konqueror does not support xml content-type
         # * Opera supports xhtml and handles namespaces properly but it breaks
@@ -712,6 +720,12 @@ class CubicWebRequestBase(DBAPIRequest):
         if self.xhtml_browser():
             return 'application/xhtml+xml'
         return 'text/html'
+
+    def document_surrounding_div(self):
+        if self.xhtml_browser():
+            return (u'<?xml version="1.0"?>\n' + STRICT_DOCTYPE +
+                    u'<div xmlns="http://www.w3.org/1999/xhtml" xmlns:cubicweb="http://www.logilab.org/2008/cubicweb">')
+        return u'<div>'
 
 from cubicweb import set_log_methods
 set_log_methods(CubicWebRequestBase, LOGGER)

@@ -16,6 +16,7 @@ from rql import RQLSyntaxError
 from yams import BadSchemaDefinition
 from yams.constraints import SizeConstraint, StaticVocabularyConstraint
 from yams.buildobjs import RelationDefinition, EntityType, RelationType
+from yams.reader import PyFileReader
 
 from cubicweb.schema import CubicWebSchema, CubicWebEntitySchema, \
      RQLConstraint, CubicWebSchemaLoader, ERQLExpression, RRQLExpression, \
@@ -133,12 +134,6 @@ loader.lib_directory = config.schemas_lib_dir()
 
 class SQLSchemaReaderClassTest(TestCase):
 
-    def test_knownValues_include_schema_files(self):
-        schema_files = loader.include_schema_files('Bookmark')
-        for file in schema_files:
-            self.assert_(isabs(file))
-        self.assertListEquals([basename(f) for f in schema_files], ['Bookmark.py'])
-
     def test_knownValues_load_schema(self):
         schema = loader.load(config)
         self.assert_(isinstance(schema, CubicWebSchema))
@@ -150,7 +145,7 @@ class SQLSchemaReaderClassTest(TestCase):
                              'CWCache', 'CWConstraint', 'CWConstraintType', 'CWEType',
                              'CWAttribute', 'CWGroup', 'EmailAddress', 'CWRelation',
                              'CWPermission', 'CWProperty', 'CWRType', 'CWUser',
-                             'File', 'Float', 'Image', 'Int', 'Interval', 'Note',
+                             'ExternalUri', 'File', 'Float', 'Image', 'Int', 'Interval', 'Note',
                              'Password', 'Personne',
                              'RQLExpression',
                              'Societe', 'State', 'String', 'SubNote', 'Tag', 'Time',
@@ -163,7 +158,7 @@ class SQLSchemaReaderClassTest(TestCase):
 
                               'cardinality', 'comment', 'comment_format',
                               'composite', 'condition', 'connait', 'constrained_by', 'content',
-                              'content_format', 'created_by', 'creation_date', 'cstrtype',
+                              'content_format', 'created_by', 'creation_date', 'cstrtype', 'cwuri',
 
                               'data', 'data_encoding', 'data_format', 'defaultval', 'delete_permission',
                               'description', 'description_format', 'destination_state',
@@ -179,7 +174,7 @@ class SQLSchemaReaderClassTest(TestCase):
 
                               'label', 'last_login_time', 'login',
 
-                              'mainvars', 'meta', 'modification_date',
+                              'mainvars', 'modification_date',
 
                               'name', 'nom',
 
@@ -193,7 +188,7 @@ class SQLSchemaReaderClassTest(TestCase):
 
                               'tags', 'timestamp', 'title', 'to_entity', 'to_state', 'transition_of', 'travaille', 'type',
 
-                              'upassword', 'update_permission', 'use_email',
+                              'upassword', 'update_permission', 'uri', 'use_email',
 
                               'value',
 
@@ -203,7 +198,7 @@ class SQLSchemaReaderClassTest(TestCase):
 
         eschema = schema.eschema('CWUser')
         rels = sorted(str(r) for r in eschema.subject_relations())
-        self.assertListEquals(rels, ['created_by', 'creation_date', 'eid',
+        self.assertListEquals(rels, ['created_by', 'creation_date', 'cwuri', 'eid',
                                      'evaluee', 'firstname', 'has_text', 'identity',
                                      'in_group', 'in_state', 'is',
                                      'is_instance_of', 'last_login_time',
@@ -233,7 +228,7 @@ class BadSchemaRQLExprTC(TestCase):
         self.loader = CubicWebSchemaLoader()
         self.loader.defined = {}
         self.loader.loaded_files = []
-        self.loader._instantiate_handlers()
+        self.loader._pyreader = PyFileReader(self.loader)
 
     def _test(self, schemafile, msg):
         self.loader.handle_file(join(DATADIR, schemafile))

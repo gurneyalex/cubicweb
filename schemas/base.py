@@ -6,11 +6,16 @@
 :license: GNU Lesser General Public License, v2.1 - http://www.gnu.org/licenses
 """
 __docformat__ = "restructuredtext en"
+_ = unicode
 
+from yams.buildobjs import (EntityType, RelationType, SubjectRelation,
+                            String, Boolean, Datetime, Password)
+from cubicweb.schema import (RQLConstraint, WorkflowableEntityType,
+                             ERQLExpression, RRQLExpression)
+from cubicweb.schemas import META_ETYPE_PERMS, META_RTYPE_PERMS
 
 class CWUser(WorkflowableEntityType):
     """define a CubicWeb user"""
-    meta = True # XXX backported from old times, shouldn't be there anymore
     permissions = {
         'read':   ('managers', 'users', ERQLExpression('X identity U')),
         'add':    ('managers',),
@@ -35,7 +40,7 @@ class CWUser(WorkflowableEntityType):
                                description=_('groups grant permissions to the user'))
 
 
-class EmailAddress(MetaEntityType):
+class EmailAddress(EntityType):
     """an electronic mail address associated to a short alias"""
     permissions = {
         'read':   ('managers', 'users', 'guests',), # XXX if P use_email X, U has_read_permission P
@@ -81,11 +86,11 @@ class identical_to(RelationType):
         'delete': ('managers', RRQLExpression('U has_update_permission S'),),
         }
 
-class in_group(MetaRelationType):
+class in_group(RelationType):
     """core relation indicating a user's groups"""
-    meta = False
+    permissions = META_RTYPE_PERMS
 
-class owned_by(MetaRelationType):
+class owned_by(RelationType):
     """core relation indicating owners of an entity. This relation
     implicitly put the owner into the owners group for the entity
     """
@@ -97,10 +102,10 @@ class owned_by(MetaRelationType):
     # 0..n cardinality for entities created by internal session (no attached user)
     # and to support later deletion of a user which has created some entities
     cardinality = '**'
-    subject = '**'
+    subject = '*'
     object = 'CWUser'
 
-class created_by(MetaRelationType):
+class created_by(RelationType):
     """core relation indicating the original creator of an entity"""
     permissions = {
         'read':   ('managers', 'users', 'guests'),
@@ -110,21 +115,27 @@ class created_by(MetaRelationType):
     # 0..1 cardinality for entities created by internal session (no attached user)
     # and to support later deletion of a user which has created some entities
     cardinality = '?*'
-    subject = '**'
+    subject = '*'
     object = 'CWUser'
 
 
-class creation_date(MetaAttributeRelationType):
+class creation_date(RelationType):
     """creation time of an entity"""
     cardinality = '11'
-    subject = '**'
+    subject = '*'
     object = 'Datetime'
 
-class modification_date(MetaAttributeRelationType):
+class modification_date(RelationType):
     """latest modification time of an entity"""
     cardinality = '11'
-    subject = '**'
+    subject = '*'
     object = 'Datetime'
+
+class cwuri(RelationType):
+    """internal entity uri"""
+    cardinality = '11'
+    subject = '*'
+    object = 'String'
 
 
 class CWProperty(EntityType):
@@ -137,7 +148,6 @@ class CWProperty(EntityType):
         'update': ('managers', 'owners',),
         'delete': ('managers', 'owners',),
         }
-    meta = True
     # key is a reserved word for mysql
     pkey = String(required=True, internationalizable=True, maxsize=256,
                   description=_('defines what\'s the property is applied for. '
@@ -152,7 +162,7 @@ class CWProperty(EntityType):
                                              ' a global property'))
 
 
-class for_user(MetaRelationType):
+class for_user(RelationType):
     """link a property to the user which want this property customization. Unless
     you're a site manager, this relation will be handled automatically.
     """
@@ -164,9 +174,11 @@ class for_user(MetaRelationType):
     inlined = True
 
 
-class CWPermission(MetaEntityType):
+class CWPermission(EntityType):
     """entity type that may be used to construct some advanced security configuration
     """
+    permissions = META_ETYPE_PERMS
+
     name = String(required=True, indexed=True, internationalizable=True, maxsize=100,
                   description=_('name or identifier of the permission'))
     label = String(required=True, internationalizable=True, maxsize=100,
@@ -186,7 +198,7 @@ class require_permission(RelationType):
         'delete': ('managers',),
         }
 
-class require_group(MetaRelationType):
+class require_group(RelationType):
     """used to grant a permission to a group"""
     permissions = {
         'read':   ('managers', 'users', 'guests'),
@@ -199,20 +211,43 @@ class see_also(RelationType):
     """generic relation to link one entity to another"""
     symetric = True
 
+class ExternalUri(EntityType):
+    """a URI representing an object in external data store"""
+    uri = String(required=True, unique=True, maxsize=256,
+                 description=_('the URI of the object'))
 
-class CWCache(MetaEntityType):
+class same_as(RelationType):
+    """generic relation to specify that an external entity represent the same
+    object as a local one:
+       http://www.w3.org/TR/owl-ref/#sameAs-def
+
+    NOTE: You'll have to explicitly declare which entity types can have a
+    same_as relation
+    """
+    permissions = {
+        'read':   ('managers', 'users', 'guests',),
+        'add':    ('managers', 'users'),
+        'delete': ('managers', 'owners'),
+        }
+    cardinality = '*1'
+    symetric = True
+    # NOTE: the 'object = ExternalUri' declaration will still be mandatory
+    #       in the cube's schema.
+    object = 'ExternalUri'
+
+class CWCache(EntityType):
     """a simple cache entity characterized by a name and
     a validity date.
 
     The target application is responsible for updating timestamp
     when necessary to invalidate the cache (typically in hooks).
 
-    Also, checkout the AppRsetObject.get_cache() method.
+    Also, checkout the AppObject.get_cache() method.
     """
     permissions = {
         'read':   ('managers', 'users', 'guests'),
         'add':    ('managers',),
-        'update': ('managers', 'users',),
+        'update': ('managers', 'users',), # XXX
         'delete': ('managers',),
         }
 

@@ -14,7 +14,7 @@ from logilab.common.pytest import pause_tracing, resume_tracing
 import yams.schema
 
 from cubicweb.dbapi import repo_connect, ConnectionProperties, ProgrammingError
-from cubicweb.cwvreg import CubicWebRegistry
+from cubicweb.cwvreg import CubicWebVRegistry
 
 from cubicweb.web.application import CubicWebPublisher
 from cubicweb.web import Redirect
@@ -79,7 +79,7 @@ class TestEnvironment(object):
         source = config.sources()['system']
         if verbose:
             print "init test database ..."
-        self.vreg = vreg = CubicWebRegistry(config)
+        self.vreg = vreg = CubicWebVRegistry(config)
         self.admlogin = source['db-user']
         # restore database <=> init database
         self.restore_database()
@@ -177,7 +177,7 @@ class TestEnvironment(object):
                 self.create_request(rql=rql, **optional_args or {}))
 
     def check_view(self, rql, vid, optional_args, template='main'):
-        """checks if vreg.view() raises an exception in this environment
+        """checks if rendering view raises an exception in this environment
 
         If any exception is raised in this method, it will be considered
         as a TestFailure
@@ -186,17 +186,16 @@ class TestEnvironment(object):
                               template=template, optional_args=optional_args)
 
     def call_view(self, vid, rql, template='main', optional_args=None):
-        """shortcut for self.vreg.view()"""
         assert template
         if optional_args is None:
             optional_args = {}
         optional_args['vid'] = vid
         req = self.create_request(rql=rql, **optional_args)
-        return self.vreg.main_template(req, template)
+        return self.vreg['views'].main_template(req, template)
 
     def call_edit(self, req):
         """shortcut for self.app.edit()"""
-        controller = self.app.select_controller('edit', req)
+        controller = self.vreg.select('controllers', 'edit', req)
         try:
             controller.publish()
         except Redirect:
@@ -208,7 +207,7 @@ class TestEnvironment(object):
 
     def iter_possible_views(self, req, rset):
         """returns a list of possible vids for <rql>"""
-        for view in self.vreg.possible_views(req, rset):
+        for view in self.vreg['views'].possible_views(req, rset):
             if view.category == 'startupview':
                 continue
             yield view.id
@@ -217,14 +216,14 @@ class TestEnvironment(object):
 
     def iter_startup_views(self, req):
         """returns the list of startup views"""
-        for view in self.vreg.possible_views(req, None):
+        for view in self.vreg['views'].possible_views(req, None):
             if view.category != 'startupview':
                 continue
             yield view.id
 
     def iter_possible_actions(self, req, rset):
         """returns a list of possible vids for <rql>"""
-        for action in self.vreg.possible_vobjects('actions', req, rset):
+        for action in self.vreg.possible_vobjects('actions', req, rset=rset):
             yield action
 
 class ExistingTestEnvironment(TestEnvironment):
@@ -234,7 +233,7 @@ class ExistingTestEnvironment(TestEnvironment):
         if verbose:
             print "init test database ..."
         source = config.sources()['system']
-        self.vreg = CubicWebRegistry(config)
+        self.vreg = CubicWebVRegistry(config)
         self.cnx = init_test_database(driver=source['db-driver'],
                                       vreg=self.vreg)[1]
         if verbose:

@@ -11,9 +11,10 @@ __docformat__ = "restructuredtext en"
 from os.path import join, exists
 
 from cubicweb import server
-from cubicweb.server.sqlutils import SQL_PREFIX, sqlexec, SQLAdapterMixIn
-from cubicweb.server.sources import AbstractSource, native
-from cubicweb.server.sources.rql2sql import SQLGenerator
+from cubicweb.server.sqlutils import (SQL_PREFIX, SQLAdapterMixIn, sqlexec,
+                                      sql_source_backup, sql_source_restore)
+from cubicweb.server.sources import native, rql2sql
+from cubicweb.server.sources import AbstractSource, dbg_st_search, dbg_results
 
 class ConnectionWrapper(object):
     def __init__(self, source=None):
@@ -29,18 +30,26 @@ class ConnectionWrapper(object):
     def cursor(self):
         if self._cnx is None:
             self._cnx = self.source._sqlcnx
+            if server.DEBUG & server.DBG_SQL:
+                print 'sql cnx OPEN', self._cnx
         return self._cnx.cursor()
 
     def commit(self):
         if self._cnx is not None:
+            if server.DEBUG & server.DBG_SQL:
+                print 'sql cnx COMMIT', self._cnx
             self._cnx.commit()
 
     def rollback(self):
         if self._cnx is not None:
+            if server.DEBUG & server.DBG_SQL:
+                print 'sql cnx ROLLBACK', self._cnx
             self._cnx.rollback()
 
     def close(self):
         if self._cnx is not None:
+            if server.DEBUG & server.DBG_SQL:
+                print 'sql cnx CLOSE', self._cnx
             self._cnx.close()
             self._cnx = None
 
@@ -48,7 +57,7 @@ class ConnectionWrapper(object):
 class SQLiteAbstractSource(AbstractSource):
     """an abstract class for external sources using a sqlite database helper
     """
-    sqlgen_class = SQLGenerator
+    sqlgen_class = rql2sql.SQLGenerator
     @classmethod
     def set_nonsystem_types(cls):
         # those entities are only in this source, we don't want them in the
@@ -84,6 +93,19 @@ repository.',
         self._need_full_import = self._need_sql_create
         AbstractSource.__init__(self, repo, appschema, source_config,
                                 *args, **kwargs)
+
+    def backup(self, confirm, backupfile=None, timestamp=None, askconfirm=False):
+        """method called to create a backup of source's data"""
+        backupfile = self.backup_file(backupfile, timestamp)
+        sql_source_backup(self, self.sqladapter, confirm, backupfile,
+                          askconfirm)
+
+    def restore(self, confirm, backupfile=None, timestamp=None, drop=True,
+               askconfirm=False):
+        """method called to restore a backup of source's data"""
+        backupfile = self.backup_file(backupfile, timestamp)
+        sql_source_restore(self, self.sqladapter, confirm, backupfile, drop,
+                           askconfirm)
 
     @property
     def _sqlcnx(self):
@@ -155,14 +177,12 @@ repository.',
         attached session: release the connection lock if the connection wrapper
         has a connection set
         """
-        if cnx._cnx is not None:
-            cnx._cnx.close()
-            # reset _cnx to ensure next thread using cnx will get a new
-            # connection
-            cnx._cnx = None
+        # reset _cnx to ensure next thread using cnx will get a new
+        # connection
+        cnx.close()
 
-    def syntax_tree_search(self, session, union,
-                           args=None, cachekey=None, varmap=None, debug=0):
+    def syntax_tree_search(self, session, union, args=None, cachekey=None,
+                           varmap=None):
         """return result from this source for a rql query (actually from a rql
         syntax tree and a solution dictionary mapping each used variable to a
         possible type). If cachekey is given, the query necessary to fetch the
@@ -170,14 +190,12 @@ repository.',
         """
         if self._need_sql_create:
             return []
+        assert dbg_st_search(self.uri, union, varmap, args, cachekey)
         sql, query_args = self.rqlsqlgen.generate(union, args)
-        if server.DEBUG:
-            print self.uri, 'SOURCE RQL', union.as_string()
         args = self.sqladapter.merge_args(args, query_args)
-        res = self.sqladapter.process_result(self.doexec(session, sql, args))
-        if server.DEBUG:
-            print '------>', res
-        return res
+        results = self.sqladapter.process_result(self.doexec(session, sql, args))
+        assert dbg_results(results)
+        return results
 
     def local_add_entity(self, session, entity):
         """insert the entity in the local database.

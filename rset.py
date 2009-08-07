@@ -83,7 +83,8 @@ class ResultSet(object):
         try:
             return self._rsetactions[key]
         except KeyError:
-            actions = self.vreg.possible_vobjects('actions', self.req, self, **kwargs)
+            actions = self.vreg['actions'].possible_vobjects(
+                self.req, rset=self, **kwargs)
             self._rsetactions[key] = actions
             return actions
 
@@ -346,7 +347,7 @@ class ResultSet(object):
             raise NotAnEntity(etype)
         return self._build_entity(row, col)
 
-    def _build_entity(self, row, col, _localcache=None):
+    def _build_entity(self, row, col):
         """internal method to get a single entity, returns a
         partially initialized Entity instance.
 
@@ -369,23 +370,23 @@ class ResultSet(object):
         # XXX should we consider updating a cached entity with possible
         #     new attributes found in this resultset ?
         try:
-            if hasattr(req, 'is_super_session'):
-                # this is a Session object which is not caching entities, so we
-                # have to use a local cache to avoid recursion pb
-                if _localcache is None:
-                    _localcache = {}
-                return _localcache[eid]
-            else:
-                return req.entity_cache(eid)
+            entity = req.entity_cache(eid)
+            if entity.rset is None:
+                # entity has no rset set, this means entity has been cached by
+                # the repository (req is a repository session) which had no rset
+                # info. Add id.
+                entity.rset = self
+                entity.row = row
+                entity.col = col
+            return entity
         except KeyError:
             pass
         # build entity instance
         etype = self.description[row][col]
-        entity = self.vreg.etype_class(etype)(req, self, row, col)
+        entity = self.vreg['etypes'].etype_class(etype)(req, rset=self,
+                                                        row=row, col=col)
         entity.set_eid(eid)
         # cache entity
-        if _localcache is not None:
-            _localcache[eid] = entity
         req.set_entity_cache(entity)
         eschema = entity.e_schema
         # try to complete the entity if there are some additional columns
@@ -419,7 +420,7 @@ class ResultSet(object):
                         rrset = ResultSet([], rql % (attr, entity.eid))
                         req.decorate_rset(rrset)
                     else:
-                        rrset = self._build_entity(row, i, _localcache).as_rset()
+                        rrset = self._build_entity(row, i).as_rset()
                     entity.set_related_cache(attr, x, rrset)
         return entity
 

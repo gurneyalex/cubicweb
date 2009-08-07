@@ -17,20 +17,20 @@ class AutomaticEntityFormTC(EnvBasedTC):
 
     def test_custom_widget(self):
         AEF.rfields_kwargs.tag_subject_of(('CWUser', 'login', '*'),
-                                          {'widget':AutoCompletionWidget})
-        form = self.vreg.select_object('forms', 'edition', self.request(), None,
-                                       entity=self.user())
+                                          {'widget': AutoCompletionWidget(autocomplete_initfunc='get_logins')})
+        form = self.vreg['forms'].select('edition', self.request(),
+                                         entity=self.user())
         field = form.field_by_name('login')
         self.assertIsInstance(field.widget, AutoCompletionWidget)
         AEF.rfields_kwargs.del_rtag('CWUser', 'login', '*', 'subject')
 
 
-    def test_euser_relations_by_category(self):
+    def test_cwuser_relations_by_category(self):
         #for (rtype, role, stype, otype), tag in AEF.rcategories._tagdefs.items():
         #    if rtype == 'tags':
         #        print rtype, role, stype, otype, ':', tag
         e = self.etype_instance('CWUser')
-        # see custom configuration in views.euser
+        # see custom configuration in views.cwuser
         self.assertEquals(rbc(e, 'primary'),
                           [('login', 'subject'),
                            ('upassword', 'subject'),
@@ -46,6 +46,7 @@ class AutomaticEntityFormTC(EnvBasedTC):
                               [('last_login_time', 'subject'),
                                ('created_by', 'subject'),
                                ('creation_date', 'subject'),
+                               ('cwuri', 'subject'),
                                ('modification_date', 'subject'),
                                ('owned_by', 'subject'),
                                ('bookmarked_by', 'object'),
@@ -97,6 +98,7 @@ class AutomaticEntityFormTC(EnvBasedTC):
         self.assertListEquals(rbc(e, 'metadata'),
                               [('created_by', 'subject'),
                                ('creation_date', 'subject'),
+                               ('cwuri', 'subject'),
                                ('modification_date', 'subject'),
                                ('owned_by', 'subject'),
                                ])
@@ -114,11 +116,11 @@ class AutomaticEntityFormTC(EnvBasedTC):
 
     def test_edition_form(self):
         rset = self.execute('CWUser X LIMIT 1')
-        form = self.vreg.select_object('forms', 'edition', rset.req, rset,
-                                       row=0, col=0)
+        form = self.vreg['forms'].select('edition', rset.req, rset=rset,
+                                row=0, col=0)
         # should be also selectable by specifying entity
-        self.vreg.select_object('forms', 'edition', self.request(), None,
-                                entity=rset.get_entity(0, 0))
+        self.vreg['forms'].select('edition', rset.req,
+                         entity=rset.get_entity(0, 0))
         self.failIf(any(f for f in form.fields if f is None))
 
 
@@ -158,3 +160,4 @@ class FormViewsTC(WebTest):
 
 if __name__ == '__main__':
     unittest_main()
+

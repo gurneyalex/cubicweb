@@ -11,13 +11,14 @@ _ = unicode
 
 from cStringIO import StringIO
 
-from logilab.common.deprecation import obsolete
+from logilab.common.deprecation import deprecated
 from logilab.mtconverter import xml_escape
+from rql import nodes
 
 from cubicweb import NotAnEntity
 from cubicweb.selectors import yes, non_final_entity, nonempty_rset, none_rset
 from cubicweb.selectors import require_group_compat, accepts_compat
-from cubicweb.appobject import AppRsetObject
+from cubicweb.appobject import AppObject
 from cubicweb.utils import UStringIO, HTMLStream
 from cubicweb.schema import display_name
 
@@ -72,7 +73,7 @@ STRICT_DOCTYPE_NOEXT = u'<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN
 
 # base view object ############################################################
 
-class View(AppRsetObject):
+class View(AppObject):
     """abstract view class, used as base for every renderable object such
     as views, templates, some components...web
 
@@ -92,7 +93,7 @@ class View(AppRsetObject):
     time to a write function to use.
     """
     __registry__ = 'views'
-    registered = require_group_compat(AppRsetObject.registered)
+    registered = require_group_compat(AppObject.registered)
 
     templatable = True
     need_navigation = True
@@ -150,7 +151,7 @@ class View(AppRsetObject):
         if stream is not None:
             return self._stream.getvalue()
 
-    dispatch = obsolete('.dispatch is deprecated, use .render')(render)
+    dispatch = deprecated('.dispatch is deprecated, use .render')(render)
 
     # should default .call() method add a <div classs="section"> around each
     # rset item
@@ -195,10 +196,27 @@ class View(AppRsetObject):
         necessary for non linkable views, but a default implementation
         is provided anyway.
         """
-        try:
-            return self.build_url(vid=self.id, rql=self.req.form['rql'])
-        except KeyError:
-            return self.build_url(vid=self.id)
+        rset = self.rset
+        if rset is None:
+            return self.build_url('view', vid=self.id)
+        coltypes = rset.column_types(0)
+        if len(coltypes) == 1:
+            etype = iter(coltypes).next()
+            if not self.schema.eschema(etype).is_final():
+                if len(rset) == 1:
+                    entity = rset.get_entity(0, 0)
+                    return entity.absolute_url(vid=self.id)
+            # don't want to generate /<etype> url if there is some restriction
+            # on something else than the entity type
+            restr = rset.syntax_tree().children[0].where
+            # XXX norestriction is not correct here. For instance, in cases like
+            # "Any P,N WHERE P is Project, P name N" norestriction should equal
+            # True
+            norestriction = (isinstance(restr, nodes.Relation) and
+                             restr.is_types_restriction())
+            if norestriction:
+                return self.build_url(etype.lower(), vid=self.id)
+        return self.build_url('view', rql=rset.printable_rql(), vid=self.id)
 
     def set_request_content_type(self):
         """set the content type returned by this view"""
@@ -212,7 +230,7 @@ class View(AppRsetObject):
         self.view(__vid, rset, __fallback_vid, w=self.w, **kwargs)
 
     # XXX Template bw compat
-    template = obsolete('.template is deprecated, use .view')(wview)
+    template = deprecated('.template is deprecated, use .view')(wview)
 
     def whead(self, data):
         self.req.html_headers.write(data)
@@ -313,10 +331,6 @@ class StartupView(View):
 
     category = 'startupview'
 
-    def url(self):
-        """return the url associated with this view. We can omit rql here"""
-        return self.build_url('view', vid=self.id)
-
     def html_headers(self):
         """return a list of html headers (eg something to be inserted between
         <head> and </head> of the returned page
@@ -334,7 +348,7 @@ class EntityStartupView(EntityView):
 
     default_rql = None
 
-    def __init__(self, req, rset, **kwargs):
+    def __init__(self, req, rset=None, **kwargs):
         super(EntityStartupView, self).__init__(req, rset, **kwargs)
         if rset is None:
             # this instance is not in the "entityview" category
@@ -353,14 +367,6 @@ class EntityStartupView(EntityView):
         rset = self.rset
         for i in xrange(len(rset)):
             self.wview(self.id, rset, row=i, **kwargs)
-
-    def url(self):
-        """return the url associated with this view. We can omit rql if we are
-        on a result set on which we do not apply.
-        """
-        if self.rset is None:
-            return self.build_url(vid=self.id)
-        return super(EntityStartupView, self).url()
 
 
 class AnyRsetView(View):

@@ -10,22 +10,24 @@ __docformat__ = "restructuredtext en"
 import sys
 from time import clock, time
 
+from logilab.common.deprecation import deprecated
+
 from rql import BadRQLQuery
 
-from cubicweb import set_log_methods
-from cubicweb import (ValidationError, Unauthorized, AuthenticationError,
-                      NoSelectableObject, RepositoryError)
-from cubicweb.cwvreg import CubicWebRegistry
-from cubicweb.web import (LOGGER, StatusResponse, DirectResponse, Redirect,
-                          NotFound, RemoteCallFailed, ExplicitLogin,
-                          InvalidSession, RequestError)
-from cubicweb.web.component import Component
+from cubicweb import set_log_methods, cwvreg
+from cubicweb import (
+    ValidationError, Unauthorized, AuthenticationError, NoSelectableObject,
+    RepositoryError, CW_EVENT_MANAGER)
+from cubicweb.web import LOGGER, component
+from cubicweb.web import (
+    StatusResponse, DirectResponse, Redirect, NotFound,
+    RemoteCallFailed, ExplicitLogin, InvalidSession, RequestError)
 
 # make session manager available through a global variable so the debug view can
 # print information about web session
 SESSION_MANAGER = None
 
-class AbstractSessionManager(Component):
+class AbstractSessionManager(component.Component):
     """manage session data associated to a session identifier"""
     id = 'sessionmanager'
 
@@ -39,8 +41,11 @@ class AbstractSessionManager(Component):
         if self.session_time:
             assert self.cleanup_session_time < self.session_time
             assert self.cleanup_anon_session_time < self.session_time
-        self.authmanager = self.vreg.select_component('authmanager')
-        assert self.authmanager, 'no authentication manager found'
+        self.set_authmanager()
+        CW_EVENT_MANAGER.bind('after-registry-reload', self.set_authmanager)
+
+    def set_authmanager(self):
+        self.authmanager = self.vreg['components'].select('authmanager')
 
     def clean_sessions(self):
         """cleanup sessions which has not been unused since a given amount of
@@ -88,7 +93,7 @@ class AbstractSessionManager(Component):
         raise NotImplementedError()
 
 
-class AbstractAuthenticationManager(Component):
+class AbstractAuthenticationManager(component.Component):
     """authenticate user associated to a request and check session validity"""
     id = 'authmanager'
 
@@ -111,12 +116,20 @@ class CookieSessionHandler(object):
     SESSION_VAR = '__session'
 
     def __init__(self, appli):
-        self.session_manager = appli.vreg.select_component('sessionmanager')
-        assert self.session_manager, 'no session manager found'
+        self.vreg = appli.vreg
+        self.session_manager = self.vreg['components'].select('sessionmanager')
         global SESSION_MANAGER
         SESSION_MANAGER = self.session_manager
-        if not 'last_login_time' in appli.vreg.schema:
+        if not 'last_login_time' in self.vreg.schema:
             self._update_last_login_time = lambda x: None
+        CW_EVENT_MANAGER.bind('after-registry-reload', self.reset_session_manager)
+
+    def reset_session_manager(self):
+        data = self.session_manager.dump_data()
+        self.session_manager = self.vreg['components'].select('sessionmanager')
+        self.session_manager.restore_data(data)
+        global SESSION_MANAGER
+        SESSION_MANAGER = self.session_manager
 
     def clean_sessions(self):
         """cleanup sessions which has not been unused since a given amount of
@@ -201,7 +214,7 @@ class CookieSessionHandler(object):
         raise Redirect(req.build_url(path, **args))
 
     def logout(self, req):
-        """logout from the application by cleaning the session and raising
+        """logout from the instance by cleaning the session and raising
         `AuthenticationError`
         """
         self.session_manager.close_session(req.cnx)
@@ -210,31 +223,19 @@ class CookieSessionHandler(object):
 
 
 class CubicWebPublisher(object):
-    """Central registry for the web application. This is one of the central
-    object in the web application, coupling dynamically loaded objects with
-    the application's schema and the application's configuration objects.
-
-    It specializes the VRegistry by adding some convenience methods to
-    access to stored objects. Currently we have the following registries
-    of objects known by the web application (library may use some others
-    additional registries):
-    * controllers, which are directly plugged into the application
-      object to handle request publishing
-    * views
-    * templates
-    * components
-    * actions
+    """the publisher is a singleton hold by the web frontend, and is responsible
+    to publish HTTP request.
     """
 
     def __init__(self, config, debug=None,
                  session_handler_fact=CookieSessionHandler,
                  vreg=None):
         super(CubicWebPublisher, self).__init__()
-        # connect to the repository and get application's schema
+        # connect to the repository and get instance's schema
         if vreg is None:
-            vreg = CubicWebRegistry(config, debug=debug)
+            vreg = cwvreg.CubicWebVRegistry(config, debug=debug)
         self.vreg = vreg
-        self.info('starting web application from %s', config.apphome)
+        self.info('starting web instance from %s', config.apphome)
         self.repo = config.repository(vreg)
         if not vreg.initialized:
             self.config.init_cubes(self.repo.get_cubes())
@@ -251,7 +252,11 @@ class CubicWebPublisher(object):
             self.publish = self.main_publish
         # instantiate session and url resolving helpers
         self.session_handler = session_handler_fact(self)
-        self.url_resolver = vreg.select_component('urlpublisher')
+        self.set_urlresolver()
+        CW_EVENT_MANAGER.bind('after-registry-reload', self.set_urlresolver)
+
+    def set_urlresolver(self):
+        self.url_resolver = self.vreg['components'].select('urlpublisher')
 
     def connect(self, req):
         """return a connection for a logged user object according to existing
@@ -259,15 +264,6 @@ class CubicWebPublisher(object):
         one may be reused
         """
         self.session_handler.set_session(req)
-
-    def select_controller(self, oid, req):
-        """return the most specific view according to the resultset"""
-        vreg = self.vreg
-        try:
-            return vreg.select(vreg.registry_objects('controllers', oid),
-                               req=req, appli=self)
-        except NoSelectableObject:
-            raise Unauthorized(req._('not authorized'))
 
     # publish methods #########################################################
 
@@ -293,6 +289,13 @@ class CubicWebPublisher(object):
             finally:
                 self._logfile_lock.release()
 
+    @deprecated("use vreg.select('controllers', ...)")
+    def select_controller(self, oid, req):
+        try:
+            return self.vreg['controllers'].select(oid, req=req, appli=self)
+        except NoSelectableObject:
+            raise Unauthorized(req._('not authorized'))
+
     def main_publish(self, path, req):
         """method called by the main publisher to process <path>
 
@@ -317,7 +320,11 @@ class CubicWebPublisher(object):
         try:
             try:
                 ctrlid, rset = self.url_resolver.process(req, path)
-                controller = self.select_controller(ctrlid, req)
+                try:
+                    controller = self.vreg['controllers'].select(ctrlid, req,
+                                                                 appli=self)
+                except NoSelectableObject:
+                    raise Unauthorized(req._('not authorized'))
                 req.update_search_state()
                 result = controller.publish(rset=rset)
                 if req.cnx is not None:
@@ -385,28 +392,28 @@ class CubicWebPublisher(object):
             if tb:
                 req.data['excinfo'] = excinfo
             req.form['vid'] = 'error'
-            errview = self.vreg.select_view('error', req, None)
+            errview = self.vreg['views'].select('error', req)
             template = self.main_template_id(req)
-            content = self.vreg.main_template(req, template, view=errview)
+            content = self.vreg['views'].main_template(req, template, view=errview)
         except:
-            content = self.vreg.main_template(req, 'error-template')
+            content = self.vreg['views'].main_template(req, 'error-template')
         raise StatusResponse(500, content)
 
     def need_login_content(self, req):
-        return self.vreg.main_template(req, 'login')
+        return self.vreg['views'].main_template(req, 'login')
 
     def loggedout_content(self, req):
-        return self.vreg.main_template(req, 'loggedout')
+        return self.vreg['views'].main_template(req, 'loggedout')
 
     def notfound_content(self, req):
         req.form['vid'] = '404'
-        view = self.vreg.select_view('404', req, None)
+        view = self.vreg['views'].select('404', req)
         template = self.main_template_id(req)
-        return self.vreg.main_template(req, template, view=view)
+        return self.vreg['views'].main_template(req, template, view=view)
 
     def main_template_id(self, req):
         template = req.form.get('__template', req.property_value('ui.main-template'))
-        if template not in self.vreg.registry('views'):
+        if template not in self.vreg['views']:
             template = 'main-template'
         return template
 

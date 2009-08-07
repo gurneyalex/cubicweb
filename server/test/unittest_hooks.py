@@ -6,9 +6,13 @@ note: most schemahooks.py hooks are actually tested in unittest_migrations.py
 """
 
 from logilab.common.testlib import TestCase, unittest_main
+
+from datetime import datetime
+
+from cubicweb import (ConnectionError, RepositoryError, ValidationError,
+                      AuthenticationError, BadConnectionId)
 from cubicweb.devtools.apptest import RepositoryBasedTC, get_versions
 
-from cubicweb import ConnectionError, RepositoryError, ValidationError, AuthenticationError, BadConnectionId
 from cubicweb.server.sqlutils import SQL_PREFIX
 from cubicweb.server.repository import Repository
 
@@ -58,12 +62,12 @@ class CoreHooksTC(RepositoryBasedTC):
 
     def test_delete_if_singlecard1(self):
         self.assertEquals(self.repo.schema['in_state'].inlined, False)
-        ueid, = self.execute('INSERT CWUser X: X login "toto", X upassword "hop", X in_group Y, X in_state S '
-                             'WHERE Y name "users", S name "activated"')[0]
+        ueid = self.create_user('toto')
         self.commit()
         self.execute('SET X in_state S WHERE S name "deactivated", X eid %(x)s', {'x': ueid})
         rset = self.execute('Any S WHERE X in_state S, X eid %(x)s', {'x': ueid})
         self.assertEquals(len(rset), 1)
+        self.commit()
         self.assertRaises(Exception, self.execute, 'SET X in_state S WHERE S name "deactivated", X eid %s' % ueid)
         rset2 = self.execute('Any S WHERE X in_state S, X eid %(x)s', {'x': ueid})
         self.assertEquals(rset.rows, rset2.rows)
@@ -242,13 +246,12 @@ class SchemaHooksTC(RepositoryBasedTC):
 
 
 class SchemaModificationHooksTC(RepositoryBasedTC):
-    #copy_schema = True
 
     def setUp(self):
         if not hasattr(self, '_repo'):
             # first initialization
             repo = self.repo # set by the RepositoryBasedTC metaclass
-            # force to read schema from the database
+            # force to read schema from the database to get proper eid set on schema instances
             repo.config._cubes = None
             repo.fill_schema()
         RepositoryBasedTC.setUp(self)
@@ -265,8 +268,8 @@ class SchemaModificationHooksTC(RepositoryBasedTC):
         self.failIf(schema.has_entity('Societe2'))
         self.failIf(schema.has_entity('concerne2'))
         # schema should be update on insertion (after commit)
-        self.execute('INSERT CWEType X: X name "Societe2", X description "", X meta FALSE, X final FALSE')
-        self.execute('INSERT CWRType X: X name "concerne2", X description "", X meta FALSE, X final FALSE, X symetric FALSE')
+        self.execute('INSERT CWEType X: X name "Societe2", X description "", X final FALSE')
+        self.execute('INSERT CWRType X: X name "concerne2", X description "", X final FALSE, X symetric FALSE')
         self.failIf(schema.has_entity('Societe2'))
         self.failIf(schema.has_entity('concerne2'))
         self.execute('SET X read_permission G WHERE X is CWEType, X name "Societe2", G is CWGroup')
@@ -613,6 +616,40 @@ class WorkflowHooksTC(RepositoryBasedTC):
         cu = cnx.cursor()
         self.failUnless(cu.execute("INSERT Note X: X type 'a', X in_state S WHERE S name 'todo'"))
         cnx.commit()
+
+    def test_metadata_cwuri(self):
+        eid = self.execute('INSERT Note X')[0][0]
+        cwuri = self.execute('Any U WHERE X eid %s, X cwuri U' % eid)[0][0]
+        self.assertEquals(cwuri, self.repo.config['base-url'] + 'eid/%s' % eid)
+
+    def test_metadata_creation_modification_date(self):
+        _now = datetime.now()
+        eid = self.execute('INSERT Note X')[0][0]
+        creation_date, modification_date = self.execute('Any CD, MD WHERE X eid %s, '
+                                                        'X creation_date CD, '
+                                                        'X modification_date MD' % eid)[0]
+        self.assertEquals((creation_date - _now).seconds, 0)
+        self.assertEquals((modification_date - _now).seconds, 0)
+
+    def test_metadata__date(self):
+        _now = datetime.now()
+        eid = self.execute('INSERT Note X')[0][0]
+        creation_date = self.execute('Any D WHERE X eid %s, X creation_date D' % eid)[0][0]
+        self.assertEquals((creation_date - _now).seconds, 0)
+
+    def test_metadata_created_by(self):
+        eid = self.execute('INSERT Note X')[0][0]
+        self.commit() # fire operations
+        rset = self.execute('Any U WHERE X eid %s, X created_by U' % eid)
+        self.assertEquals(len(rset), 1) # make sure we have only one creator
+        self.assertEquals(rset[0][0], self.session.user.eid)
+
+    def test_metadata_owned_by(self):
+        eid = self.execute('INSERT Note X')[0][0]
+        self.commit() # fire operations
+        rset = self.execute('Any U WHERE X eid %s, X owned_by U' % eid)
+        self.assertEquals(len(rset), 1) # make sure we have only one owner
+        self.assertEquals(rset[0][0], self.session.user.eid)
 
 if __name__ == '__main__':
     unittest_main()

@@ -10,7 +10,7 @@ __docformat__ = "restructuredtext en"
 from datetime import date
 from warnings import warn
 
-from cubicweb.common import tags
+from cubicweb.common import tags, uilib
 from cubicweb.web import stdmsgs, INTERNAL_FIELD_VALUE
 
 
@@ -43,7 +43,7 @@ class FieldWidget(object):
         if self.needs_css:
             form.req.add_css(self.needs_css)
 
-    def render(self, form, field):
+    def render(self, form, field, renderer):
         """render the widget for the given `field` of `form`.
         To override in concrete class
         """
@@ -68,7 +68,7 @@ class Input(FieldWidget):
     """abstract widget class for <input> tag based widgets"""
     type = None
 
-    def render(self, form, field):
+    def render(self, form, field, renderer):
         """render the widget for the given `field` of `form`.
 
         Generate one <input> tag for each field's value
@@ -96,7 +96,7 @@ class PasswordInput(Input):
     """
     type = 'password'
 
-    def render(self, form, field):
+    def render(self, form, field, renderer):
         self.add_media(form)
         name, values, attrs = self._render_attrs(form, field)
         assert len(values) == 1
@@ -105,9 +105,11 @@ class PasswordInput(Input):
             confirmname = '%s-confirm:%s' % tuple(name.rsplit(':', 1))
         except TypeError:
             confirmname = '%s-confirm' % name
-        inputs = [tags.input(name=name, value=values[0], type=self.type, id=id, **attrs),
+        inputs = [tags.input(name=name, value=values[0], type=self.type, id=id,
+                             **attrs),
                   '<br/>',
-                  tags.input(name=confirmname, value=values[0], type=self.type, **attrs),
+                  tags.input(name=confirmname, value=values[0], type=self.type,
+                             **attrs),
                   '&nbsp;', tags.span(form.req._('confirm password'),
                                       **{'class': 'emphasis'})]
         return u'\n'.join(inputs)
@@ -147,7 +149,7 @@ class ButtonInput(Input):
 class TextArea(FieldWidget):
     """<textarea>"""
 
-    def render(self, form, field):
+    def render(self, form, field, renderer):
         name, values, attrs = self._render_attrs(form, field)
         attrs.setdefault('onkeyup', 'autogrow(this)')
         if not values:
@@ -171,9 +173,9 @@ class FCKEditor(TextArea):
         super(FCKEditor, self).__init__(*args, **kwargs)
         self.attrs['cubicweb:type'] = 'wysiwyg'
 
-    def render(self, form, field):
+    def render(self, form, field, renderer):
         form.req.fckeditor_config()
-        return super(FCKEditor, self).render(form, field)
+        return super(FCKEditor, self).render(form, field, renderer)
 
 
 class Select(FieldWidget):
@@ -184,23 +186,30 @@ class Select(FieldWidget):
         super(Select, self).__init__(attrs)
         self._multiple = multiple
 
-    def render(self, form, field):
+    def render(self, form, field, renderer):
         name, curvalues, attrs = self._render_attrs(form, field)
         if not 'size' in attrs:
             attrs['size'] = self._multiple and '5' or '1'
         options = []
         optgroup_opened = False
-        for label, value in field.vocabulary(form):
+        for option in field.vocabulary(form):
+            try:
+                label, value, oattrs = option
+            except ValueError:
+                label, value = option
+                oattrs = {}
             if value is None:
                 # handle separator
                 if optgroup_opened:
                     options.append(u'</optgroup>')
-                options.append(u'<optgroup label="%s">' % (label or ''))
+                oattrs.setdefault('label', label or '')
+                options.append(u'<optgroup %s>' % uilib.sgml_attributes(oattrs))
                 optgroup_opened = True
             elif value in curvalues:
-                options.append(tags.option(label, value=value, selected='selected'))
+                options.append(tags.option(label, value=value,
+                                           selected='selected', **oattrs))
             else:
-                options.append(tags.option(label, value=value))
+                options.append(tags.option(label, value=value, **oattrs))
         if optgroup_opened:
             options.append(u'</optgroup>')
         return tags.select(name=name, multiple=self._multiple,
@@ -214,20 +223,26 @@ class CheckBox(Input):
     type = 'checkbox'
     vocabulary_widget = True
 
-    def render(self, form, field):
+    def render(self, form, field, renderer):
         name, curvalues, attrs = self._render_attrs(form, field)
         domid = attrs.pop('id', None)
-        sep = attrs.pop('separator', u'<br/>')
+        sep = attrs.pop('separator', u'<br/>\n')
         options = []
-        for i, (label, value) in enumerate(field.vocabulary(form)):
+        for i, option in enumerate(field.vocabulary(form)):
+            try:
+                label, value, oattrs = option
+            except ValueError:
+                label, value = option
+                oattrs = {}
             iattrs = attrs.copy()
+            iattrs.update(oattrs)
             if i == 0 and domid is not None:
-                iattrs['id'] = domid
+                iattrs.setdefault('id', domid)
             if value in curvalues:
                 iattrs['checked'] = u'checked'
             tag = tags.input(name=name, type=self.type, value=value, **iattrs)
-            options.append(tag + label + sep)
-        return '\n'.join(options)
+            options.append(tag + label)
+        return sep.join(options)
 
 
 class Radio(CheckBox):
@@ -235,6 +250,51 @@ class Radio(CheckBox):
     input will be generated for each possible value.
     """
     type = 'radio'
+
+
+# compound widgets #############################################################
+
+class IntervalWidget(FieldWidget):
+    """custom widget to display an interval composed by 2 fields. This widget
+    is expected to be used with a CompoundField containing the two actual
+    fields.
+
+    Exemple usage::
+
+from uicfg import autoform_field, autoform_section
+autoform_field.tag_attribute(('Concert', 'minprice'),
+                              CompoundField(fields=(IntField(name='minprice'),
+                                                    IntField(name='maxprice')),
+                                            label=_('price'),
+                                            widget=IntervalWidget()
+                                            ))
+# we've to hide the other field manually for now
+autoform_section.tag_attribute(('Concert', 'maxprice'), 'generated')
+    """
+    def render(self, form, field, renderer):
+        actual_fields = field.fields
+        assert len(actual_fields) == 2
+        return u'<div>%s %s %s %s</div>' % (
+            form.req._('from_interval_start'),
+            actual_fields[0].render(form, renderer),
+            form.req._('to_interval_end'),
+            actual_fields[1].render(form, renderer),
+            )
+
+
+class HorizontalLayoutWidget(FieldWidget):
+    """custom widget to display a set of fields grouped together horizontally
+    in a form. See `IntervalWidget` for example usage.
+    """
+    def render(self, form, field, renderer):
+        if self.attrs.get('display_label', True):
+            subst = self.attrs.get('label_input_substitution', '%(label)s %(input)s')
+            fields = [subst % {'label': renderer.render_label(form, f),
+                              'input': f.render(form, renderer)}
+                      for f in field.subfields(form)]
+        else:
+            fields = [f.render(form, renderer) for f in field.subfields(form)]
+        return u'<div>%s</div>' % ' '.join(fields)
 
 
 # javascript widgets ###########################################################
@@ -262,8 +322,8 @@ class DateTimePicker(TextInput):
         req.html_headers.define_var('MONTHNAMES', monthnames)
         req.html_headers.define_var('DAYNAMES', daynames)
 
-    def render(self, form, field):
-        txtwidget = super(DateTimePicker, self).render(form, field)
+    def render(self, form, field, renderer):
+        txtwidget = super(DateTimePicker, self).render(form, field, renderer)
         self.add_localized_infos(form.req)
         cal_button = self._render_calendar_popup(form, field)
         return txtwidget + cal_button
@@ -302,7 +362,7 @@ class AjaxWidget(FieldWidget):
         if inputid is not None:
             self.attrs['cubicweb:inputid'] = inputid
 
-    def render(self, form, field):
+    def render(self, form, field, renderer):
         self.add_media(form)
         attrs = self._render_attrs(form, field)[-1]
         return tags.div(**attrs)
@@ -373,8 +433,8 @@ class AddComboBoxWidget(Select):
         etype_from = entity.e_schema.subject_relation(self.name).objects(entity.e_schema)[0]
         attrs['cubicweb:etype_from'] = etype_from
 
-    def render(self, form, field):
-        return super(AddComboBoxWidget, self).render(form, field) + u'''
+    def render(self, form, field, renderer):
+        return super(AddComboBoxWidget, self).render(form, field, renderer) + u'''
 <div id="newvalue">
   <input type="text" id="newopt" />
   <a href="javascript:noop()" id="add_newopt">&nbsp;</a></div>
@@ -400,7 +460,7 @@ class Button(Input):
         self.cwaction = cwaction
         self.attrs.setdefault('klass', 'validateButton')
 
-    def render(self, form, field=None):
+    def render(self, form, field=None, renderer=None):
         label = form.req._(self.label)
         attrs = self.attrs.copy()
         if self.cwaction:
@@ -443,7 +503,7 @@ class ImgButton(object):
         self.imgressource = imgressource
         self.label = label
 
-    def render(self, form, field=None):
+    def render(self, form, field=None, renderer=None):
         label = form.req._(self.label)
         imgsrc = form.req.external_resource(self.imgressource)
         return '<a id="%(domid)s" href="%(href)s">'\

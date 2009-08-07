@@ -54,8 +54,6 @@ class URLRewriter(AppObject):
     __metaclass__ = metarewriter
     __registry__ = 'urlrewriting'
     __abstract__ = True
-
-    id = 'urlrewriting'
     priority = 1
 
     def rewrite(self, req, uri):
@@ -76,9 +74,11 @@ class SimpleReqRewriter(URLRewriter):
         ('/index', dict(vid='index')),
         ('/myprefs', dict(vid='propertiesform')),
         ('/siteconfig', dict(vid='systempropertiesform')),
+        ('/siteinfo', dict(vid='info')),
         ('/manage', dict(vid='manage')),
         ('/notfound', dict(vid='404')),
         ('/error', dict(vid='error')),
+        ('/sparql', dict(vid='sparql')),
         (rgx('/schema/([^/]+?)/?'),  dict(vid='eschema', rql=r'Any X WHERE X is CWEType, X name "\1"')),
         (rgx('/add/([^/]+?)/?'), dict(vid='creation', etype=r'\1')),
         (rgx('/doc/images/(.+?)/?'), dict(vid='wdocimages', fid=r'\1')),

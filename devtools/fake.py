@@ -35,26 +35,20 @@ class FakeConfig(dict, BaseApptestConfiguration):
     def sources(self):
         return {}
 
-class FakeVReg(object):
+class FakeVReg(dict):
     def __init__(self, schema=None, config=None):
         self.schema = schema
         self.config = config or FakeConfig()
         self.properties = {'ui.encoding': 'UTF8',
                            'ui.language': 'en',
                            }
+        self.update({
+            'controllers' : {'login': []},
+            'views' : {},
+            })
 
     def property_value(self, key):
         return self.properties[key]
-
-    _registries = {
-        'controllers' : [Mock(id='view'), Mock(id='login'),
-                         Mock(id='logout'), Mock(id='edit')],
-        'views' : [Mock(id='primary'), Mock(id='secondary'),
-                         Mock(id='oneline'), Mock(id='list')],
-        }
-
-    def registry_objects(self, name, oid=None):
-        return self._registries[name]
 
     def etype_class(self, etype):
         class Entity(dict):
@@ -88,12 +82,12 @@ class FakeRequest(CubicWebRequestBase):
         return None
 
     def base_url(self):
-        """return the root url of the application"""
+        """return the root url of the instance"""
         return BASE_URL
 
     def relative_path(self, includeparams=True):
         """return the normalized path of the request (ie at least relative
-        to the application's root, but some other normalization may be needed
+        to the instance's root, but some other normalization may be needed
         so that the returned path may be used to compare to generated urls
         """
         if self._url.startswith(BASE_URL):
@@ -154,6 +148,25 @@ class FakeRequest(CubicWebRequestBase):
         return self.execute(*args, **kwargs)
 
 
+# class FakeRequestNoCnx(FakeRequest):
+#     def get_session_data(self, key, default=None, pop=False):
+#         """return value associated to `key` in session data"""
+#         if pop:
+#             return self._session_data.pop(key, default)
+#         else:
+#             return self._session_data.get(key, default)
+
+#     def set_session_data(self, key, value):
+#         """set value associated to `key` in session data"""
+#         self._session_data[key] = value
+
+#     def del_session_data(self, key):
+#         try:
+#             del self._session_data[key]
+#         except KeyError:
+#             pass
+
+
 class FakeUser(object):
     login = 'toto'
     eid = 0
@@ -174,7 +187,7 @@ class FakeSession(RequestSessionMixIn):
     def execute(self, *args):
         pass
     unsafe_execute = execute
-    
+
     def commit(self, *args):
         self.transaction_data.clear()
     def close(self, *args):

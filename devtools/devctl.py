@@ -12,25 +12,25 @@ import sys
 from datetime import datetime
 from os import mkdir, chdir
 from os.path import join, exists, abspath, basename, normpath, split, isdir
-
+from warnings import warn
 
 from logilab.common import STD_BLACKLIST
 from logilab.common.modutils import get_module_files
-from logilab.common.textutils import get_csv
+from logilab.common.textutils import splitstrip
+from logilab.common.shellutils import ASK
 from logilab.common.clcommands import register_commands
 
 from cubicweb import CW_SOFTWARE_ROOT as BASEDIR, BadCommandUsage, underline_title
 from cubicweb.__pkginfo__ import version as cubicwebversion
-from cubicweb.toolsutils import Command, confirm, copy_skeleton
+from cubicweb.toolsutils import Command, copy_skeleton
 from cubicweb.web.webconfig import WebConfiguration
 from cubicweb.server.serverconfig import ServerConfiguration
-
 
 class DevCubeConfiguration(ServerConfiguration, WebConfiguration):
     """dummy config to get full library schema and entities"""
     creating = True
-    cubicweb_vobject_path = ServerConfiguration.cubicweb_vobject_path | WebConfiguration.cubicweb_vobject_path
-    cube_vobject_path = ServerConfiguration.cube_vobject_path | WebConfiguration.cube_vobject_path
+    cubicweb_appobject_path = ServerConfiguration.cubicweb_appobject_path | WebConfiguration.cubicweb_appobject_path
+    cube_appobject_path = ServerConfiguration.cube_appobject_path | WebConfiguration.cube_appobject_path
 
     def __init__(self, cube):
         super(DevCubeConfiguration, self).__init__(cube)
@@ -90,7 +90,7 @@ def generate_schema_pot(w, cubedir=None):
     notice that relation definitions description and static vocabulary
     should be marked using '_' and extracted using xgettext
     """
-    from cubicweb.cwvreg import CubicWebRegistry
+    from cubicweb.cwvreg import CubicWebVRegistry
     cube = cubedir and split(cubedir)[-1]
     libconfig = DevDepConfiguration(cube)
     libconfig.cleanup_interface_sobjects = False
@@ -102,7 +102,7 @@ def generate_schema_pot(w, cubedir=None):
         config = libconfig
         libconfig = None
     schema = config.load_schema(remove_unused_rtypes=False)
-    vreg = CubicWebRegistry(config)
+    vreg = CubicWebVRegistry(config)
     # set_schema triggers objects registrations
     vreg.set_schema(schema)
     w(DEFAULT_POT_HEAD)
@@ -187,8 +187,8 @@ def _generate_schema_pot(w, vreg, schema, libconfig=None, cube=None):
     #cube = (cube and 'cubes.%s.' % cube or 'cubicweb.')
     done = set()
     if libconfig is not None:
-        from cubicweb.cwvreg import CubicWebRegistry
-        libvreg = CubicWebRegistry(libconfig)
+        from cubicweb.cwvreg import CubicWebVRegistry
+        libvreg = CubicWebVRegistry(libconfig)
         libvreg.set_schema(libschema) # trigger objects registration
         # prefill done set
         list(_iter_vreg_objids(libvreg, done))
@@ -254,14 +254,13 @@ class UpdateCubicWebCatalogCommand(Command):
         if args:
             raise BadCommandUsage('Too much arguments')
         import shutil
-        from tempfile import mktemp
+        import tempfile
         import yams
         from logilab.common.fileutils import ensure_fs_mode
         from logilab.common.shellutils import globfind, find, rm
         from cubicweb.common.i18n import extract_from_tal, execute
-        tempdir = mktemp()
-        mkdir(tempdir)
-        potfiles = [join(I18NDIR, 'entities.pot')]
+        tempdir = tempfile.mkdtemp()
+        potfiles = [join(I18NDIR, 'static-messages.pot')]
         print '-> extract schema messages.'
         schemapot = join(tempdir, 'schema.pot')
         potfiles.append(schemapot)
@@ -328,8 +327,8 @@ class UpdateTemplateCatalogCommand(Command):
 
 
 def update_cubes_catalogs(cubes):
-    toedit = []
     for cubedir in cubes:
+        toedit = []
         if not isdir(cubedir):
             print '-> ignoring %s that is not a directory.' % cubedir
             continue
@@ -338,27 +337,34 @@ def update_cubes_catalogs(cubes):
         except Exception:
             import traceback
             traceback.print_exc()
-            print '-> Error while updating catalogs for cube', cubedir
-    # instructions pour la suite
-    print '-> regenerated this cube\'s .po catalogs.'
-    print '\nYou can now edit the following files:'
-    print '* ' + '\n* '.join(toedit)
-    print 'when you are done, run "cubicweb-ctl i18ninstance yourinstance".'
+            print '-> error while updating catalogs for cube', cubedir
+        else:
+            # instructions pour la suite
+            print '-> regenerated .po catalogs for cube %s.' % cubedir
+            print '\nYou can now edit the following files:'
+            print '* ' + '\n* '.join(toedit)
+            print ('When you are done, run "cubicweb-ctl i18ninstance '
+                   '<yourinstance>" to see changes in your instances.')
 
 def update_cube_catalogs(cubedir):
     import shutil
-    from tempfile import mktemp
+    import tempfile
     from logilab.common.fileutils import ensure_fs_mode
     from logilab.common.shellutils import find, rm
     from cubicweb.common.i18n import extract_from_tal, execute
     toedit = []
     cube = basename(normpath(cubedir))
-    tempdir = mktemp()
-    mkdir(tempdir)
+    tempdir = tempfile.mkdtemp()
     print underline_title('Updating i18n catalogs for cube %s' % cube)
     chdir(cubedir)
-    potfiles = [join('i18n', scfile) for scfile in ('entities.pot',)
-                if exists(join('i18n', scfile))]
+    if exists(join('i18n', 'entities.pot')):
+        warn('entities.pot is deprecated, rename file to static-messages.pot (%s)'
+             % join('i18n', 'entities.pot'), DeprecationWarning)
+        potfiles = [join('i18n', 'entities.pot')]
+    elif exists(join('i18n', 'static-messages.pot')):
+        potfiles = [join('i18n', 'static-messages.pot')]
+    else:
+        potfiles = []
     print '-> extract schema messages'
     schemapot = join(tempdir, 'schema.pot')
     potfiles.append(schemapot)
@@ -477,7 +483,7 @@ class NewCubeCommand(Command):
                                       " Please specify it using the --directory option")
             cubesdir = cubespath[0]
         if not isdir(cubesdir):
-            print "creating cubes directory", cubesdir
+            print "-> creating cubes directory", cubesdir
             try:
                 mkdir(cubesdir)
             except OSError, err:
@@ -486,19 +492,20 @@ class NewCubeCommand(Command):
         if exists(cubedir):
             self.fail("%s already exists !" % (cubedir))
         skeldir = join(BASEDIR, 'skeleton')
+        default_name = 'cubicweb-%s' % cubename.lower()
         if verbose:
-            distname = raw_input('Debian name for your cube (just type enter to use the cube name): ').strip()
+            distname = raw_input('Debian name for your cube ? [%s]): ' % default_name).strip()
             if not distname:
-                distname = 'cubicweb-%s' % cubename.lower()
+                distname = default_name
             elif not distname.startswith('cubicweb-'):
-                if confirm('do you mean cubicweb-%s ?' % distname):
+                if ASK.confirm('Do you mean cubicweb-%s ?' % distname):
                     distname = 'cubicweb-' + distname
         else:
-            distname = 'cubicweb-%s' % cubename.lower()
+            distname = default_name
 
         longdesc = shortdesc = raw_input('Enter a short description for your cube: ')
         if verbose:
-            longdesc = raw_input('Enter a long description (or nothing if you want to reuse the short one): ')
+            longdesc = raw_input('Enter a long description (leave empty to reuse the short one): ')
         if verbose:
             includes = self._ask_for_dependancies()
             if len(includes) == 1:
@@ -523,14 +530,14 @@ class NewCubeCommand(Command):
     def _ask_for_dependancies(self):
         includes = []
         for stdtype in ServerConfiguration.available_cubes():
-            ans = raw_input("Depends on cube %s? (N/y/s(kip)/t(ype)"
-                            % stdtype).lower().strip()
-            if ans == 'y':
+            answer = ASK.ask("Depends on cube %s? " % stdtype,
+                             ('N','y','skip','type'), 'N')
+            if answer == 'y':
                 includes.append(stdtype)
-            if ans == 't':
-                includes = get_csv(raw_input('type dependancies: '))
+            if answer == 'type':
+                includes = splitstrip(raw_input('type dependancies: '))
                 break
-            elif ans == 's':
+            elif answer == 'skip':
                 break
         return includes
 
