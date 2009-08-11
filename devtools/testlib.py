@@ -345,17 +345,6 @@ class CubicWebTC(TestCase):
         self.session.set_pool()
         return self.session.execute(rql, args, eid_key)
 
-    # def scommit(self):
-    #     self.repo.commit(self.cnxid)
-    #     self.session.set_pool()
-
-    # def srollback(self):
-    #     self.repo.rollback(self.cnxid)
-    #     self.session.set_pool()
-
-    # def sclose(self):
-    #     self.repo.close(self.cnxid)
-
     # other utilities #########################################################
 
     def entity(self, rql, args=None, eidkey=None, req=None):
@@ -431,10 +420,10 @@ class CubicWebTC(TestCase):
                 continue
             views = [view for view in views
                      if view.category != 'startupview'
-                     and not issubclass(view, notification.NotificationView)]
+                     and not issubclass(view, NotificationView)]
             if views:
                 try:
-                    view = viewsvreg.select_best(views, req, rset=rset)
+                    view = viewsvreg._select_best(views, req, rset=rset)
                     if view.linkable():
                         yield view
                     else:
@@ -852,7 +841,7 @@ def vreg_instrumentize(testclass):
         try:
             orig_select_best = reg.__class__.__orig_select_best
         except:
-            orig_select_best = reg.__class__.select_best
+            orig_select_best = reg.__class__._select_best
         def instr_select_best(self, *args, **kwargs):
             selected = orig_select_best(self, *args, **kwargs)
             try:
@@ -862,7 +851,7 @@ def vreg_instrumentize(testclass):
             except AttributeError:
                 pass # occurs on reg used to restore database
             return selected
-        reg.__class__.select_best = instr_select_best
+        reg.__class__._select_best = instr_select_best
         reg.__class__.__orig_select_best = orig_select_best
 
 
