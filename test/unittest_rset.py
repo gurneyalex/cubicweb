@@ -10,7 +10,7 @@
 
 from logilab.common.testlib import TestCase, unittest_main
 
-from cubicweb.devtools.apptest import EnvBasedTC
+from cubicweb.devtools.testlib import CubicWebTC
 from cubicweb.selectors import traced_selection
 
 from urlparse import urlsplit
@@ -55,7 +55,7 @@ class AttrDescIteratorTC(TestCase):
 
 
 
-class ResultSetTC(EnvBasedTC):
+class ResultSetTC(CubicWebTC):
 
     def setUp(self):
         super(ResultSetTC, self).setUp()
@@ -100,7 +100,7 @@ class ResultSetTC(EnvBasedTC):
                        'Any U,L where U is CWUser, U login L',
                        description=[['CWUser', 'String']] * 3)
         rs.req = self.request()
-        rs.vreg = self.env.vreg
+        rs.vreg = self.vreg
 
         self.assertEquals(rs.limit(2).rows, [[12000, 'adim'], [13000, 'syt']])
         rs2 = rs.limit(2, offset=1)
@@ -115,9 +115,9 @@ class ResultSetTC(EnvBasedTC):
                        'Any U,L where U is CWUser, U login L',
                        description=[['CWUser', 'String']] * 3)
         rs.req = self.request()
-        rs.vreg = self.env.vreg
+        rs.vreg = self.vreg
         def test_filter(entity):
-            return entity.login != 'nico'
+            return entity.cwdb.login != 'nico'
 
         rs2 = rs.filtered_rset(test_filter)
         self.assertEquals(len(rs2), 2)
@@ -140,7 +140,7 @@ class ResultSetTC(EnvBasedTC):
                        'Any U,L where U is CWUser, U login L',
                        description=[['CWUser', 'String']] * 3)
         rs.req = self.request()
-        rs.vreg = self.env.vreg
+        rs.vreg = self.vreg
 
         rs2 = rs.sorted_rset(lambda e:e['login'])
         self.assertEquals(len(rs2), 3)
@@ -170,7 +170,7 @@ class ResultSetTC(EnvBasedTC):
                        'D created_by U, D title T',
                        description=[['CWUser', 'String', 'String']] * 5)
         rs.req = self.request()
-        rs.vreg = self.env.vreg
+        rs.vreg = self.vreg
 
         rsets = rs.split_rset(lambda e:e['login'])
         self.assertEquals(len(rsets), 3)
@@ -271,11 +271,11 @@ class ResultSetTC(EnvBasedTC):
         self.assertEquals(pprelcachedict(e._related_cache),
                           [('created_by_subject', [5])])
         # first level of recursion
-        u = e.created_by[0]
+        u = e.cwdb.created_by[0]
         self.assertEquals(u['login'], 'admin')
         self.assertRaises(KeyError, u.__getitem__, 'firstname')
         # second level of recursion
-        s = u.in_state[0]
+        s = u.cwdb.in_state[0]
         self.assertEquals(s['name'], 'activated')
         self.assertRaises(KeyError, s.__getitem__, 'description')
 
