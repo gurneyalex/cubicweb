@@ -15,7 +15,8 @@ from logilab.common.deprecation import deprecated
 from rql.nodes import VariableRef, Function, ETYPE_PYOBJ_MAP, etype_from_pyobj
 from yams import BASE_TYPES
 
-from cubicweb import RequestSessionMixIn, Binary, UnknownEid
+from cubicweb import Binary, UnknownEid
+from cubicweb.req import RequestSessionBase
 from cubicweb.dbapi import ConnectionProperties
 from cubicweb.utils import make_uid
 from cubicweb.server.rqlrewrite import RQLRewriter
@@ -41,7 +42,7 @@ def _make_description(selected, args, solution):
     return description
 
 
-class Session(RequestSessionMixIn):
+class Session(RequestSessionBase):
     """tie session id, user, connections pool and other session data all
     together
     """
@@ -73,10 +74,6 @@ class Session(RequestSessionMixIn):
     def __str__(self):
         return '<%ssession %s (%s 0x%x)>' % (self.cnxtype, self.user.login,
                                              self.id, id(self))
-
-    @property
-    def schema(self):
-        return self.repo.schema
 
     def add_relation(self, fromeid, rtype, toeid):
         if self.is_super_session:
@@ -167,6 +164,18 @@ class Session(RequestSessionMixIn):
     def change_property(self, prop, value):
         assert prop == 'lang' # this is the only one changeable property for now
         self.set_language(value)
+
+    def deleted_in_transaction(self, eid):
+        return eid in self.transaction_data.get('pendingeids', ())
+
+    def added_in_transaction(self, eid):
+        return eid in self.transaction_data.get('neweids', ())
+
+    def schema_rproperty(self, rtype, eidfrom, eidto, rprop):
+        rschema = self.repo.schema[rtype]
+        subjtype = self.describe(eidfrom)[0]
+        objtype = self.describe(eidto)[0]
+        return rschema.rproperty(subjtype, objtype, rprop)
 
     # connection management ###################################################
 
@@ -265,6 +274,11 @@ class Session(RequestSessionMixIn):
 
     # request interface #######################################################
 
+    @property
+    def cursor(self):
+        """return a rql cursor"""
+        return self
+
     def set_entity_cache(self, entity):
         # XXX session level caching may be a pb with multiple repository
         #     instances, but 1. this is probably not the only one :$ and 2. it
@@ -350,11 +364,6 @@ class Session(RequestSessionMixIn):
         """
         return self.super_session.execute(rql, kwargs, eid_key, build_descr,
                                           propagate)
-
-    @property
-    def cursor(self):
-        """return a rql cursor"""
-        return self
 
     def execute(self, rql, kwargs=None, eid_key=None, build_descr=True,
                 propagate=False):
@@ -472,7 +481,6 @@ class Session(RequestSessionMixIn):
             self._threaddata.pending_operations = []
             return self._threaddata.pending_operations
 
-
     def add_operation(self, operation, index=None):
         """add an observer"""
         assert self.commit_state != 'commit'
@@ -552,12 +560,19 @@ class Session(RequestSessionMixIn):
             description.append(tuple(row_descr))
         return description
 
-    @deprecated("use vreg['etypes'].etype_class(etype)")
+    # deprecated ###############################################################
+
+    @property
+    @deprecated("[3.5] use session.vreg.schema")
+    def schema(self):
+        return self.repo.schema
+
+    @deprecated("[3.4] use vreg['etypes'].etype_class(etype)")
     def etype_class(self, etype):
         """return an entity class for the given entity type"""
         return self.vreg['etypes'].etype_class(etype)
 
-    @deprecated('use direct access to session.transaction_data')
+    @deprecated('[3.4] use direct access to session.transaction_data')
     def query_data(self, key, default=None, setdefault=False, pop=False):
         if setdefault:
             assert not pop
@@ -567,7 +582,7 @@ class Session(RequestSessionMixIn):
         else:
             return self.transaction_data.get(key, default)
 
-    @deprecated('use entity_from_eid(eid, etype=None)')
+    @deprecated('[3.4] use entity_from_eid(eid, etype=None)')
     def entity(self, eid):
         """return a result set for the given eid"""
         return self.entity_from_eid(eid)
