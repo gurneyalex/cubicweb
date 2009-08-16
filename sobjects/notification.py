@@ -1,4 +1,4 @@
-"""some hooks and views to handle notification on entity's changes
+"""some views to handle notification on data changes
 
 :organization: Logilab
 :copyright: 2001-2009 LOGILAB S.A. (Paris, FRANCE), license is LGPL v2.
@@ -18,16 +18,12 @@ except ImportError:
         return 'XXX'
 
 from logilab.common.textutils import normalize_text
-from logilab.common.deprecation import class_renamed
 
-from cubicweb import RegistryException
-from cubicweb.selectors import implements, yes
+from cubicweb.selectors import yes
 from cubicweb.view import EntityView, Component
 from cubicweb.common.mail import format_mail
 
-from cubicweb.server.pool import PreCommitOperation
 from cubicweb.server.hookhelper import SendMailOp
-from cubicweb.server.hooksmanager import Hook
 
 
 class RecipientsFinder(Component):
@@ -42,7 +38,7 @@ class RecipientsFinder(Component):
                 'X primary_email E, E address A')
 
     def recipients(self):
-        mode = self.config['default-recipients-mode']
+        mode = self.req.vreg.config['default-recipients-mode']
         if mode == 'users':
             # use unsafe execute else we may don't have the right to see users
             # to notify...
@@ -51,76 +47,10 @@ class RecipientsFinder(Component):
                      for u in execute(self.user_rql, build_descr=True, propagate=True).entities()]
         elif mode == 'default-dest-addrs':
             lang = self.vreg.property_value('ui.language')
-            dests = zip(self.config['default-dest-addrs'], repeat(lang))
+            dests = zip(self.req.vreg.config['default-dest-addrs'], repeat(lang))
         else: # mode == 'none'
             dests = []
         return dests
-
-
-# hooks #######################################################################
-
-class RenderAndSendNotificationView(PreCommitOperation):
-    """delay rendering of notification view until precommit"""
-    def precommit_event(self):
-        if self.view.rset and self.view.rset[0][0] in self.session.transaction_data.get('pendingeids', ()):
-            return # entity added and deleted in the same transaction
-        self.view.render_and_send(**getattr(self, 'viewargs', {}))
-
-class StatusChangeHook(Hook):
-    """notify when a workflowable entity has its state modified"""
-    events = ('after_add_entity',)
-    accepts = ('TrInfo',)
-
-    def call(self, session, entity):
-        if not entity.from_state: # not a transition
-            return
-        rset = entity.related('wf_info_for')
-        try:
-            view = session.vreg['views'].select('notif_status_change', session,
-                                                rset=rset, row=0)
-        except RegistryException:
-            return
-        comment = entity.printable_value('comment', format='text/plain')
-        if comment:
-            comment = normalize_text(comment, 80,
-                                     rest=entity.comment_format=='text/rest')
-        RenderAndSendNotificationView(session, view=view, viewargs={
-            'comment': comment, 'previous_state': entity.previous_state.name,
-            'current_state': entity.new_state.name})
-
-
-class RelationChangeHook(Hook):
-    events = ('before_add_relation', 'after_add_relation',
-              'before_delete_relation', 'after_delete_relation')
-    accepts = ('Any',)
-    def call(self, session, fromeid, rtype, toeid):
-        """if a notification view is defined for the event, send notification
-        email defined by the view
-        """
-        rset = session.eid_rset(fromeid)
-        vid = 'notif_%s_%s' % (self.event,  rtype)
-        try:
-            view = session.vreg['views'].select(vid, session, rset=rset, row=0)
-        except RegistryException:
-            return
-        RenderAndSendNotificationView(session, view=view)
-
-
-class EntityChangeHook(Hook):
-    events = ('after_add_entity',
-              'after_update_entity')
-    accepts = ('Any',)
-    def call(self, session, entity):
-        """if a notification view is defined for the event, send notification
-        email defined by the view
-        """
-        rset = entity.as_rset()
-        vid = 'notif_%s' % self.event
-        try:
-            view = session.vreg['views'].select(vid, session, rset=rset, row=0)
-        except RegistryException:
-            return
-        RenderAndSendNotificationView(session, view=view)
 
 
 # abstract or deactivated notification views and mixin ########################
@@ -143,7 +73,7 @@ class NotificationView(EntityView):
         return finder.recipients()
 
     def subject(self):
-        entity = self.entity(self.row or 0, self.col or 0)
+        entity = self.rset.get_entity(self.row or 0, self.col or 0)
         subject = self.req._(self.message)
         etype = entity.dc_type()
         eid = entity.eid
@@ -156,7 +86,7 @@ class NotificationView(EntityView):
         return self.req.actual_session().user.login
 
     def context(self, **kwargs):
-        entity = self.entity(self.row or 0, self.col or 0)
+        entity = self.rset.get_entity(self.row or 0, self.col or 0)
         for key, val in kwargs.iteritems():
             if val and isinstance(val, unicode) and val.strip():
                kwargs[key] = self.req._(val)
@@ -171,7 +101,7 @@ class NotificationView(EntityView):
         self.w(self.req._(self.content) % self.context(**kwargs))
 
     def construct_message_id(self, eid):
-        return construct_message_id(self.config.appid, eid, self.msgid_timestamp)
+        return construct_message_id(self.req.vreg.config.appid, eid, self.msgid_timestamp)
 
     def render_and_send(self, **kwargs):
         """generate and send an email message for this view"""
@@ -187,7 +117,7 @@ class NotificationView(EntityView):
             lang = self.vreg.property_value('ui.language')
             recipients = zip(recipients, repeat(lang))
         if self.rset is not None:
-            entity = self.entity(self.row or 0, self.col or 0)
+            entity = self.rset.get_entity(self.row or 0, self.col or 0)
             # if the view is using timestamp in message ids, no way to reference
             # previous email
             if not self.msgid_timestamp:
@@ -211,7 +141,7 @@ class NotificationView(EntityView):
             content = self.render(row=0, col=0, **kwargs)
             subject = self.subject()
             msg = format_mail(userdata, [emailaddr], content, subject,
-                              config=self.config, msgid=msgid, references=refs)
+                              config=self.req.vreg.config, msgid=msgid, references=refs)
             self.send([emailaddr], msg)
         # restore language
         self.req.set_language(origlang)
@@ -284,7 +214,7 @@ url: %(url)s
 """
 
     def context(self, **kwargs):
-        entity = self.entity(self.row or 0, self.col or 0)
+        entity = self.rset.get_entity(self.row or 0, self.col or 0)
         content = entity.printable_value(self.content_attr, format='text/plain')
         if content:
             contentformat = getattr(entity, self.content_attr + '_format', 'text/rest')
@@ -292,8 +222,11 @@ url: %(url)s
         return super(ContentAddedView, self).context(content=content, **kwargs)
 
     def subject(self):
-        entity = self.entity(self.row or 0, self.col or 0)
+        entity = self.rset.get_entity(self.row or 0, self.col or 0)
         return  u'%s #%s (%s)' % (self.req.__('New %s' % entity.e_schema),
                                   entity.eid, self.user_login())
 
+from logilab.common.deprecation import class_renamed, class_moved
 NormalizedTextView = class_renamed('NormalizedTextView', ContentAddedView)
+from cubicweb.hooks.notification import RenderAndSendNotificationView
+RenderAndSendNotificationView = class_moved(RenderAndSendNotificationView)

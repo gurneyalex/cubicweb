@@ -11,7 +11,7 @@ __docformat__ = "restructuredtext en"
 import datetime
 
 from cubicweb import typed_eid
-from cubicweb.selectors import yes, require_group_compat
+from cubicweb.selectors import yes
 from cubicweb.appobject import AppObject
 from cubicweb.web import LOGGER, Redirect, RequestError
 
@@ -68,7 +68,6 @@ class Controller(AppObject):
     """
     __registry__ = 'controllers'
     __select__ = yes()
-    registered = require_group_compat(AppObject.registered)
 
     def __init__(self, *args, **kwargs):
         self.appli = kwargs.pop('appli', None)
@@ -90,10 +89,10 @@ class Controller(AppObject):
         # XXX assigning to self really necessary?
         self.rset = None
         if rql:
-            self.ensure_ro_rql(rql)
+            self.req.ensure_ro_rql(rql)
             if not isinstance(rql, unicode):
                 rql = unicode(rql, self.req.encoding)
-            pp = self.vreg['components'].select_object('magicsearch', self.req)
+            pp = self.vreg['components'].select_or_none('magicsearch', self.req)
             if pp is not None:
                 self.rset = pp.process_query(rql, self.req)
         return self.rset
