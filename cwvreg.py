@@ -18,7 +18,7 @@ from cubicweb import (ETYPE_NAME_MAP, Binary, UnknownProperty, UnknownEid,
                       ObjectNotFound, NoSelectableObject, RegistryNotFound,
                       RegistryOutOfDate, CW_EVENT_MANAGER)
 from cubicweb.utils import dump_class
-from cubicweb.vregistry import VRegistry, Registry
+from cubicweb.vregistry import VRegistry, Registry, class_regid
 from cubicweb.rtags import RTAGS
 
 
@@ -50,12 +50,9 @@ class CWRegistry(Registry):
         self.schema = vreg.schema
 
     def initialization_completed(self):
-        # call vreg_initialization_completed on appobjects and print
-        # registry content
-        for appobjects in self.itervalues():
-            for appobject in appobjects:
-                appobject.vreg_initialization_completed()
+        pass
 
+    @deprecated('[3.5] select object, then use obj.render()')
     def render(self, __oid, req, __fallback_oid=None, rset=None, **kwargs):
         """select object, or fallback object if specified and the first one
         isn't selectable, then render it
@@ -68,20 +65,22 @@ class CWRegistry(Registry):
             obj = self.select(__fallback_oid, req, **kwargs)
         return obj.render(**kwargs)
 
+    @deprecated('[3.5] use select_or_none and test for obj.cw_propval("visible")')
     def select_vobject(self, oid, *args, **kwargs):
-        selected = self.select_object(oid, *args, **kwargs)
-        if selected and selected.propval('visible'):
+        selected = self.select_or_none(oid, *args, **kwargs)
+        if selected and selected.cw_propval('visible'):
             return selected
         return None
 
-    def possible_vobjects(self, *args, **kwargs):
+    def poss_visible_objects(self, *args, **kwargs):
         """return an ordered list of possible app objects in a given registry,
         supposing they support the 'visible' and 'order' properties (as most
         visualizable objects)
         """
         return sorted([x for x in self.possible_objects(*args, **kwargs)
-                       if x.propval('visible')],
-                      key=lambda x: x.propval('order'))
+                       if x.cw_propval('visible')],
+                      key=lambda x: x.cw_propval('order'))
+    possible_vobjects = deprecated('[3.5] use poss_visible_objects()')(poss_visible_objects)
 
 
 VRegistry.REGISTRY_FACTORY[None] = CWRegistry
@@ -97,13 +96,20 @@ class ETypeRegistry(CWRegistry):
         clear_cache(self, 'etype_class')
 
     def register(self, obj, **kwargs):
-        oid = kwargs.get('oid') or obj.id
+        oid = kwargs.get('oid') or class_regid(obj)
         if oid != 'Any' and not oid in self.schema:
             self.error('don\'t register %s, %s type not defined in the '
-                       'schema', obj, obj.id)
+                       'schema', obj, oid)
             return
         kwargs['clear'] = True
         super(ETypeRegistry, self).register(obj, **kwargs)
+
+    @cached
+    def parent_classes(self, etype):
+        eschema = self.schema.eschema(etype)
+        parents = [cls.etype_class(e.type) for e in eschema.ancestors()]
+        parents.append(self.etype_class('Any'))
+        return parents
 
     @cached
     def etype_class(self, etype):
@@ -139,12 +145,12 @@ class ETypeRegistry(CWRegistry):
             objects = self['Any']
             assert len(objects) == 1, objects
             cls = objects[0]
-        if cls.id == etype:
-            cls.__initialize__()
+        if cls.__id__ == etype:
+            cls.__initialize__(self.schema)
             return cls
         cls = dump_class(cls, etype)
-        cls.id = etype
-        cls.__initialize__()
+        cls.__id__ = etype
+        cls.__initialize__(self.schema)
         return cls
 
 VRegistry.REGISTRY_FACTORY['etypes'] = ETypeRegistry
@@ -172,7 +178,7 @@ class ViewsRegistry(CWRegistry):
             if vid[0] == '_':
                 continue
             try:
-                view = self.select_best(views, req, rset=rset, **kwargs)
+                view = self._select_best(views, req, rset=rset, **kwargs)
                 if view.linkable():
                     yield view
             except NoSelectableObject:
@@ -351,6 +357,8 @@ class CubicWebVRegistry(VRegistry):
             implemented_interfaces = set()
             if 'Any' in self.get('etypes', ()):
                 for etype in self.schema.entities():
+                    if etype.is_final():
+                        continue
                     cls = self['etypes'].etype_class(etype)
                     for iface in cls.__implements__:
                         implemented_interfaces.update(iface.__mro__)
@@ -387,35 +395,35 @@ class CubicWebVRegistry(VRegistry):
                          special_relations={'eid': 'uid', 'has_text': 'fti'})
 
 
-    @deprecated('use vreg["etypes"].etype_class(etype)')
+    @deprecated('[3.4] use vreg["etypes"].etype_class(etype)')
     def etype_class(self, etype):
         return self["etypes"].etype_class(etype)
 
-    @deprecated('use vreg["views"].main_template(*args, **kwargs)')
+    @deprecated('[3.4] use vreg["views"].main_template(*args, **kwargs)')
     def main_template(self, req, oid='main-template', **context):
         return self["views"].main_template(req, oid, **context)
 
-    @deprecated('use vreg[registry].possible_vobjects(*args, **kwargs)')
+    @deprecated('[3.4] use vreg[registry].possible_vobjects(*args, **kwargs)')
     def possible_vobjects(self, registry, *args, **kwargs):
         return self[registry].possible_vobjects(*args, **kwargs)
 
-    @deprecated('use vreg["actions"].possible_actions(*args, **kwargs)')
+    @deprecated('[3.4] use vreg["actions"].possible_actions(*args, **kwargs)')
     def possible_actions(self, req, rset=None, **kwargs):
         return self["actions"].possible_actions(req, rest=rset, **kwargs)
 
-    @deprecated("use vreg['boxes'].select_object(...)")
+    @deprecated("[3.4] use vreg['boxes'].select_or_none(...)")
     def select_box(self, oid, *args, **kwargs):
-        return self['boxes'].select_object(oid, *args, **kwargs)
+        return self['boxes'].select_or_none(oid, *args, **kwargs)
 
-    @deprecated("use vreg['components'].select_object(...)")
+    @deprecated("[3.4] use vreg['components'].select_or_none(...)")
     def select_component(self, cid, *args, **kwargs):
-        return self['components'].select_object(cid, *args, **kwargs)
+        return self['components'].select_or_none(cid, *args, **kwargs)
 
-    @deprecated("use vreg['actions'].select_object(...)")
+    @deprecated("[3.4] use vreg['actions'].select_or_none(...)")
     def select_action(self, oid, *args, **kwargs):
-        return self['actions'].select_object(oid, *args, **kwargs)
+        return self['actions'].select_or_none(oid, *args, **kwargs)
 
-    @deprecated("use vreg['views'].select(...)")
+    @deprecated("[3.4] use vreg['views'].select(...)")
     def select_view(self, __vid, req, rset=None, **kwargs):
         return self['views'].select(__vid, req, rset=rset, **kwargs)
 
