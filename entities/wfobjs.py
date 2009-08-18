@@ -66,6 +66,7 @@ class State(AnyEntity):
     rest_attr = 'eid'
 
     def transitions(self, entity, desteid=None):
+        """generates transition that MAY be passed"""
         rql = ('Any T,N,DS where S allowed_transition T, S eid %(x)s, '
                'T name N, T destination_state DS, '
                'T transition_of ET, ET name %(et)s')
@@ -76,6 +77,8 @@ class State(AnyEntity):
         for tr in rset.entities():
             if tr.may_be_passed(entity.eid, self.eid):
                 yield tr
+            else:
+                self.warn('yoo')
 
     def after_deletion_path(self):
         """return (path, parameters) which should be used as redirect
