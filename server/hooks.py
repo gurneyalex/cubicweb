@@ -430,7 +430,9 @@ def before_add_in_state(session, fromeid, rtype, toeid):
             try:
                 iter(state.transitions(entity, toeid)).next()
             except StopIteration:
-                msg = session._('transition is not allowed')
+                _ = session._
+                msg = _('transition from %s to %s does not exist or is not allowed') % (
+                    _(state.name), _(session.entity_from_eid(toeid).name))
                 raise ValidationError(fromeid, {'in_state': msg})
         else:
             # not a transition
@@ -438,7 +440,9 @@ def before_add_in_state(session, fromeid, rtype, toeid):
             isrset = session.unsafe_execute('Any S WHERE ET initial_state S, ET name %(etype)s',
                                             {'etype': etype})
             if isrset and not toeid == isrset[0][0]:
-                msg = session._('not the initial state for this entity')
+                _ = session._
+                msg = _('%s is not the initial state (%s) for this entity') % (
+                    _(session.entity_from_eid(toeid).name), _(isrset.get_entity(0,0).name))
                 raise ValidationError(fromeid, {'in_state': msg})
     eschema = session.repo.schema[etype]
     if not 'wf_info_for' in eschema.object_relations():
