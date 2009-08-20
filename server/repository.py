@@ -194,6 +194,8 @@ class Repository(object):
                                 'cubicweb.entities.__init__')
             self.vreg.load_file(join(etdirectory, 'authobjs.py'),
                                 'cubicweb.entities.authobjs')
+            self.vreg.load_file(join(etdirectory, 'wfobjs.py'),
+                                'cubicweb.entities.wfobjs')
         else:
             # test start: use the file system schema (quicker)
             self.warning("set fs instance'schema")
@@ -996,15 +998,16 @@ class Repository(object):
             print 'ADD entity', etype, entity.eid, dict(entity)
         entity._is_saved = False # entity has an eid but is not yet saved
         relations = []
-        # if inlined relations are specified, fill entity's related cache to
-        # avoid unnecessary queries
+        # init edited_attributes before calling before_add_entity hooks
+        entity.edited_attributes = set(entity)
+        if source.should_call_hooks:
+            self.hm.call_hooks('before_add_entity', etype, session, entity)
+        # XXX use entity.keys here since edited_attributes is not updated for
+        # inline relations
         for attr in entity.keys():
             rschema = eschema.subject_relation(attr)
             if not rschema.is_final(): # inlined relation
                 relations.append((attr, entity[attr]))
-        if source.should_call_hooks:
-            self.hm.call_hooks('before_add_entity', etype, session, entity)
-        entity.edited_attributes = set(entity)
         entity.set_defaults()
         entity.check(creation=True)
         source.add_entity(session, entity)
