@@ -1,4 +1,4 @@
-from cubicweb.devtools.apptest import EnvBasedTC
+from cubicweb.devtools.testlib import CubicWebTC
 from cubicweb import ValidationError
 
 def add_wf(self, etype, name=None):
@@ -15,7 +15,7 @@ def parse_hist(wfhist):
             for ti in wfhist]
 
 
-class WorkflowBuildingTC(EnvBasedTC):
+class WorkflowBuildingTC(CubicWebTC):
 
     def test_wf_construction(self):
         wf = add_wf(self, 'Company')
@@ -47,7 +47,7 @@ class WorkflowBuildingTC(EnvBasedTC):
         self.assertEquals(ex.errors, {'transition_of': 'unique constraint S name N, Y transition_of O, Y name N failed'})
 
 
-class WorkflowTC(EnvBasedTC):
+class WorkflowTC(CubicWebTC):
 
     def setup_database(self):
         rschema = self.schema['in_state']
@@ -199,14 +199,10 @@ class WorkflowTC(EnvBasedTC):
         self.assertEquals(transitions[0].name, 'tr1')
 
 
-class CustomWorkflowTC(EnvBasedTC):
+class CustomWorkflowTC(CubicWebTC):
 
     def setup_database(self):
         self.member = self.create_user('member')
-
-    def tearDown(self):
-        super(CustomWorkflowTC, self).tearDown()
-        self.execute('DELETE X custom_workflow WF')
 
     def test_custom_wf_replace_state_no_history(self):
         """member in inital state with no previous history, state is simply
@@ -306,18 +302,17 @@ class CustomWorkflowTC(EnvBasedTC):
                            ('asleep', 'activated', None, 'workflow changed to "CWUser workflow"'),])
 
 
-from cubicweb.devtools.apptest import RepositoryBasedTC
-
-class WorkflowHooksTC(RepositoryBasedTC):
+class WorkflowHooksTC(CubicWebTC):
 
     def setUp(self):
-        RepositoryBasedTC.setUp(self)
+        CubicWebTC.setUp(self)
         self.wf = self.session.user.current_workflow
+        self.session.set_pool()
         self.s_activated = self.wf.state_by_name('activated').eid
         self.s_deactivated = self.wf.state_by_name('deactivated').eid
         self.s_dummy = self.wf.add_state(u'dummy').eid
         self.wf.add_transition(u'dummy', (self.s_deactivated,), self.s_dummy)
-        ueid = self.create_user('stduser', commit=False)
+        ueid = self.create_user('stduser', commit=False).eid
         # test initial state is set
         rset = self.execute('Any N WHERE S name N, X in_state S, X eid %(x)s',
                             {'x' : ueid})
@@ -333,13 +328,6 @@ class WorkflowHooksTC(RepositoryBasedTC):
                      'WHERE G name "users", X transition_of WF, WF eid %(wf)s',
                      {'wf': self.wf.eid})
         self.commit()
-
-    def tearDown(self):
-        self.execute('DELETE X require_group G '
-                     'WHERE G name "users", X transition_of WF, WF eid %(wf)s',
-                     {'wf': self.wf.eid})
-        self.commit()
-        RepositoryBasedTC.tearDown(self)
 
     # XXX currently, we've to rely on hooks to set initial state, or to use unsafe_execute
     # def test_initial_state(self):
@@ -357,7 +345,7 @@ class WorkflowHooksTC(RepositoryBasedTC):
     # test that the workflow is correctly enforced
     def test_transition_checking1(self):
         cnx = self.login('stduser')
-        user = cnx.user(self.current_session())
+        user = cnx.user(self.session)
         ex = self.assertRaises(ValidationError,
                                user.fire_transition, 'activate')
         self.assertEquals(ex.errors, {'by_transition': u"transition isn't allowed"})
@@ -365,8 +353,7 @@ class WorkflowHooksTC(RepositoryBasedTC):
 
     def test_transition_checking2(self):
         cnx = self.login('stduser')
-        user = cnx.user(self.current_session())
-        assert user.state == 'activated'
+        user = cnx.user(self.session)
         ex = self.assertRaises(ValidationError,
                                user.fire_transition, 'dummy')
         self.assertEquals(ex.errors, {'by_transition': u"transition isn't allowed"})
@@ -374,7 +361,7 @@ class WorkflowHooksTC(RepositoryBasedTC):
 
     def test_transition_checking3(self):
         cnx = self.login('stduser')
-        session = self.current_session()
+        session = self.session
         user = cnx.user(session)
         user.fire_transition('deactivate')
         cnx.commit()
