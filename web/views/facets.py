@@ -77,7 +77,7 @@ class FilterBox(BoxTemplate):
             mainvar, baserql = prepare_facets_rqlst(rqlst, rset.args)
             widgets = []
             for facet in self.get_facets(rset, mainvar):
-                if facet.propval('visible'):
+                if facet.cw_propval('visible'):
                     wdg = facet.get_widget()
                     if wdg is not None:
                         widgets.append(wdg)
@@ -118,9 +118,9 @@ class FilterBox(BoxTemplate):
             self.w(self.bk_linkbox_template % bk_link)
 
     def get_facets(self, rset, mainvar):
-        return self.vreg['facets'].possible_vobjects(self.req, rset=rset,
-                                                     context='facetbox',
-                                                     filtered_variable=mainvar)
+        return self.vreg['facets'].poss_visible_objects(self.req, rset=rset,
+                                                        context='facetbox',
+                                                        filtered_variable=mainvar)
 
 # facets ######################################################################
 
