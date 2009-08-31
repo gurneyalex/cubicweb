@@ -38,7 +38,8 @@ class PrimaryView(EntityView):
         return []
 
     def cell_call(self, row, col):
-        self.row = row
+        self.cw_row = row
+        self.cw_col = col
         self.maxrelated = self.req.property_value('navigation.related-limit')
         entity = self.complete_entity(row, col)
         self.render_entity(entity)
@@ -72,7 +73,7 @@ class PrimaryView(EntityView):
 
     def content_navigation_components(self, context):
         self.w(u'<div class="%s">' % context)
-        for comp in self.vreg['contentnavigation'].possible_vobjects(
+        for comp in self.vreg['contentnavigation'].poss_visible_objects(
             self.req, rset=self.rset, row=self.row, view=self, context=context):
             try:
                 comp.render(w=self.w, row=self.row, view=self)
@@ -150,7 +151,7 @@ class PrimaryView(EntityView):
             label = display_name(self.req, rschema.type, role)
             vid = dispctrl.get('vid', 'sidebox')
             sideboxes.append( (label, rset, vid) )
-        sideboxes += self.vreg['boxes'].possible_vobjects(
+        sideboxes += self.vreg['boxes'].poss_visible_objects(
             self.req, rset=self.rset, row=self.row, view=self,
             context='incontext')
         return sideboxes
