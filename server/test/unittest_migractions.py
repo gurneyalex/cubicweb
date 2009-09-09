@@ -47,17 +47,24 @@ class MigrationCommandsTC(RepositoryBasedTC):
 
     def test_add_attribute_int(self):
         self.failIf('whatever' in self.schema)
-        paraordernum = self.mh.rqlexec('Any O WHERE X name "Note", RT name "para", RDEF from_entity X, RDEF relation_type RT, RDEF ordernum O')[0][0]
+        orderdict = dict(self.mh.rqlexec('Any RTN, O WHERE X name "Note", RDEF from_entity X, '
+                                         'RDEF relation_type RT, RDEF ordernum O, RT name RTN'))
         self.mh.cmd_add_attribute('Note', 'whatever')
         self.failUnless('whatever' in self.schema)
         self.assertEquals(self.schema['whatever'].subjects(), ('Note',))
         self.assertEquals(self.schema['whatever'].objects(), ('Int',))
-        paraordernum2 = self.mh.rqlexec('Any O WHERE X name "Note", RT name "para", RDEF from_entity X, RDEF relation_type RT, RDEF ordernum O')[0][0]
-        self.assertEquals(paraordernum2, paraordernum+1)
+        orderdict2 = dict(self.mh.rqlexec('Any RTN, O WHERE X name "Note", RDEF from_entity X, '
+                                          'RDEF relation_type RT, RDEF ordernum O, RT name RTN'))
+        whateverorder = migrschema['whatever'].rproperty('Note', 'Int', 'order')
+        for k, v in orderdict.iteritems():
+            if v >= whateverorder:
+                orderdict[k] = v+1
+        orderdict['whatever'] = whateverorder
+        self.assertDictEquals(orderdict, orderdict2)
         #self.assertEquals([r.type for r in self.schema['Note'].ordered_relations()],
         #                  ['modification_date', 'creation_date', 'owned_by',
         #                   'eid', 'ecrit_par', 'inline1', 'date', 'type',
-        #                   'whatever', 'para', 'in_basket'])
+        #                   'whatever', 'date', 'in_basket'])
         # NB: commit instead of rollback make following test fail with py2.5
         #     this sounds like a pysqlite/2.5 bug (the same eid is affected to
         #     two different entities)
@@ -106,23 +113,14 @@ class MigrationCommandsTC(RepositoryBasedTC):
 
 
     def test_workflow_actions(self):
-        foo = self.mh.cmd_add_state(u'foo', ('Personne', 'Email'), initial=True)
+        wf = self.mh.cmd_add_workflow(u'foo', ('Personne', 'Email'))
         for etype in ('Personne', 'Email'):
-            s1 = self.mh.rqlexec('Any N WHERE S state_of ET, ET name "%s", S name N' %
+            s1 = self.mh.rqlexec('Any N WHERE WF workflow_of ET, ET name "%s", WF name N' %
                                  etype)[0][0]
             self.assertEquals(s1, "foo")
-            s1 = self.mh.rqlexec('Any N WHERE ET initial_state S, ET name "%s", S name N' %
+            s1 = self.mh.rqlexec('Any N WHERE ET default_workflow WF, ET name "%s", WF name N' %
                                  etype)[0][0]
             self.assertEquals(s1, "foo")
-        bar = self.mh.cmd_add_state(u'bar', ('Personne', 'Email'), initial=True)
-        baz = self.mh.cmd_add_transition(u'baz', ('Personne', 'Email'),
-                                         (foo,), bar, ('managers',))
-        for etype in ('Personne', 'Email'):
-            t1 = self.mh.rqlexec('Any N WHERE T transition_of ET, ET name "%s", T name N' %
-                                 etype)[0][0]
-            self.assertEquals(t1, "baz")
-        gn = self.mh.rqlexec('Any GN WHERE T require_group G, G name GN, T eid %s' % baz)[0][0]
-        self.assertEquals(gn, 'managers')
 
     def test_add_entity_type(self):
         self.failIf('Folder2' in self.schema)
@@ -160,8 +158,9 @@ class MigrationCommandsTC(RepositoryBasedTC):
         self.failIf('Folder2' in self.schema)
         self.failIf(self.execute('CWEType X WHERE X name "Folder2"'))
         # test automatic workflow deletion
-        self.failIf(self.execute('State X WHERE NOT X state_of ET'))
-        self.failIf(self.execute('Transition X WHERE NOT X transition_of ET'))
+        self.failIf(self.execute('Workflow X WHERE NOT X workflow_of ET'))
+        self.failIf(self.execute('State X WHERE NOT X state_of WF'))
+        self.failIf(self.execute('Transition X WHERE NOT X transition_of WF'))
 
     def test_add_drop_relation_type(self):
         self.mh.cmd_add_entity_type('Folder2', auto=False)
@@ -374,7 +373,9 @@ class MigrationCommandsTC(RepositoryBasedTC):
                 self.mh.cmd_remove_cube('email', removedeps=True)
                 # file was there because it's an email dependancy, should have been removed
                 self.failIf('email' in self.config.cubes())
+                self.failIf(self.config.cube_dir('email') in self.config.cubes_path())
                 self.failIf('file' in self.config.cubes())
+                self.failIf(self.config.cube_dir('file') in self.config.cubes_path())
                 for ertype in ('Email', 'EmailThread', 'EmailPart', 'File', 'Image',
                                'sender', 'in_thread', 'reply_to', 'data_format'):
                     self.failIf(ertype in schema, ertype)
@@ -395,7 +396,9 @@ class MigrationCommandsTC(RepositoryBasedTC):
         finally:
             self.mh.cmd_add_cube('email')
             self.failUnless('email' in self.config.cubes())
+            self.failUnless(self.config.cube_dir('email') in self.config.cubes_path())
             self.failUnless('file' in self.config.cubes())
+            self.failUnless(self.config.cube_dir('file') in self.config.cubes_path())
             for ertype in ('Email', 'EmailThread', 'EmailPart', 'File', 'Image',
                            'sender', 'in_thread', 'reply_to', 'data_format'):
                 self.failUnless(ertype in schema, ertype)
