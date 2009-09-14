@@ -14,8 +14,8 @@ from logilab.common.configuration import Configuration
 from logilab.common.clcommands import register_commands, cmd_run, pop_arg
 from logilab.common.shellutils import ASK
 
-from cubicweb import AuthenticationError, ExecutionError, ConfigurationError, underline_title
-from cubicweb.toolsutils import Command, CommandHandler
+from cubicweb import AuthenticationError, ExecutionError, ConfigurationError
+from cubicweb.toolsutils import Command, CommandHandler, underline_title
 from cubicweb.server import SOURCE_TYPES
 from cubicweb.server.utils import ask_source_config
 from cubicweb.server.serverconfig import USER_OPTIONS, ServerConfiguration
@@ -677,7 +677,8 @@ class DBCopyCommand(Command):
         import tempfile
         srcappid = pop_arg(args, 1, msg='No source instance specified !')
         destappid = pop_arg(args, msg='No destination instance specified !')
-        output = tempfile.mkstemp()[1]
+        fd, output = tempfile.mkstemp()
+        os.close(fd)
         if ':' in srcappid:
             host, srcappid = srcappid.split(':')
             _remote_dump(host, srcappid, output, self.config.sudo)

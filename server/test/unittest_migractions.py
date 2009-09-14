@@ -2,13 +2,14 @@
 :license: GNU Lesser General Public License, v2.1 - http://www.gnu.org/licenses
 """
 
+from copy import deepcopy
 from datetime import date
 from os.path import join
 
 from logilab.common.testlib import TestCase, unittest_main
 
 from cubicweb import ConfigurationError
-from cubicweb.devtools.apptest import RepositoryBasedTC, get_versions
+from cubicweb.devtools.testlib import CubicWebTC, get_versions
 from cubicweb.schema import CubicWebSchemaLoader
 from cubicweb.server.sqlutils import SQL_PREFIX
 from cubicweb.server.repository import Repository
@@ -23,22 +24,28 @@ def teardown_module(*args):
     Repository.get_versions = orig_get_versions
 
 
-class MigrationCommandsTC(RepositoryBasedTC):
+class MigrationCommandsTC(CubicWebTC):
+
+    @classmethod
+    def init_config(cls, config):
+        super(MigrationCommandsTC, cls).init_config(config)
+        config._cubes = None
+        cls.repo.fill_schema()
+        cls.origschema = deepcopy(cls.repo.schema)
+        # hack to read the schema from data/migrschema
+        config.appid = join('data', 'migratedapp')
+        global migrschema
+        migrschema = config.load_schema()
+        config.appid = 'data'
+        assert 'Folder' in migrschema
+
+    @classmethod
+    def _refresh_repo(cls):
+        super(MigrationCommandsTC, cls)._refresh_repo()
+        cls.repo.schema = cls.vreg.schema = deepcopy(cls.origschema)
 
     def setUp(self):
-        if not hasattr(self, '_repo'):
-            # first initialization
-            repo = self.repo # set by the RepositoryBasedTC metaclass
-            # force to read schema from the database
-            repo.config._cubes = None
-            repo.fill_schema()
-            # hack to read the schema from data/migrschema
-            self.repo.config.appid = join('data', 'migratedapp')
-            global migrschema
-            migrschema = self.repo.config.load_schema()
-            self.repo.config.appid = 'data'
-            assert 'Folder' in migrschema
-        RepositoryBasedTC.setUp(self)
+        CubicWebTC.setUp(self)
         self.mh = ServerMigrationHelper(self.repo.config, migrschema,
                                         repo=self.repo, cnx=self.cnx,
                                         interactive=False)
@@ -47,17 +54,24 @@ class MigrationCommandsTC(RepositoryBasedTC):
 
     def test_add_attribute_int(self):
         self.failIf('whatever' in self.schema)
-        paraordernum = self.mh.rqlexec('Any O WHERE X name "Note", RT name "para", RDEF from_entity X, RDEF relation_type RT, RDEF ordernum O')[0][0]
+        orderdict = dict(self.mh.rqlexec('Any RTN, O WHERE X name "Note", RDEF from_entity X, '
+                                         'RDEF relation_type RT, RDEF ordernum O, RT name RTN'))
         self.mh.cmd_add_attribute('Note', 'whatever')
         self.failUnless('whatever' in self.schema)
         self.assertEquals(self.schema['whatever'].subjects(), ('Note',))
         self.assertEquals(self.schema['whatever'].objects(), ('Int',))
-        paraordernum2 = self.mh.rqlexec('Any O WHERE X name "Note", RT name "para", RDEF from_entity X, RDEF relation_type RT, RDEF ordernum O')[0][0]
-        self.assertEquals(paraordernum2, paraordernum+1)
+        orderdict2 = dict(self.mh.rqlexec('Any RTN, O WHERE X name "Note", RDEF from_entity X, '
+                                          'RDEF relation_type RT, RDEF ordernum O, RT name RTN'))
+        whateverorder = migrschema['whatever'].rproperty('Note', 'Int', 'order')
+        for k, v in orderdict.iteritems():
+            if v >= whateverorder:
+                orderdict[k] = v+1
+        orderdict['whatever'] = whateverorder
+        self.assertDictEquals(orderdict, orderdict2)
         #self.assertEquals([r.type for r in self.schema['Note'].ordered_relations()],
         #                  ['modification_date', 'creation_date', 'owned_by',
         #                   'eid', 'ecrit_par', 'inline1', 'date', 'type',
-        #                   'whatever', 'para', 'in_basket'])
+        #                   'whatever', 'date', 'in_basket'])
         # NB: commit instead of rollback make following test fail with py2.5
         #     this sounds like a pysqlite/2.5 bug (the same eid is affected to
         #     two different entities)
@@ -366,7 +380,9 @@ class MigrationCommandsTC(RepositoryBasedTC):
                 self.mh.cmd_remove_cube('email', removedeps=True)
                 # file was there because it's an email dependancy, should have been removed
                 self.failIf('email' in self.config.cubes())
+                self.failIf(self.config.cube_dir('email') in self.config.cubes_path())
                 self.failIf('file' in self.config.cubes())
+                self.failIf(self.config.cube_dir('file') in self.config.cubes_path())
                 for ertype in ('Email', 'EmailThread', 'EmailPart', 'File', 'Image',
                                'sender', 'in_thread', 'reply_to', 'data_format'):
                     self.failIf(ertype in schema, ertype)
@@ -387,7 +403,9 @@ class MigrationCommandsTC(RepositoryBasedTC):
         finally:
             self.mh.cmd_add_cube('email')
             self.failUnless('email' in self.config.cubes())
+            self.failUnless(self.config.cube_dir('email') in self.config.cubes_path())
             self.failUnless('file' in self.config.cubes())
+            self.failUnless(self.config.cube_dir('file') in self.config.cubes_path())
             for ertype in ('Email', 'EmailThread', 'EmailPart', 'File', 'Image',
                            'sender', 'in_thread', 'reply_to', 'data_format'):
                 self.failUnless(ertype in schema, ertype)
