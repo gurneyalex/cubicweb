@@ -15,13 +15,14 @@ from logilab.mtconverter import xml_escape
 from logilab.common.graph import escape, GraphGenerator, DotBackend
 
 from cubicweb import Unauthorized, view
-from cubicweb.selectors import (implements, has_related_entities,
+from cubicweb.selectors import (implements, has_related_entities, one_line_rset,
                                 relation_possible, match_form_params)
 from cubicweb.interfaces import IWorkflowable
 from cubicweb.view import EntityView
-from cubicweb.web import stdmsgs, action, component, form
+from cubicweb.schema import display_name
+from cubicweb.web import stdmsgs, action, component, form, action
 from cubicweb.web import formfields as ff, formwidgets as fwdgs
-from cubicweb.web.views import TmpFileViewMixin, forms
+from cubicweb.web.views import TmpFileViewMixin, forms, primary
 
 
 # IWorkflowable views #########################################################
@@ -40,7 +41,7 @@ class ChangeStateFormView(form.FormViewMixIn, view.EntityView):
     __select__ = implements(IWorkflowable) & match_form_params('treid')
 
     def cell_call(self, row, col):
-        entity = self.entity(row, col)
+        entity = self.rset.get_entity(row, col)
         transition = self.req.entity_from_eid(self.req.form['treid'])
         dest = transition.destination()
         _ = self.req._
@@ -109,14 +110,43 @@ class WFHistoryVComponent(component.EntityVComponent):
     def cell_call(self, row, col, view=None):
         self.wview('wfhistory', self.rset, row=row, col=col, view=view)
 
-# workflow entity types views #################################################
+
+# workflow actions #############################################################
+
+class WorkflowActions(action.Action):
+    """fill 'workflow' sub-menu of the actions box"""
+    id = 'workflow'
+    __select__ = (action.Action.__select__ & one_line_rset() &
+                  relation_possible('in_state'))
+
+    submenu = _('workflow')
+    order = 10
+
+    def fill_menu(self, box, menu):
+        req = self.req
+        entity = self.rset.get_entity(self.row or 0, self.col or 0)
+        menu.label = u'%s: %s' % (req._('state'), entity.printable_state)
+        menu.append_anyway = True
+        for tr in entity.possible_transitions():
+            url = entity.absolute_url(vid='statuschange', treid=tr.eid)
+            menu.append(box.mk_action(req._(tr.name), url))
+        # don't propose to see wf if user can't pass any transition
+        if menu.items:
+            wfurl = entity.current_workflow.absolute_url()
+            menu.append(box.mk_action(req._('view workflow'), wfurl))
+        if entity.workflow_history:
+            wfurl = entity.absolute_url(vid='wfhistory')
+            menu.append(box.mk_action(req._('view history'), wfurl))
+
+
+# workflow entity types views ##################################################
 
 class CellView(view.EntityView):
     id = 'cell'
     __select__ = implements('TrInfo')
 
     def cell_call(self, row, col, cellvid=None):
-        self.w(self.entity(row, col).view('reledit', rtype='comment'))
+        self.w(self.rset.get_entity(row, col).view('reledit', rtype='comment'))
 
 
 class StateInContextView(view.EntityView):
@@ -129,32 +159,17 @@ class StateInContextView(view.EntityView):
                                      row=row, col=col)))
 
 
-# workflow images #############################################################
+class WorkflowPrimaryView(primary.PrimaryView):
+    __select__ = implements('Workflow')
 
-class ViewWorkflowAction(action.Action):
-    id = 'workflow'
-    __select__ = implements('CWEType') & has_related_entities('workflow_of', 'object')
-
-    category = 'mainactions'
-    title = _('view workflow')
-    def url(self):
-        entity = self.rset.get_entity(self.row or 0, self.col or 0)
-        return entity.absolute_url(vid='workflow')
-
-
-class CWETypeWorkflowView(view.EntityView):
-    id = 'workflow'
-    __select__ = implements('CWEType')
-    cache_max_age = 60*60*2 # stay in http cache for 2 hours by default
-
-    def cell_call(self, row, col, **kwargs):
-        entity = self.entity(row, col)
-        self.w(u'<h1>%s</h1>' % (self.req._('workflow for %s')
-                                 % display_name(self.req, entity.name)))
+    def render_entity_attributes(self, entity):
+        self.w(entity.view('reledit', rtype='description'))
         self.w(u'<img src="%s" alt="%s"/>' % (
-            xml_escape(entity.absolute_url(vid='ewfgraph')),
+            xml_escape(entity.absolute_url(vid='wfgraph')),
             xml_escape(self.req._('graphical workflow for %s') % entity.name)))
 
+
+# workflow images ##############################################################
 
 class WorkflowDotPropsHandler(object):
     def __init__(self, req):
@@ -178,7 +193,9 @@ class WorkflowDotPropsHandler(object):
                     self._('groups:'),
                     ','.join(g.name for g in tr.require_group)))
             if tr.condition:
-                descr.append('%s %s'% (self._('condition:'), tr.condition))
+                descr.append('%s %s'% (
+                    self._('condition:'),
+                    ' | '.join(e.expression for e in tr.condition)))
             if descr:
                 props['label'] += escape('\n'.join(descr))
         return props
@@ -208,14 +225,14 @@ class WorkflowVisitor:
             yield transition.eid, transition.destination().eid, transition
 
 
-class CWETypeWorkflowImageView(TmpFileViewMixin, view.EntityView):
-    id = 'ewfgraph'
+class WorkflowImageView(TmpFileViewMixin, view.EntityView):
+    id = 'wfgraph'
     content_type = 'image/png'
-    __select__ = implements('CWEType')
+    __select__ = implements('Workflow')
 
     def _generate(self, tmpfile):
         """display schema information for an entity"""
-        entity = self.entity(self.row, self.col)
+        entity = self.rset.get_entity(self.row, self.col)
         visitor = WorkflowVisitor(entity)
         prophdlr = WorkflowDotPropsHandler(self.req)
         generator = GraphGenerator(DotBackend('workflow', 'LR',

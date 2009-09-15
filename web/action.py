@@ -32,8 +32,14 @@ class Action(AppObject):
                                      'useractions', 'siteactions', 'hidden'),
                          help=_('context where this component should be displayed')),
     }
-    site_wide = True # don't want user to configuration actions eproperties
+    site_wide = True # don't want user to configurate actions
     category = 'moreactions'
+    # actions in category 'moreactions' can specify a sub-menu in which they should be filed
+    submenu = None
+
+    def fill_menu(self, box, menu):
+        """add action(s) to the given submenu of the given box"""
+        menu.append(box.box_action(self))
 
     def url(self):
         """return the url associated with this action"""
@@ -75,7 +81,7 @@ class LinkToEntityAction(Action):
                   & partial_may_add_relation())
     registered = accepts_compat(Action.registered)
 
-    category = 'addrelated'
+    submenu = 'addrelated'
 
     def url(self):
         current_entity = self.rset.get_entity(self.row or 0, self.col or 0)
