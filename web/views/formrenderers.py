@@ -407,12 +407,13 @@ class EntityFormRenderer(EntityBaseFormRenderer):
             super(EntityFormRenderer, self).render_buttons(w, form)
 
     def relations_form(self, w, form):
-        srels_by_cat = form.srelations_by_category('generic', 'add')
+        srels_by_cat = form.srelations_by_category('generic', 'add', strict=True)
         if not srels_by_cat:
             return u''
         req = self.req
         _ = req._
-        label = u'%s :' % _('This %s' % form.edited_entity.e_schema).capitalize()
+        __ = _
+        label = u'%s :' % __('This %s' % form.edited_entity.e_schema).capitalize()
         eid = form.edited_entity.eid
         w(u'<fieldset class="subentity">')
         w(u'<legend class="iformTitle">%s</legend>' % label)

@@ -10,7 +10,7 @@ __docformat__ = "restructuredtext en"
 
 import sys
 from datetime import datetime
-from os import mkdir, chdir
+from os import mkdir, chdir, getcwd
 from os.path import join, exists, abspath, basename, normpath, split, isdir
 from warnings import warn
 
@@ -23,6 +23,7 @@ from logilab.common.clcommands import register_commands
 from cubicweb import CW_SOFTWARE_ROOT as BASEDIR, BadCommandUsage, underline_title
 from cubicweb.__pkginfo__ import version as cubicwebversion
 from cubicweb.toolsutils import Command, copy_skeleton
+from cubicweb.web import uicfg
 from cubicweb.web.webconfig import WebConfiguration
 from cubicweb.server.serverconfig import ServerConfiguration
 
@@ -151,7 +152,7 @@ def _generate_schema_pot(w, vreg, schema, libconfig=None, cube=None):
             add_msg(w, rschema.description)
     w('# add related box generated message\n')
     w('\n')
-    actionbox = vreg['boxes']['edit_box'][0]
+    appearsin_addmenu = uicfg.actionbox_appearsin_addmenu
     for eschema in schema.entities():
         if eschema.is_final():
             continue
@@ -170,8 +171,8 @@ def _generate_schema_pot(w, vreg, schema, libconfig=None, cube=None):
                             subjtype, objtype = teschema, eschema
                         if librschema.has_rdef(subjtype, objtype):
                             continue
-                    if actionbox.appearsin_addmenu.etype_get(eschema, rschema,
-                                                             role, teschema):
+                    if appearsin_addmenu.etype_get(eschema, rschema, role,
+                                                   teschema):
                         if role == 'subject':
                             label = 'add %s %s %s %s' % (eschema, rschema,
                                                          teschema, role)
@@ -283,20 +284,20 @@ class UpdateCubicWebCatalogCommand(Command):
             if lang is not None:
                 cmd += ' -L %s' % lang
             potfile = join(tempdir, '%s.pot' % id)
-            execute(cmd % (potfile, ' '.join(files)))
+            execute(cmd % (potfile, ' '.join('"%s"' % f for f in files)))
             if exists(potfile):
                 potfiles.append(potfile)
             else:
                 print '-> WARNING: %s file was not generated' % potfile
         print '-> merging %i .pot files' % len(potfiles)
         cubicwebpot = join(tempdir, 'cubicweb.pot')
-        execute('msgcat %s > %s' % (' '.join(potfiles), cubicwebpot))
+        execute('msgcat -o %s %s' % (cubicwebpot, ' '.join('"%s"' % f for f in potfiles)))
         print '-> merging main pot file with existing translations.'
         chdir(I18NDIR)
         toedit = []
         for lang in LANGS:
             target = '%s.po' % lang
-            execute('msgmerge -N --sort-output  %s %s > %snew' % (target, cubicwebpot, target))
+            execute('msgmerge -N --sort-output -o "%snew" "%s" "%s"' % (target, target, cubicwebpot))
             ensure_fs_mode(target)
             shutil.move('%snew' % target, target)
             toedit.append(abspath(target))
@@ -390,12 +391,13 @@ def update_cube_catalogs(cubedir):
     cubefiles = find('.', '.py', blacklist=STD_BLACKLIST+('test',))
     cubefiles.append(tali18nfile)
     execute('xgettext --no-location --omit-header -k_ -o %s %s'
-            % (tmppotfile, ' '.join(cubefiles)))
+            % (tmppotfile, ' '.join('"%s"' % f for f in cubefiles)))
     if exists(tmppotfile): # doesn't exists of no translation string found
         potfiles.append(tmppotfile)
     potfile = join(tempdir, 'cube.pot')
     print '-> merging %i .pot files:' % len(potfiles)
-    execute('msgcat %s > %s' % (' '.join(potfiles), potfile))
+    execute('msgcat -o %s %s' % (potfile,
+                                 ' '.join('"%s"' % f for f in potfiles)))
     print '-> merging main pot file with existing translations:'
     chdir('i18n')
     for lang in LANGS:
@@ -404,7 +406,7 @@ def update_cube_catalogs(cubedir):
         if not exists(cubepo):
             shutil.copy(potfile, cubepo)
         else:
-            execute('msgmerge -N -s %s %s > %snew' % (cubepo, potfile, cubepo))
+            execute('msgmerge -N -s -o %snew %s %s' % (cubepo, cubepo, potfile))
             ensure_fs_mode(cubepo)
             shutil.move('%snew' % cubepo, cubepo)
         toedit.append(abspath(cubepo))
