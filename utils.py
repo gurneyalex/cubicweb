@@ -11,14 +11,13 @@ from logilab.mtconverter import xml_escape
 
 import locale
 from md5 import md5
+import sys
 import datetime as pydatetime
 from datetime import datetime, timedelta, date
 from time import time, mktime
 from random import randint, seed
 from calendar import monthrange
 import decimal
-
-import simplejson
 
 # initialize random seed from current time
 seed()
@@ -107,11 +106,17 @@ def ustrftime(date, fmt='%Y-%m-%d'):
     encoding = locale.getpreferredencoding(do_setlocale=False) or 'UTF-8'
     return unicode(date.strftime(str(fmt)), encoding)
 
-def make_uid(key):
-    """forge a unique identifier"""
-    msg = str(key) + "%.10f" % time() + str(randint(0, 1000000))
-    return md5(msg).hexdigest()
 
+if sys.version_info[:2] < (2, 5):
+    def make_uid(key):
+        """forge a unique identifier
+        not that unique on win32"""
+        msg = str(key) + "%.10f" % time() + str(randint(0, 1000000))
+        return md5(msg).hexdigest()
+else:
+    from uuid import uuid4
+    def make_uid(key):
+        return str(key) + str(uuid4())
 
 def dump_class(cls, clsname):
     """create copy of a class by creating an empty class inheriting
@@ -260,7 +265,6 @@ class HTMLHead(UStringIO):
         w = self.write
         # 1/ variable declaration if any
         if self.jsvars:
-            from simplejson import dumps
             w(u'<script type="text/javascript"><!--//--><![CDATA[//><!--\n')
             for var, value in self.jsvars:
                 w(u'%s = %s;\n' % (var, dumps(value)))
@@ -353,21 +357,26 @@ def can_do_pdf_conversion(__answer=[None]):
     __answer[0] = True
     return True
 
-
-class CubicWebJsonEncoder(simplejson.JSONEncoder):
-    """define a simplejson encoder to be able to encode yams std types"""
-    def default(self, obj):
-        if isinstance(obj, pydatetime.datetime):
-            return obj.strftime('%Y/%m/%d %H:%M:%S')
-        elif isinstance(obj, pydatetime.date):
-            return obj.strftime('%Y/%m/%d')
-        elif isinstance(obj, pydatetime.time):
-            return obj.strftime('%H:%M:%S')
-        elif isinstance(obj, decimal.Decimal):
-            return float(obj)
-        try:
-            return simplejson.JSONEncoder.default(self, obj)
-        except TypeError:
-            # we never ever want to fail because of an unknown type,
-            # just return None in those cases.
-            return None
+try:
+    # may not be there is cubicweb-web not there
+    from simplejson import JSONEncoder, dumps
+except ImportError:
+    pass
+else:
+    class CubicWebJsonEncoder(JSONEncoder):
+        """define a simplejson encoder to be able to encode yams std types"""
+        def default(self, obj):
+            if isinstance(obj, datetime):
+                return obj.strftime('%Y/%m/%d %H:%M:%S')
+            elif isinstance(obj, date):
+                return obj.strftime('%Y/%m/%d')
+            elif isinstance(obj, pydatetime.time):
+                return obj.strftime('%H:%M:%S')
+            elif isinstance(obj, decimal.Decimal):
+                return float(obj)
+            try:
+                return simplejson.JSONEncoder.default(self, obj)
+            except TypeError:
+                # we never ever want to fail because of an unknown type,
+                # just return None in those cases.
+                return None

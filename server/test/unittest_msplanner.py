@@ -59,7 +59,7 @@ X_ALL_SOLS = sorted([{'X': 'Affaire'}, {'X': 'BaseTransition'}, {'X': 'Basket'},
 
 
 # keep cnx so it's not garbage collected and the associated session is closed
-repo, cnx = init_test_database('sqlite')
+repo, cnx = init_test_database()
 
 class BaseMSPlannerTC(BasePlannerTC):
     """test planner related feature on a 3-sources repository:
