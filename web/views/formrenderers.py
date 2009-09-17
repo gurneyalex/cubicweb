@@ -15,10 +15,15 @@ from simplejson import dumps
 from cubicweb.common import tags
 from cubicweb.appobject import AppObject
 from cubicweb.selectors import entity_implements, yes
-from cubicweb.web import eid_param
-from cubicweb.web import formwidgets as fwdgs
-from cubicweb.web.widgets import checkbox
+from cubicweb.web import eid_param, formwidgets as fwdgs
 from cubicweb.web.formfields import HiddenInitialValueField
+
+def checkbox(name, value, attrs='', checked=None):
+    if checked is None:
+        checked = value
+    checked = checked and 'checked="checked"' or ''
+    return u'<input type="checkbox" name="%s" value="%s" %s %s />' % (
+        name, value, checked, attrs)
 
 
 class FormRenderer(AppObject):
@@ -48,7 +53,7 @@ class FormRenderer(AppObject):
     button_bar_class = u'formButtonBar'
 
     def __init__(self, req=None, rset=None, row=None, col=None, **kwargs):
-        super(FormRenderer, self).__init__(req, rset, row, col)
+        super(FormRenderer, self).__init__(req, rset=rset, row=row, col=col)
         if self._set_options(kwargs):
             raise ValueError('unconsumed arguments %s' % kwargs)
 

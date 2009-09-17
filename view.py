@@ -17,7 +17,6 @@ from rql import nodes
 
 from cubicweb import NotAnEntity
 from cubicweb.selectors import yes, non_final_entity, nonempty_rset, none_rset
-from cubicweb.selectors import require_group_compat, accepts_compat
 from cubicweb.appobject import AppObject
 from cubicweb.utils import UStringIO, HTMLStream
 from cubicweb.schema import display_name
@@ -93,7 +92,6 @@ class View(AppObject):
     time to a write function to use.
     """
     __registry__ = 'views'
-    registered = require_group_compat(AppObject.registered)
 
     templatable = True
     need_navigation = True
@@ -103,7 +101,7 @@ class View(AppObject):
     category = 'view'
 
     def __init__(self, req=None, rset=None, **kwargs):
-        super(View, self).__init__(req, rset, **kwargs)
+        super(View, self).__init__(req, rset=rset, **kwargs)
         self.w = None
 
     @property
@@ -151,7 +149,20 @@ class View(AppObject):
         if stream is not None:
             return self._stream.getvalue()
 
-    dispatch = deprecated('.dispatch is deprecated, use .render')(render)
+    def tal_render(self, template, variables):
+        """render a precompiled page template with variables in the given
+        dictionary as context
+        """
+        from cubicweb.ext.tal import CubicWebContext
+        context = CubicWebContext()
+        context.update({'self': self, 'rset': self.rset, '_' : self.req._,
+                        'req': self.req, 'user': self.req.user})
+        context.update(variables)
+        output = UStringIO()
+        template.expand(context, output)
+        return output.getvalue()
+
+    dispatch = deprecated('[3.4] .dispatch is deprecated, use .render')(render)
 
     # should default .call() method add a <div classs="section"> around each
     # rset item
@@ -230,7 +241,7 @@ class View(AppObject):
         self.view(__vid, rset, __fallback_vid, w=self.w, **kwargs)
 
     # XXX Template bw compat
-    template = deprecated('.template is deprecated, use .view')(wview)
+    template = deprecated('[3.4] .template is deprecated, use .view')(wview)
 
     def whead(self, data):
         self.req.html_headers.write(data)
@@ -317,8 +328,6 @@ class View(AppObject):
 class EntityView(View):
     """base class for views applying on an entity (i.e. uniform result set)"""
     __select__ = non_final_entity()
-    registered = accepts_compat(View.registered)
-
     category = 'entityview'
 
 
@@ -327,7 +336,6 @@ class StartupView(View):
     displayed (so they can always be displayed !)
     """
     __select__ = none_rset()
-    registered = require_group_compat(View.registered)
 
     category = 'startupview'
 
@@ -349,7 +357,7 @@ class EntityStartupView(EntityView):
     default_rql = None
 
     def __init__(self, req, rset=None, **kwargs):
-        super(EntityStartupView, self).__init__(req, rset, **kwargs)
+        super(EntityStartupView, self).__init__(req, rset=rset, **kwargs)
         if rset is None:
             # this instance is not in the "entityview" category
             self.category = 'startupview'
@@ -400,7 +408,6 @@ class MainTemplate(View):
     There is usually at least a regular main template and a simple fallback
     one to display error if the first one failed
     """
-    registered = require_group_compat(View.registered)
 
     @property
     def doctype(self):
@@ -466,12 +473,12 @@ class Component(ReloadableMixIn, View):
     """base class for components"""
     __registry__ = 'components'
     __select__ = yes()
-    property_defs = {}
 
     # XXX huummm, much probably useless
     htmlclass = 'mainRelated'
     def div_class(self):
         return '%s %s' % (self.htmlclass, self.id)
+
     # XXX a generic '%s%s' % (self.id, self.__registry__.capitalize()) would probably be nicer
     def div_id(self):
         return '%sComponent' % self.id

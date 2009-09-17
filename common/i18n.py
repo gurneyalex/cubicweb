@@ -9,6 +9,7 @@ __docformat__ = "restructuredtext en"
 
 import re
 import os
+import sys
 from os.path import join, basename, splitext, exists
 from glob import glob
 
@@ -47,8 +48,8 @@ def execute(cmd):
     """display the command, execute it and raise an Exception if returned
     status != 0
     """
-    print cmd.replace(os.getcwd() + os.sep, '')
     from subprocess import call
+    print cmd.replace(os.getcwd() + os.sep, '')
     status = call(cmd, shell=True)
     if status != 0:
         raise Exception('status = %s' % status)
