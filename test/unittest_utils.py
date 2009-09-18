@@ -8,7 +8,11 @@
 
 from logilab.common.testlib import TestCase, unittest_main
 
-from cubicweb.utils import make_uid, UStringIO, SizeConstrainedList
+import simplejson
+import decimal
+import datetime
+
+from cubicweb.utils import make_uid, UStringIO, SizeConstrainedList, CubicWebJsonEncoder
 
 
 class MakeUidTC(TestCase):
@@ -17,12 +21,12 @@ class MakeUidTC(TestCase):
         self.assertNotEquals(make_uid('xyz'), make_uid('xyz'))
 
     def test_2(self):
-        d = {}
+        d = set()
         while len(d)<10000:
             uid = make_uid('xyz')
-            if d.has_key(uid):
+            if uid in d:
                 self.fail(len(d))
-            d[uid] = 1
+            d.add(uid)
 
 
 class UStringIOTC(TestCase):
@@ -48,6 +52,24 @@ class SizeConstrainedListTC(TestCase):
             l.extend(extension)
             yield self.assertEquals, l, expected
 
+class JSONEncoerTests(TestCase):
+
+    def encode(self, value):
+        return simplejson.dumps(value, cls=CubicWebJsonEncoder)
+
+    def test_encoding_dates(self):
+        self.assertEquals(self.encode(datetime.datetime(2009, 9, 9, 20, 30)),
+                          '"2009/09/09 20:30:00"')
+        self.assertEquals(self.encode(datetime.date(2009, 9, 9)),
+                          '"2009/09/09"')
+        self.assertEquals(self.encode(datetime.time(20, 30)),
+                          '"20:30:00"')
+
+    def test_encoding_decimal(self):
+        self.assertEquals(self.encode(decimal.Decimal('1.2')), '1.2')
+
+    def test_encoding_unknown_stuff(self):
+        self.assertEquals(self.encode(TestCase), 'null')
 
 if __name__ == '__main__':
     unittest_main()
