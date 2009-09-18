@@ -210,12 +210,12 @@ class RepositoryStartHandler(CommandHandler):
     cmdname = 'start'
     cfgname = 'repository'
 
-    def start_command(self, ctlconf, debug):
+    def start_server(self, ctlconf, debug):
         command = ['cubicweb-ctl start-repository ']
         if debug:
             command.append('--debug')
         command.append(self.config.appid)
-        return ' '.join(command)
+        os.system(' '.join(command))
 
 
 class RepositoryStopHandler(CommandHandler):
@@ -312,7 +312,7 @@ class CreateInstanceDBCommand(Command):
         # postgres specific stuff
         if driver == 'postgres':
             # install plpythonu/plpgsql language if not installed by the cube
-            langs = ('plpgsql',) if sys.platform == 'win32' else ('plpythonu', 'plpgsql') 
+            langs = sys.platform == 'win32' and ('plpgsql',) or ('plpythonu', 'plpgsql')
             for extlang in langs:
                 helper.create_language(cursor, extlang)
         cursor.close()

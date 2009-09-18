@@ -46,9 +46,9 @@ def printable_value(req, attrtype, value, props=None, displaytime=True):
     if attrtype == 'Time':
         return ustrftime(value, req.property_value('ui.time-format'))
     if attrtype == 'Datetime':
-        if not displaytime:
-            return ustrftime(value, req.property_value('ui.date-format'))
-        return ustrftime(value, req.property_value('ui.datetime-format'))
+        if displaytime:
+            return ustrftime(value, req.property_value('ui.datetime-format'))
+        return ustrftime(value, req.property_value('ui.date-format'))
     if attrtype == 'Boolean':
         if value:
             return req._('yes')
