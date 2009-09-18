@@ -26,10 +26,14 @@ def extract_from_tal(files, output_file):
     output.close()
 
 
-def add_msg(w, msgid):
+def add_msg(w, msgid, msgctx=None):
     """write an empty pot msgid definition"""
     if isinstance(msgid, unicode):
         msgid = msgid.encode('utf-8')
+    if msgctx:
+        if isinstance(msgctx, unicode):
+            msgctx = msgctx.encode('utf-8')
+        w('msgctxt "%s"\n' % msgctx)
     msgid = msgid.replace('"', r'\"').splitlines()
     if len(msgid) > 1:
         w('msgid ""\n')
@@ -45,11 +49,8 @@ def execute(cmd):
     status != 0
     """
     print cmd.replace(os.getcwd() + os.sep, '')
-    if sys.platform == 'win32':
-        from subprocess import call
-    else:
-        call = os.system
-    status = call(cmd)
+    from subprocess import call
+    status = call(cmd, shell=True)
     if status != 0:
         raise Exception('status = %s' % status)
 

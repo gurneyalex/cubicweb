@@ -108,6 +108,9 @@ def del_existing_rel_if_needed(session, eidfrom, rtype, eidto):
     # hooks responsability to ensure they do not violate relation's cardinality
     if session.is_super_session:
         return
+    ensure_card_respected(session.unsafe_execute, session, eidfrom, rtype, eidto)
+
+def ensure_card_respected(execute, session, eidfrom, rtype, eidto):
     card = rproperty(session, rtype, eidfrom, eidto, 'cardinality')
     # one may be tented to check for neweids but this may cause more than one
     # relation even with '1?'  cardinality if thoses relations are added in the
@@ -118,14 +121,11 @@ def del_existing_rel_if_needed(session, eidfrom, rtype, eidto):
     if card[0] in '1?':
         rschema = session.repo.schema.rschema(rtype)
         if not rschema.inlined:
-            session.unsafe_execute(
-                'DELETE X %s Y WHERE X eid %%(x)s, NOT Y eid %%(y)s' % rtype,
-                {'x': eidfrom, 'y': eidto}, 'x')
+            execute('DELETE X %s Y WHERE X eid %%(x)s,NOT Y eid %%(y)s' % rtype,
+                    {'x': eidfrom, 'y': eidto}, 'x')
     if card[1] in '1?':
-        session.unsafe_execute(
-            'DELETE X %s Y WHERE NOT X eid %%(x)s, Y eid %%(y)s' % rtype,
-            {'x': eidfrom, 'y': eidto}, 'y')
-
+        execute('DELETE X %s Y WHERE NOT X eid %%(x)s, Y eid %%(y)s' % rtype,
+                {'x': eidfrom, 'y': eidto}, 'y')
 
 class Repository(object):
     """a repository provides access to a set of persistent storages for
@@ -149,6 +149,7 @@ class Repository(object):
         self._running_threads = []
         # initial schema, should be build or replaced latter
         self.schema = CubicWebSchema(config.appid)
+        self.vreg.schema = self.schema # until actual schema is loaded...
         # querier helper, need to be created after sources initialization
         self.querier = QuerierHelper(self, self.schema)
         # should we reindex in changes?
@@ -192,7 +193,6 @@ class Repository(object):
             config.bootstrap_cubes()
             self.set_bootstrap_schema(config.load_schema())
             # need to load the Any and CWUser entity types
-            self.vreg.schema = self.schema
             etdirectory = join(CW_SOFTWARE_ROOT, 'entities')
             self.vreg.init_registration([etdirectory])
             self.vreg.load_file(join(etdirectory, '__init__.py'),
@@ -246,15 +246,16 @@ class Repository(object):
         if rebuildinfered:
             schema.rebuild_infered_relations()
         self.info('set schema %s %#x', schema.name, id(schema))
-        self.debug(', '.join(sorted(str(e) for e in schema.entities())))
-        self.querier.set_schema(schema)
-        for source in self.sources:
-            source.set_schema(schema)
-        self.schema = schema
         if resetvreg:
             # full reload of all appobjects
             self.vreg.reset()
             self.vreg.set_schema(schema)
+        else:
+            self.vreg._set_schema(schema)
+        self.querier.set_schema(schema)
+        for source in self.sources:
+            source.set_schema(schema)
+        self.schema = schema
         self.reset_hooks()
 
     def reset_hooks(self):

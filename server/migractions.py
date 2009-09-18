@@ -116,7 +116,7 @@ class ServerMigrationHelper(MigrationHelper):
         config = self.config
         repo = self.repo_connect()
         # paths
-        timestamp = datetime.now().strftime('%Y-%m-%d_%H:%M:%S')
+        timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
         instbkdir = osp.join(config.appdatahome, 'backup')
         if not osp.exists(instbkdir):
             os.makedirs(instbkdir)
@@ -415,11 +415,12 @@ class ServerMigrationHelper(MigrationHelper):
         espschema = eschema.specializes()
         if repospschema and not espschema:
             self.rqlexec('DELETE X specializes Y WHERE X is CWEType, X name %(x)s',
-                         {'x': str(repoeschema)})
+                         {'x': str(repoeschema)}, ask_confirm=False)
         elif not repospschema and espschema:
             self.rqlexec('SET X specializes Y WHERE X is CWEType, X name %(x)s, '
                          'Y is CWEType, Y name %(y)s',
-                         {'x': str(repoeschema), 'y': str(espschema)})
+                         {'x': str(repoeschema), 'y': str(espschema)},
+                         ask_confirm=False)
         self.rqlexecall(ss.updateeschema2rql(eschema),
                         ask_confirm=self.verbosity >= 2)
         for rschema, targettypes, role in eschema.relation_definitions(True):

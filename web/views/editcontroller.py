@@ -51,7 +51,8 @@ class EditController(ViewController):
         try:
             methodname = form.pop('__method', None)
             for eid in req.edited_eids():
-                formparams = req.extract_entity_params(eid)
+                # __type and eid
+                formparams = req.extract_entity_params(eid, minparams=2)
                 if methodname is not None:
                     entity = req.entity_from_eid(eid)
                     method = getattr(entity, methodname)
@@ -194,19 +195,7 @@ class EditController(ViewController):
         # NOTE: raising ValidationError here is not a good solution because
         #       we can't gather all errors at once. Hopefully, the new 3.6.x
         #       form handling will fix that
-        if value and attrtype == 'Int':
-            try:
-                value = int(value)
-            except ValueError:
-                raise ValidationError(entity.eid,
-                                      {attr: self.req._("invalid integer value")})
-        elif value and attrtype == 'Float':
-            try:
-                value = float(value)
-            except ValueError:
-                raise ValidationError(entity.eid,
-                                      {attr: self.req._("invalid float value")})
-        elif attrtype == 'Boolean':
+        if attrtype == 'Boolean':
             value = bool(value)
         elif attrtype == 'Decimal':
             value = Decimal(value)
@@ -248,7 +237,19 @@ class EditController(ViewController):
                 # no specified value, skip
                 return
         elif value is not None:
-            if attrtype in ('Date', 'Datetime', 'Time'):
+            if attrtype == 'Int':
+                try:
+                    value = int(value)
+                except ValueError:
+                    raise ValidationError(entity.eid,
+                                          {attr: self.req._("invalid integer value")})
+            elif attrtype == 'Float':
+                try:
+                    value = float(value)
+                except ValueError:
+                    raise ValidationError(entity.eid,
+                                          {attr: self.req._("invalid float value")})
+            elif attrtype in ('Date', 'Datetime', 'Time'):
                 try:
                     value = self.parse_datetime(value, attrtype)
                 except ValueError:
