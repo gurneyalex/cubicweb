@@ -21,12 +21,12 @@ from logilab.common.textutils import splitstrip
 from logilab.common.shellutils import ASK
 from logilab.common.clcommands import register_commands
 
-from cubicweb import (CW_SOFTWARE_ROOT as BASEDIR, BadCommandUsage,
-                      underline_title)
+from cubicweb import CW_SOFTWARE_ROOT as BASEDIR, BadCommandUsage
 from cubicweb.__pkginfo__ import version as cubicwebversion
-from cubicweb.toolsutils import Command, copy_skeleton
+from cubicweb.toolsutils import Command, copy_skeleton, underline_title
 from cubicweb.web.webconfig import WebConfiguration
 from cubicweb.server.serverconfig import ServerConfiguration
+
 
 class DevCubeConfiguration(ServerConfiguration, WebConfiguration):
     """dummy config to get full library schema and entities"""
@@ -212,6 +212,7 @@ def _generate_schema_pot(w, vreg, schema, libconfig=None, cube=None):
         add_msg(w, '%s_description' % objid)
         add_msg(w, objid)
 
+
 def _iter_vreg_objids(vreg, done, prefix=None):
     for reg, objdict in vreg.items():
         for objects in objdict.values():
@@ -219,7 +220,7 @@ def _iter_vreg_objids(vreg, done, prefix=None):
                 objid = '%s_%s' % (reg, obj.id)
                 if objid in done:
                     break
-                if obj.property_defs:
+                if obj.cw_property_defs:
                     yield objid
                     done.add(objid)
                     break

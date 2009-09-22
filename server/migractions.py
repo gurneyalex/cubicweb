@@ -259,9 +259,9 @@ class ServerMigrationHelper(MigrationHelper):
                         'fsschema': self.fs_schema,
                         'session' : self.session,
                         'repo' : self.repo,
-                        'synchronize_schema': deprecated()(self.cmd_sync_schema_props_perms),
-                        'synchronize_eschema': deprecated()(self.cmd_sync_schema_props_perms),
-                        'synchronize_rschema': deprecated()(self.cmd_sync_schema_props_perms),
+                        'synchronize_schema': deprecated()(self.cmd_sync_schema_props_perms), # 3.4
+                        'synchronize_eschema': deprecated()(self.cmd_sync_schema_props_perms), # 3.4
+                        'synchronize_rschema': deprecated()(self.cmd_sync_schema_props_perms), # 3.4
                         })
         return context
 
@@ -282,7 +282,7 @@ class ServerMigrationHelper(MigrationHelper):
                 from cubicweb.server.hooks import setowner_after_add_entity
                 self.repo.hm.unregister_hook(setowner_after_add_entity,
                                              'after_add_entity', '')
-                self.deactivate_verification_hooks()
+                self.cmd_deactivate_verification_hooks()
             self.info('executing %s', apc)
             confirm = self.confirm
             execscript_confirm = self.execscript_confirm
@@ -296,7 +296,7 @@ class ServerMigrationHelper(MigrationHelper):
                 if self.config.free_wheel:
                     self.repo.hm.register_hook(setowner_after_add_entity,
                                                'after_add_entity', '')
-                    self.reactivate_verification_hooks()
+                    self.cmd_reactivate_verification_hooks()
 
     # schema synchronization internals ########################################
 
@@ -954,7 +954,7 @@ class ServerMigrationHelper(MigrationHelper):
         if commit:
             self.commit()
 
-    @deprecated('use sync_schema_props_perms(ertype, syncprops=False)')
+    @deprecated('[3.4] use sync_schema_props_perms(ertype, syncprops=False)')
     def cmd_synchronize_permissions(self, ertype, commit=True):
         self.cmd_sync_schema_props_perms(ertype, syncprops=False, commit=commit)
 
@@ -1113,10 +1113,10 @@ class ServerMigrationHelper(MigrationHelper):
         return ForRqlIterator(self, rql, None, ask_confirm)
 
     def cmd_deactivate_verification_hooks(self):
-        self.repo.hm.deactivate_verification_hooks()
+        self.config.disabled_hooks_categories.add('integrity')
 
     def cmd_reactivate_verification_hooks(self):
-        self.repo.hm.reactivate_verification_hooks()
+        self.config.disabled_hooks_categories.remove('integrity')
 
     # broken db commands ######################################################
 
