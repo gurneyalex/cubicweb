@@ -22,8 +22,8 @@ from cubicweb import Unauthorized
 from cubicweb.rset import ResultSet
 from cubicweb.selectors import yes
 from cubicweb.appobject import AppObject
+from cubicweb.schema import RQLVocabularyConstraint, RQLConstraint
 from cubicweb.rqlrewrite import RQLRewriter
-from cubicweb.schema import RQLVocabularyConstraint, RQLConstraint, bw_normalize_etype
 
 from cubicweb.common.uilib import printable_value, soup2xhtml
 from cubicweb.common.mixins import MI_REL_TRIGGERS
@@ -38,101 +38,6 @@ def greater_card(rschema, subjtypes, objtypes, index):
             if card in '+*':
                 return card
     return '1'
-
-
-_MODE_TAGS = set(('link', 'create'))
-_CATEGORY_TAGS = set(('primary', 'secondary', 'generic', 'generated')) # , 'metadata'))
-
-try:
-    from cubicweb.web import formwidgets, uicfg
-
-    def _dispatch_rtags(tags, rtype, role, stype, otype):
-        for tag in tags:
-            if tag in _MODE_TAGS:
-                uicfg.actionbox_appearsin_addmenu.tag_relation(
-                    (stype, rtype, otype, role), tag == 'create')
-            elif tag in _CATEGORY_TAGS:
-                uicfg.autoform_section.tag_relation((stype, rtype, otype, role),
-                                                    tag)
-            elif tag == 'inlineview':
-                uicfg.autoform_is_inlined.tag_relation((stype, rtype, otype, role), True)
-            else:
-                raise ValueError(tag)
-
-except ImportError:
-
-    _dispatch_rtags = None
-
-def _get_etype(bases, classdict):
-    try:
-        return classdict['id']
-    except KeyError:
-        for base in bases:
-            etype = getattr(base, 'id', None)
-            if etype and etype != 'Any':
-                return etype
-
-def _get_defs(attr, name, bases, classdict):
-    try:
-        yield name, classdict.pop(attr)
-    except KeyError:
-        for base in bases:
-            try:
-                value = getattr(base, attr)
-                delattr(base, attr)
-                yield base.__name__, value
-            except AttributeError:
-                continue
-
-
-class _metaentity(type):
-    """this metaclass sets the relation tags on the entity class
-    and deals with the `widgets` attribute
-    """
-    def __new__(mcs, name, bases, classdict):
-        # collect baseclass' rtags
-        etype = _get_etype(bases, classdict)
-        if etype and _dispatch_rtags is not None:
-            for name, rtags in _get_defs('__rtags__', name, bases, classdict):
-                warn('%s: __rtags__ is deprecated' % name, DeprecationWarning)
-                for relation, tags in rtags.iteritems():
-                    # tags must become an iterable
-                    if isinstance(tags, basestring):
-                        tags = (tags,)
-                    # relation must become a 3-uple (rtype, targettype, role)
-                    if isinstance(relation, basestring):
-                        _dispatch_rtags(tags, relation, 'subject', etype, '*')
-                        _dispatch_rtags(tags, relation, 'object', '*', etype)
-                    elif len(relation) == 1: # useful ?
-                        _dispatch_rtags(tags, relation[0], 'subject', etype, '*')
-                        _dispatch_rtags(tags, relation[0], 'object', '*', etype)
-                    elif len(relation) == 2:
-                        rtype, ttype = relation
-                        ttype = bw_normalize_etype(ttype) # XXX bw compat
-                        _dispatch_rtags(tags, rtype, 'subject', etype, ttype)
-                        _dispatch_rtags(tags, rtype, 'object', ttype, etype)
-                    elif len(relation) == 3:
-                        rtype, ttype, role = relation
-                        ttype = bw_normalize_etype(ttype)
-                        if role == 'subject':
-                            _dispatch_rtags(tags, rtype, 'subject', etype, ttype)
-                        else:
-                            _dispatch_rtags(tags, rtype, 'object', ttype, etype)
-                    else:
-                        raise ValueError('bad rtag definition (%r)' % (relation,))
-            for name, widgets in _get_defs('widgets', name, bases, classdict):
-                warn('%s: widgets is deprecated' % name, DeprecationWarning)
-                for rtype, wdgname in widgets.iteritems():
-                    if wdgname in ('URLWidget', 'EmbededURLWidget', 'RawDynamicComboBoxWidget'):
-                        warn('%s widget is deprecated' % wdgname, DeprecationWarning)
-                        continue
-                    if wdgname == 'StringWidget':
-                        wdgname = 'TextInput'
-                    widget = getattr(formwidgets, wdgname)
-                    assert hasattr(widget, 'render')
-                    uicfg.autoform_field_kwargs.tag_subject_of(
-                        (etype, rtype, '*'), {'widget': widget})
-        return super(_metaentity, mcs).__new__(mcs, name, bases, classdict)
 
 
 class Entity(AppObject, dict):
@@ -158,28 +63,24 @@ class Entity(AppObject, dict):
                          as composite relations or relations that have '?1' as object
                          cardinality
     """
-    __metaclass__ = _metaentity
     __registry__ = 'etypes'
     __select__ = yes()
 
     # class attributes that must be set in class definition
-    id = None
     rest_attr = None
     fetch_attrs = None
     skip_copy_for = ('in_state',)
     # class attributes set automatically at registration time
     e_schema = None
 
-    MODE_TAGS = set(('link', 'create'))
-    CATEGORY_TAGS = set(('primary', 'secondary', 'generic', 'generated')) # , 'metadata'))
     @classmethod
-    def __initialize__(cls):
+    def __initialize__(cls, schema):
         """initialize a specific entity class by adding descriptors to access
         entity type's attributes and relations
         """
-        etype = cls.id
+        etype = cls.__id__
         assert etype != 'Any', etype
-        cls.e_schema = eschema = cls.schema.eschema(etype)
+        cls.e_schema = eschema = schema.eschema(etype)
         for rschema, _ in eschema.attribute_definitions():
             if rschema.type == 'eid':
                 continue
@@ -208,7 +109,7 @@ class Entity(AppObject, dict):
         """return a rql to fetch all entities of the class type"""
         restrictions = restriction or []
         if settype:
-            restrictions.append('%s is %s' % (mainvar, cls.id))
+            restrictions.append('%s is %s' % (mainvar, cls.__id__))
         if fetchattrs is None:
             fetchattrs = cls.fetch_attrs
         selection = [mainvar]
@@ -241,7 +142,7 @@ class Entity(AppObject, dict):
                 rschema = eschema.subject_relation(attr)
             except KeyError:
                 cls.warning('skipping fetch_attr %s defined in %s (not found in schema)',
-                            attr, cls.id)
+                            attr, cls.__id__)
                 continue
             if not user.matching_groups(rschema.get_groups('read')):
                 continue
@@ -264,7 +165,8 @@ class Entity(AppObject, dict):
                 # that case the relation may still be missing. As we miss this
                 # later information here, systematically add it.
                 restrictions[-1] += '?'
-                destcls = cls.vreg['etypes'].etype_class(desttype)
+                # XXX user.req.vreg iiiirk
+                destcls = user.req.vreg['etypes'].etype_class(desttype)
                 destcls._fetch_restrictions(var, varmaker, destcls.fetch_attrs,
                                             selection, orderby, restrictions,
                                             user, ordermethod, visited=visited)
@@ -272,14 +174,6 @@ class Entity(AppObject, dict):
             if orderterm:
                 orderby.append(orderterm)
         return selection, orderby, restrictions
-
-    @classmethod
-    @cached
-    def parent_classes(cls):
-        parents = [cls.vreg['etypes'].etype_class(e.type)
-                   for e in cls.e_schema.ancestors()]
-        parents.append(cls.vreg['etypes'].etype_class('Any'))
-        return parents
 
     @classmethod
     @cached
@@ -299,7 +193,7 @@ class Entity(AppObject, dict):
         return mainattr, needcheck
 
     def __init__(self, req, rset=None, row=None, col=0):
-        AppObject.__init__(self, req, rset, row, col)
+        AppObject.__init__(self, req, rset=rset, row=row, col=col)
         dict.__init__(self)
         self._related_cache = {}
         if rset is not None:
@@ -391,11 +285,11 @@ class Entity(AppObject, dict):
                 kwargs['_restpath'] = self.rest_path(kwargs.get('base_url'))
             except TypeError:
                 warn('%s: rest_path() now take use_ext_eid argument, '
-                     'please update' % self.id, DeprecationWarning)
+                     'please update' % self.__id__, DeprecationWarning)
                 kwargs['_restpath'] = self.rest_path()
         else:
             kwargs['rql'] = 'Any X WHERE X eid %s' % self.eid
-        return self.build_url(method, **kwargs)
+        return self.req.build_url(method, **kwargs)
 
     def rest_path(self, use_ext_eid=False):
         """returns a REST-like (relative) path for this entity"""
@@ -527,7 +421,7 @@ class Entity(AppObject, dict):
     def as_rset(self):
         """returns a resultset containing `self` information"""
         rset = ResultSet([(self.eid,)], 'Any X WHERE X eid %(x)s',
-                         {'x': self.eid}, [(self.id,)])
+                         {'x': self.eid}, [(self.__id__,)])
         return self.req.decorate_rset(rset)
 
     def to_complete_relations(self):
@@ -687,7 +581,7 @@ class Entity(AppObject, dict):
         return self.related(rtype, role, limit, entities)
 
     def related_rql(self, rtype, role='subject', targettypes=None):
-        rschema = self.schema[rtype]
+        rschema = self.req.vreg.schema[rtype]
         if role == 'subject':
             if targettypes is None:
                 targettypes = rschema.objects(self.e_schema)
@@ -732,7 +626,7 @@ class Entity(AppObject, dict):
         """
         ordermethod = ordermethod or 'fetch_unrelated_order'
         if isinstance(rtype, basestring):
-            rtype = self.schema.rschema(rtype)
+            rtype = self.req.vreg.schema.rschema(rtype)
         if role == 'subject':
             evar, searchedvar = 'S', 'O'
             subjtype, objtype = self.e_schema, targettype
@@ -815,7 +709,7 @@ class Entity(AppObject, dict):
         """set cached values for the given relation"""
         if rset:
             related = list(rset.entities(col))
-            rschema = self.schema.rschema(rtype)
+            rschema = self.req.vreg.schema.rschema(rtype)
             if role == 'subject':
                 rcard = rschema.rproperty(self.e_schema, related[0].e_schema,
                                           'cardinality')[1]

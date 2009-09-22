@@ -34,7 +34,7 @@ class TableView(AnyRsetView):
             return ()
         rqlst.save_state()
         mainvar, baserql = prepare_facets_rqlst(rqlst, self.rset.args)
-        wdgs = [facet.get_widget() for facet in self.vreg['facets'].possible_vobjects(
+        wdgs = [facet.get_widget() for facet in self.vreg['facets'].poss_visible_objects(
             self.req, rset=self.rset, context='tablefilter',
             filtered_variable=mainvar)]
         wdgs = [wdg for wdg in wdgs if wdg is not None]
@@ -297,7 +297,7 @@ class InitialTableView(TableView):
              displaycols=None, displayactions=None, mainindex=None):
         """Dumps a table displaying a composite query"""
         actrql = self.req.form['actualrql']
-        self.ensure_ro_rql(actrql)
+        self.req.ensure_ro_rql(actrql)
         displaycols = self.displaycols(displaycols)
         if displayactions is None and 'displayactions' in self.req.form:
             displayactions = True

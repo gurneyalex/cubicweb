@@ -64,8 +64,8 @@ def filtered_variable(rqlst):
 
 
 def get_facet(req, facetid, rqlst, mainvar):
-    return req.vreg['facets'].object_by_id(facetid, req, rqlst=rqlst,
-                                           filtered_variable=mainvar)
+    return req.vreg['facets'].select(facetid, req, rqlst=rqlst,
+                                     filtered_variable=mainvar)
 
 
 def filter_hiddens(w, **kwargs):
@@ -253,7 +253,7 @@ def _cleanup_rqlst(rqlst, mainvar):
 class AbstractFacet(AppObject):
     __abstract__ = True
     __registry__ = 'facets'
-    property_defs = {
+    cw_property_defs = {
         _('visible'): dict(type='Boolean', default=True,
                            help=_('display the box or not')),
         _('order'):   dict(type='Int', default=99,
@@ -270,7 +270,7 @@ class AbstractFacet(AppObject):
 
     def __init__(self, req, rset=None, rqlst=None, filtered_variable=None,
                  **kwargs):
-        super(AbstractFacet, self).__init__(req, rset, **kwargs)
+        super(AbstractFacet, self).__init__(req, rset=rset, **kwargs)
         assert rset is not None or rqlst is not None
         assert filtered_variable
         # facet retreived using `object_by_id` from an ajax call

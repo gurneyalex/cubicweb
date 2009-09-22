@@ -321,6 +321,7 @@ class CWETypeSWorkflowView(EntityView):
             xml_escape(wf.absolute_url(vid='wfgraph')),
             xml_escape(self.req._('graphical representation of %s') % wf.name)))
 
+
 # CWRType ######################################################################
 
 class CWRTypeSchemaView(primary.PrimaryView):
