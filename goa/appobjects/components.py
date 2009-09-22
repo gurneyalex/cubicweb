@@ -28,7 +28,7 @@ class SearchForAssociationView(EntityView):
     __select__ = one_line_rset() & match_search_state('linksearch') & accept
 
     def cell_call(self, row, col):
-        entity = self.entity(0, 0)
+        entity = self.rset.get_entity(0, 0)
         role, eid, rtype, etype = self.req.search_state[1]
         assert entity.eid == typed_eid(eid)
         rset = entity.unrelated(rtype, etype, role, ordermethod='fetch_order')
@@ -74,7 +74,7 @@ def entity_types_no_count(self, eschemas):
         label = display_name(req, etype, 'plural')
         view = self.vreg.select('views', 'list', req, req.etype_rset(etype))
         url = view.url()
-        etypelink = u'&nbsp;<a href="%s">%s</a>' % (xml_escape(url), label)
+        etypelink = u'&#160;<a href="%s">%s</a>' % (xml_escape(url), label)
         yield (label, etypelink, self.add_entity_link(eschema, req))
 
 ManageView.entity_types = entity_types_no_count

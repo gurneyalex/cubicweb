@@ -8,7 +8,6 @@
 
 import sys
 
-from cubicweb import underline_title
 from cubicweb.toolsutils import CommandHandler
 
 # trigger configuration registration
@@ -18,7 +17,7 @@ class TWStartHandler(CommandHandler):
     cmdname = 'start'
     cfgname = 'twisted'
 
-    def start_command(self, config, debug):
+    def start_server(self, config, debug):
         from cubicweb.etwist import server
         server.run(config, debug)
 

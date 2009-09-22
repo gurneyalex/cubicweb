@@ -8,18 +8,28 @@
 """
 
 from logilab.common.testlib import unittest_main
-from cubicweb.devtools.apptest import RepositoryBasedTC
+from cubicweb.devtools.testlib import CubicWebTC
 
 from cubicweb.server.pool import LateOperation, Operation, SingleLastOperation
 from cubicweb.server.hookhelper import *
+from cubicweb.server import hooks, schemahooks
 
 
-class HookHelpersTC(RepositoryBasedTC):
+def clean_session_ops(func):
+    def wrapper(self, *args, **kwargs):
+        try:
+            return func(self, *args, **kwargs)
+        finally:
+            self.session.pending_operations[:] = []
+    return wrapper
+
+class HookHelpersTC(CubicWebTC):
 
     def setUp(self):
-        RepositoryBasedTC.setUp(self)
+        CubicWebTC.setUp(self)
         self.hm = self.repo.hm
 
+    @clean_session_ops
     def test_late_operation(self):
         session = self.session
         l1 = LateOperation(session)
@@ -27,6 +37,7 @@ class HookHelpersTC(RepositoryBasedTC):
         l3 = Operation(session)
         self.assertEquals(session.pending_operations, [l3, l1, l2])
 
+    @clean_session_ops
     def test_single_last_operation(self):
         session = self.session
         l0 = SingleLastOperation(session)
@@ -37,8 +48,8 @@ class HookHelpersTC(RepositoryBasedTC):
         l4 = SingleLastOperation(session)
         self.assertEquals(session.pending_operations, [l3, l1, l2, l4])
 
+    @clean_session_ops
     def test_global_operation_order(self):
-        from cubicweb.server import hooks, schemahooks
         session = self.session
         op1 = hooks.DelayedDeleteOp(session)
         op2 = schemahooks.MemSchemaRDefDel(session)
@@ -48,42 +59,6 @@ class HookHelpersTC(RepositoryBasedTC):
         op4 = hooks.DelayedDeleteOp(session)
         op5 = hooks.CheckORelationOp(session)
         self.assertEquals(session.pending_operations, [op1, op2, op4, op5, op3])
-
-
-    def test_in_state_notification(self):
-        result = []
-        # test both email notification and transition_information
-        # whatever if we can connect to the default stmp server, transaction
-        # should not fail
-        def in_state_changed(session, eidfrom, rtype, eidto):
-            tr = previous_state(session, eidfrom)
-            if tr is None:
-                result.append(tr)
-                return
-            content = u'trÃ€nsition from %s to %s' % (tr.name, entity_name(session, eidto))
-            result.append(content)
-            SendMailOp(session, msg=content, recipients=['test@logilab.fr'])
-        self.hm.register_hook(in_state_changed,
-                             'before_add_relation', 'in_state')
-        self.execute('INSERT CWUser X: X login "paf", X upassword "wouf", X in_state S, X in_group G WHERE S name "activated", G name "users"')
-        self.assertEquals(result, [None])
-        searchedops = [op for op in self.session.pending_operations
-                       if isinstance(op, SendMailOp)]
-        self.assertEquals(len(searchedops), 0,
-                          self.session.pending_operations)
-        self.commit()
-        self.execute('SET X in_state S WHERE X login "paf", S name "deactivated"')
-        self.assertEquals(result, [None, u'trÃ€nsition from activated to deactivated'])
-        # one to send the mail, one to close the smtp connection
-        searchedops = [op for op in self.session.pending_operations
-                       if isinstance(op, SendMailOp)]
-        self.assertEquals(len(searchedops), 1,
-                          self.session.pending_operations)
-        self.commit()
-        searchedops = [op for op in self.session.pending_operations
-                       if isinstance(op, SendMailOp)]
-        self.assertEquals(len(searchedops), 0,
-                          self.session.pending_operations)
 
 if __name__ == '__main__':
     unittest_main()

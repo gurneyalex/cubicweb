@@ -15,13 +15,15 @@ from logilab.common.decorators import cached
 from logilab.common.deprecation import deprecated
 from logilab.mtconverter import TransformData, TransformError, xml_escape
 
+from rql import parse
 from rql.utils import rqlvar_maker
 
 from cubicweb import Unauthorized
 from cubicweb.rset import ResultSet
 from cubicweb.selectors import yes
 from cubicweb.appobject import AppObject
-from cubicweb.schema import RQLVocabularyConstraint, RQLConstraint, bw_normalize_etype
+from cubicweb.schema import RQLVocabularyConstraint, RQLConstraint
+from cubicweb.rqlrewrite import RQLRewriter
 
 from cubicweb.common.uilib import printable_value, soup2xhtml
 from cubicweb.common.mixins import MI_REL_TRIGGERS
@@ -36,100 +38,6 @@ def greater_card(rschema, subjtypes, objtypes, index):
             if card in '+*':
                 return card
     return '1'
-
-
-_MODE_TAGS = set(('link', 'create'))
-_CATEGORY_TAGS = set(('primary', 'secondary', 'generic', 'generated')) # , 'metadata'))
-
-try:
-    from cubicweb.web import formwidgets, uicfg
-
-    def _dispatch_rtags(tags, rtype, role, stype, otype):
-        for tag in tags:
-            if tag in _MODE_TAGS:
-                uicfg.actionbox_appearsin_addmenu.tag_relation(
-                    (stype, rtype, otype, role), tag == 'create')
-            elif tag in _CATEGORY_TAGS:
-                uicfg.autoform_section.tag_relation((stype, rtype, otype, role),
-                                                    tag)
-            elif tag == 'inlineview':
-                uicfg.autoform_is_inlined.tag_relation((stype, rtype, otype, role), True)
-            else:
-                raise ValueError(tag)
-
-except ImportError:
-
-    _dispatch_rtags = None
-
-def _get_etype(bases, classdict):
-    try:
-        return classdict['id']
-    except KeyError:
-        for base in bases:
-            etype = getattr(base, 'id', None)
-            if etype and etype != 'Any':
-                return etype
-
-def _get_defs(attr, name, bases, classdict):
-    try:
-        yield name, classdict.pop(attr)
-    except KeyError:
-        for base in bases:
-            try:
-                value = getattr(base, attr)
-                delattr(base, attr)
-                yield base.__name__, value
-            except AttributeError:
-                continue
-
-class _metaentity(type):
-    """this metaclass sets the relation tags on the entity class
-    and deals with the `widgets` attribute
-    """
-    def __new__(mcs, name, bases, classdict):
-        # collect baseclass' rtags
-        etype = _get_etype(bases, classdict)
-        if etype and _dispatch_rtags is not None:
-            for name, rtags in _get_defs('__rtags__', name, bases, classdict):
-                warn('%s: __rtags__ is deprecated' % name, DeprecationWarning)
-                for relation, tags in rtags.iteritems():
-                    # tags must become an iterable
-                    if isinstance(tags, basestring):
-                        tags = (tags,)
-                    # relation must become a 3-uple (rtype, targettype, role)
-                    if isinstance(relation, basestring):
-                        _dispatch_rtags(tags, relation, 'subject', etype, '*')
-                        _dispatch_rtags(tags, relation, 'object', '*', etype)
-                    elif len(relation) == 1: # useful ?
-                        _dispatch_rtags(tags, relation[0], 'subject', etype, '*')
-                        _dispatch_rtags(tags, relation[0], 'object', '*', etype)
-                    elif len(relation) == 2:
-                        rtype, ttype = relation
-                        ttype = bw_normalize_etype(ttype) # XXX bw compat
-                        _dispatch_rtags(tags, rtype, 'subject', etype, ttype)
-                        _dispatch_rtags(tags, rtype, 'object', ttype, etype)
-                    elif len(relation) == 3:
-                        rtype, ttype, role = relation
-                        ttype = bw_normalize_etype(ttype)
-                        if role == 'subject':
-                            _dispatch_rtags(tags, rtype, 'subject', etype, ttype)
-                        else:
-                            _dispatch_rtags(tags, rtype, 'object', ttype, etype)
-                    else:
-                        raise ValueError('bad rtag definition (%r)' % (relation,))
-            for name, widgets in _get_defs('widgets', name, bases, classdict):
-                warn('%s: widgets is deprecated' % name, DeprecationWarning)
-                for rtype, wdgname in widgets.iteritems():
-                    if wdgname in ('URLWidget', 'EmbededURLWidget', 'RawDynamicComboBoxWidget'):
-                        warn('%s widget is deprecated' % wdgname, DeprecationWarning)
-                        continue
-                    if wdgname == 'StringWidget':
-                        wdgname = 'TextInput'
-                    widget = getattr(formwidgets, wdgname)
-                    assert hasattr(widget, 'render')
-                    uicfg.autoform_field_kwargs.tag_subject_of(
-                        (etype, rtype, '*'), {'widget': widget})
-        return super(_metaentity, mcs).__new__(mcs, name, bases, classdict)
 
 
 class Entity(AppObject, dict):
@@ -155,42 +63,38 @@ class Entity(AppObject, dict):
                          as composite relations or relations that have '?1' as object
                          cardinality
     """
-    __metaclass__ = _metaentity
     __registry__ = 'etypes'
     __select__ = yes()
 
     # class attributes that must be set in class definition
-    id = None
     rest_attr = None
     fetch_attrs = None
-    skip_copy_for = ()
+    skip_copy_for = ('in_state',)
     # class attributes set automatically at registration time
     e_schema = None
 
-    MODE_TAGS = set(('link', 'create'))
-    CATEGORY_TAGS = set(('primary', 'secondary', 'generic', 'generated')) # , 'metadata'))
     @classmethod
-    def __initialize__(cls):
+    def __initialize__(cls, schema):
         """initialize a specific entity class by adding descriptors to access
         entity type's attributes and relations
         """
-        etype = cls.id
+        etype = cls.__id__
         assert etype != 'Any', etype
-        cls.e_schema = eschema = cls.schema.eschema(etype)
+        cls.e_schema = eschema = schema.eschema(etype)
         for rschema, _ in eschema.attribute_definitions():
             if rschema.type == 'eid':
                 continue
             setattr(cls, rschema.type, Attribute(rschema.type))
         mixins = []
-        for rschema, _, x in eschema.relation_definitions():
-            if (rschema, x) in MI_REL_TRIGGERS:
-                mixin = MI_REL_TRIGGERS[(rschema, x)]
+        for rschema, _, role in eschema.relation_definitions():
+            if (rschema, role) in MI_REL_TRIGGERS:
+                mixin = MI_REL_TRIGGERS[(rschema, role)]
                 if not (issubclass(cls, mixin) or mixin in mixins): # already mixed ?
                     mixins.append(mixin)
                 for iface in getattr(mixin, '__implements__', ()):
                     if not interface.implements(cls, iface):
                         interface.extend(cls, iface)
-            if x == 'subject':
+            if role == 'subject':
                 setattr(cls, rschema.type, SubjectRelation(rschema))
             else:
                 attr = 'reverse_%s' % rschema.type
@@ -205,7 +109,7 @@ class Entity(AppObject, dict):
         """return a rql to fetch all entities of the class type"""
         restrictions = restriction or []
         if settype:
-            restrictions.append('%s is %s' % (mainvar, cls.id))
+            restrictions.append('%s is %s' % (mainvar, cls.__id__))
         if fetchattrs is None:
             fetchattrs = cls.fetch_attrs
         selection = [mainvar]
@@ -238,7 +142,7 @@ class Entity(AppObject, dict):
                 rschema = eschema.subject_relation(attr)
             except KeyError:
                 cls.warning('skipping fetch_attr %s defined in %s (not found in schema)',
-                            attr, cls.id)
+                            attr, cls.__id__)
                 continue
             if not user.matching_groups(rschema.get_groups('read')):
                 continue
@@ -251,12 +155,18 @@ class Entity(AppObject, dict):
                 desttype = rschema.objects(eschema.type)[0]
                 card = rschema.rproperty(eschema, desttype, 'cardinality')[0]
                 if card not in '?1':
+                    cls.warning('bad relation %s specified in fetch attrs for %s',
+                                 attr, cls)
                     selection.pop()
                     restrictions.pop()
                     continue
-                if card == '?':
-                    restrictions[-1] += '?' # left outer join if not mandatory
-                destcls = cls.vreg['etypes'].etype_class(desttype)
+                # XXX we need outer join in case the relation is not mandatory
+                # (card == '?')  *or if the entity is being added*, since in
+                # that case the relation may still be missing. As we miss this
+                # later information here, systematically add it.
+                restrictions[-1] += '?'
+                # XXX user.req.vreg iiiirk
+                destcls = user.req.vreg['etypes'].etype_class(desttype)
                 destcls._fetch_restrictions(var, varmaker, destcls.fetch_attrs,
                                             selection, orderby, restrictions,
                                             user, ordermethod, visited=visited)
@@ -264,14 +174,6 @@ class Entity(AppObject, dict):
             if orderterm:
                 orderby.append(orderterm)
         return selection, orderby, restrictions
-
-    @classmethod
-    @cached
-    def parent_classes(cls):
-        parents = [cls.vreg['etypes'].etype_class(e.type)
-                   for e in cls.e_schema.ancestors()]
-        parents.append(cls.vreg['etypes'].etype_class('Any'))
-        return parents
 
     @classmethod
     @cached
@@ -291,7 +193,7 @@ class Entity(AppObject, dict):
         return mainattr, needcheck
 
     def __init__(self, req, rset=None, row=None, col=0):
-        AppObject.__init__(self, req, rset, row, col)
+        AppObject.__init__(self, req, rset=rset, row=row, col=col)
         dict.__init__(self)
         self._related_cache = {}
         if rset is not None:
@@ -309,6 +211,9 @@ class Entity(AppObject, dict):
 
     def __hash__(self):
         return id(self)
+
+    def __cmp__(self, other):
+        raise NotImplementedError('comparison not implemented for %s' % self.__class__)
 
     def pre_add_hook(self):
         """hook called by the repository before doing anything to add the entity
@@ -380,11 +285,11 @@ class Entity(AppObject, dict):
                 kwargs['_restpath'] = self.rest_path(kwargs.get('base_url'))
             except TypeError:
                 warn('%s: rest_path() now take use_ext_eid argument, '
-                     'please update' % self.id, DeprecationWarning)
+                     'please update' % self.__id__, DeprecationWarning)
                 kwargs['_restpath'] = self.rest_path()
         else:
             kwargs['rql'] = 'Any X WHERE X eid %s' % self.eid
-        return self.build_url(method, **kwargs)
+        return self.req.build_url(method, **kwargs)
 
     def rest_path(self, use_ext_eid=False):
         """returns a REST-like (relative) path for this entity"""
@@ -449,7 +354,8 @@ class Entity(AppObject, dict):
                 return self.mtc_transform(value.getvalue(), attrformat, format,
                                           encoding)
             return u''
-        value = printable_value(self.req, attrtype, value, props, displaytime)
+        value = printable_value(self.req, attrtype, value, props,
+                                displaytime=displaytime)
         if format == 'text/html':
             value = xml_escape(value)
         return value
@@ -480,13 +386,6 @@ class Entity(AppObject, dict):
                 continue
             if rschema.type in self.skip_copy_for:
                 continue
-            if rschema.type == 'in_state':
-                # if the workflow is defining an initial state (XXX AND we are
-                # not in the managers group? not done to be more consistent)
-                # don't try to copy in_state
-                if execute('Any S WHERE S state_of ET, ET initial_state S,'
-                           'ET name %(etype)s', {'etype': str(self.e_schema)}):
-                    continue
             # skip composite relation
             if self.e_schema.subjrproperty(rschema, 'composite'):
                 continue
@@ -522,7 +421,7 @@ class Entity(AppObject, dict):
     def as_rset(self):
         """returns a resultset containing `self` information"""
         rset = ResultSet([(self.eid,)], 'Any X WHERE X eid %(x)s',
-                         {'x': self.eid}, [(self.id,)])
+                         {'x': self.eid}, [(self.__id__,)])
         return self.req.decorate_rset(rset)
 
     def to_complete_relations(self):
@@ -617,14 +516,14 @@ class Entity(AppObject, dict):
                 self[str(selected[i-1][0])] = rset[i]
             # handle relations
             for i in xrange(lastattr, len(rset)):
-                rtype, x = selected[i-1][0]
+                rtype, role = selected[i-1][0]
                 value = rset[i]
                 if value is None:
                     rrset = ResultSet([], rql, {'x': self.eid})
                     self.req.decorate_rset(rrset)
                 else:
                     rrset = self.req.eid_rset(value)
-                self.set_related_cache(rtype, x, rrset)
+                self.set_related_cache(rtype, role, rrset)
 
     def get_value(self, name):
         """get value for the attribute relation <name>, query the repository
@@ -681,14 +580,16 @@ class Entity(AppObject, dict):
         self.set_related_cache(rtype, role, rset)
         return self.related(rtype, role, limit, entities)
 
-    def related_rql(self, rtype, role='subject'):
-        rschema = self.schema[rtype]
+    def related_rql(self, rtype, role='subject', targettypes=None):
+        rschema = self.req.vreg.schema[rtype]
         if role == 'subject':
-            targettypes = rschema.objects(self.e_schema)
+            if targettypes is None:
+                targettypes = rschema.objects(self.e_schema)
             restriction = 'E eid %%(x)s, E %s X' % rtype
             card = greater_card(rschema, (self.e_schema,), targettypes, 0)
         else:
-            targettypes = rschema.subjects(self.e_schema)
+            if targettypes is None:
+                targettypes = rschema.subjects(self.e_schema)
             restriction = 'E eid %%(x)s, X %s E' % rtype
             card = greater_card(rschema, targettypes, (self.e_schema,), 1)
         if len(targettypes) > 1:
@@ -715,28 +616,17 @@ class Entity(AppObject, dict):
 
     # generic vocabulary methods ##############################################
 
-    @deprecated('see new form api')
-    def vocabulary(self, rtype, role='subject', limit=None):
-        """vocabulary functions must return a list of couples
-        (label, eid) that will typically be used to fill the
-        edition view's combobox.
-
-        If `eid` is None in one of these couples, it should be
-        interpreted as a separator in case vocabulary results are grouped
-        """
-        from logilab.common.testlib import mock_object
-        form = self.vreg.select('forms', 'edition', self.req, entity=self)
-        field = mock_object(name=rtype, role=role)
-        return form.form_field_vocabulary(field, limit)
-
     def unrelated_rql(self, rtype, targettype, role, ordermethod=None,
                       vocabconstraints=True):
         """build a rql to fetch `targettype` entities unrelated to this entity
-        using (rtype, role) relation
+        using (rtype, role) relation.
+
+        Consider relation permissions so that returned entities may be actually
+        linked by `rtype`.
         """
         ordermethod = ordermethod or 'fetch_unrelated_order'
         if isinstance(rtype, basestring):
-            rtype = self.schema.rschema(rtype)
+            rtype = self.req.vreg.schema.rschema(rtype)
         if role == 'subject':
             evar, searchedvar = 'S', 'O'
             subjtype, objtype = self.e_schema, targettype
@@ -745,8 +635,17 @@ class Entity(AppObject, dict):
             objtype, subjtype = self.e_schema, targettype
         if self.has_eid():
             restriction = ['NOT S %s O' % rtype, '%s eid %%(x)s' % evar]
+            args = {'x': self.eid}
+            if role == 'subject':
+                securitycheck_args = {'fromeid': self.eid}
+            else:
+                securitycheck_args = {'toeid': self.eid}
         else:
             restriction = []
+            args = {}
+            securitycheck_args = {}
+        insertsecurity = (rtype.has_local_role('add') and not
+                          rtype.has_perm(self.req, 'add', **securitycheck_args))
         constraints = rtype.rproperty(subjtype, objtype, 'constraints')
         if vocabconstraints:
             # RQLConstraint is a subclass for RQLVocabularyConstraint, so they
@@ -763,20 +662,29 @@ class Entity(AppObject, dict):
         if not ' ORDERBY ' in rql:
             before, after = rql.split(' WHERE ', 1)
             rql = '%s ORDERBY %s WHERE %s' % (before, searchedvar, after)
-        return rql
+        if insertsecurity:
+            rqlexprs = rtype.get_rqlexprs('add')
+            rewriter = RQLRewriter(self.req)
+            rqlst = self.req.vreg.parse(self.req, rql, args)
+            for select in rqlst.children:
+                rewriter.rewrite(select, [((searchedvar, searchedvar), rqlexprs)],
+                                 select.solutions, args)
+            rql = rqlst.as_string()
+        return rql, args
 
     def unrelated(self, rtype, targettype, role='subject', limit=None,
                   ordermethod=None):
         """return a result set of target type objects that may be related
         by a given relation, with self as subject or object
         """
-        rql = self.unrelated_rql(rtype, targettype, role, ordermethod)
+        try:
+            rql, args = self.unrelated_rql(rtype, targettype, role, ordermethod)
+        except Unauthorized:
+            return self.req.empty_rset()
         if limit is not None:
             before, after = rql.split(' WHERE ', 1)
             rql = '%s LIMIT %s WHERE %s' % (before, limit, after)
-        if self.has_eid():
-            return self.req.execute(rql, {'x': self.eid})
-        return self.req.execute(rql)
+        return self.req.execute(rql, args, tuple(args))
 
     # relations cache handling ################################################
 
@@ -801,7 +709,7 @@ class Entity(AppObject, dict):
         """set cached values for the given relation"""
         if rset:
             related = list(rset.entities(col))
-            rschema = self.schema.rschema(rtype)
+            rschema = self.req.vreg.schema.rschema(rtype)
             if role == 'subject':
                 rcard = rschema.rproperty(self.e_schema, related[0].e_schema,
                                           'cardinality')[1]
@@ -827,9 +735,14 @@ class Entity(AppObject, dict):
             assert role
             self._related_cache.pop('%s_%s' % (rtype, role), None)
 
+    def clear_all_caches(self):
+        self.clear()
+        for rschema, _, role in self.e_schema.relation_definitions():
+            self.clear_related_cache(rschema.type, role)
+
     # raw edition utilities ###################################################
 
-    def set_attributes(self, **kwargs):
+    def set_attributes(self, _cw_unsafe=False, **kwargs):
         assert kwargs
         relations = []
         for key in kwargs:
@@ -838,8 +751,12 @@ class Entity(AppObject, dict):
         self.update(kwargs)
         # and now update the database
         kwargs['x'] = self.eid
-        self.req.execute('SET %s WHERE X eid %%(x)s' % ','.join(relations),
-                         kwargs, 'x')
+        if _cw_unsafe:
+            self.req.unsafe_execute(
+                'SET %s WHERE X eid %%(x)s' % ','.join(relations), kwargs, 'x')
+        else:
+            self.req.execute('SET %s WHERE X eid %%(x)s' % ','.join(relations),
+                             kwargs, 'x')
 
     def delete(self):
         assert self.has_eid(), self.eid
@@ -923,6 +840,20 @@ class Entity(AppObject, dict):
                     words += entity.get_words()
         return words
 
+    @deprecated('[3.2] see new form api')
+    def vocabulary(self, rtype, role='subject', limit=None):
+        """vocabulary functions must return a list of couples
+        (label, eid) that will typically be used to fill the
+        edition view's combobox.
+
+        If `eid` is None in one of these couples, it should be
+        interpreted as a separator in case vocabulary results are grouped
+        """
+        from logilab.common.testlib import mock_object
+        form = self.vreg.select('forms', 'edition', self.req, entity=self)
+        field = mock_object(name=rtype, role=role)
+        return form.form_field_vocabulary(field, limit)
+
 
 # attribute and relation descriptors ##########################################
 
@@ -939,11 +870,9 @@ class Attribute(object):
         return eobj.get_value(self._attrname)
 
     def __set__(self, eobj, value):
-        # XXX bw compat
-        # would be better to generate UPDATE queries than the current behaviour
-        eobj.warning("deprecated usage, don't use 'entity.attr = val' notation)")
         eobj[self._attrname] = value
-
+        if hasattr(eobj, 'edited_attributes'):
+            eobj.edited_attributes.add(self._attrname)
 
 class Relation(object):
     """descriptor that controls schema relation access"""

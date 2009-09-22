@@ -9,9 +9,9 @@
 from socket import gethostname
 
 from logilab.common.testlib import unittest_main, TestCase
-from cubicweb.devtools.apptest import EnvBasedTC
+from cubicweb.devtools.testlib import CubicWebTC, MAILBOX
 
-from cubicweb.sobjects.notification import construct_message_id, parse_message_id
+from cubicweb.common.mail import construct_message_id, parse_message_id
 
 class MessageIdTC(TestCase):
     def test_base(self):
@@ -48,7 +48,7 @@ class MessageIdTC(TestCase):
             self.assertNotEquals(msgid1, '<@testapp.%s>' % gethostname())
 
 
-class RecipientsFinderTC(EnvBasedTC):
+class RecipientsFinderTC(CubicWebTC):
     def test(self):
         urset = self.execute('CWUser X WHERE X login "admin"')
         self.execute('INSERT EmailAddress X: X address "admin@logilab.fr", U primary_email X '
@@ -67,20 +67,17 @@ class RecipientsFinderTC(EnvBasedTC):
         self.assertEquals(finder.recipients(), [('abcd@logilab.fr', 'en'), ('efgh@logilab.fr', 'en')])
 
 
-class StatusChangeViewsTC(EnvBasedTC):
+class StatusChangeViewsTC(CubicWebTC):
 
     def test_status_change_view(self):
         req = self.session()
-        u = self.create_user('toto', req=req)
-        assert u.req
-        assert u.rset
-        self.execute('SET X in_state S WHERE X eid %s, S name "deactivated"' % u.eid)
-        v = self.vreg['views'].select('notif_status_change', req, rset=u.rset, row=0)
-        content = v.render(row=0, comment='yeah',
-                           previous_state='activated',
-                           current_state='deactivated')
-        # remove date
-        self.assertEquals(content,
+        u = self.create_user('toto', req=req, commit=False)
+        u.fire_transition('deactivate', comment=u'yeah')
+        self.failIf(MAILBOX)
+        self.commit()
+        self.assertEquals(len(MAILBOX), 1)
+        email = MAILBOX[0]
+        self.assertEquals(email.content,
                           '''
 admin changed status from <activated> to <deactivated> for entity
 'toto'
@@ -89,7 +86,7 @@ yeah
 
 url: http://testing.fr/cubicweb/cwuser/toto
 ''')
-        self.assertEquals(v.subject(), 'status changed cwuser #%s (admin)' % u.eid)
+        self.assertEquals(email.subject, 'status changed cwuser #%s (admin)' % u.eid)
 
 if __name__ == '__main__':
     unittest_main()

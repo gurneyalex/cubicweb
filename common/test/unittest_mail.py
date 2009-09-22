@@ -8,12 +8,12 @@
 """
 
 import os
-import pwd
+import sys
 
 from logilab.common.testlib import unittest_main
 from logilab.common.umessage import message_from_string
 
-from cubicweb.devtools.apptest import EnvBasedTC
+from cubicweb.devtools.testlib import CubicWebTC
 from cubicweb.common.mail import format_mail
 
 
@@ -22,10 +22,14 @@ def getlogin():
     (man 3 getlogin)
     Another solution would be to use $LOGNAME, $USER or $USERNAME
     """
-    return pwd.getpwuid(os.getuid())[0]
+    if sys.platform != 'win32':
+        import pwd
+        return pwd.getpwuid(os.getuid())[0]
+    else:
+        return os.environ.get('USERNAME')
 
 
-class EmailTC(EnvBasedTC):
+class EmailTC(CubicWebTC):
 
     def test_format_mail(self):
         self.set_option('sender-addr', 'bim@boum.fr')

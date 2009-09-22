@@ -12,7 +12,7 @@ from xml.etree.ElementTree import fromstring
 from logilab.common.testlib import unittest_main, mock_object
 
 from cubicweb import Binary
-from cubicweb.devtools.testlib import WebTest
+from cubicweb.devtools.testlib import CubicWebTC
 from cubicweb.web.formfields import (IntField, StringField, RichTextField,
                                      DateTimeField, DateTimePicker,
                                      FileField, EditableFileField)
@@ -22,7 +22,7 @@ from cubicweb.web.views.workflow import ChangeStateForm
 from cubicweb.web.views.formrenderers import FormRenderer
 
 
-class FieldsFormTC(WebTest):
+class FieldsFormTC(CubicWebTC):
 
     def test_form_field_format(self):
         form = FieldsForm(self.request(), None)
@@ -32,7 +32,7 @@ class FieldsFormTC(WebTest):
         self.assertEquals(form.form_field_format(None), 'text/rest')
 
 
-class EntityFieldsFormTC(WebTest):
+class EntityFieldsFormTC(CubicWebTC):
 
     def setUp(self):
         super(EntityFieldsFormTC, self).setUp()
@@ -54,29 +54,30 @@ class EntityFieldsFormTC(WebTest):
         unrelated = [reid for rview, reid in form2.object_relation_vocabulary('tags')]
         self.failIf(t.eid in unrelated, unrelated)
 
+
     def test_form_field_vocabulary_new_entity(self):
-        e = self.etype_instance('CWUser')
-        form = EntityFieldsForm(self.request(), None, entity=e)
+        e = self.vreg['etypes'].etype_class('CWUser')(self.request())
+        form = EntityFieldsForm(e.req, None, entity=e)
         unrelated = [rview for rview, reid in form.subject_relation_vocabulary('in_group')]
         # should be default groups but owners, i.e. managers, users, guests
         self.assertEquals(unrelated, [u'guests', u'managers', u'users'])
 
-    def test_subject_in_state_vocabulary(self):
-        # on a new entity
-        e = self.etype_instance('CWUser')
-        form = EntityFieldsForm(self.request(), None, entity=e)
-        states = list(form.subject_in_state_vocabulary('in_state'))
-        self.assertEquals(len(states), 1)
-        self.assertEquals(states[0][0], u'activated') # list of (combobox view, state eid)
-        # on an existant entity
-        e = self.user()
-        form = EntityFieldsForm(self.request(), None, entity=e)
-        states = list(form.subject_in_state_vocabulary('in_state'))
-        self.assertEquals(len(states), 1)
-        self.assertEquals(states[0][0], u'deactivated') # list of (combobox view, state eid)
+    # def test_subject_in_state_vocabulary(self):
+    #     # on a new entity
+    #     e = self.etype_instance('CWUser')
+    #     form = EntityFieldsForm(self.request(), None, entity=e)
+    #     states = list(form.subject_in_state_vocabulary('in_state'))
+    #     self.assertEquals(len(states), 1)
+    #     self.assertEquals(states[0][0], u'activated') # list of (combobox view, state eid)
+    #     # on an existant entity
+    #     e = self.user()
+    #     form = EntityFieldsForm(self.request(), None, entity=e)
+    #     states = list(form.subject_in_state_vocabulary('in_state'))
+    #     self.assertEquals(len(states), 1)
+    #     self.assertEquals(states[0][0], u'deactivated') # list of (combobox view, state eid)
 
     def test_consider_req_form_params(self):
-        e = self.etype_instance('CWUser')
+        e = self.vreg['etypes'].etype_class('CWUser')(self.request())
         e.eid = 'A'
         form = EntityFieldsForm(self.request(login=u'toto'), None, entity=e)
         field = StringField(name='login', eidparam=True)
@@ -86,7 +87,7 @@ class EntityFieldsFormTC(WebTest):
 
 
     def test_linkto_field_duplication(self):
-        e = self.etype_instance('CWUser')
+        e = self.vreg['etypes'].etype_class('CWUser')(self.request())
         e.eid = 'A'
         e.req = self.req
         geid = self.execute('CWGroup X WHERE X name "users"')[0][0]
@@ -124,12 +125,14 @@ class EntityFieldsFormTC(WebTest):
             creation_date = DateTimeField(widget=DateTimePicker)
         form = CustomChangeStateForm(self.req, redirect_path='perdu.com',
                                      entity=self.entity)
-        form.form_render(state=123, trcomment=u'')
+        form.form_render(state=123, trcomment=u'',
+                         trcomment_format=u'text/plain')
 
     def test_change_state_form(self):
         form = ChangeStateForm(self.req, redirect_path='perdu.com',
                                entity=self.entity)
-        form.form_render(state=123, trcomment=u'')
+        form.form_render(state=123, trcomment=u'',
+                         trcomment_format=u'text/plain')
 
     # fields tests ############################################################
 
@@ -141,7 +144,7 @@ class EntityFieldsFormTC(WebTest):
     def _test_richtextfield(self, expected):
         class RTFForm(EntityFieldsForm):
             description = RichTextField()
-        state = self.execute('State X WHERE X name "activated", X state_of ET, ET name "CWUser"').get_entity(0, 0)
+        state = self.execute('State X WHERE X name "activated", X state_of WF, WF workflow_of ET, ET name "CWUser"').get_entity(0, 0)
         form = RTFForm(self.req, redirect_path='perdu.com', entity=state)
         # make it think it can use fck editor anyway
         form.form_field_format = lambda x: 'text/html'
@@ -161,7 +164,7 @@ class EntityFieldsFormTC(WebTest):
 
     def test_richtextfield_2(self):
         self.req.use_fckeditor = lambda: True
-        self._test_richtextfield('<input name="description_format:%(eid)s" style="display: block" type="hidden" value="text/rest" /><textarea cols="80" cubicweb:type="wysiwyg" id="description:%(eid)s" name="description:%(eid)s" onkeyup="autogrow(this)" rows="2" tabindex="1"></textarea>')
+        self._test_richtextfield('<input name="description_format:%(eid)s" type="hidden" value="text/rest" /><textarea cols="80" cubicweb:type="wysiwyg" id="description:%(eid)s" name="description:%(eid)s" onkeyup="autogrow(this)" rows="2" tabindex="1"></textarea>')
 
 
     def test_filefield(self):
@@ -217,7 +220,7 @@ detach attached file
                               '''<input id="upassword:%(eid)s" name="upassword:%(eid)s" tabindex="1" type="password" value="__cubicweb_internal_field__" />
 <br/>
 <input name="upassword-confirm:%(eid)s" tabindex="1" type="password" value="__cubicweb_internal_field__" />
-&nbsp;
+&#160;
 <span class="emphasis">confirm password</span>''' % {'eid': self.entity.eid})
 
 

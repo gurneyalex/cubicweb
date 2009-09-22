@@ -163,7 +163,6 @@ WHERE X.cw_prenom=lulu AND NOT EXISTS(SELECT 1 FROM owned_by_relation AS rel_own
 ]
 
 ADVANCED= [
-
     ("Societe S WHERE S nom 'Logilab' OR S nom 'Caesium'",
      '''SELECT S.cw_eid
 FROM cw_Societe AS S
@@ -339,6 +338,9 @@ WHERE X.cw_login=admin'''),
 
     ('Any XN ORDERBY XN WHERE X name XN',
      '''SELECT X.cw_name
+FROM cw_BaseTransition AS X
+UNION ALL
+SELECT X.cw_name
 FROM cw_Basket AS X
 UNION ALL
 SELECT X.cw_name
@@ -376,14 +378,15 @@ FROM cw_Tag AS X
 UNION ALL
 SELECT X.cw_name
 FROM cw_Transition AS X
+UNION ALL
+SELECT X.cw_name
+FROM cw_Workflow AS X
+UNION ALL
+SELECT X.cw_name
+FROM cw_WorkflowTransition AS X
 ORDER BY 1'''),
 
-#    ('Any XN WHERE X name XN GROUPBY XN',
-#     ''''''),
-#    ('Any XN, COUNT(X) WHERE X name XN GROUPBY XN',
-#     ''''''),
-
-    # DISTINCT, can use relatin under exists scope as principal
+    # DISTINCT, can use relation under exists scope as principal
     ('DISTINCT Any X,Y WHERE X name "CWGroup", Y eid IN(1, 2, 3), EXISTS(X read_permission Y)',
      '''SELECT DISTINCT X.cw_eid, rel_read_permission0.eid_to
 FROM cw_CWEType AS X, read_permission_relation AS rel_read_permission0
@@ -467,6 +470,9 @@ WHERE X.cw_name=CWGroup AND Y.cw_eid IN(1, 2, 3) AND NOT EXISTS(SELECT 1 FROM re
 
     ('Any MAX(X)+MIN(X), N GROUPBY N WHERE X name N;',
      '''SELECT (MAX(T1.C0) + MIN(T1.C0)), T1.C1 FROM (SELECT X.cw_eid AS C0, X.cw_name AS C1
+FROM cw_BaseTransition AS X
+UNION ALL
+SELECT X.cw_eid AS C0, X.cw_name AS C1
 FROM cw_Basket AS X
 UNION ALL
 SELECT X.cw_eid AS C0, X.cw_name AS C1
@@ -503,7 +509,13 @@ SELECT X.cw_eid AS C0, X.cw_name AS C1
 FROM cw_Tag AS X
 UNION ALL
 SELECT X.cw_eid AS C0, X.cw_name AS C1
-FROM cw_Transition AS X) AS T1
+FROM cw_Transition AS X
+UNION ALL
+SELECT X.cw_eid AS C0, X.cw_name AS C1
+FROM cw_Workflow AS X
+UNION ALL
+SELECT X.cw_eid AS C0, X.cw_name AS C1
+FROM cw_WorkflowTransition AS X) AS T1
 GROUP BY T1.C1'''),
 
     ('Any MAX(X)+MIN(LENGTH(D)), N GROUPBY N ORDERBY 1, N, DF WHERE X name N, X data D, X data_format DF;',
@@ -629,6 +641,13 @@ FROM cw_Note AS X, cw_State AS S
 WHERE X.cw_in_state=S.cw_eid
 ORDER BY 2) AS T1'''),
 
+    ('Any O,AA,AB,AC ORDERBY AC DESC '
+     'WHERE NOT S use_email O, S eid 1, O is EmailAddress, O address AA, O alias AB, O modification_date AC, '
+     'EXISTS(A use_email O, EXISTS(A identity B, NOT B in_group D, D name "guests", D is CWGroup), A is CWUser), B eid 2',
+     '''SELECT O.cw_eid, O.cw_address, O.cw_alias, O.cw_modification_date
+FROM cw_EmailAddress AS O
+WHERE NOT EXISTS(SELECT 1 FROM use_email_relation AS rel_use_email0 WHERE rel_use_email0.eid_from=1 AND rel_use_email0.eid_to=O.cw_eid) AND EXISTS(SELECT 1 FROM use_email_relation AS rel_use_email1 WHERE rel_use_email1.eid_to=O.cw_eid AND EXISTS(SELECT 1 FROM cw_CWGroup AS D WHERE rel_use_email1.eid_from=2 AND NOT EXISTS(SELECT 1 FROM in_group_relation AS rel_in_group2 WHERE rel_in_group2.eid_from=2 AND rel_in_group2.eid_to=D.cw_eid) AND D.cw_name=guests))
+ORDER BY 4 DESC'''),
     ]
 
 MULTIPLE_SEL = [
@@ -760,14 +779,10 @@ OUTER_JOIN = [
     ('Any X,S WHERE X travaille S?',
      '''SELECT X.cw_eid, rel_travaille0.eid_to
 FROM cw_Personne AS X LEFT OUTER JOIN travaille_relation AS rel_travaille0 ON (rel_travaille0.eid_from=X.cw_eid)'''
-#SELECT X.cw_eid, S.cw_eid
-#FROM cw_Personne AS X LEFT OUTER JOIN travaille_relation AS rel_travaille0 ON (rel_travaille0.eid_from=X.cw_eid) LEFT OUTER JOIN cw_Societe AS S ON (rel_travaille0.eid_to=S.cw_eid)'''
     ),
     ('Any S,X WHERE X? travaille S, S is Societe',
      '''SELECT S.cw_eid, rel_travaille0.eid_from
 FROM cw_Societe AS S LEFT OUTER JOIN travaille_relation AS rel_travaille0 ON (rel_travaille0.eid_to=S.cw_eid)'''
-#SELECT S.cw_eid, X.cw_eid
-#FROM cw_Societe AS S LEFT OUTER JOIN travaille_relation AS rel_travaille0 ON (rel_travaille0.eid_to=S.cw_eid) LEFT OUTER JOIN cw_Personne AS X ON (rel_travaille0.eid_from=X.cw_eid)'''
     ),
 
     ('Any N,A WHERE N inline1 A?',
@@ -803,8 +818,6 @@ WHERE EXISTS(SELECT 1 FROM owned_by_relation AS rel_owned_by0, cw_CWUser AS U, c
     ('Any C,M WHERE C travaille G?, G evaluee M?, G is Societe',
      '''SELECT C.cw_eid, rel_evaluee1.eid_to
 FROM cw_Personne AS C LEFT OUTER JOIN travaille_relation AS rel_travaille0 ON (rel_travaille0.eid_from=C.cw_eid) LEFT OUTER JOIN cw_Societe AS G ON (rel_travaille0.eid_to=G.cw_eid) LEFT OUTER JOIN evaluee_relation AS rel_evaluee1 ON (rel_evaluee1.eid_from=G.cw_eid)'''
-#SELECT C.cw_eid, M.cw_eid
-#FROM cw_Personne AS C LEFT OUTER JOIN travaille_relation AS rel_travaille0 ON (rel_travaille0.eid_from=C.cw_eid) LEFT OUTER JOIN cw_Societe AS G ON (rel_travaille0.eid_to=G.cw_eid) LEFT OUTER JOIN evaluee_relation AS rel_evaluee1 ON (rel_evaluee1.eid_from=G.cw_eid) LEFT OUTER JOIN cw_Note AS M ON (rel_evaluee1.eid_to=M.cw_eid)'''
      ),
 
     ('Any A,C WHERE A documented_by C?, (C is NULL) OR (EXISTS(C require_permission F, '
@@ -817,9 +830,6 @@ WHERE ((rel_documented_by0.eid_to IS NULL) OR (EXISTS(SELECT 1 FROM require_perm
      '''SELECT X.cw_eid
 FROM cw_Personne AS X LEFT OUTER JOIN connait_relation AS rel_connait0 ON (rel_connait0.eid_to=12)
 WHERE X.cw_eid=12'''
-#SELECT 12
-#FROM cw_Personne AS X LEFT OUTER JOIN connait_relation AS rel_connait0 ON (rel_connait0.eid_to=12) LEFT OUTER JOIN Personne AS P ON (rel_connait0.eid_from=P.cw_eid)
-#WHERE X.cw_eid=12'''
     ),
 
     ('Any GN, TN ORDERBY GN WHERE T tags G?, T name TN, G name GN',
@@ -880,14 +890,18 @@ FROM cw_Tag AS T LEFT OUTER JOIN tags_relation AS rel_tags0 ON (rel_tags0.eid_fr
      '''
 SELECT T.cw_eid, _T0.C0, _T0.C1
 FROM cw_Tag AS T LEFT OUTER JOIN tags_relation AS rel_tags0 ON (rel_tags0.eid_from=T.cw_eid) LEFT OUTER JOIN (SELECT G.cw_eid AS C0, S.cw_eid AS C1
-FROM cw_Affaire AS G LEFT OUTER JOIN cw_State AS S ON (G.cw_in_state=S.cw_eid AND S.cw_name=hop) 
+FROM cw_Affaire AS G LEFT OUTER JOIN cw_State AS S ON (G.cw_in_state=S.cw_eid AND S.cw_name=hop)
 UNION ALL
 SELECT G.cw_eid AS C0, S.cw_eid AS C1
-FROM cw_CWUser AS G LEFT OUTER JOIN cw_State AS S ON (G.cw_in_state=S.cw_eid AND S.cw_name=hop) 
+FROM cw_CWUser AS G LEFT OUTER JOIN cw_State AS S ON (G.cw_in_state=S.cw_eid AND S.cw_name=hop)
 UNION ALL
 SELECT G.cw_eid AS C0, S.cw_eid AS C1
 FROM cw_Note AS G LEFT OUTER JOIN cw_State AS S ON (G.cw_in_state=S.cw_eid AND S.cw_name=hop) ) AS _T0 ON (rel_tags0.eid_to=_T0.C0)'''),
 
+    ('Any O,AD  WHERE NOT S inline1 O, S eid 123, O todo_by AD?',
+     '''SELECT O.cw_eid, rel_todo_by0.eid_to
+FROM cw_Affaire AS O LEFT OUTER JOIN todo_by_relation AS rel_todo_by0 ON (rel_todo_by0.eid_from=O.cw_eid), cw_Note AS S
+WHERE NOT EXISTS(SELECT 1 WHERE S.cw_inline1=O.cw_eid) AND S.cw_eid=123''')
     ]
 
 VIRTUAL_VARS = [
@@ -949,10 +963,6 @@ FUNCS = [
     ("Any COUNT(P) WHERE P is Personne",
      '''SELECT COUNT(P.cw_eid)
 FROM cw_Personne AS P'''),
-##     ("Personne X where X nom upper('TOTO')",
-##      '''SELECT X.cw_eid\nFROM cw_Personne AS X\nWHERE UPPER(X.cw_nom) = TOTO'''),
-##     ("Personne X where X nom Y, UPPER(X) prenom upper(Y)",
-##      '''SELECT X.cw_eid\nFROM cw_Personne AS X\nWHERE UPPER(X.cw_prenom) = UPPER(X.cw_nom)'''),
     ]
 
 SYMETRIC = [
@@ -960,13 +970,6 @@ SYMETRIC = [
      '''SELECT DISTINCT P.cw_eid
 FROM connait_relation AS rel_connait0, cw_Personne AS P
 WHERE (rel_connait0.eid_from=0 AND rel_connait0.eid_to=P.cw_eid OR rel_connait0.eid_to=0 AND rel_connait0.eid_from=P.cw_eid)'''
-#      '''SELECT rel_connait0.eid_to
-# FROM connait_relation AS rel_connait0
-# WHERE rel_connait0.eid_from=0
-# UNION
-# SELECT rel_connait0.eid_from
-# FROM connait_relation AS rel_connait0
-# WHERE rel_connait0.eid_to=0'''
      ),
 
     ('Any P WHERE X connait P',
@@ -1050,8 +1053,9 @@ WHERE NOT EXISTS(SELECT 1 WHERE N.cw_ecrit_par=P.cw_eid) AND N.cw_eid=512'''),
 
     ('Any S,ES,T WHERE S state_of ET, ET name "CWUser", ES allowed_transition T, T destination_state S',
      '''SELECT T.cw_destination_state, rel_allowed_transition1.eid_from, T.cw_eid
-FROM allowed_transition_relation AS rel_allowed_transition1, cw_CWEType AS ET, cw_Transition AS T, state_of_relation AS rel_state_of0
+FROM allowed_transition_relation AS rel_allowed_transition1, cw_Transition AS T, cw_Workflow AS ET, state_of_relation AS rel_state_of0
 WHERE T.cw_destination_state=rel_state_of0.eid_from AND rel_state_of0.eid_to=ET.cw_eid AND ET.cw_name=CWUser AND rel_allowed_transition1.eid_to=T.cw_eid'''),
+
     ('Any O WHERE S eid 0, S in_state O',
      '''SELECT S.cw_in_state
 FROM cw_Affaire AS S
@@ -1120,6 +1124,32 @@ WHERE rel_is0.eid_to=2'''),
     ]
 from logilab.common.adbh import ADV_FUNC_HELPER_DIRECTORY
 
+class CWRQLTC(RQLGeneratorTC):
+    schema = schema
+
+    def test_nonregr_sol(self):
+        delete = self.rqlhelper.parse(
+            'DELETE X read_permission READ_PERMISSIONSUBJECT,X add_permission ADD_PERMISSIONSUBJECT,'
+            'X in_basket IN_BASKETSUBJECT,X delete_permission DELETE_PERMISSIONSUBJECT,'
+            'X update_permission UPDATE_PERMISSIONSUBJECT,'
+            'X created_by CREATED_BYSUBJECT,X is ISSUBJECT,X is_instance_of IS_INSTANCE_OFSUBJECT,'
+            'X owned_by OWNED_BYSUBJECT,X specializes SPECIALIZESSUBJECT,ISOBJECT is X,'
+            'SPECIALIZESOBJECT specializes X,IS_INSTANCE_OFOBJECT is_instance_of X,'
+            'TO_ENTITYOBJECT to_entity X,FROM_ENTITYOBJECT from_entity X '
+            'WHERE X is CWEType')
+        self.rqlhelper.compute_solutions(delete)
+        def var_sols(var):
+            s = set()
+            for sol in delete.solutions:
+                s.add(sol.get(var))
+            return s
+        self.assertEquals(var_sols('FROM_ENTITYOBJECT'), set(('CWAttribute', 'CWRelation')))
+        self.assertEquals(var_sols('FROM_ENTITYOBJECT'), delete.defined_vars['FROM_ENTITYOBJECT'].stinfo['possibletypes'])
+        self.assertEquals(var_sols('ISOBJECT'),
+                          set(x.type for x in self.schema.entities() if not x.is_final()))
+        self.assertEquals(var_sols('ISOBJECT'), delete.defined_vars['ISOBJECT'].stinfo['possibletypes'])
+
+
 class PostgresSQLGeneratorTC(RQLGeneratorTC):
     schema = schema
 
@@ -1145,7 +1175,7 @@ class PostgresSQLGeneratorTC(RQLGeneratorTC):
             r, nargs = self.o.generate(union, args,
                                       varmap=varmap)
             args.update(nargs)
-            self.assertLinesEquals((r % args).strip(), self._norm_sql(sql))
+            self.assertLinesEquals((r % args).strip(), self._norm_sql(sql), striplines=True)
         except Exception, ex:
             if 'r' in locals():
                 try:
@@ -1174,14 +1204,6 @@ class PostgresSQLGeneratorTC(RQLGeneratorTC):
                 print sql[0].strip()
             raise
         return
-#         rqlst, solutions = self._prepare(rql)
-#         for i, sol in enumerate(solutions):
-#             try:
-#                 r, args = self.o.generate([(rqlst, sol)])
-#                 self.assertEqual((r.strip(), args), sqls[i])
-#             except Exception, ex:
-#                 print rql
-#                 raise
 
     def test1(self):
         self._checkall('Any count(RDEF) WHERE RDEF relation_type X, X eid %(x)s',
@@ -1382,7 +1404,7 @@ WHERE appears0.words @@ to_tsquery('default', 'toto&tata') AND appears0.uid=X.ei
 FROM appears AS appears0, entities AS X
 WHERE appears0.words @@ to_tsquery('default', 'hip&hop&momo') AND appears0.uid=X.eid AND X.type='Personne'"""),
 
-            ('Any X WHERE X has_text "toto tata", X name "tutu"',
+            ('Any X WHERE X has_text "toto tata", X name "tutu", X is IN (Basket,File,Folder)',
              """SELECT X.cw_eid
 FROM appears AS appears0, cw_Basket AS X
 WHERE appears0.words @@ to_tsquery('default', 'toto&tata') AND appears0.uid=X.cw_eid AND X.cw_name=tutu
@@ -1394,22 +1416,7 @@ UNION ALL
 SELECT X.cw_eid
 FROM appears AS appears0, cw_Folder AS X
 WHERE appears0.words @@ to_tsquery('default', 'toto&tata') AND appears0.uid=X.cw_eid AND X.cw_name=tutu
-UNION ALL
-SELECT X.cw_eid
-FROM appears AS appears0, cw_Image AS X
-WHERE appears0.words @@ to_tsquery('default', 'toto&tata') AND appears0.uid=X.cw_eid AND X.cw_name=tutu
-UNION ALL
-SELECT X.cw_eid
-FROM appears AS appears0, cw_State AS X
-WHERE appears0.words @@ to_tsquery('default', 'toto&tata') AND appears0.uid=X.cw_eid AND X.cw_name=tutu
-UNION ALL
-SELECT X.cw_eid
-FROM appears AS appears0, cw_Tag AS X
-WHERE appears0.words @@ to_tsquery('default', 'toto&tata') AND appears0.uid=X.cw_eid AND X.cw_name=tutu
-UNION ALL
-SELECT X.cw_eid
-FROM appears AS appears0, cw_Transition AS X
-WHERE appears0.words @@ to_tsquery('default', 'toto&tata') AND appears0.uid=X.cw_eid AND X.cw_name=tutu"""),
+"""),
 
             ('Personne X where X has_text %(text)s, X travaille S, S has_text %(text)s',
              """SELECT X.eid
@@ -1546,7 +1553,7 @@ WHERE appears0.word_id IN (SELECT word_id FROM word WHERE word in ('hip', 'hop',
 FROM appears AS appears0, entities AS X
 WHERE appears0.word_id IN (SELECT word_id FROM word WHERE word in ('toto', 'tata')) AND appears0.uid=X.eid AND X.type='Personne'"""),
 
-            ('Any X WHERE X has_text "toto tata", X name "tutu"',
+            ('Any X WHERE X has_text "toto tata", X name "tutu", X is IN (Basket,File,Folder)',
              """SELECT X.cw_eid
 FROM appears AS appears0, cw_Basket AS X
 WHERE appears0.word_id IN (SELECT word_id FROM word WHERE word in ('toto', 'tata')) AND appears0.uid=X.cw_eid AND X.cw_name=tutu
@@ -1558,22 +1565,7 @@ UNION ALL
 SELECT X.cw_eid
 FROM appears AS appears0, cw_Folder AS X
 WHERE appears0.word_id IN (SELECT word_id FROM word WHERE word in ('toto', 'tata')) AND appears0.uid=X.cw_eid AND X.cw_name=tutu
-UNION ALL
-SELECT X.cw_eid
-FROM appears AS appears0, cw_Image AS X
-WHERE appears0.word_id IN (SELECT word_id FROM word WHERE word in ('toto', 'tata')) AND appears0.uid=X.cw_eid AND X.cw_name=tutu
-UNION ALL
-SELECT X.cw_eid
-FROM appears AS appears0, cw_State AS X
-WHERE appears0.word_id IN (SELECT word_id FROM word WHERE word in ('toto', 'tata')) AND appears0.uid=X.cw_eid AND X.cw_name=tutu
-UNION ALL
-SELECT X.cw_eid
-FROM appears AS appears0, cw_Tag AS X
-WHERE appears0.word_id IN (SELECT word_id FROM word WHERE word in ('toto', 'tata')) AND appears0.uid=X.cw_eid AND X.cw_name=tutu
-UNION ALL
-SELECT X.cw_eid
-FROM appears AS appears0, cw_Transition AS X
-WHERE appears0.word_id IN (SELECT word_id FROM word WHERE word in ('toto', 'tata')) AND appears0.uid=X.cw_eid AND X.cw_name=tutu"""),
+"""),
             )):
             yield t
 
@@ -1622,7 +1614,7 @@ WHERE MATCH (appears0.words) AGAINST ('toto tata' IN BOOLEAN MODE) AND appears0.
              """SELECT X.eid
 FROM appears AS appears0, entities AS X
 WHERE MATCH (appears0.words) AGAINST ('hip hop momo' IN BOOLEAN MODE) AND appears0.uid=X.eid AND X.type='Personne'"""),
-            ('Any X WHERE X has_text "toto tata", X name "tutu"',
+            ('Any X WHERE X has_text "toto tata", X name "tutu", X is IN (Basket,File,Folder)',
              """SELECT X.cw_eid
 FROM appears AS appears0, cw_Basket AS X
 WHERE MATCH (appears0.words) AGAINST ('toto tata' IN BOOLEAN MODE) AND appears0.uid=X.cw_eid AND X.cw_name=tutu
@@ -1634,22 +1626,7 @@ UNION ALL
 SELECT X.cw_eid
 FROM appears AS appears0, cw_Folder AS X
 WHERE MATCH (appears0.words) AGAINST ('toto tata' IN BOOLEAN MODE) AND appears0.uid=X.cw_eid AND X.cw_name=tutu
-UNION ALL
-SELECT X.cw_eid
-FROM appears AS appears0, cw_Image AS X
-WHERE MATCH (appears0.words) AGAINST ('toto tata' IN BOOLEAN MODE) AND appears0.uid=X.cw_eid AND X.cw_name=tutu
-UNION ALL
-SELECT X.cw_eid
-FROM appears AS appears0, cw_State AS X
-WHERE MATCH (appears0.words) AGAINST ('toto tata' IN BOOLEAN MODE) AND appears0.uid=X.cw_eid AND X.cw_name=tutu
-UNION ALL
-SELECT X.cw_eid
-FROM appears AS appears0, cw_Tag AS X
-WHERE MATCH (appears0.words) AGAINST ('toto tata' IN BOOLEAN MODE) AND appears0.uid=X.cw_eid AND X.cw_name=tutu
-UNION ALL
-SELECT X.cw_eid
-FROM appears AS appears0, cw_Transition AS X
-WHERE MATCH (appears0.words) AGAINST ('toto tata' IN BOOLEAN MODE) AND appears0.uid=X.cw_eid AND X.cw_name=tutu""")
+""")
             ]
         for t in self._parse(queries):
             yield t

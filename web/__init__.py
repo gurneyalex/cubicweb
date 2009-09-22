@@ -13,10 +13,10 @@ _ = unicode
 from decimal import Decimal
 from datetime import datetime, date, timedelta
 from simplejson import dumps
+from urllib import quote as urlquote
 
 from logilab.common.deprecation import deprecated
 
-from cubicweb.common.uilib import urlquote
 from cubicweb.web._exceptions import *
 
 
@@ -65,7 +65,7 @@ def jsonize(function):
         return json_dumps(function(*args, **kwargs))
     return newfunc
 
-@deprecated('use req.build_ajax_replace_url() instead')
+@deprecated('[3.4] use req.build_ajax_replace_url() instead')
 def ajax_replace_url(nodeid, rql, vid=None, swap=False, **extraparams):
     """builds a replacePageChunk-like url
     >>> ajax_replace_url('foo', 'Person P')

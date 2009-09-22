@@ -16,7 +16,6 @@ from cubicweb.web import stdmsgs, httpcache, formfields
 class FormViewMixIn(object):
     """abstract form view mix-in"""
     category = 'form'
-    controller = 'edit'
     http_cache_manager = httpcache.NoHTTPCacheManager
     add_to_breadcrumbs = False
 
@@ -48,7 +47,7 @@ class FormMixIn(object):
         return '%s#%s' % (self.req.url(), self.domid)
 
     def __init__(self, req, rset, **kwargs):
-        super(FormMixIn, self).__init__(req, rset, **kwargs)
+        super(FormMixIn, self).__init__(req, rset=rset, **kwargs)
         self.restore_previous_post(self.session_key())
 
     def restore_previous_post(self, sessionkey):
@@ -79,7 +78,6 @@ class FormMixIn(object):
 
     domid = 'entityForm'
     category = 'form'
-    controller = 'edit'
     http_cache_manager = httpcache.NoHTTPCacheManager
     add_to_breadcrumbs = False
 
@@ -164,7 +162,7 @@ class FormMixIn(object):
                 if len(errors) > 1:
                     templstr = '<li>%s</li>\n'
                 else:
-                    templstr = '&nbsp;%s\n'
+                    templstr = '&#160;%s\n'
                 for field, err in errors:
                     if field is None:
                         errormsg += templstr % err

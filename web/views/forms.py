@@ -77,14 +77,15 @@ class FieldsForm(form.Form):
     def __init__(self, req, rset=None, row=None, col=None,
                  submitmsg=None, mainform=True,
                  **kwargs):
-        super(FieldsForm, self).__init__(req, rset, row=row, col=col)
+        super(FieldsForm, self).__init__(req, rset=rset, row=row, col=col)
         self.fields = list(self.__class__._fields_)
         for key, val in kwargs.items():
             if key in NAV_FORM_PARAMETERS:
                 self.form_add_hidden(key, val)
-            else:
-                assert hasattr(self.__class__, key) and not key[0] == '_', key
+            elif hasattr(self.__class__, key) and not key[0] == '_':
                 setattr(self, key, val)
+            # skip other parameters, usually given for selection
+            # (else write a custom class to handle them)
         if mainform:
             self.form_add_hidden('__errorurl', self.session_key())
             self.form_add_hidden('__domid', self.domid)
@@ -546,26 +547,8 @@ class EntityFieldsForm(FieldsForm):
                 break
         return result
 
-    def subject_in_state_vocabulary(self, rtype, limit=None):
-        """vocabulary method for the in_state relation, looking for relation's
-        object entities (i.e. self is the subject) according to initial_state,
-        state_of and next_state relation
-        """
-        entity = self.edited_entity
-        if not entity.has_eid() or not entity.in_state:
-            # get the initial state
-            rql = 'Any S where S state_of ET, ET name %(etype)s, ET initial_state S'
-            rset = self.req.execute(rql, {'etype': str(entity.e_schema)})
-            if rset:
-                return [(rset.get_entity(0, 0).view('combobox'), rset[0][0])]
-            return []
-        results = []
-        for tr in entity.in_state[0].transitions(entity):
-            state = tr.destination_state[0]
-            results.append((state.view('combobox'), state.eid))
-        return sorted(results)
-
-    def srelations_by_category(self, categories=None, permission=None):
+    def srelations_by_category(self, categories=None, permission=None,
+                               strict=False):
         return ()
 
     def should_display_add_new_relation_link(self, rschema, existant, card):
@@ -573,12 +556,27 @@ class EntityFieldsForm(FieldsForm):
 
 
 class CompositeForm(FieldsForm):
-    """form composed for sub-forms"""
+    """form composed of sub-forms"""
     id = 'composite'
     form_renderer_id = id
 
     def __init__(self, *args, **kwargs):
         super(CompositeForm, self).__init__(*args, **kwargs)
+        self.forms = []
+
+    def form_add_subform(self, subform):
+        """mark given form as a subform and append it"""
+        subform.is_subform = True
+        self.forms.append(subform)
+
+
+class CompositeEntityForm(EntityFieldsForm):
+    """form composed of sub-forms"""
+    id = 'composite'
+    form_renderer_id = id
+
+    def __init__(self, *args, **kwargs):
+        super(CompositeEntityForm, self).__init__(*args, **kwargs)
         self.forms = []
 
     def form_add_subform(self, subform):

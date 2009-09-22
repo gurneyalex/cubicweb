@@ -22,6 +22,22 @@ from cubicweb.web.formwidgets import (
     Radio, Select, DateTimePicker)
 
 
+def vocab_sort(vocab):
+    """sort vocabulary, considering option groups"""
+    result = []
+    partresult = []
+    for label, value in vocab:
+        if value is None: # opt group start
+            if partresult:
+                result += sorted(partresult)
+                partresult = []
+            result.append( (label, value) )
+        else:
+            partresult.append( (label, value) )
+    result += sorted(partresult)
+    return result
+
+
 class Field(object):
     """field class is introduced to control what's displayed in forms. It makes
     the link between something to edit and its display in the form. Actual
@@ -189,7 +205,7 @@ class Field(object):
         if self.internationalizable:
             vocab = [(form.req._(label), value) for label, value in vocab]
         if self.sort:
-            vocab = sorted(vocab)
+            vocab = vocab_sort(vocab)
         return vocab
 
     def form_init(self, form):
@@ -272,7 +288,7 @@ class RichTextField(StringField):
         try:
             return req.data[self]
         except KeyError:
-            fkwargs = {}
+            fkwargs = {'eidparam': self.eidparam}
             if self.use_fckeditor(form):
                 # if fckeditor is used and format field isn't explicitly
                 # deactivated, we want an hidden field for the format
@@ -282,7 +298,7 @@ class RichTextField(StringField):
                 # else we want a format selector
                 fkwargs['widget'] = Select()
                 fcstr = FormatConstraint()
-                fkwargs['choices'] = fcstr.vocabulary(req=req)
+                fkwargs['choices'] = fcstr.vocabulary(form=form)
                 fkwargs['internationalizable'] = True
                 fkwargs['initial'] = lambda f: f.form_field_format(self)
             fkwargs['eidparam'] = self.eidparam
@@ -308,7 +324,8 @@ class RichTextField(StringField):
         format_field = self.get_format_field(form)
         if format_field:
             # XXX we want both fields to remain vertically aligned
-            format_field.widget.attrs['style'] = 'display: block'
+            if format_field.is_visible():
+                format_field.widget.attrs['style'] = 'display: block'
             result = format_field.render(form, renderer)
         else:
             result = u''
@@ -499,9 +516,16 @@ class TimeField(DateField):
         return time
 
 class RelationField(Field):
-    def __init__(self, **kwargs):
-        kwargs.setdefault('sort', False)
-        super(RelationField, self).__init__(**kwargs)
+    # XXX (syt): iirc, we originaly don't sort relation vocabulary since we want
+    # to let entity.unrelated_rql control this, usually to get most recently
+    # modified entities in the select box instead of by alphabetical order. Now,
+    # we first use unrelated_rql to get the vocabulary, which may be limited
+    # (hence we get the latest modified entities) and we can sort here for
+    # better readability
+    #
+    # def __init__(self, **kwargs):
+    #     kwargs.setdefault('sort', False)
+    #     super(RelationField, self).__init__(**kwargs)
 
     @staticmethod
     def fromcardinality(card, **kwargs):
@@ -528,7 +552,7 @@ class RelationField(Field):
             relatedvocab = []
         vocab = res + form.form_field_vocabulary(self) + relatedvocab
         if self.sort:
-            vocab = sorted(vocab)
+            vocab = vocab_sort(vocab)
         return vocab
 
     def format_single_value(self, req, value):
@@ -567,6 +591,10 @@ def guess_field(eschema, rschema, role='subject', skip_meta_attr=True, **kwargs)
         help = rschema.rproperty(targetschema, eschema, 'description')
     kwargs['required'] = card in '1+'
     kwargs['name'] = rschema.type
+    if role == 'object':
+        kwargs['label'] = (eschema.type + '_object', rschema.type)
+    else:
+        kwargs['label'] = (eschema.type, rschema.type)
     kwargs['eidparam'] = True
     kwargs.setdefault('help', help)
     if rschema.is_final():

@@ -59,7 +59,7 @@ class ProgressTableView(EntityView):
 
     def cell_call(self, row, col):
         _ = self.req._
-        entity = self.entity(row, col)
+        entity = self.rset.get_entity(row, col)
         infos = {}
         for col in self.columns:
             meth = getattr(self, 'build_%s_cell' % col, None)
@@ -167,10 +167,10 @@ class InContextProgressTableView(ProgressTableView):
     """
     id = 'ic_progress_table_view'
 
-    def call(self):
+    def call(self, columns=None):
         view = self.vreg['views'].select('progress_table_view', self.req,
                                          rset=self.rset)
-        columns = list(view.columns)
+        columns = list(columns or view.columns)
         try:
             columns.remove('project')
         except ValueError:
@@ -186,7 +186,7 @@ class ProgressBarView(EntityView):
 
     def cell_call(self, row, col):
         self.req.add_css('cubicweb.iprogress.css')
-        entity = self.entity(row, col)
+        entity = self.rset.get_entity(row, col)
         widget = ProgressBarWidget(entity.done, entity.todo,
                                    entity.revised_cost)
         self.w(widget.render())

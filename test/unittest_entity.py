@@ -9,32 +9,26 @@
 
 from datetime import datetime
 
-from cubicweb import Binary
-from cubicweb.devtools.apptest import EnvBasedTC
+from cubicweb import Binary, Unauthorized
+from cubicweb.devtools.testlib import CubicWebTC
 from cubicweb.common.mttransforms import HAS_TAL
+from cubicweb.entities import fetch_config
 
-class EntityTC(EnvBasedTC):
-
-##     def setup_database(self):
-##         self.add_entity('Personne', nom=u'di mascio', prenom=u'adrien')
-##         self.add_entity('Task', title=u'fait ca !', description=u'et plus vite', start=now())
-##         self.add_entity('Tag', name=u'x')
-##         self.add_entity('Link', title=u'perdu', url=u'http://www.perdu.com',
-##                         embed=False)
+class EntityTC(CubicWebTC):
 
     def test_boolean_value(self):
-        e = self.etype_instance('CWUser')
+        e = self.vreg['etypes'].etype_class('CWUser')(self.request())
         self.failUnless(e)
 
     def test_yams_inheritance(self):
         from entities import Note
-        e = self.etype_instance('SubNote')
+        e = self.vreg['etypes'].etype_class('SubNote')(self.request())
         self.assertIsInstance(e, Note)
-        e2 = self.etype_instance('SubNote')
+        e2 = self.vreg['etypes'].etype_class('SubNote')(self.request())
         self.assertIs(e.__class__, e2.__class__)
 
     def test_has_eid(self):
-        e = self.etype_instance('CWUser')
+        e = self.vreg['etypes'].etype_class('CWUser')(self.request())
         self.assertEquals(e.eid, None)
         self.assertEquals(e.has_eid(), False)
         e.eid = 'X'
@@ -76,8 +70,8 @@ class EntityTC(EnvBasedTC):
         e = self.entity('Any X WHERE X eid %(x)s', {'x':user.eid}, 'x')
         self.assertEquals(e.use_email[0].address, "toto@logilab.org")
         self.assertEquals(e.use_email[0].eid, adeleid)
-        usereid = self.execute('INSERT CWUser X: X login "toto", X upassword "toto", X in_group G, X in_state S '
-                               'WHERE G name "users", S name "activated"')[0][0]
+        usereid = self.execute('INSERT CWUser X: X login "toto", X upassword "toto", X in_group G '
+                               'WHERE G name "users"')[0][0]
         e = self.entity('Any X WHERE X eid %(x)s', {'x':usereid}, 'x')
         e.copy_relations(user.eid)
         self.failIf(e.use_email)
@@ -85,14 +79,14 @@ class EntityTC(EnvBasedTC):
 
     def test_copy_with_non_initial_state(self):
         user = self.user()
-        eid = self.execute('INSERT CWUser X: X login "toto", X upassword %(pwd)s, X in_group G WHERE G name "users"',
-                           {'pwd': 'toto'})[0][0]
+        user = self.execute('INSERT CWUser X: X login "toto", X upassword %(pwd)s, X in_group G WHERE G name "users"',
+                           {'pwd': 'toto'}).get_entity(0, 0)
         self.commit()
-        self.execute('SET X in_state S WHERE X eid %(x)s, S name "deactivated"', {'x': eid}, 'x')
+        user.fire_transition('deactivate')
         self.commit()
         eid2 = self.execute('INSERT CWUser X: X login "tutu", X upassword %(pwd)s', {'pwd': 'toto'})[0][0]
         e = self.entity('Any X WHERE X eid %(x)s', {'x': eid2}, 'x')
-        e.copy_relations(eid)
+        e.copy_relations(user.eid)
         self.commit()
         e.clear_related_cache('in_state', 'subject')
         self.assertEquals(e.state, 'activated')
@@ -101,7 +95,7 @@ class EntityTC(EnvBasedTC):
         user = self.entity('Any X WHERE X eid %(x)s', {'x':self.user().eid}, 'x')
         adeleid = self.execute('INSERT EmailAddress X: X address "toto@logilab.org", U use_email X WHERE U login "admin"')[0][0]
         self.commit()
-        self.assertEquals(user._related_cache.keys(), [])
+        self.assertEquals(user._related_cache, {})
         email = user.primary_email[0]
         self.assertEquals(sorted(user._related_cache), ['primary_email_subject'])
         self.assertEquals(email._related_cache.keys(), ['primary_email_object'])
@@ -132,7 +126,8 @@ class EntityTC(EnvBasedTC):
         seschema.subject_relation('evaluee').set_rproperty(seschema, Note.e_schema, 'cardinality', '1*')
         # testing basic fetch_attrs attribute
         self.assertEquals(Personne.fetch_rql(user),
-                          'Any X,AA,AB,AC ORDERBY AA ASC WHERE X is Personne, X nom AA, X prenom AB, X modification_date AC')
+                          'Any X,AA,AB,AC ORDERBY AA ASC '
+                          'WHERE X is Personne, X nom AA, X prenom AB, X modification_date AC')
         pfetch_attrs = Personne.fetch_attrs
         sfetch_attrs = Societe.fetch_attrs
         try:
@@ -142,22 +137,26 @@ class EntityTC(EnvBasedTC):
             # testing one non final relation
             Personne.fetch_attrs = ('nom', 'prenom', 'travaille')
             self.assertEquals(Personne.fetch_rql(user),
-                              'Any X,AA,AB,AC,AD ORDERBY AA ASC WHERE X is Personne, X nom AA, X prenom AB, X travaille AC, AC nom AD')
+                              'Any X,AA,AB,AC,AD ORDERBY AA ASC '
+                              'WHERE X is Personne, X nom AA, X prenom AB, X travaille AC?, AC nom AD')
             # testing two non final relations
             Personne.fetch_attrs = ('nom', 'prenom', 'travaille', 'evaluee')
             self.assertEquals(Personne.fetch_rql(user),
-                              'Any X,AA,AB,AC,AD,AE,AF ORDERBY AA ASC,AF DESC WHERE X is Personne, X nom AA, '
-                              'X prenom AB, X travaille AC, AC nom AD, X evaluee AE, AE modification_date AF')
+                              'Any X,AA,AB,AC,AD,AE,AF ORDERBY AA ASC,AF DESC '
+                              'WHERE X is Personne, X nom AA, X prenom AB, X travaille AC?, AC nom AD, '
+                              'X evaluee AE?, AE modification_date AF')
             # testing one non final relation with recursion
             Personne.fetch_attrs = ('nom', 'prenom', 'travaille')
             Societe.fetch_attrs = ('nom', 'evaluee')
             self.assertEquals(Personne.fetch_rql(user),
-                              'Any X,AA,AB,AC,AD,AE,AF ORDERBY AA ASC,AF DESC WHERE X is Personne, X nom AA, X prenom AB, '
-                              'X travaille AC, AC nom AD, AC evaluee AE, AE modification_date AF'
+                              'Any X,AA,AB,AC,AD,AE,AF ORDERBY AA ASC,AF DESC '
+                              'WHERE X is Personne, X nom AA, X prenom AB, X travaille AC?, AC nom AD, '
+                              'AC evaluee AE?, AE modification_date AF'
                               )
             # testing symetric relation
             Personne.fetch_attrs = ('nom', 'connait')
-            self.assertEquals(Personne.fetch_rql(user), 'Any X,AA,AB ORDERBY AA ASC WHERE X is Personne, X nom AA, X connait AB')
+            self.assertEquals(Personne.fetch_rql(user), 'Any X,AA,AB ORDERBY AA ASC '
+                              'WHERE X is Personne, X nom AA, X connait AB?')
             # testing optional relation
             peschema.subject_relation('travaille').set_rproperty(peschema, seschema, 'cardinality', '?*')
             Personne.fetch_attrs = ('nom', 'prenom', 'travaille')
@@ -174,21 +173,54 @@ class EntityTC(EnvBasedTC):
             Societe.fetch_attrs = sfetch_attrs
 
     def test_related_rql(self):
-        from cubicweb.entities import fetch_config
         Personne = self.vreg['etypes'].etype_class('Personne')
         Note = self.vreg['etypes'].etype_class('Note')
+        self.failUnless(issubclass(self.vreg['etypes'].etype_class('SubNote'), Note))
         Personne.fetch_attrs, Personne.fetch_order = fetch_config(('nom', 'type'))
         Note.fetch_attrs, Note.fetch_order = fetch_config(('type',))
-        aff = self.add_entity('Personne', nom=u'pouet')
-        self.assertEquals(aff.related_rql('evaluee'),
+        p = self.add_entity('Personne', nom=u'pouet')
+        self.assertEquals(p.related_rql('evaluee'),
                           'Any X,AA,AB ORDERBY AA ASC WHERE E eid %(x)s, E evaluee X, '
                           'X type AA, X modification_date AB')
         Personne.fetch_attrs, Personne.fetch_order = fetch_config(('nom', ))
         # XXX
-        self.assertEquals(aff.related_rql('evaluee'),
+        self.assertEquals(p.related_rql('evaluee'),
                           'Any X,AA ORDERBY Z DESC WHERE X modification_date Z, E eid %(x)s, E evaluee X, X modification_date AA')
 
-    def test_entity_unrelated(self):
+    def test_unrelated_rql_security_1(self):
+        user = self.request().user
+        rql = user.unrelated_rql('use_email', 'EmailAddress', 'subject')[0]
+        self.assertEquals(rql, 'Any O,AA,AB,AC ORDERBY AC DESC '
+                          'WHERE NOT S use_email O, S eid %(x)s, O is EmailAddress, O address AA, O alias AB, O modification_date AC')
+        self.create_user('toto')
+        self.login('toto')
+        user = self.request().user
+        rql = user.unrelated_rql('use_email', 'EmailAddress', 'subject')[0]
+        self.assertEquals(rql, 'Any O,AA,AB,AC ORDERBY AC DESC '
+                          'WHERE NOT S use_email O, S eid %(x)s, O is EmailAddress, O address AA, O alias AB, O modification_date AC')
+        user = self.execute('Any X WHERE X login "admin"').get_entity(0, 0)
+        self.assertRaises(Unauthorized, user.unrelated_rql, 'use_email', 'EmailAddress', 'subject')
+        self.login('anon')
+        user = self.request().user
+        self.assertRaises(Unauthorized, user.unrelated_rql, 'use_email', 'EmailAddress', 'subject')
+
+    def test_unrelated_rql_security_2(self):
+        email = self.execute('INSERT EmailAddress X: X address "hop"').get_entity(0, 0)
+        rql = email.unrelated_rql('use_email', 'CWUser', 'object')[0]
+        self.assertEquals(rql, 'Any S,AA,AB,AC,AD ORDERBY AA ASC '
+                          'WHERE NOT S use_email O, O eid %(x)s, S is CWUser, S login AA, S firstname AB, S surname AC, S modification_date AD')
+        #rql = email.unrelated_rql('use_email', 'Person', 'object')[0]
+        #self.assertEquals(rql, '')
+        self.login('anon')
+        email = self.execute('Any X WHERE X eid %(x)s', {'x': email.eid}, 'x').get_entity(0, 0)
+        rql = email.unrelated_rql('use_email', 'CWUser', 'object')[0]
+        self.assertEquals(rql, 'Any S,AA,AB,AC,AD ORDERBY AA '
+                          'WHERE NOT S use_email O, O eid %(x)s, S is CWUser, S login AA, S firstname AB, S surname AC, S modification_date AD, '
+                          'A eid %(B)s, EXISTS(S identity A, NOT A in_group C, C name "guests", C is CWGroup)')
+        #rql = email.unrelated_rql('use_email', 'Person', 'object')[0]
+        #self.assertEquals(rql, '')
+
+    def test_unrelated_base(self):
         p = self.add_entity('Personne', nom=u'di mascio', prenom=u'adrien')
         e = self.add_entity('Tag', name=u'x')
         related = [r.eid for r in e.tags]
@@ -200,15 +232,41 @@ class EntityTC(EnvBasedTC):
         unrelated = [r[0] for r in e.unrelated('tags', 'Personne', 'subject')]
         self.failIf(p.eid in unrelated)
 
-    def test_entity_unrelated_limit(self):
+    def test_unrelated_limit(self):
         e = self.add_entity('Tag', name=u'x')
         self.add_entity('Personne', nom=u'di mascio', prenom=u'adrien')
-        self.add_entity('Personne', nom=u'di mascio', prenom=u'gwen')
+        self.add_entity('Personne', nom=u'thenault', prenom=u'sylvain')
         self.assertEquals(len(e.unrelated('tags', 'Personne', 'subject', limit=1)),
                           1)
 
-    def test_new_entity_unrelated(self):
-        e = self.etype_instance('CWUser')
+    def test_unrelated_security(self):
+        email = self.execute('INSERT EmailAddress X: X address "hop"').get_entity(0, 0)
+        rset = email.unrelated('use_email', 'CWUser', 'object')
+        self.assertEquals([x.login for x in rset.entities()], [u'admin', u'anon'])
+        user = self.request().user
+        rset = user.unrelated('use_email', 'EmailAddress', 'subject')
+        self.assertEquals([x.address for x in rset.entities()], [u'hop'])
+        self.create_user('toto')
+        self.login('toto')
+        email = self.execute('Any X WHERE X eid %(x)s', {'x': email.eid}, 'x').get_entity(0, 0)
+        rset = email.unrelated('use_email', 'CWUser', 'object')
+        self.assertEquals([x.login for x in rset.entities()], ['toto'])
+        user = self.request().user
+        rset = user.unrelated('use_email', 'EmailAddress', 'subject')
+        self.assertEquals([x.address for x in rset.entities()], ['hop'])
+        user = self.execute('Any X WHERE X login "admin"').get_entity(0, 0)
+        rset = user.unrelated('use_email', 'EmailAddress', 'subject')
+        self.assertEquals([x.address for x in rset.entities()], [])
+        self.login('anon')
+        email = self.execute('Any X WHERE X eid %(x)s', {'x': email.eid}, 'x').get_entity(0, 0)
+        rset = email.unrelated('use_email', 'CWUser', 'object')
+        self.assertEquals([x.login for x in rset.entities()], [])
+        user = self.request().user
+        rset = user.unrelated('use_email', 'EmailAddress', 'subject')
+        self.assertEquals([x.address for x in rset.entities()], [])
+
+    def test_unrelated_new_entity(self):
+        e = self.vreg['etypes'].etype_class('CWUser')(self.request())
         unrelated = [r[0] for r in e.unrelated('in_group', 'CWGroup', 'subject')]
         # should be default groups but owners, i.e. managers, users, guests
         self.assertEquals(len(unrelated), 3)
@@ -227,7 +285,6 @@ class EntityTC(EnvBasedTC):
         self.assertEquals(e.printable_value('content'),
                           '<p>\ndu *texte*\n</p>')
         e['title'] = 'zou'
-        #e = self.etype_instance('Task')
         e['content'] = '''\
 a title
 =======
@@ -291,6 +348,18 @@ du :eid:`1:*ReST*`'''
         e['content'] = u'C&apos;est un exemple s&eacute;rieux'
         self.assertEquals(tidy(e.printable_value('content')),
                           u"C'est un exemple sérieux")
+        e['content'] = u'<div x:foo="bar">ms orifice produces weird html</div>'
+        self.assertEquals(tidy(e.printable_value('content')),
+                          u'<div>ms orifice produces weird html</div>')
+        import tidy as tidymod # apt-get install python-tidy
+        tidy = lambda x: str(tidymod.parseString(x.encode('utf-8'),
+                                                 **{'drop_proprietary_attributes': True,
+                                                    'output_xhtml': True,
+                                                    'show_body_only' : True,
+                                                    'quote-nbsp' : False,
+                                                    'char_encoding' : 'utf8'})).decode('utf-8').strip()
+        self.assertEquals(tidy(e.printable_value('content')),
+                          u'<div>ms orifice produces weird html</div>')
         # make sure valid xhtml is left untouched
         e['content'] = u'<div>R&amp;D<br/></div>'
         self.assertEquals(e.printable_value('content'), e['content'])
@@ -303,7 +372,7 @@ du :eid:`1:*ReST*`'''
 
 
     def test_fulltextindex(self):
-        e = self.etype_instance('File')
+        e = self.vreg['etypes'].etype_class('File')(self.request())
         e['name'] = 'an html file'
         e['description'] = 'du <em>html</em>'
         e['description_format'] = 'text/html'
@@ -322,33 +391,17 @@ du :eid:`1:*ReST*`'''
         self.failUnless(not p1.reverse_evaluee)
 
     def test_complete_relation(self):
-        self.execute('SET RT add_permission G WHERE RT name "wf_info_for", G name "managers"')
-        self.commit()
-        session = self.session()
-        try:
-            eid = session.unsafe_execute(
-                'INSERT TrInfo X: X comment "zou", X wf_info_for U, X from_state S1, X to_state S2 '
-                'WHERE U login "admin", S1 name "activated", S2 name "deactivated"')[0][0]
-            trinfo = self.entity('Any X WHERE X eid %(x)s', {'x': eid}, 'x')
-            trinfo.complete()
-            self.failUnless(trinfo.relation_cached('from_state', 'subject'))
-            self.failUnless(trinfo.relation_cached('to_state', 'subject'))
-            self.failUnless(trinfo.relation_cached('wf_info_for', 'subject'))
-            # check with a missing relation
-            eid = session.unsafe_execute(
-                'INSERT TrInfo X: X comment "zou", X wf_info_for U,X to_state S2 '
-                'WHERE U login "admin", S2 name "activated"')[0][0]
-            trinfo = self.entity('Any X WHERE X eid %(x)s', {'x': eid}, 'x')
-            trinfo.complete()
-            self.failUnless(isinstance(trinfo.creation_date, datetime))
-            self.failUnless(trinfo.relation_cached('from_state', 'subject'))
-            self.failUnless(trinfo.relation_cached('to_state', 'subject'))
-            self.failUnless(trinfo.relation_cached('wf_info_for', 'subject'))
-            self.assertEquals(trinfo.from_state, [])
-        finally:
-            self.rollback()
-            self.execute('DELETE RT add_permission G WHERE RT name "wf_info_for", G name "managers"')
-            self.commit()
+        session = self.session
+        eid = session.unsafe_execute(
+            'INSERT TrInfo X: X comment "zou", X wf_info_for U, X from_state S1, X to_state S2 '
+            'WHERE U login "admin", S1 name "activated", S2 name "deactivated"')[0][0]
+        trinfo = self.entity('Any X WHERE X eid %(x)s', {'x': eid}, 'x')
+        trinfo.complete()
+        self.failUnless(isinstance(trinfo['creation_date'], datetime))
+        self.failUnless(trinfo.relation_cached('from_state', 'subject'))
+        self.failUnless(trinfo.relation_cached('to_state', 'subject'))
+        self.failUnless(trinfo.relation_cached('wf_info_for', 'subject'))
+        self.assertEquals(trinfo.by_transition, [])
 
     def test_request_cache(self):
         req = self.request()

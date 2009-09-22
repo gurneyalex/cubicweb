@@ -37,24 +37,21 @@ class IEmailable(Interface):
 
 class IWorkflowable(Interface):
     """interface for entities dealing with a specific workflow"""
+    # XXX to be completed, see cw.entities.wfobjs.WorkflowableMixIn
 
     @property
     def state(self):
-        """return current state"""
+        """return current state name"""
 
     def change_state(self, stateeid, trcomment=None, trcommentformat=None):
-        """change the entity's state according to a state defined in given
-        parameters
-        """
-
-    def can_pass_transition(self, trname):
-        """return true if the current user can pass the transition with the
-        given name
+        """change the entity's state to the state of the given name in entity's
+        workflow
         """
 
     def latest_trinfo(self):
         """return the latest transition information for this entity
         """
+
 
 class IProgress(Interface):
     """something that has a cost, a state and a progression
@@ -127,6 +124,9 @@ class ITree(Interface):
     def children(self):
         """returns the item's children"""
 
+    def children_rql(self):
+        """XXX returns RQL to get children"""
+
     def __iter__(self):
         """iterates over the item's children"""
 
@@ -137,7 +137,7 @@ class ITree(Interface):
         """returns true if this node has no parent"""
 
     def root(self):
-        """return the root object"""
+        """returns the root object"""
 
 
 ## web specific interfaces ####################################################

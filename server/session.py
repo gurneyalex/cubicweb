@@ -15,10 +15,11 @@ from logilab.common.deprecation import deprecated
 from rql.nodes import VariableRef, Function, ETYPE_PYOBJ_MAP, etype_from_pyobj
 from yams import BASE_TYPES
 
-from cubicweb import RequestSessionMixIn, Binary, UnknownEid
+from cubicweb import Binary, UnknownEid
+from cubicweb.req import RequestSessionBase
 from cubicweb.dbapi import ConnectionProperties
 from cubicweb.utils import make_uid
-from cubicweb.server.rqlrewrite import RQLRewriter
+from cubicweb.rqlrewrite import RQLRewriter
 
 ETYPE_PYOBJ_MAP[Binary] = 'Bytes'
 
@@ -41,7 +42,7 @@ def _make_description(selected, args, solution):
     return description
 
 
-class Session(RequestSessionMixIn):
+class Session(RequestSessionBase):
     """tie session id, user, connections pool and other session data all
     together
     """
@@ -74,19 +75,63 @@ class Session(RequestSessionMixIn):
         return '<%ssession %s (%s 0x%x)>' % (self.cnxtype, self.user.login,
                                              self.id, id(self))
 
-    @property
-    def schema(self):
-        return self.repo.schema
+    def hijack_user(self, user):
+        """return a fake request/session using specified user"""
+        session = Session(user, self.repo)
+        session._threaddata = self.actual_session()._threaddata
+        return session
 
-    def add_relation(self, fromeid, rtype, toeid):
+    def _super_call(self, __cb, *args, **kwargs):
         if self.is_super_session:
-            self.repo.glob_add_relation(self, fromeid, rtype, toeid)
+            __cb(self, *args, **kwargs)
             return
         self.is_super_session = True
         try:
-            self.repo.glob_add_relation(self, fromeid, rtype, toeid)
+            __cb(self, *args, **kwargs)
         finally:
             self.is_super_session = False
+
+    def add_relation(self, fromeid, rtype, toeid):
+        """provide direct access to the repository method to add a relation.
+
+        This is equivalent to the following rql query:
+
+          SET X rtype Y WHERE X eid  fromeid, T eid toeid
+
+        without read security check but also all the burden of rql execution.
+        You may use this in hooks when you know both eids of the relation you
+        want to add.
+        """
+        if self.vreg.schema[rtype].inlined:
+            entity = self.entity_from_eid(fromeid)
+            entity[rtype] = toeid
+            self._super_call(self.repo.glob_update_entity,
+                             entity, set((rtype,)))
+        else:
+            self._super_call(self.repo.glob_add_relation,
+                             fromeid, rtype, toeid)
+
+    def delete_relation(self, fromeid, rtype, toeid):
+        """provide direct access to the repository method to delete a relation.
+
+        This is equivalent to the following rql query:
+
+          DELETE X rtype Y WHERE X eid  fromeid, T eid toeid
+
+        without read security check but also all the burden of rql execution.
+        You may use this in hooks when you know both eids of the relation you
+        want to delete.
+        """
+        if self.vreg.schema[rtype].inlined:
+            entity = self.entity_from_eid(fromeid)
+            entity[rtype] = None
+            self._super_call(self.repo.glob_update_entity,
+                             entity, set((rtype,)))
+        else:
+            self._super_call(self.repo.glob_delete_relation,
+                             fromeid, rtype, toeid)
+
+    # relations cache handling #################################################
 
     def update_rel_cache_add(self, subject, rtype, object, symetric=False):
         self._update_entity_rel_cache_add(subject, rtype, 'subject', object)
@@ -114,10 +159,15 @@ class Session(RequestSessionMixIn):
         if rcache is not None:
             rset, entities = rcache
             rset.rows.append([targeteid])
-            if isinstance(rset.description, list): # else description not set
-                rset.description.append([self.describe(targeteid)[0]])
-            rset.rowcount += 1
+            if not isinstance(rset.description, list): # else description not set
+                rset.description = list(rset.description)
+            rset.description.append([self.describe(targeteid)[0]])
             targetentity = self.entity_from_eid(targeteid)
+            if targetentity.rset is None:
+                targetentity.rset = rset
+                targetentity.row = rset.rowcount
+                targetentity.col = 0
+            rset.rowcount += 1
             entities.append(targetentity)
 
     def _update_entity_rel_cache_del(self, eid, rtype, role, targeteid):
@@ -128,8 +178,11 @@ class Session(RequestSessionMixIn):
                 if row[0] == targeteid:
                     break
             else:
-                raise Exception('cache inconsistency for %s %s %s %s' %
-                                (eid, rtype, role, targeteid))
+                # this may occurs if the cache has been filed by a hook
+                # after the database update
+                self.debug('cache inconsistency for %s %s %s %s', eid, rtype,
+                           role, targeteid)
+                return
             del rset.rows[idx]
             if isinstance(rset.description, list): # else description not set
                 del rset.description[idx]
@@ -154,18 +207,35 @@ class Session(RequestSessionMixIn):
         vreg = self.vreg
         language = language or self.user.property_value('ui.language')
         try:
-            self._ = self.__ = vreg.config.translations[language]
+            gettext, pgettext = vreg.config.translations[language]
+            self._ = self.__ = gettext
+            self.pgettext = pgettext
         except KeyError:
             language = vreg.property_value('ui.language')
             try:
-                self._ = self.__ = vreg.config.translations[language]
+                gettext, pgettext = vreg.config.translations[language]
+                self._ = self.__ = gettext
+                self.pgettext = pgettext
             except KeyError:
                 self._ = self.__ = unicode
+                self.pgettext = lambda x,y: y
         self.lang = language
 
     def change_property(self, prop, value):
         assert prop == 'lang' # this is the only one changeable property for now
         self.set_language(value)
+
+    def deleted_in_transaction(self, eid):
+        return eid in self.transaction_data.get('pendingeids', ())
+
+    def added_in_transaction(self, eid):
+        return eid in self.transaction_data.get('neweids', ())
+
+    def schema_rproperty(self, rtype, eidfrom, eidto, rprop):
+        rschema = self.repo.schema[rtype]
+        subjtype = self.describe(eidfrom)[0]
+        objtype = self.describe(eidto)[0]
+        return rschema.rproperty(subjtype, objtype, rprop)
 
     # connection management ###################################################
 
@@ -208,9 +278,9 @@ class Session(RequestSessionMixIn):
         """connections pool, set according to transaction mode for each query"""
         return getattr(self._threaddata, 'pool', None)
 
-    def set_pool(self):
+    def set_pool(self, checkclosed=True):
         """the session need a pool to execute some queries"""
-        if self._closed:
+        if checkclosed and self._closed:
             raise Exception('try to set pool on a closed session')
         if self.pool is None:
             # get pool first to avoid race-condition
@@ -263,6 +333,11 @@ class Session(RequestSessionMixIn):
             self.data[key] = value
 
     # request interface #######################################################
+
+    @property
+    def cursor(self):
+        """return a rql cursor"""
+        return self
 
     def set_entity_cache(self, entity):
         # XXX session level caching may be a pb with multiple repository
@@ -329,13 +404,13 @@ class Session(RequestSessionMixIn):
         try:
             csession = self._threaddata.childsession
         except AttributeError:
-            if self.is_super_session:
+            if isinstance(self, (ChildSession, InternalSession)):
                 csession = self
             else:
                 csession = ChildSession(self)
             self._threaddata.childsession = csession
         # need shared pool set
-        self.set_pool()
+        self.set_pool(checkclosed=False)
         return csession
 
     def unsafe_execute(self, rql, kwargs=None, eid_key=None, build_descr=True,
@@ -349,11 +424,6 @@ class Session(RequestSessionMixIn):
         """
         return self.super_session.execute(rql, kwargs, eid_key, build_descr,
                                           propagate)
-
-    @property
-    def cursor(self):
-        """return a rql cursor"""
-        return self
 
     def execute(self, rql, kwargs=None, eid_key=None, build_descr=True,
                 propagate=False):
@@ -471,7 +541,6 @@ class Session(RequestSessionMixIn):
             self._threaddata.pending_operations = []
             return self._threaddata.pending_operations
 
-
     def add_operation(self, operation, index=None):
         """add an observer"""
         assert self.commit_state != 'commit'
@@ -487,7 +556,7 @@ class Session(RequestSessionMixIn):
         try:
             return self._threaddata._rewriter
         except AttributeError:
-            self._threaddata._rewriter = RQLRewriter(self.repo.querier, self)
+            self._threaddata._rewriter = RQLRewriter(self)
             return self._threaddata._rewriter
 
     def build_description(self, rqlst, args, result):
@@ -551,12 +620,19 @@ class Session(RequestSessionMixIn):
             description.append(tuple(row_descr))
         return description
 
-    @deprecated("use vreg['etypes'].etype_class(etype)")
+    # deprecated ###############################################################
+
+    @property
+    @deprecated("[3.6] use session.vreg.schema")
+    def schema(self):
+        return self.repo.schema
+
+    @deprecated("[3.4] use vreg['etypes'].etype_class(etype)")
     def etype_class(self, etype):
         """return an entity class for the given entity type"""
         return self.vreg['etypes'].etype_class(etype)
 
-    @deprecated('use direct access to session.transaction_data')
+    @deprecated('[3.4] use direct access to session.transaction_data')
     def query_data(self, key, default=None, setdefault=False, pop=False):
         if setdefault:
             assert not pop
@@ -566,7 +642,7 @@ class Session(RequestSessionMixIn):
         else:
             return self.transaction_data.get(key, default)
 
-    @deprecated('use entity_from_eid(eid, etype=None)')
+    @deprecated('[3.4] use entity_from_eid(eid, etype=None)')
     def entity(self, eid):
         """return a result set for the given eid"""
         return self.entity_from_eid(eid)
@@ -584,6 +660,7 @@ class ChildSession(Session):
         # session which has created this one
         self.parent_session = parent_session
         self.user = InternalManager()
+        self.user.req = self # XXX remove when "vreg = user.req.vreg" hack in entity.py is gone
         self.repo = parent_session.repo
         self.vreg = parent_session.vreg
         self.data = parent_session.data
@@ -653,8 +730,9 @@ class InternalSession(Session):
     """special session created internaly by the repository"""
 
     def __init__(self, repo, cnxprops=None):
-        super(InternalSession, self).__init__(_IMANAGER, repo, cnxprops,
+        super(InternalSession, self).__init__(InternalManager(), repo, cnxprops,
                                               _id='internal')
+        self.user.req = self # XXX remove when "vreg = user.req.vreg" hack in entity.py is gone
         self.cnxtype = 'inmemory'
         self.is_internal_session = True
         self.is_super_session = True
@@ -691,7 +769,6 @@ class InternalManager(object):
             return 'en'
         return None
 
-_IMANAGER = InternalManager()
 
 from logging import getLogger
 from cubicweb import set_log_methods

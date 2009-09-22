@@ -7,12 +7,20 @@
 """
 __docformat__ = "restructuredtext en"
 
+from logilab.mtconverter import xml_escape
+
 import locale
+import sys
+import decimal
+import datetime as pydatetime
 from md5 import md5
 from datetime import datetime, timedelta, date
 from time import time, mktime
 from random import randint, seed
 from calendar import monthrange
+import decimal
+
+import simplejson
 
 # initialize random seed from current time
 seed()
@@ -101,10 +109,19 @@ def ustrftime(date, fmt='%Y-%m-%d'):
     encoding = locale.getpreferredencoding(do_setlocale=False) or 'UTF-8'
     return unicode(date.strftime(str(fmt)), encoding)
 
-def make_uid(key):
-    """forge a unique identifier"""
-    msg = str(key) + "%.10f" % time() + str(randint(0, 1000000))
-    return md5(msg).hexdigest()
+
+if sys.version_info[:2] < (2, 5):
+    def make_uid(key):
+        """forge a unique identifier
+        not that unique on win32"""
+        msg = str(key) + "%.10f" % time() + str(randint(0, 1000000))
+        return md5(msg).hexdigest()
+else:
+    from uuid import uuid4
+    def make_uid(key):
+        # remove dash, generated uid are used as identifier sometimes (sql table
+        # names at least)
+        return str(key) + str(uuid4()).replace('-', '')
 
 
 def dump_class(cls, clsname):
@@ -254,7 +271,6 @@ class HTMLHead(UStringIO):
         w = self.write
         # 1/ variable declaration if any
         if self.jsvars:
-            from simplejson import dumps
             w(u'<script type="text/javascript"><!--//--><![CDATA[//><!--\n')
             for var, value in self.jsvars:
                 w(u'%s = %s;\n' % (var, dumps(value)))
@@ -262,17 +278,18 @@ class HTMLHead(UStringIO):
         # 2/ css files
         for cssfile, media in self.cssfiles:
             w(u'<link rel="stylesheet" type="text/css" media="%s" href="%s"/>\n' %
-              (media, cssfile))
+              (media, xml_escape(cssfile)))
         # 3/ ie css if necessary
         if self.ie_cssfiles:
             w(u'<!--[if lt IE 8]>\n')
             for cssfile, media in self.ie_cssfiles:
                 w(u'<link rel="stylesheet" type="text/css" media="%s" href="%s"/>\n' %
-                  (media, cssfile))
+                  (media, xml_escape(cssfile)))
             w(u'<![endif]--> \n')
         # 4/ js files
         for jsfile in self.jsfiles:
-            w(u'<script type="text/javascript" src="%s"></script>\n' % jsfile)
+            w(u'<script type="text/javascript" src="%s"></script>\n' %
+              xml_escape(jsfile))
         # 5/ post inlined scripts (i.e. scripts depending on other JS files)
         if self.post_inlined_scripts:
             w(u'<script type="text/javascript">\n')
@@ -305,7 +322,8 @@ class HTMLStream(object):
         self.htmltag = u'<html xmlns="http://www.w3.org/1999/xhtml" ' \
                        'xmlns:cubicweb="http://www.logilab.org/2008/cubicweb" ' \
                        'xml:lang="%s" lang="%s">' % (req.lang, req.lang)
-
+        # keep main_stream's reference on req for easier text/html demoting
+        req.main_stream = self
 
     def write(self, data):
         """StringIO interface: this method will be assigned to self.w
@@ -320,9 +338,51 @@ class HTMLStream(object):
                                                  self.body.getvalue())
 
 
-class AcceptMixIn(object):
-    """Mixin class for appobjects defining the 'accepts' attribute describing
-    a set of supported entity type (Any by default).
+def can_do_pdf_conversion(__answer=[None]):
+    """pdf conversion depends on
+    * pyxmltrf (python package)
+    * fop 0.9x
     """
-    # XXX deprecated, no more necessary
+    if __answer[0] is not None:
+        return __answer[0]
+    try:
+        import pysixt
+    except ImportError:
+        __answer[0] = False
+        return False
+    from subprocess import Popen, STDOUT
+    import os
+    try:
+        Popen(['/usr/bin/fop', '-q'],
+              stdout=open(os.devnull, 'w'),
+              stderr=STDOUT)
+    except OSError, e:
+        print e
+        __answer[0] = False
+        return False
+    __answer[0] = True
+    return True
 
+try:
+    # may not be there is cubicweb-web not there
+    from simplejson import JSONEncoder, dumps
+except ImportError:
+    pass
+else:
+    class CubicWebJsonEncoder(JSONEncoder):
+        """define a simplejson encoder to be able to encode yams std types"""
+        def default(self, obj):
+            if isinstance(obj, datetime):
+                return obj.strftime('%Y/%m/%d %H:%M:%S')
+            elif isinstance(obj, date):
+                return obj.strftime('%Y/%m/%d')
+            elif isinstance(obj, pydatetime.time):
+                return obj.strftime('%H:%M:%S')
+            elif isinstance(obj, decimal.Decimal):
+                return float(obj)
+            try:
+                return simplejson.JSONEncoder.default(self, obj)
+            except TypeError:
+                # we never ever want to fail because of an unknown type,
+                # just return None in those cases.
+                return None

@@ -15,8 +15,7 @@ from datetime import date, timedelta
 from urlparse import urlsplit, urlunsplit
 import hotshot
 
-from twisted.application import service, strports
-from twisted.scripts._twistd_unix import daemonize
+from twisted.application import strports
 from twisted.internet import reactor, task, threads
 from twisted.internet.defer import maybeDeferred
 from twisted.web2 import channel, http, server, iweb
@@ -30,18 +29,41 @@ from cubicweb.web.application import CubicWebPublisher
 
 from cubicweb.etwist.request import CubicWebTwistedRequestAdapter
 
+def daemonize():
+    # XXX unix specific
+    # XXX factorize w/ code in cw.server.server and cw.server.serverctl
+    # (start-repository command)
+    # See http://www.erlenstar.demon.co.uk/unix/faq_toc.html#TOC16
+    if os.fork():   # launch child and...
+        return -1
+    os.setsid()
+    if os.fork():   # launch child and...
+        os._exit(0) # kill off parent again.
+    # move to the root to avoit mount pb
+    os.chdir('/')
+    # set paranoid umask
+    os.umask(077)
+    null = os.open('/dev/null', os.O_RDWR)
+    for i in range(3):
+        try:
+            os.dup2(null, i)
+        except OSError, e:
+            if e.errno != errno.EBADF:
+                raise
+    os.close(null)
+    return None
 
 def start_task(interval, func):
     lc = task.LoopingCall(func)
     lc.start(interval)
 
 def start_looping_tasks(repo):
-    for interval, func in repo._looping_tasks:
+    for interval, func, args in repo._looping_tasks:
         repo.info('starting twisted task %s with interval %.2fs',
                   func.__name__, interval)
-        def catch_error_func(repo=repo, func=func):
+        def catch_error_func(repo=repo, func=func, args=args):
             try:
-                func()
+                func(*args)
             except:
                 repo.exception('error in looping task')
         start_task(interval, catch_error_func)
@@ -110,13 +132,13 @@ class CubicWebRootResource(resource.PostableResource):
                 start_task(1, self.pyro_loop_event)
             self.appli.repo.start_looping_tasks()
         self.set_url_rewriter()
-        CW_EVENT_MANAGER.bind('after-source-reload', self.set_url_rewriter)
+        CW_EVENT_MANAGER.bind('after-registry-reload', self.set_url_rewriter)
         interval = min(config['cleanup-session-time'] or 120,
                        config['cleanup-anonymous-session-time'] or 720) / 2.
         start_task(interval, self.appli.session_handler.clean_sessions)
 
     def set_url_rewriter(self):
-        self.url_rewriter = self.appli.vreg['components'].select_object('urlrewriter')
+        self.url_rewriter = self.appli.vreg['components'].select_or_none('urlrewriter')
 
     def shutdown_event(self):
         """callback fired when the server is shutting down to properly
@@ -365,11 +387,26 @@ def run(config, debug):
     port = config['port'] or 8080
     reactor.listenTCP(port, channel.HTTPFactory(website))
     baseurl = config['base-url'] or config.default_base_url()
-    print "-> Instance started on", baseurl
+    logger = getLogger('cubicweb.twisted')
+    logger.info('instance started on %s', baseurl)
     if not debug:
-        daemonize()
+        if daemonize():
+            # child process
+            return
         if config['pid-file']:
+            # ensure the directory where the pid-file should be set exists (for
+            # instance /var/run/cubicweb may be deleted on computer restart)
+            piddir = os.path.dirname(config['pid-file'])
+            if not os.path.exists(piddir):
+                os.makedirs(piddir)
             file(config['pid-file'], 'w').write(str(os.getpid()))
+    if config['uid'] is not None:
+        try:
+            uid = int(config['uid'])
+        except ValueError:
+            from pwd import getpwnam
+            uid = getpwnam(config['uid']).pw_uid
+        os.setuid(uid)
     if config['profile']:
         prof = hotshot.Profile(config['profile'])
         prof.runcall(reactor.run)

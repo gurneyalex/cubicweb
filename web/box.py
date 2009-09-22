@@ -11,10 +11,9 @@ _ = unicode
 from logilab.mtconverter import xml_escape
 
 from cubicweb import Unauthorized, role as get_role, target as get_target
+from cubicweb.schema import display_name
 from cubicweb.selectors import (one_line_rset,  primary_view,
-                                match_context_prop, partial_has_related_entities,
-                                accepts_compat, has_relation_compat,
-                                condition_compat, require_group_compat)
+                                match_context_prop, partial_has_related_entities)
 from cubicweb.view import View, ReloadableMixIn
 
 from cubicweb.web.htmlwidgets import (BoxLink, BoxWidget, SideBoxWidget,
@@ -38,10 +37,9 @@ class BoxTemplate(View):
     """
     __registry__ = 'boxes'
     __select__ = match_context_prop()
-    registered = classmethod(require_group_compat(View.registered))
 
     categories_in_order = ()
-    property_defs = {
+    cw_property_defs = {
         _('visible'): dict(type='Boolean', default=True,
                            help=_('display the box or not')),
         _('order'):   dict(type='Int', default=99,
@@ -59,7 +57,8 @@ class BoxTemplate(View):
         result = []
         actions_by_cat = {}
         for action in actions:
-            actions_by_cat.setdefault(action.category, []).append((action.title, action))
+            actions_by_cat.setdefault(action.category, []).append(
+                (action.title, action) )
         for key, values in actions_by_cat.items():
             actions_by_cat[key] = [act for title, act in sorted(values)]
         for cat in self.categories_in_order:
@@ -137,7 +136,6 @@ class UserRQLBoxTemplate(RQLBoxTemplate):
 class EntityBoxTemplate(BoxTemplate):
     """base class for boxes related to a single entity"""
     __select__ = BoxTemplate.__select__ & one_line_rset() & primary_view()
-    registered = accepts_compat(has_relation_compat(condition_compat(BoxTemplate.registered)))
     context = 'incontext'
 
     def call(self, row=0, col=0, **kwargs):
@@ -149,7 +147,7 @@ class RelatedEntityBoxTemplate(EntityBoxTemplate):
     __select__ = EntityBoxTemplate.__select__ & partial_has_related_entities()
 
     def cell_call(self, row, col, **kwargs):
-        entity = self.entity(row, col)
+        entity = self.rset.get_entity(row, col)
         limit = self.req.property_value('navigation.related-limit') + 1
         role = get_role(self)
         self.w(u'<div class="sideBox">')
@@ -168,13 +166,14 @@ class EditRelationBoxTemplate(ReloadableMixIn, EntityBoxTemplate):
 
     def cell_call(self, row, col, view=None, **kwargs):
         self.req.add_js('cubicweb.ajax.js')
-        entity = self.entity(row, col)
+        entity = self.rset.get_entity(row, col)
         box = SideBoxWidget(display_name(self.req, self.rtype), self.id)
-        count = self.w_related(box, entity)
-        if count:
+        related = self.related_boxitems(entity)
+        unrelated = self.unrelated_boxitems(entity)
+        box.extend(related)
+        if related and unrelated:
             box.append(BoxSeparator())
-        if not self.w_unrelated(box, entity):
-            del box.items[-1] # remove useless separator
+        box.extend(unrelated)
         box.render(self.w)
 
     def div_id(self):
@@ -191,22 +190,22 @@ class EditRelationBoxTemplate(ReloadableMixIn, EntityBoxTemplate):
                                                etarget.view('incontext'))
         return RawBoxItem(label, liclass=u'invisible')
 
-    def w_related(self, box, entity):
-        """appends existing relations to the `box`"""
+    def related_boxitems(self, entity):
         rql = 'DELETE S %s O WHERE S eid %%(s)s, O eid %%(o)s' % self.rtype
-        related = self.related_entities(entity)
-        for etarget in related:
-            box.append(self.box_item(entity, etarget, rql, u'-'))
-        return len(related)
+        related = []
+        for etarget in self.related_entities(entity):
+            related.append(self.box_item(entity, etarget, rql, u'-'))
+        return related
 
-    def w_unrelated(self, box, entity):
-        """appends unrelated entities to the `box`"""
+    def unrelated_boxitems(self, entity):
         rql = 'SET S %s O WHERE S eid %%(s)s, O eid %%(o)s' % self.rtype
-        i = 0
+        unrelated = []
         for etarget in self.unrelated_entities(entity):
-            box.append(self.box_item(entity, etarget, rql, u'+'))
-            i += 1
-        return i
+            unrelated.append(self.box_item(entity, etarget, rql, u'+'))
+        return unrelated
+
+    def related_entities(self, entity):
+        return entity.related(self.rtype, get_role(self), entities=True)
 
     def unrelated_entities(self, entity):
         """returns the list of unrelated entities
@@ -219,15 +218,12 @@ class EditRelationBoxTemplate(ReloadableMixIn, EntityBoxTemplate):
             return entity.unrelated(self.rtype, self.etype, get_role(self)).entities()
         # in other cases, use vocabulary functions
         entities = []
-        form = self.vreg.select('forms', 'edition', self.req, rset=self.rset,
-                                row=self.row or 0)
+        form = self.vreg['forms'].select('edition', self.req, rset=self.rset,
+                                         row=self.row or 0)
         field = form.field_by_name(self.rtype, get_role(self), entity.e_schema)
         for _, eid in form.form_field_vocabulary(field):
             if eid is not None:
                 rset = self.req.eid_rset(eid)
                 entities.append(rset.get_entity(0, 0))
         return entities
-
-    def related_entities(self, entity):
-        return entity.related(self.rtype, get_role(self), entities=True)
 

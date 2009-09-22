@@ -22,16 +22,6 @@ class ManageView(StartupView):
     title = _('manage')
     http_cache_manager = httpcache.EtagHTTPCacheManager
 
-    @classmethod
-    def vreg_initialization_completed(cls):
-        for eschema in cls.schema.entities():
-            if eschema.schema_entity():
-                uicfg.indexview_etype_section.setdefault(eschema, 'schema')
-            elif eschema.is_subobject(strict=True):
-                uicfg.indexview_etype_section.setdefault(eschema, 'subobject')
-            else:
-                uicfg.indexview_etype_section.setdefault(eschema, 'application')
-
     def display_folders(self):
         return False
 
@@ -62,10 +52,10 @@ class ManageView(StartupView):
             self.wview('inlined', rset, row=0)
         else:
             self.entities()
-            self.w(u'<div class="hr">&nbsp;</div>')
+            self.w(u'<div class="hr">&#160;</div>')
             self.startup_views()
         if manager and 'Card' in self.schema:
-            self.w(u'<div class="hr">&nbsp;</div>')
+            self.w(u'<div class="hr">&#160;</div>')
             if rset:
                 href = rset.get_entity(0, 0).absolute_url(vid='edition')
                 label = self.req._('edit the index page')
@@ -114,7 +104,7 @@ class ManageView(StartupView):
                        key=lambda (l,a,e):unormalize(l))
         q, r = divmod(len(infos), 2)
         if r:
-            infos.append( (None, '&nbsp;', '&nbsp;') )
+            infos.append( (None, '&#160;', '&#160;') )
         infos = zip(infos[:q+r], infos[q+r:])
         for (_, etypelink, addlink), (_, etypelink2, addlink2) in infos:
             self.w(u'<tr>\n')
@@ -136,7 +126,7 @@ class ManageView(StartupView):
             label = display_name(req, etype, 'plural')
             nb = req.execute('Any COUNT(X) WHERE X is %s' % etype)[0][0]
             url = self.build_url(etype)
-            etypelink = u'&nbsp;<a href="%s">%s</a> (%d)' % (
+            etypelink = u'&#160;<a href="%s">%s</a> (%d)' % (
                 xml_escape(url), label, nb)
             yield (label, etypelink, self.add_entity_link(eschema, req))
 
@@ -155,4 +145,26 @@ class IndexView(ManageView):
 
     def display_folders(self):
         return 'Folder' in self.schema and self.req.execute('Any COUNT(X) WHERE X is Folder')[0][0]
+
+
+class RegistryView(StartupView):
+    id = 'registry'
+    title = _('registry')
+    __select__ = StartupView.__select__ & match_user_groups('managers')
+
+    def call(self, **kwargs):
+        """The default view representing the instance's management"""
+        self.w(u'<h1>%s</h1>' % _("Registry's content"))
+        keys = sorted(self.vreg)
+        self.w(u'<p>%s</p>\n' % ' - '.join('<a href="/_registry#%s">%s</a>' % (key, key) for key in keys))
+        for key in keys:
+            self.w(u'<h2><a name="%s">%s</a></h2>' % (key,key))
+            items = self.vreg[key].items()
+            if items:
+                self.w(u'<table><tbody>')
+                for key, value in sorted(items):
+                    self.w(u'<tr><td>%s</td><td>%s</td></tr>' % (key, xml_escape(repr(value))))
+                self.w(u'</tbody></table>\n')
+            else:
+                self.w(u'<p>Empty</p>\n')
 

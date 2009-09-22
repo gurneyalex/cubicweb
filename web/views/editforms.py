@@ -20,7 +20,8 @@ from cubicweb.selectors import (match_kwargs, one_line_rset, non_final_entity,
 from cubicweb.utils import make_uid
 from cubicweb.view import EntityView
 from cubicweb.common import tags
-from cubicweb.web import INTERNAL_FIELD_VALUE, stdmsgs, eid_param, uicfg
+from cubicweb.web import INTERNAL_FIELD_VALUE, RequestError, stdmsgs, eid_param
+from cubicweb.web import uicfg
 from cubicweb.web.form import FormViewMixIn, FieldNotFound
 from cubicweb.web.formfields import guess_field
 from cubicweb.web.formwidgets import Button, SubmitButton, ResetButton
@@ -162,7 +163,7 @@ class ClickAndEditFormView(FormViewMixIn, EntityView):
         assert role in ('subject', 'object')
         if default is None:
             default = xml_escape(self.req._('<no value>'))
-        entity = self.entity(row, col)
+        entity = self.rset.get_entity(row, col)
         rschema = entity.schema.rschema(rtype)
         lzone = self._build_landing_zone(landing_zone)
         # compute value, checking perms, build form
@@ -325,15 +326,13 @@ class CreationFormView(EditionFormView):
 
     def call(self, **kwargs):
         """creation view for an entity"""
+        # at this point we know etype is a valid entity type, thanks to our
+        # selector
         etype = kwargs.pop('etype', self.req.form.get('etype'))
-        try:
-            entity = self.vreg['etypes'].etype_class(etype)(self.req)
-        except:
-            self.w(self.req._('no such entity type %s') % etype)
-        else:
-            self.initialize_varmaker()
-            entity.eid = self.varmaker.next()
-            self.render_form(entity)
+        entity = self.vreg['etypes'].etype_class(etype)(self.req)
+        self.initialize_varmaker()
+        entity.eid = self.varmaker.next()
+        self.render_form(entity)
 
     def form_title(self, entity):
         """the form view title"""
@@ -371,6 +370,8 @@ class CopyFormView(EditionFormView):
     entity
     """
     id = 'copy'
+    warning_message = _('Please note that this is only a shallow copy')
+
     def render_form(self, entity):
         """fetch and render the form"""
         # make a copy of entity to avoid altering the entity in the
@@ -381,7 +382,7 @@ class CopyFormView(EditionFormView):
         self.initialize_varmaker()
         self.newentity.eid = self.varmaker.next()
         self.w(u'<script type="text/javascript">updateMessage("%s");</script>\n'
-               % self.req._('Please note that this is only a shallow copy'))
+               % self.req._(self.warning_message))
         super(CopyFormView, self).render_form(self.newentity)
         del self.newentity
 
@@ -412,7 +413,7 @@ class TableEditForm(forms.CompositeForm):
 
     def __init__(self, req, rset, **kwargs):
         kwargs.setdefault('__redirectrql', rset.printable_rql())
-        super(TableEditForm, self).__init__(req, rset, **kwargs)
+        super(TableEditForm, self).__init__(req, rset=rset, **kwargs)
         for row in xrange(len(self.rset)):
             form = self.vreg['forms'].select('edition', self.req,
                                              rset=self.rset, row=row,
@@ -451,32 +452,34 @@ class InlineEntityEditionFormView(FormViewMixIn, EntityView):
         for i in xrange(len(rset)):
             self.wview(self.id, rset, row=i, **kwargs)
 
-    def cell_call(self, row, col, peid, rtype, role='subject', **kwargs):
+    def cell_call(self, row, col, peid, rtype, role, i18nctx, **kwargs):
         """
         :param peid: the parent entity's eid hosting the inline form
         :param rtype: the relation bridging `etype` and `peid`
         :param role: the role played by the `peid` in the relation
         """
-        entity = self.entity(row, col)
+        entity = self.rset.get_entity(row, col)
         divonclick = "restoreInlinedEntity('%s', '%s', '%s')" % (peid, rtype,
                                                                  entity.eid)
-        self.render_form(entity, peid, rtype, role, divonclick=divonclick)
+        self.render_form(entity, peid, rtype, role, i18nctx,
+                         divonclick=divonclick)
 
-    def render_form(self, entity, peid, rtype, role, **kwargs):
+    def render_form(self, entity, peid, rtype, role, i18nctx, **kwargs):
         """fetch and render the form"""
         form = self.vreg['forms'].select('edition', self.req, entity=entity,
                                          form_renderer_id='inline',
                                          mainform=False, copy_nav_params=False)
         self.add_hiddens(form, entity, peid, rtype, role)
         divid = '%s-%s-%s' % (peid, rtype, entity.eid)
-        title = self.schema.rschema(rtype).display_name(self.req, role)
-        removejs = self.removejs % (peid, rtype,entity.eid)
+        title = self.req.pgettext(i18nctx, 'This %s' % entity.e_schema)
+        removejs = self.removejs % (peid, rtype, entity.eid)
         countkey = '%s_count' % rtype
         try:
             self.req.data[countkey] += 1
         except:
             self.req.data[countkey] = 1
         self.w(form.form_render(divid=divid, title=title, removejs=removejs,
+                                i18nctx=i18nctx,
                                 counter=self.req.data[countkey], **kwargs))
 
     def add_hiddens(self, form, entity, peid, rtype, role):
@@ -502,7 +505,7 @@ class InlineEntityCreationFormView(InlineEntityEditionFormView):
                   & specified_etype_implements('Any'))
     removejs = "removeInlineForm('%s', '%s', '%s')"
 
-    def call(self, etype, peid, rtype, role='subject', **kwargs):
+    def call(self, etype, peid, rtype, role, i18nctx, **kwargs):
         """
         :param etype: the entity type being created in the inline form
         :param peid: the parent entity's eid hosting the inline form
@@ -510,10 +513,11 @@ class InlineEntityCreationFormView(InlineEntityEditionFormView):
         :param role: the role played by the `peid` in the relation
         """
         try:
-            entity = self.vreg['etypes'].etype_class(etype)(self.req, None, None)
+            cls = self.vreg['etypes'].etype_class(etype)
         except:
             self.w(self.req._('no such entity type %s') % etype)
             return
         self.initialize_varmaker()
+        entity = cls(self.req)
         entity.eid = self.varmaker.next()
-        self.render_form(entity, peid, rtype, role)
+        self.render_form(entity, peid, rtype, role, i18nctx, **kwargs)

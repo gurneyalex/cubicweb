@@ -119,7 +119,7 @@ def trmap(config, schema, lang):
         return TRANSLATION_MAPS[lang]
     except KeyError:
         assert lang in config.translations, '%s %s' % (lang, config.translations)
-        tr = config.translations[lang]
+        tr, ctxtr = config.translations[lang]
         langmap = {}
         for etype in schema.entities():
             etype = str(etype)
@@ -345,7 +345,7 @@ class FullTextTranslator(BaseQueryProcessor):
 class MagicSearchComponent(Component):
     id  = 'magicsearch'
     def __init__(self, req, rset=None):
-        super(MagicSearchComponent, self).__init__(req, rset)
+        super(MagicSearchComponent, self).__init__(req, rset=rset)
         processors = []
         self.by_name = {}
         for processorcls in self.vreg['components']['magicsearch_processor']:

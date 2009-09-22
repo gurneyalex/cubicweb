@@ -18,14 +18,14 @@ from cubicweb.server.sqlutils import SQL_PREFIX
 
 def dbg_st_search(uri, union, varmap, args, cachekey=None, prefix='rql for'):
     if server.DEBUG & server.DBG_RQL:
-        print '%s %s source: %s' % (prefix, uri, union.as_string())
+        print '  %s %s source: %s' % (prefix, uri, union.as_string())
         if varmap:
-            print '  using varmap', varmap
+            print '    using varmap', varmap
         if server.DEBUG & server.DBG_MORE:
-            print '  args', args
-            print '  cache key', cachekey
-            print '  solutions', ','.join(str(s.solutions)
-                                          for s in union.children)
+            print '    args', args
+            print '    cache key', cachekey
+            print '    solutions', ','.join(str(s.solutions)
+                                            for s in union.children)
     # return true so it can be used as assertion (and so be killed by python -O)
     return True
 
@@ -80,6 +80,11 @@ class AbstractSource(object):
     # a reference to the instance'schema (may differs from the source'schema)
     schema = None
 
+    # multi-sources planning control
+    dont_cross_relations = ()
+    cross_relations = ()
+
+
     def __init__(self, repo, appschema, source_config, *args, **kwargs):
         self.repo = repo
         self.uri = source_config['uri']
@@ -95,30 +100,11 @@ class AbstractSource(object):
         """method called by the repository once ready to handle request"""
         pass
 
-    def backup_file(self, backupfile=None, timestamp=None):
-        """return a unique file name for a source's dump
-
-        either backupfile or timestamp (used to generated a backup file name if
-        needed) should be specified.
-        """
-        if backupfile is None:
-            config = self.repo.config
-            return join(config.appdatahome, 'backup',
-                        '%s-%s-%s.dump' % (config.appid, timestamp, self.uri))
-        # backup file is the system database backup file, add uri to it if not
-        # already there
-        base, ext = splitext(backupfile)
-        if not base.endswith('-%s' % self.uri):
-            return '%s-%s%s' % (base, self.uri, ext)
-        return backupfile
-
-    def backup(self, confirm, backupfile=None, timestamp=None,
-               askconfirm=False):
+    def backup(self, backupfile):
         """method called to create a backup of source's data"""
         pass
 
-    def restore(self, confirm, backupfile=None, timestamp=None, drop=True,
-               askconfirm=False):
+    def restore(self, backupfile):
         """method called to restore a backup of source's data"""
         pass
 
@@ -195,6 +181,19 @@ class AbstractSource(object):
         if write:
             return wsupport
         return True
+
+    def may_cross_relation(self, rtype):
+        """return True if the relation may be crossed among sources. Rules are:
+
+        * if this source support the relation, can't be crossed unless explicitly
+          specified in .cross_relations
+
+        * if this source doesn't support the relation, can be crossed unless
+          explicitly specified in .dont_cross_relations
+        """
+        if self.support_relation(rtype):
+            return rtype in self.cross_relations
+        return rtype not in self.dont_cross_relations
 
     def eid2extid(self, eid, session=None):
         return self.repo.eid2extid(self, eid, session)
