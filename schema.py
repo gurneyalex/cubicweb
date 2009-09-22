@@ -14,7 +14,9 @@ from logging import getLogger
 from warnings import warn
 
 from logilab.common.decorators import cached, clear_cache, monkeypatch
+from logilab.common.logging_ext import set_log_methods
 from logilab.common.deprecation import deprecated
+from logilab.common.graph import get_cycles
 from logilab.common.compat import any
 
 from yams import BadSchemaDefinition, buildobjs as ybo
@@ -26,8 +28,8 @@ from yams.reader import (CONSTRAINTS, PyFileReader, SchemaLoader,
 
 from rql import parse, nodes, RQLSyntaxError, TypeResolverException
 
+import cubicweb
 from cubicweb import ETYPE_NAME_MAP, ValidationError, Unauthorized
-from cubicweb import set_log_methods
 
 # XXX <3.2 bw compat
 from yams import schema
@@ -42,6 +44,7 @@ META_RTYPES = set((
     'owned_by', 'created_by', 'is', 'is_instance_of', 'identity',
     'eid', 'creation_date', 'modification_date', 'has_text', 'cwuri',
     ))
+SYSTEM_RTYPES = set(('require_permission', 'custom_workflow', 'in_state', 'wf_info_for'))
 
 #  set of entity and relation types used to build the schema
 SCHEMA_TYPES = set((
@@ -58,6 +61,38 @@ ybo.ETYPE_PROPERTIES += ('eid',)
 ybo.RTYPE_PROPERTIES += ('eid',)
 ybo.RDEF_PROPERTIES += ('eid',)
 
+
+# XXX same algorithm as in reorder_cubes and probably other place,
+# may probably extract a generic function
+def order_eschemas(eschemas):
+    """return entity schemas ordered such that entity types which specializes an
+    other one appears after that one
+    """
+    graph = {}
+    for eschema in eschemas:
+        if eschema.specializes():
+            graph[eschema] = set((eschema.specializes(),))
+        else:
+            graph[eschema] = set()
+    cycles = get_cycles(graph)
+    if cycles:
+        cycles = '\n'.join(' -> '.join(cycle) for cycle in cycles)
+        raise Exception('cycles in entity schema specialization: %s'
+                        % cycles)
+    eschemas = []
+    while graph:
+        # sorted to get predictable results
+        for eschema, deps in sorted(graph.items()):
+            if not deps:
+                eschemas.append(eschema)
+                del graph[eschema]
+                for deps in graph.itervalues():
+                    try:
+                        deps.remove(eschema)
+                    except KeyError:
+                        continue
+    return eschemas
+
 def bw_normalize_etype(etype):
     if etype in ETYPE_NAME_MAP:
         msg = '%s has been renamed to %s, please update your code' % (
@@ -66,7 +101,7 @@ def bw_normalize_etype(etype):
         etype = ETYPE_NAME_MAP[etype]
     return etype
 
-def display_name(req, key, form=''):
+def display_name(req, key, form='', context=None):
     """return a internationalized string for the key (schema entity or relation
     name) in a given form
     """
@@ -76,9 +111,13 @@ def display_name(req, key, form=''):
     if form:
         key = key + '_' + form
     # ensure unicode
-    # added .lower() in case no translation are available
-    return unicode(req._(key)).lower()
-__builtins__['display_name'] = deprecated('display_name should be imported from cubicweb.schema')(display_name)
+    # .lower() in case no translation are available XXX done whatever a translation is there or not!
+    if context is not None:
+        return unicode(req.pgettext(context, key)).lower()
+    else:
+        return unicode(req._(key)).lower()
+
+__builtins__['display_name'] = deprecated('[3.4] display_name should be imported from cubicweb.schema')(display_name)
 
 def ERSchema_display_name(self, req, form=''):
     """return a internationalized string for the entity/relation type name in
@@ -413,6 +452,7 @@ class CubicWebSchema(Schema):
     reading_from_database = False
     entity_class = CubicWebEntitySchema
     relation_class = CubicWebRelationSchema
+    no_specialization_inference = ('identity',)
 
     def __init__(self, *args, **kwargs):
         self._eid_index = {}
@@ -485,6 +525,7 @@ class CubicWebSchema(Schema):
         for k, v in self._eid_index.items():
             if v == (subjtype, rtype, objtype):
                 del self._eid_index[k]
+                break
         super(CubicWebSchema, self).del_relation_def(subjtype, rtype, objtype)
 
     def del_entity_type(self, etype):
@@ -516,7 +557,7 @@ class RQLVocabularyConstraint(BaseConstraint):
     def __init__(self, restriction):
         self.restriction = restriction
 
-    def check_consistency(self, subjschema, objschema):
+    def check_consistency(self, subjschema, objschema, rdef):
         if objschema.is_final():
             raise BadSchemaDefinition("unique constraint doesn't apply to "
                                       "final entity type")
@@ -606,6 +647,8 @@ class RQLExpression(object):
             if len(self.rqlst.defined_vars[mainvar].references()) <= 2:
                 _LOGGER.warn('You did not use the %s variable in your RQL '
                              'expression %s', mainvar, self)
+        # syntax tree used by read security (inserted in queries when necessary
+        self.snippet_rqlst = parse(self.minimal_rql, print_errors=False).children[0]
 
     def __str__(self):
         return self.full_rql
@@ -731,8 +774,6 @@ class RQLExpression(object):
 class ERQLExpression(RQLExpression):
     def __init__(self, expression, mainvars=None, eid=None):
         RQLExpression.__init__(self, expression, mainvars or 'X', eid)
-        # syntax tree used by read security (inserted in queries when necessary
-        self.snippet_rqlst = parse(self.minimal_rql, print_errors=False).children[0]
 
     @property
     def full_rql(self):
@@ -802,6 +843,7 @@ class RRQLExpression(RQLExpression):
 PyFileReader.context['RRQLExpression'] = yobsolete(RRQLExpression)
 
 # workflow extensions #########################################################
+
 from yams.buildobjs import _add_relation as yams_add_relation
 
 class workflowable_definition(ybo.metadefinition):
@@ -810,23 +852,30 @@ class workflowable_definition(ybo.metadefinition):
     This is the default metaclass for WorkflowableEntityType
     """
     def __new__(mcs, name, bases, classdict):
-        abstract = classdict.pop('abstract', False)
-        defclass = super(workflowable_definition, mcs).__new__(mcs, name, bases, classdict)
+        abstract = classdict.pop('__abstract__', False)
+        cls = super(workflowable_definition, mcs).__new__(mcs, name, bases,
+                                                          classdict)
         if not abstract:
-            existing_rels = set(rdef.name for rdef in defclass.__relations__)
-            if 'in_state' not in existing_rels and 'wf_info_for' not in existing_rels:
-                in_state = ybo.SubjectRelation('State', cardinality='1*',
-                                               # XXX automatize this
-                                               constraints=[RQLConstraint('S is ET, O state_of ET')],
-                                               description=_('account state'))
-                yams_add_relation(defclass.__relations__, in_state, 'in_state')
-                wf_info_for = ybo.ObjectRelation('TrInfo', cardinality='1*', composite='object')
-                yams_add_relation(defclass.__relations__, wf_info_for, 'wf_info_for')
-        return defclass
+            make_workflowable(cls)
+        return cls
+
+def make_workflowable(cls, in_state_descr=None):
+    existing_rels = set(rdef.name for rdef in cls.__relations__)
+    # let relation types defined in cw.schemas.workflow carrying
+    # cardinality, constraints and other relation definition properties
+    if 'custom_workflow' not in existing_rels:
+        rdef = ybo.SubjectRelation('Workflow')
+        yams_add_relation(cls.__relations__, rdef, 'custom_workflow')
+    if 'in_state' not in existing_rels:
+        rdef = ybo.SubjectRelation('State', description=in_state_descr)
+        yams_add_relation(cls.__relations__, rdef, 'in_state')
+    if 'wf_info_for' not in existing_rels:
+        rdef = ybo.ObjectRelation('TrInfo')
+        yams_add_relation(cls.__relations__, rdef, 'wf_info_for')
 
 class WorkflowableEntityType(ybo.EntityType):
     __metaclass__ = workflowable_definition
-    abstract = True
+    __abstract__ = True
 
 PyFileReader.context['WorkflowableEntityType'] = WorkflowableEntityType
 
@@ -848,13 +897,12 @@ class BootstrapSchemaLoader(SchemaLoader):
         """return a Schema instance from the schema definition read
         from <directory>
         """
-        self.lib_directory = config.schemas_lib_dir()
         return super(BootstrapSchemaLoader, self).load(
             path, config.appid, register_base_types=False, **kwargs)
 
     def _load_definition_files(self, cubes=None):
         # bootstraping, ignore cubes
-        filepath = join(self.lib_directory, 'bootstrap.py')
+        filepath = join(cubicweb.CW_SOFTWARE_ROOT, 'schemas', 'bootstrap.py')
         self.info('loading %s', filepath)
         self.handle_file(filepath)
 
@@ -873,6 +921,10 @@ class CubicWebSchemaLoader(BootstrapSchemaLoader):
         from <directory>
         """
         self.info('loading %s schemas', ', '.join(config.cubes()))
+        self.extrapath = {}
+        for cubesdir in config.cubes_search_path():
+            if cubesdir != config.CUBES_DIR:
+                self.extrapath[cubesdir] = 'cubes'
         if config.apphome:
             path = tuple(reversed([config.apphome] + config.cubes_path()))
         else:
@@ -881,13 +933,13 @@ class CubicWebSchemaLoader(BootstrapSchemaLoader):
             return super(CubicWebSchemaLoader, self).load(config, path=path, **kwargs)
         finally:
             # we've to cleanup modules imported from cubicweb.schemas as well
-            cleanup_sys_modules([self.lib_directory])
+            cleanup_sys_modules([join(cubicweb.CW_SOFTWARE_ROOT, 'schemas')])
 
     def _load_definition_files(self, cubes):
-        for filepath in (join(self.lib_directory, 'bootstrap.py'),
-                         join(self.lib_directory, 'base.py'),
-                         join(self.lib_directory, 'workflow.py'),
-                         join(self.lib_directory, 'Bookmark.py')):
+        for filepath in (join(cubicweb.CW_SOFTWARE_ROOT, 'schemas', 'bootstrap.py'),
+                         join(cubicweb.CW_SOFTWARE_ROOT, 'schemas', 'base.py'),
+                         join(cubicweb.CW_SOFTWARE_ROOT, 'schemas', 'workflow.py'),
+                         join(cubicweb.CW_SOFTWARE_ROOT, 'schemas', 'Bookmark.py')):
             self.info('loading %s', filepath)
             self.handle_file(filepath)
         for cube in cubes:
@@ -906,9 +958,12 @@ PERM_USE_TEMPLATE_FORMAT = _('use_template_format')
 NEED_PERM_FORMATS = [_('text/cubicweb-page-template')]
 
 @monkeypatch(FormatConstraint)
-def vocabulary(self, entity=None, req=None):
-    if req is None and entity is not None:
+def vocabulary(self, entity=None, form=None):
+    req = None
+    if form is None and entity is not None:
         req = entity.req
+    elif form is not None:
+        req = form.req
     if req is not None and req.user.has_permission(PERM_USE_TEMPLATE_FORMAT):
         return self.regular_formats + tuple(NEED_PERM_FORMATS)
     return self.regular_formats
@@ -941,3 +996,9 @@ orig_set_statement_type = stmts.Select.set_statement_type
 def bw_set_statement_type(self, etype):
     return orig_set_statement_type(self, bw_normalize_etype(etype))
 stmts.Select.set_statement_type = bw_set_statement_type
+
+# XXX deprecated
+from yams.constraints import format_constraint
+format_constraint = deprecated('[3.4] use RichString instead of format_constraint')(format_constraint)
+from yams.buildobjs import RichString
+PyFileReader.context['format_constraint'] = format_constraint

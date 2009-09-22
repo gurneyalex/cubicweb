@@ -4,21 +4,21 @@
 import sys
 
 from logilab.common.testlib import unittest_main, TestCase
-from cubicweb.devtools.apptest import RepositoryBasedTC
+from cubicweb.devtools.testlib import CubicWebTC
 
 from cubicweb import Unauthorized, ValidationError
 from cubicweb.server.querier import check_read_access
 
-class BaseSecurityTC(RepositoryBasedTC):
+class BaseSecurityTC(CubicWebTC):
 
     def setUp(self):
-        RepositoryBasedTC.setUp(self)
+        CubicWebTC.setUp(self)
         self.create_user('iaminusersgrouponly')
         self.readoriggroups = self.schema['Personne'].get_groups('read')
         self.addoriggroups = self.schema['Personne'].get_groups('add')
 
     def tearDown(self):
-        RepositoryBasedTC.tearDown(self)
+        CubicWebTC.tearDown(self)
         self.schema['Personne'].set_groups('read', self.readoriggroups)
         self.schema['Personne'].set_groups('add', self.addoriggroups)
 
@@ -27,17 +27,17 @@ class LowLevelSecurityFunctionTC(BaseSecurityTC):
 
     def test_check_read_access(self):
         rql = u'Personne U where U nom "managers"'
-        rqlst = self.repo.querier._rqlhelper.parse(rql).children[0]
+        rqlst = self.repo.vreg.rqlhelper.parse(rql).children[0]
         origgroups = self.schema['Personne'].get_groups('read')
         self.schema['Personne'].set_groups('read', ('users', 'managers'))
-        self.repo.querier._rqlhelper.compute_solutions(rqlst)
+        self.repo.vreg.rqlhelper.compute_solutions(rqlst)
         solution = rqlst.solutions[0]
         check_read_access(self.schema, self.session.user, rqlst, solution)
         cnx = self.login('anon')
         cu = cnx.cursor()
         self.assertRaises(Unauthorized,
                           check_read_access,
-                          self.schema, cnx.user(self.current_session()), rqlst, solution)
+                          self.schema, cnx.user(self.session), rqlst, solution)
         self.assertRaises(Unauthorized, cu.execute, rql)
 
     def test_upassword_not_selectable(self):
@@ -165,7 +165,7 @@ class SecurityTC(BaseSecurityTC):
 
     def test_insert_relation_rql_permission(self):
         cnx = self.login('iaminusersgrouponly')
-        session = self.current_session()
+        session = self.session
         cu = cnx.cursor(session)
         cu.execute("SET A concerne S WHERE A is Affaire, S is Societe")
         # should raise Unauthorized since user don't own S
@@ -210,7 +210,7 @@ class SecurityTC(BaseSecurityTC):
 
 
     def test_user_can_change_its_upassword(self):
-        ueid = self.create_user('user')
+        ueid = self.create_user('user').eid
         cnx = self.login('user')
         cu = cnx.cursor()
         cu.execute('SET X upassword %(passwd)s WHERE X eid %(x)s',
@@ -220,7 +220,7 @@ class SecurityTC(BaseSecurityTC):
         cnx = self.login('user', 'newpwd')
 
     def test_user_cant_change_other_upassword(self):
-        ueid = self.create_user('otheruser')
+        ueid = self.create_user('otheruser').eid
         cnx = self.login('iaminusersgrouponly')
         cu = cnx.cursor()
         cu.execute('SET X upassword %(passwd)s WHERE X eid %(x)s',
@@ -265,7 +265,7 @@ class SecurityTC(BaseSecurityTC):
         self.commit()
         cnx = self.login('iaminusersgrouponly')
         cu = cnx.cursor()
-        aff2 = cu.execute("INSERT Affaire X: X sujet 'cool', X in_state S WHERE S name 'pitetre'")[0][0]
+        aff2 = cu.execute("INSERT Affaire X: X sujet 'cool'")[0][0]
         soc1 = cu.execute("INSERT Societe X: X nom 'chouette'")[0][0]
         cu.execute("SET A concerne S WHERE A eid %(a)s, S eid %(s)s", {'a': aff2, 's': soc1},
                    ('a', 's'))
@@ -347,25 +347,26 @@ class SecurityTC(BaseSecurityTC):
 
     def test_attribute_security_rqlexpr(self):
         # Note.para attribute editable by managers or if the note is in "todo" state
-        eid = self.execute("INSERT Note X: X para 'bidule', X in_state S WHERE S name 'done'")[0][0]
+        note = self.execute("INSERT Note X: X para 'bidule'").get_entity(0, 0)
         self.commit()
-        self.execute('SET X para "truc" WHERE X eid %(x)s', {'x': eid}, 'x')
+        note.fire_transition('markasdone')
+        self.execute('SET X para "truc" WHERE X eid %(x)s', {'x': note.eid}, 'x')
         self.commit()
         cnx = self.login('iaminusersgrouponly')
         cu = cnx.cursor()
-        cu.execute("SET X para 'chouette' WHERE X eid %(x)s", {'x': eid}, 'x')
+        cu.execute("SET X para 'chouette' WHERE X eid %(x)s", {'x': note.eid}, 'x')
         self.assertRaises(Unauthorized, cnx.commit)
-        eid2 = cu.execute("INSERT Note X: X para 'bidule'")[0][0]
+        note2 = cu.execute("INSERT Note X: X para 'bidule'").get_entity(0, 0)
         cnx.commit()
-        cu.execute("SET X in_state S WHERE X eid %(x)s, S name 'done'", {'x': eid2}, 'x')
+        note2.fire_transition('markasdone')
         cnx.commit()
-        self.assertEquals(len(cu.execute('Any X WHERE X in_state S, S name "todo", X eid %(x)s', {'x': eid2}, 'x')),
+        self.assertEquals(len(cu.execute('Any X WHERE X in_state S, S name "todo", X eid %(x)s', {'x': note2.eid}, 'x')),
                           0)
-        cu.execute("SET X para 'chouette' WHERE X eid %(x)s", {'x': eid2}, 'x')
+        cu.execute("SET X para 'chouette' WHERE X eid %(x)s", {'x': note2.eid}, 'x')
         self.assertRaises(Unauthorized, cnx.commit)
-        cu.execute("SET X in_state S WHERE X eid %(x)s, S name 'todo'", {'x': eid2}, 'x')
+        note2.fire_transition('redoit')
         cnx.commit()
-        cu.execute("SET X para 'chouette' WHERE X eid %(x)s", {'x': eid2}, 'x')
+        cu.execute("SET X para 'chouette' WHERE X eid %(x)s", {'x': note2.eid}, 'x')
         cnx.commit()
 
     def test_attribute_read_security(self):
@@ -398,16 +399,14 @@ class BaseSchemaSecurityTC(BaseSecurityTC):
         cu.execute('INSERT Affaire X: X ref "ARCT01", X concerne S WHERE S nom "ARCTIA"')
         cnx.commit()
         self.restore_connection()
-        self.execute('SET X in_state S WHERE X ref "ARCT01", S name "ben non"')
+        affaire = self.execute('Any X WHERE X ref "ARCT01"').get_entity(0, 0)
+        affaire.fire_transition('abort')
         self.commit()
         self.assertEquals(len(self.execute('TrInfo X WHERE X wf_info_for A, A ref "ARCT01"')),
-                          2)
+                          1)
         self.assertEquals(len(self.execute('TrInfo X WHERE X wf_info_for A, A ref "ARCT01",'
                                            'X owned_by U, U login "admin"')),
                           1) # TrInfo at the above state change
-        self.assertEquals(len(self.execute('TrInfo X WHERE X wf_info_for A, A ref "ARCT01",'
-                                           'X owned_by U, U login "iaminusersgrouponly"')),
-                          1) # TrInfo created at creation time
         cnx = self.login('iaminusersgrouponly')
         cu = cnx.cursor()
         cu.execute('DELETE Affaire X WHERE X ref "ARCT01"')
@@ -416,7 +415,7 @@ class BaseSchemaSecurityTC(BaseSecurityTC):
 
     def test_users_and_groups_non_readable_by_guests(self):
         cnx = self.login('anon')
-        anon = cnx.user(self.current_session())
+        anon = cnx.user(self.session)
         cu = cnx.cursor()
         # anonymous user can only read itself
         rset = cu.execute('Any L WHERE X owned_by U, U login L')
@@ -426,7 +425,7 @@ class BaseSchemaSecurityTC(BaseSecurityTC):
         # anonymous user can read groups (necessary to check allowed transitions for instance)
         self.assert_(cu.execute('CWGroup X'))
         # should only be able to read the anonymous user, not another one
-        origuser = self.session.user
+        origuser = self.adminsession.user
         self.assertRaises(Unauthorized,
                           cu.execute, 'CWUser X WHERE X eid %(x)s', {'x': origuser.eid}, 'x')
         # nothing selected, nothing updated, no exception raised
@@ -462,7 +461,7 @@ class BaseSchemaSecurityTC(BaseSecurityTC):
         self.commit()
         cnx = self.login('anon')
         cu = cnx.cursor()
-        anoneid = self.current_session().user.eid
+        anoneid = self.session.user.eid
         self.assertEquals(cu.execute('Any T,P ORDERBY lower(T) WHERE B is Bookmark,B title T,B path P,'
                                      'B bookmarked_by U, U eid %s' % anoneid).rows,
                           [['index', '?vid=index']])
@@ -491,7 +490,7 @@ class BaseSchemaSecurityTC(BaseSecurityTC):
         eid = self.execute('INSERT Affaire X: X ref "ARCT01"')[0][0]
         self.commit()
         cnx = self.login('iaminusersgrouponly')
-        session = self.current_session()
+        session = self.session
         # needed to avoid check_perm error
         session.set_pool()
         # needed to remove rql expr granting update perm to the user
@@ -499,29 +498,34 @@ class BaseSchemaSecurityTC(BaseSecurityTC):
         self.assertRaises(Unauthorized,
                           self.schema['Affaire'].check_perm, session, 'update', eid)
         cu = cnx.cursor()
-        cu.execute('SET X in_state S WHERE X ref "ARCT01", S name "ben non"')
-        cnx.commit()
-        # though changing a user state (even logged user) is reserved to managers
-        rql = u"SET X in_state S WHERE X eid %(x)s, S name 'deactivated'"
-        # XXX wether it should raise Unauthorized or ValidationError is not clear
-        # the best would probably ValidationError if the transition doesn't exist
-        # from the current state but Unauthorized if it exists but user can't pass it
-        self.assertRaises(ValidationError, cu.execute, rql, {'x': cnx.user(self.current_session()).eid}, 'x')
+        self.schema['Affaire'].set_groups('read', ('users',))
+        try:
+            aff = cu.execute('Any X WHERE X ref "ARCT01"').get_entity(0, 0)
+            aff.fire_transition('abort')
+            cnx.commit()
+            # though changing a user state (even logged user) is reserved to managers
+            user = cnx.user(self.current_session())
+            # XXX wether it should raise Unauthorized or ValidationError is not clear
+            # the best would probably ValidationError if the transition doesn't exist
+            # from the current state but Unauthorized if it exists but user can't pass it
+            self.assertRaises(ValidationError, user.fire_transition, 'deactivate')
+        finally:
+            self.schema['Affaire'].set_groups('read', ('managers',))
 
     def test_trinfo_security(self):
         aff = self.execute('INSERT Affaire X: X ref "ARCT01"').get_entity(0, 0)
         self.commit()
+        aff.fire_transition('abort')
+        self.commit()
         # can change tr info comment
         self.execute('SET TI comment %(c)s WHERE TI wf_info_for X, X ref "ARCT01"',
-                     {'c': u'creation'})
+                     {'c': u'bouh!'})
         self.commit()
         aff.clear_related_cache('wf_info_for', 'object')
-        self.assertEquals(aff.latest_trinfo().comment, 'creation')
-        # but not from_state/to_state
-        self.execute('SET X in_state S WHERE X ref "ARCT01", S name "ben non"')
-        self.commit()
-        aff.clear_related_cache('wf_info_for', role='object')
         trinfo = aff.latest_trinfo()
+        self.assertEquals(trinfo.comment, 'bouh!')
+        # but not from_state/to_state
+        aff.clear_related_cache('wf_info_for', role='object')
         self.assertRaises(Unauthorized,
                           self.execute, 'SET TI from_state S WHERE TI eid %(ti)s, S name "ben non"',
                           {'ti': trinfo.eid}, 'ti')

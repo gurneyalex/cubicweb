@@ -77,15 +77,12 @@ class ServerConfiguration(CubicWebConfiguration):
     name = 'repository'
     if os.environ.get('APYCOT_ROOT'):
         root = os.environ['APYCOT_ROOT']
-        SCHEMAS_LIB_DIR = '%s/local/share/cubicweb/schemas/' % root
     elif CubicWebConfiguration.mode == 'dev':
-        SCHEMAS_LIB_DIR = join(CW_SOFTWARE_ROOT, 'schemas')
         BACKUP_DIR = CubicWebConfiguration.RUNTIME_DIR
     else:
-        SCHEMAS_LIB_DIR = '/usr/share/cubicweb/schemas/'
         BACKUP_DIR = '/var/lib/cubicweb/backup/'
 
-    cubicweb_appobject_path = CubicWebConfiguration.cubicweb_appobject_path | set(['sobjects'])
+    cubicweb_appobject_path = CubicWebConfiguration.cubicweb_appobject_path | set(['sobjects', 'hooks'])
     cube_appobject_path = CubicWebConfiguration.cube_appobject_path | set(['sobjects', 'hooks'])
 
     options = merge_options((
@@ -181,6 +178,10 @@ and if not set, it will be choosen randomly',
           }),
         ) + CubicWebConfiguration.options)
 
+    # should we open connections pools (eg connect to sources). This is usually
+    # necessary...
+    open_connections_pools = True
+
     # read the schema from the database
     read_instance_schema = True
     bootstrap_schema = True
@@ -188,14 +189,9 @@ and if not set, it will be choosen randomly',
     # check user's state at login time
     consider_user_state = True
 
-    # hooks registration configuration
+    # hooks activation configuration
     # all hooks should be activated during normal execution
-    core_hooks = True
-    usergroup_hooks = True
-    schema_hooks = True
-    notification_hooks = True
-    security_hooks = True
-    instance_hooks = True
+    disabled_hooks_categories = set()
 
     # should some hooks be deactivated during [pre|post]create script execution
     free_wheel = False
@@ -207,11 +203,6 @@ and if not set, it will be choosen randomly',
     def enabled_sources(self, sourceuris=None):
         self._enabled_sources = sourceuris
         clear_cache(self, 'sources')
-
-    @classmethod
-    def schemas_lib_dir(cls):
-        """instance schema directory"""
-        return env_path('CW_SCHEMA_LIB', cls.SCHEMAS_LIB_DIR, 'schemas')
 
     def bootstrap_cubes(self):
         from logilab.common.textutils import splitstrip
@@ -263,20 +254,6 @@ and if not set, it will be choosen randomly',
     def pyro_enabled(self):
         """pyro is always enabled in standalone repository configuration"""
         return True
-
-    def load_hooks(self, vreg):
-        hooks = {}
-        try:
-            apphookdefs = vreg['hooks'].all_objects()
-        except RegistryNotFound:
-            return hooks
-        for hookdef in apphookdefs:
-            for event, ertype in hookdef.register_to():
-                if ertype == 'Any':
-                    ertype = ''
-                cb = hookdef.make_callback(event)
-                hooks.setdefault(event, {}).setdefault(ertype, []).append(cb)
-        return hooks
 
     def load_schema(self, expand_cubes=False, **kwargs):
         from cubicweb.schema import CubicWebSchemaLoader

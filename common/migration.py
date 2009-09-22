@@ -157,7 +157,7 @@ class MigrationHelper(object):
                     # take care to X.Y.Z_Any.py / X.Y.Z_common.py: we've to call
                     # cube_upgraded once all script of X.Y.Z have been executed
                     if prevversion is not None and version != prevversion:
-                        self.cube_upgraded(cube, version)
+                        self.cube_upgraded(cube, prevversion)
                     prevversion = version
                     self.process_script(script)
                 self.cube_upgraded(cube, toversion)
@@ -183,12 +183,12 @@ class MigrationHelper(object):
         if not ask_confirm or self.confirm(msg):
             return meth(*args, **kwargs)
 
-    def confirm(self, question, shell=True, abort=True, retry=False):
+    def confirm(self, question, shell=True, abort=True, retry=False, default='y'):
         """ask for confirmation and return true on positive answer
 
         if `retry` is true the r[etry] answer may return 2
         """
-        possibleanswers = ['Y','n']
+        possibleanswers = ['y','n']
         if abort:
             possibleanswers.append('abort')
         if shell:
@@ -196,7 +196,7 @@ class MigrationHelper(object):
         if retry:
             possibleanswers.append('retry')
         try:
-            answer = ASK.ask(question, possibleanswers, 'Y')
+            answer = ASK.ask(question, possibleanswers, default)
         except (EOFError, KeyboardInterrupt):
             answer = 'abort'
         if answer == 'n':
@@ -228,7 +228,10 @@ class MigrationHelper(object):
         else:
             readline.set_completer(Completer(local_ctx).complete)
             readline.parse_and_bind('tab: complete')
-            histfile = os.path.join(os.environ["HOME"], ".eshellhist")
+            home_key = 'HOME'
+            if sys.platform == 'win32':
+                home_key = 'USERPROFILE'
+            histfile = os.path.join(os.environ[home_key], ".eshellhist")
             try:
                 readline.read_history_file(histfile)
             except IOError:
@@ -338,7 +341,7 @@ type "exit" or Ctrl-D to quit the shell and resume operation"""
         configfile = self.config.main_config_file()
         if self._option_changes:
             read_old_config(self.config, self._option_changes, configfile)
-        _, newconfig = tempfile.mkstemp()
+        fd, newconfig = tempfile.mkstemp()
         for optdescr in self._option_changes:
             if optdescr[0] == 'added':
                 optdict = self.config.get_option_def(optdescr[1])
@@ -346,6 +349,7 @@ type "exit" or Ctrl-D to quit the shell and resume operation"""
                     self.config.input_option(optdescr[1], optdict)
         self.config.generate_config(open(newconfig, 'w'))
         show_diffs(configfile, newconfig)
+        os.close(fd)
         if exists(newconfig):
             os.unlink(newconfig)
 

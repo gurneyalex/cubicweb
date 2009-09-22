@@ -26,6 +26,12 @@ from cubicweb.cwconfig import register_persistent_options
 from cubicweb.server.sources import (AbstractSource, ConnectionWrapper,
                                      TimedCache, dbg_st_search, dbg_results)
 
+
+def uidtype(union, col, etype, args):
+    select, col = union.locate_subquery(col, etype, args)
+    return getattr(select.selection[col], 'uidtype', None)
+
+
 class ReplaceByInOperator(Exception):
     def __init__(self, eids):
         self.eids = eids
@@ -125,6 +131,10 @@ repository (default to 5 minutes).',
                        'group': 'sources',
                        }),)
         register_persistent_options(myoptions)
+        self._query_cache = TimedCache(30)
+
+    def reset_caches(self):
+        """method called during test to reset potential source caches"""
         self._query_cache = TimedCache(30)
 
     def last_update_time(self):
@@ -291,8 +301,8 @@ repository (default to 5 minutes).',
             needtranslation = []
             rows = rset.rows
             for i, etype in enumerate(descr[0]):
-                if (etype is None or not self.schema.eschema(etype).is_final() or
-                    getattr(union.locate_subquery(i, etype, args).selection[i], 'uidtype', None)):
+                if (etype is None or not self.schema.eschema(etype).is_final()
+                    or uidtype(union, i, etype, args)):
                     needtranslation.append(i)
             if needtranslation:
                 cnx = session.pool.connection(self.uri)
@@ -335,6 +345,7 @@ repository (default to 5 minutes).',
         cu.execute('SET %s WHERE X eid %%(x)s' % ','.join(relations),
                    kwargs, 'x')
         self._query_cache.clear()
+        entity.clear_all_caches()
 
     def delete_entity(self, session, etype, eid):
         """delete an entity from the source"""
@@ -350,6 +361,8 @@ repository (default to 5 minutes).',
                    {'x': self.eid2extid(subject, session),
                     'y': self.eid2extid(object, session)}, ('x', 'y'))
         self._query_cache.clear()
+        session.entity_from_eid(subject).clear_all_caches()
+        session.entity_from_eid(object).clear_all_caches()
 
     def delete_relation(self, session, subject, rtype, object):
         """delete a relation from the source"""
@@ -358,6 +371,8 @@ repository (default to 5 minutes).',
                    {'x': self.eid2extid(subject, session),
                     'y': self.eid2extid(object, session)}, ('x', 'y'))
         self._query_cache.clear()
+        session.entity_from_eid(subject).clear_all_caches()
+        session.entity_from_eid(object).clear_all_caches()
 
 
 class RQL2RQL(object):

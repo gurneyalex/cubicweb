@@ -33,7 +33,15 @@ class concerne(RelationType):
         'delete': ('managers', RRQLExpression('O owned_by U')),
         }
 
-class Note(EntityType):
+class Para(EntityType):
+    para = String(maxsize=512)
+    newattr = String()
+    newinlined = SubjectRelation('Affaire', cardinality='?*', inlined=True)
+    newnotinlined = SubjectRelation('Affaire', cardinality='?*')
+
+class Note(Para):
+    __specializes_schema__ = True
+
     permissions = {'read':   ('managers', 'users', 'guests',),
                    'update': ('managers', 'owners',),
                    'delete': ('managers', ),
@@ -42,14 +50,17 @@ class Note(EntityType):
                                              'PE require_permission P, P name "add_note", '
                                              'P require_group G'),)}
 
+    whatever = Int()  # keep it before `date` for unittest_migraction.test_add_attribute_int
     date = Datetime()
     type = String(maxsize=1)
-    whatever = Int()
     mydate = Date(default='TODAY')
-    para = String(maxsize=512)
     shortpara = String(maxsize=64)
     ecrit_par = SubjectRelation('Personne', constraints=[RQLConstraint('S concerne A, O concerne A')])
     attachment = SubjectRelation(('File', 'Image'))
+
+class Text(Para):
+    __specializes_schema__ = True
+    summary = String(maxsize=512)
 
 class ecrit_par(RelationType):
     permissions = {'read':   ('managers', 'users', 'guests',),
@@ -90,10 +101,10 @@ class Personne(EntityType):
 
     travaille = SubjectRelation('Societe')
     concerne = SubjectRelation('Affaire')
-    concerne2 = SubjectRelation('Affaire')
+    concerne2 = SubjectRelation(('Affaire', 'Note'), cardinality='1*')
     connait = SubjectRelation('Personne', symetric=True)
 
-class Societe(EntityType):
+class Societe(WorkflowableEntityType):
     permissions = {
         'read': ('managers', 'users', 'guests'),
         'update': ('managers', 'owners'),
@@ -112,7 +123,6 @@ class Societe(EntityType):
     cp   = String(maxsize=12)
     ville= String(maxsize=32)
 
-    in_state = SubjectRelation('State', cardinality='?*')
 
 class evaluee(RelationDefinition):
     subject = ('Personne', 'CWUser', 'Societe')

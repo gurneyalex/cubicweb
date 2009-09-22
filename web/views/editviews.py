@@ -43,27 +43,27 @@ class SearchForAssociationView(EntityView):
 
     @cached
     def filter_box_context_info(self):
-        entity = self.entity(0, 0)
+        entity = self.rset.get_entity(0, 0)
         role, eid, rtype, etype = self.req.search_state[1]
         assert entity.eid == typed_eid(eid)
         # the default behaviour is to fetch all unrelated entities and display
         # them. Use fetch_order and not fetch_unrelated_order as sort method
         # since the latter is mainly there to select relevant items in the combo
         # box, it doesn't give interesting result in this context
-        rql = entity.unrelated_rql(rtype, etype, role,
+        rql, args = entity.unrelated_rql(rtype, etype, role,
                                    ordermethod='fetch_order',
                                    vocabconstraints=False)
-        rset = self.req.execute(rql, {'x' : entity.eid}, 'x')
+        rset = self.req.execute(rql, args, tuple(args))
         return rset, 'list', "search-associate-content", True
 
 
 class OutOfContextSearch(EntityView):
     id = 'outofcontext-search'
     def cell_call(self, row, col):
-        entity = self.entity(row, col)
+        entity = self.rset.get_entity(row, col)
         erset = entity.as_rset()
         if self.req.match_search_state(erset):
-            self.w(u'<a href="%s" title="%s">%s</a>&nbsp;<a href="%s" title="%s">[...]</a>' % (
+            self.w(u'<a href="%s" title="%s">%s</a>&#160;<a href="%s" title="%s">[...]</a>' % (
                 xml_escape(linksearch_select_url(self.req, erset)),
                 self.req._('select this entity'),
                 xml_escape(entity.view('textoutofcontext')),
@@ -78,7 +78,7 @@ class UnrelatedDivs(EntityView):
     __select__ = match_form_params('relation')
 
     def cell_call(self, row, col):
-        entity = self.entity(row, col)
+        entity = self.rset.get_entity(row, col)
         relname, target = self.req.form.get('relation').rsplit('_', 1)
         rschema = self.schema.rschema(relname)
         hidden = 'hidden' in self.req.form
@@ -198,9 +198,9 @@ class EditableFinalView(FinalView):
     """same as FinalView but enables inplace-edition when possible"""
     id = 'editable-final'
 
-    def cell_call(self, row, col, props=None, displaytime=False):
+    def cell_call(self, row, col, props=None):
         entity, rtype = self.rset.related_entity(row, col)
         if entity is not None:
             self.w(entity.view('reledit', rtype=rtype))
         else:
-            super(EditableFinalView, self).cell_call(row, col, props, displaytime)
+            super(EditableFinalView, self).cell_call(row, col, props)

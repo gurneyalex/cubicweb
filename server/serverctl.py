@@ -14,8 +14,8 @@ from logilab.common.configuration import Configuration
 from logilab.common.clcommands import register_commands, cmd_run, pop_arg
 from logilab.common.shellutils import ASK
 
-from cubicweb import AuthenticationError, ExecutionError, ConfigurationError, underline_title
-from cubicweb.toolsutils import Command, CommandHandler
+from cubicweb import AuthenticationError, ExecutionError, ConfigurationError
+from cubicweb.toolsutils import Command, CommandHandler, underline_title
 from cubicweb.server import SOURCE_TYPES
 from cubicweb.server.utils import ask_source_config
 from cubicweb.server.serverconfig import USER_OPTIONS, ServerConfiguration
@@ -210,12 +210,12 @@ class RepositoryStartHandler(CommandHandler):
     cmdname = 'start'
     cfgname = 'repository'
 
-    def start_command(self, ctlconf, debug):
+    def start_server(self, ctlconf, debug):
         command = ['cubicweb-ctl start-repository ']
         if debug:
             command.append('--debug')
         command.append(self.config.appid)
-        return ' '.join(command)
+        os.system(' '.join(command))
 
 
 class RepositoryStopHandler(CommandHandler):
@@ -257,12 +257,19 @@ class CreateInstanceDBCommand(Command):
           'help': 'verbose mode: will ask all possible configuration questions',
           }
          ),
+        ('automatic',
+         {'short': 'a', 'type' : 'yn', 'metavar': '<auto>',
+          'default': 'n',
+          'help': 'automatic mode: never ask and use default answer to every question',
+          }
+         ),
         )
     def run(self, args):
         """run the command with its specific arguments"""
         from logilab.common.adbh import get_adv_func_helper
         from indexer import get_indexer
         verbose = self.get('verbose')
+        automatic = self.get('automatic')
         appid = pop_arg(args, msg='No instance specified !')
         config = ServerConfiguration.config_for(appid)
         create_db = self.config.create_db
@@ -277,13 +284,13 @@ class CreateInstanceDBCommand(Command):
             try:
                 if helper.users_support:
                     user = source['db-user']
-                    if not helper.user_exists(cursor, user) and \
-                           ASK.confirm('Create db user %s ?' % user, default_is_yes=False):
+                    if not helper.user_exists(cursor, user) and (automatic or \
+                           ASK.confirm('Create db user %s ?' % user, default_is_yes=False)):
                         helper.create_user(source['db-user'], source['db-password'])
                         print '-> user %s created.' % user
                 dbname = source['db-name']
                 if dbname in helper.list_databases(cursor):
-                    if ASK.confirm('Database %s already exists -- do you want to drop it ?' % dbname):
+                    if automatic or ASK.confirm('Database %s already exists -- do you want to drop it ?' % dbname):
                         cursor.execute('DROP DATABASE %s' % dbname)
                     else:
                         return
@@ -305,13 +312,14 @@ class CreateInstanceDBCommand(Command):
         # postgres specific stuff
         if driver == 'postgres':
             # install plpythonu/plpgsql language if not installed by the cube
-            for extlang in ('plpythonu', 'plpgsql'):
+            langs = sys.platform == 'win32' and ('plpgsql',) or ('plpythonu', 'plpgsql')
+            for extlang in langs:
                 helper.create_language(cursor, extlang)
         cursor.close()
         cnx.commit()
         print '-> database for instance %s created and necessary extensions installed.' % appid
         print
-        if ASK.confirm('Run db-init to initialize the system database ?'):
+        if automatic or ASK.confirm('Run db-init to initialize the system database ?'):
             cmd_run('db-init', config.appid)
         else:
             print ('-> nevermind, you can do it later with '
@@ -458,7 +466,13 @@ class StartRepositoryCommand(Command):
         # create the server
         server = RepositoryServer(config, debug)
         # go ! (don't daemonize in debug mode)
-        if not debug and server.daemonize(config['pid-file']) == -1:
+        pidfile = config['pid-file']
+        # ensure the directory where the pid-file should be set exists (for
+        # instance /var/run/cubicweb may be deleted on computer restart)
+        piddir = os.path.dirname(pidfile)
+        if not os.path.exists(piddir):
+            os.makedirs(piddir)
+        if not debug and server.daemonize(pidfile) == -1:
             return
         uid = config['uid']
         if uid is not None:
@@ -475,7 +489,9 @@ class StartRepositoryCommand(Command):
 
 def _remote_dump(host, appid, output, sudo=False):
     # XXX generate unique/portable file name
-    dmpcmd = 'cubicweb-ctl db-dump -o /tmp/%s.dump %s' % (appid, appid)
+    from datetime import date
+    filename = '%s-%s.tgz' % (appid, date.today().strftime('%Y-%m-%d'))
+    dmpcmd = 'cubicweb-ctl db-dump -o /tmp/%s %s' % (filename, appid)
     if sudo:
         dmpcmd = 'sudo %s' % (dmpcmd)
     dmpcmd = 'ssh -t %s "%s"' % (host, dmpcmd)
@@ -483,18 +499,17 @@ def _remote_dump(host, appid, output, sudo=False):
     if os.system(dmpcmd):
         raise ExecutionError('Error while dumping the database')
     if output is None:
-        from datetime import date
-        date = date.today().strftime('%Y-%m-%d')
-        output = '%s-%s.dump' % (appid, date)
-    cmd = 'scp %s:/tmp/%s.dump %s' % (host, appid, output)
+        output = filename
+    cmd = 'scp %s:/tmp/%s %s' % (host, filename, output)
     print cmd
     if os.system(cmd):
-        raise ExecutionError('Error while retrieving the dump')
-    rmcmd = 'ssh -t %s "rm -f /tmp/%s.dump"' % (host, appid)
+        raise ExecutionError('Error while retrieving the dump at /tmp/%s' % filename)
+    rmcmd = 'ssh -t %s "rm -f /tmp/%s"' % (host, filename)
     print rmcmd
     if os.system(rmcmd) and not ASK.confirm(
-        'An error occured while deleting remote dump. Continue anyway?'):
-        raise ExecutionError('Error while deleting remote dump')
+        'An error occured while deleting remote dump at /tmp/%s. '
+        'Continue anyway?' % filename):
+        raise ExecutionError('Error while deleting remote dump at /tmp/%s' % filename)
 
 def _local_dump(appid, output):
     config = ServerConfiguration.config_for(appid)
@@ -522,20 +537,19 @@ def _local_restore(appid, backupfile, drop, systemonly=True):
     status = instance_status(config, eversion, dbversions)
     # * database version > installed software
     if status == 'needsoftupgrade':
-        print "database is using some earlier version than installed software!"
-        print "please upgrade your software and then upgrade the instance"
-        print "using command 'cubicweb-ctl upgrade %s'" % config.appid
+        print "** The database of %s is more recent than the installed software!" % config.appid
+        print "** Upgrade your software, then migrate the database by running the command"
+        print "** 'cubicweb-ctl upgrade %s'" % config.appid
         return
     # * database version < installed software, an upgrade will be necessary
     #   anyway, just rewrite vc.conf and warn user he has to upgrade
-    if status == 'needapplupgrade':
-        print "database is using some older version than installed software."
-        print "You'll have to upgrade the instance using command"
-        print "'cubicweb-ctl upgrade %s'" % config.appid
+    elif status == 'needapplupgrade':
+        print "** The database of %s is older than the installed software." % config.appid
+        print "** Migrate the database by running the command"
+        print "** 'cubicweb-ctl upgrade %s'" % config.appid
         return
     # * database version = installed software, database version = instance fs version
     #   ok!
-
 
 def instance_status(config, cubicwebapplversion, vcconf):
     cubicwebversion = config.cubicweb_version()
@@ -663,9 +677,8 @@ class DBCopyCommand(Command):
         import tempfile
         srcappid = pop_arg(args, 1, msg='No source instance specified !')
         destappid = pop_arg(args, msg='No destination instance specified !')
-        # XXX -system necessary to match file name modified on source restore.
-        # should not have to expect this.
-        _, output = tempfile.mkstemp('-system.sql')
+        fd, output = tempfile.mkstemp()
+        os.close(fd)
         if ':' in srcappid:
             host, srcappid = srcappid.split(':')
             _remote_dump(host, srcappid, output, self.config.sudo)

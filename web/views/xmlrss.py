@@ -95,8 +95,8 @@ class XMLRsetView(AnyRsetView):
                     val = self.view('textincontext', rset,
                                     row=rowindex, col=colindex)
                 else:
-                    val = self.view('final', rset, displaytime=True,
-                                    row=rowindex, col=colindex, format='text/plain')
+                    val = self.view('final', rset, row=rowindex,
+                                    col=colindex, format='text/plain')
                 w(simple_sgml_tag(tag, val, **attrs))
             w(u' </row>\n')
         w(u'</%s>\n' % self.xml_root)
@@ -117,7 +117,7 @@ class RSSEntityFeedURL(Component):
     __select__ = non_final_entity() & one_line_rset()
 
     def feed_url(self):
-        return self.entity(0, 0).rss_feed_url()
+        return self.rset.get_entity(0, 0).rss_feed_url()
 
 
 class RSSIconBox(box.BoxTemplate):

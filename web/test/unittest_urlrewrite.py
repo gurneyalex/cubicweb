@@ -7,8 +7,8 @@
 """
 from logilab.common.testlib import TestCase, unittest_main
 
-from cubicweb.devtools._apptest import FakeRequest
-from cubicweb.devtools.apptest import EnvBasedTC
+from cubicweb.devtools.testlib import CubicWebTC
+from cubicweb.devtools.fake import FakeRequest
 
 from cubicweb.web.views.urlrewrite import SimpleReqRewriter, SchemaBasedRewriter, rgx, rgx_action
 
@@ -29,6 +29,8 @@ class UrlRewriteTC(TestCase):
         self.assertListEquals(rules, [
             ('foo' , dict(rql='Foo F')),
             ('/index' , dict(vid='index2')),
+            ('/_', dict(vid='manage')),
+            ('/_registry', dict(vid='registry')),
             ('/schema', dict(vid='schema')),
             ('/myprefs', dict(vid='propertiesform')),
             ('/siteconfig', dict(vid='systempropertiesform')),
@@ -82,7 +84,7 @@ class UrlRewriteTC(TestCase):
 
 
 
-class RgxActionRewriteTC(EnvBasedTC):
+class RgxActionRewriteTC(CubicWebTC):
 
     def setup_database(self):
         self.p1 = self.create_user(u'user1')
@@ -104,6 +106,73 @@ class RgxActionRewriteTC(EnvBasedTC):
         self.assertEquals(len(rset), 1)
         self.assertEquals(rset[0][0], self.p1.eid)
 
+    def test_inheritance_precedence(self):
+        RQL1 = 'Any C WHERE C is CWEType'
+        RQL2 = 'Any C WHERE C is CWUser'
+
+        class BaseRewriter(SchemaBasedRewriter):
+            rules = [
+               (rgx('/collector(.*)'),
+                rgx_action(rql=RQL1,
+                    form=dict(vid='baseindex')),
+                ),
+                ]
+        class Rewriter(BaseRewriter):
+            rules = [
+               (rgx('/collector/something(/?)'),
+                rgx_action(rql=RQL2,
+                    form=dict(vid='index')),
+                ),
+                ]
+
+        rewriter = Rewriter()
+        req = self.request()
+        pmid, rset = rewriter.rewrite(req, '/collector')
+        self.assertEquals(rset.rql, RQL1)
+        self.assertEquals(req.form, {'vid' : "baseindex"})
+        pmid, rset = rewriter.rewrite(req, '/collector/something')
+        self.assertEquals(rset.rql, RQL2)
+        self.assertEquals(req.form, {'vid' : "index"})
+        pmid, rset = rewriter.rewrite(req, '/collector/something/')
+        self.assertEquals(req.form, {'vid' : "index"})
+        self.assertEquals(rset.rql, RQL2)
+        pmid, rset = rewriter.rewrite(req, '/collector/somethingelse/')
+        self.assertEquals(rset.rql, RQL1)
+        self.assertEquals(req.form, {'vid' : "baseindex"})
+
+    def test_inheritance_precedence_same_rgx(self):
+        RQL1 = 'Any C WHERE C is CWEType'
+        RQL2 = 'Any C WHERE C is CWUser'
+
+        class BaseRewriter(SchemaBasedRewriter):
+            rules = [
+               (rgx('/collector(.*)'),
+                rgx_action(rql=RQL1,
+                    form=dict(vid='baseindex')),
+                ),
+                ]
+        class Rewriter(BaseRewriter):
+            rules = [
+               (rgx('/collector(.*)'),
+                rgx_action(rql=RQL2,
+                    form=dict(vid='index')),
+                ),
+                ]
+
+        rewriter = Rewriter()
+        req = self.request()
+        pmid, rset = rewriter.rewrite(req, '/collector')
+        self.assertEquals(rset.rql, RQL2)
+        self.assertEquals(req.form, {'vid' : "index"})
+        pmid, rset = rewriter.rewrite(req, '/collector/something')
+        self.assertEquals(rset.rql, RQL2)
+        self.assertEquals(req.form, {'vid' : "index"})
+        pmid, rset = rewriter.rewrite(req, '/collector/something/')
+        self.assertEquals(req.form, {'vid' : "index"})
+        self.assertEquals(rset.rql, RQL2)
+        pmid, rset = rewriter.rewrite(req, '/collector/somethingelse/')
+        self.assertEquals(rset.rql, RQL2)
+        self.assertEquals(req.form, {'vid' : "index"})
 
 
 if __name__ == '__main__':

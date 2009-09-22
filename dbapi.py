@@ -19,8 +19,9 @@ from logilab.common.logging_ext import set_log_methods
 from logilab.common.decorators import monkeypatch
 from logilab.common.deprecation import deprecated
 
-from cubicweb import ETYPE_NAME_MAP, ConnectionError, RequestSessionMixIn
-from cubicweb import cwvreg, cwconfig
+from cubicweb import ETYPE_NAME_MAP, ConnectionError, cwvreg, cwconfig
+from cubicweb.req import RequestSessionBase
+
 
 _MARKER = object()
 
@@ -42,9 +43,9 @@ def multiple_connections_fix():
     registries.
     """
     defaultcls = cwvreg.VRegistry.REGISTRY_FACTORY[None]
-    orig_select_best = defaultcls.orig_select_best = defaultcls.select_best
+    orig_select_best = defaultcls.orig_select_best = defaultcls._select_best
     @monkeypatch(defaultcls)
-    def select_best(self, appobjects, *args, **kwargs):
+    def _select_best(self, appobjects, *args, **kwargs):
         """return an instance of the most specific object according
         to parameters
 
@@ -174,7 +175,7 @@ def in_memory_cnx(config, login, password):
     return repo, cnx
 
 
-class DBAPIRequest(RequestSessionMixIn):
+class DBAPIRequest(RequestSessionBase):
 
     def __init__(self, vreg, cnx=None):
         super(DBAPIRequest, self).__init__(vreg)
@@ -214,10 +215,13 @@ class DBAPIRequest(RequestSessionMixIn):
             self.lang = 'en'
         # use req.__ to translate a message without registering it to the catalog
         try:
-            self._ = self.__ = self.translations[self.lang]
+            gettext, pgettext = self.translations[self.lang]
+            self._ = self.__ = gettext
+            self.pgettext = pgettext
         except KeyError:
             # this occurs usually during test execution
             self._ = self.__ = unicode
+            self.pgettext = lambda x,y: y
         self.debug('request default language: %s', self.lang)
 
     def decorate_rset(self, rset):
@@ -283,6 +287,12 @@ class DBAPIRequest(RequestSessionMixIn):
         return self.cnx.set_shared_data(key, value, querydata)
 
     # server session compat layer #############################################
+
+    def hijack_user(self, user):
+        """return a fake request/session using specified user"""
+        req = DBAPIRequest(self.vreg)
+        req.set_connection(self.cnx, user)
+        return req
 
     @property
     def user(self):
@@ -354,7 +364,7 @@ paramstyle = 'pyformat'
 # connection object ###########################################################
 
 class Connection(object):
-    """DB-API 2.0 compatible Connection object for CubicWebt
+    """DB-API 2.0 compatible Connection object for CubicWeb
     """
     # make exceptions available through the connection object
     ProgrammingError = ProgrammingError

@@ -15,6 +15,8 @@
 __docformat__ = "restructuredtext en"
 _ = unicode
 
+from datetime import timedelta
+
 from rql import nodes
 
 from logilab.mtconverter import TransformError, xml_escape, xml_escape
@@ -51,13 +53,13 @@ class FinalView(AnyRsetView):
     """
     id = 'final'
     # record generated i18n catalog messages
-    _('%d&nbsp;years')
-    _('%d&nbsp;months')
-    _('%d&nbsp;weeks')
-    _('%d&nbsp;days')
-    _('%d&nbsp;hours')
-    _('%d&nbsp;minutes')
-    _('%d&nbsp;seconds')
+    _('%d&#160;years')
+    _('%d&#160;months')
+    _('%d&#160;weeks')
+    _('%d&#160;days')
+    _('%d&#160;hours')
+    _('%d&#160;minutes')
+    _('%d&#160;seconds')
     _('%d years')
     _('%d months')
     _('%d weeks')
@@ -66,7 +68,7 @@ class FinalView(AnyRsetView):
     _('%d minutes')
     _('%d seconds')
 
-    def cell_call(self, row, col, props=None, displaytime=False, format='text/html'):
+    def cell_call(self, row, col, props=None, format='text/html'):
         etype = self.rset.description[row][col]
         value = self.rset.rows[row][col]
 
@@ -77,10 +79,17 @@ class FinalView(AnyRsetView):
                 self.w(entity.printable_value(rtype, value, format=format))
                 return
         if etype in ('Time', 'Interval'):
+            if etype == 'Interval' and isinstance(value, (int, long)):
+                # `date - date`, unlike `datetime - datetime` gives an int
+                # (number of days), not a timedelta
+                # XXX should rql be fixed to return Int instead of Interval in
+                #     that case? that would be probably the proper fix but we
+                #     loose information on the way...
+                value = timedelta(days=value)
             # value is DateTimeDelta but we have no idea about what is the
             # reference date here, so we can only approximate years and months
             if format == 'text/html':
-                space = '&nbsp;'
+                space = '&#160;'
             else:
                 space = ' '
             if value.days > 730: # 2 years
@@ -98,7 +107,7 @@ class FinalView(AnyRsetView):
             else:
                 self.w(self.req.__('%%d%sseconds' % space) % int(value.seconds))
             return
-        self.wdata(printable_value(self.req, etype, value, props, displaytime=displaytime))
+        self.wdata(printable_value(self.req, etype, value, props))
 
 
 # XXX deprecated
@@ -110,8 +119,8 @@ class SecondaryView(EntityView):
         """the secondary view for an entity
         secondary = icon + view(oneline)
         """
-        entity = self.entity(row, col)
-        self.w(u'&nbsp;')
+        entity = self.rset.get_entity(row, col)
+        self.w(u'&#160;')
         self.wview('oneline', self.rset, row=row, col=col)
 
 
@@ -122,7 +131,7 @@ class OneLineView(EntityView):
     def cell_call(self, row, col):
         """the one line view for an entity: linked text view
         """
-        entity = self.entity(row, col)
+        entity = self.rset.get_entity(row, col)
         self.w(u'<a href="%s">' % xml_escape(entity.absolute_url()))
         self.w(xml_escape(self.view('text', self.rset, row=row, col=col)))
         self.w(u'</a>')
@@ -150,7 +159,7 @@ class TextView(EntityView):
                 self.w(u"\n")
 
     def cell_call(self, row, col=0, **kwargs):
-        entity = self.entity(row, col)
+        entity = self.rset.get_entity(row, col)
         self.w(cut(entity.dc_title(),
                    self.req.property_value('navigation.short-line-size')))
 
@@ -162,7 +171,7 @@ class MetaDataView(EntityView):
 
     def cell_call(self, row, col):
         _ = self.req._
-        entity = self.entity(row, col)
+        entity = self.rset.get_entity(row, col)
         self.w(u'<div class="metadata">')
         if self.show_eid:
             self.w(u'#%s - ' % entity.eid)
@@ -185,7 +194,7 @@ class InContextTextView(TextView):
     id = 'textincontext'
     title = None # not listed as a possible view
     def cell_call(self, row, col):
-        entity = self.entity(row, col)
+        entity = self.rset.get_entity(row, col)
         self.w(entity.dc_title())
 
 
@@ -193,7 +202,7 @@ class OutOfContextTextView(InContextTextView):
     id = 'textoutofcontext'
 
     def cell_call(self, row, col):
-        entity = self.entity(row, col)
+        entity = self.rset.get_entity(row, col)
         self.w(entity.dc_long_title())
 
 
@@ -201,7 +210,7 @@ class InContextView(EntityView):
     id = 'incontext'
 
     def cell_call(self, row, col):
-        entity = self.entity(row, col)
+        entity = self.rset.get_entity(row, col)
         desc = cut(entity.dc_description(), 50)
         self.w(u'<a href="%s" title="%s">' % (
             xml_escape(entity.absolute_url()), xml_escape(desc)))
@@ -214,7 +223,7 @@ class OutOfContextView(EntityView):
     id = 'outofcontext'
 
     def cell_call(self, row, col):
-        entity = self.entity(row, col)
+        entity = self.rset.get_entity(row, col)
         desc = cut(entity.dc_description(), 50)
         self.w(u'<a href="%s" title="%s">' % (
             xml_escape(entity.absolute_url()), xml_escape(desc)))

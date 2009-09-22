@@ -34,7 +34,7 @@ class TableView(AnyRsetView):
             return ()
         rqlst.save_state()
         mainvar, baserql = prepare_facets_rqlst(rqlst, self.rset.args)
-        wdgs = [facet.get_widget() for facet in self.vreg['facets'].possible_vobjects(
+        wdgs = [facet.get_widget() for facet in self.vreg['facets'].poss_visible_objects(
             self.req, rset=self.rset, context='tablefilter',
             filtered_variable=mainvar)]
         wdgs = [wdg for wdg in wdgs if wdg is not None]
@@ -51,14 +51,17 @@ class TableView(AnyRsetView):
         """display a form to filter table's content. This should only
         occurs when a context eid is given
         """
-        self.req.add_js( ('cubicweb.ajax.js', 'cubicweb.formfilter.js'))
+        self.req.add_css('cubicweb.facets.css')
+        self.req.add_js( ('cubicweb.ajax.js', 'cubicweb.facets.js'))
         # drop False / None values from vidargs
         vidargs = dict((k, v) for k, v in vidargs.iteritems() if v)
         self.w(u'<form method="post" cubicweb:facetargs="%s" action="">' %
                xml_escape(dumps([divid, 'table', False, vidargs])))
         self.w(u'<fieldset id="%sForm" class="%s">' % (divid, hidden and 'hidden' or ''))
         self.w(u'<input type="hidden" name="divid" value="%s" />' % divid)
-        filter_hiddens(self.w, facets=','.join(wdg.facet.id for wdg in fwidgets), baserql=baserql)
+        self.w(u'<input type="hidden" name="fromformfilter" value="1" />')
+        filter_hiddens(self.w, facets=','.join(wdg.facet.id for wdg in fwidgets),
+                       baserql=baserql)
         self.w(u'<table class="filter">\n')
         self.w(u'<tr>\n')
         for wdg in fwidgets:
@@ -129,8 +132,7 @@ class TableView(AnyRsetView):
         # replace the inner div, so don't regenerate everything under the if
         # below
         if not fromformfilter:
-            div_class = 'section'
-            self.w(u'<div class="%s">' % div_class)
+            self.w(u'<div class="section">')
             if not title and 'title' in req.form:
                 title = req.form['title']
             if title:
@@ -139,12 +141,14 @@ class TableView(AnyRsetView):
                 actions += self.form_filter(divid, displaycols, displayfilter,
                                             displayactions)
         elif displayfilter:
-            req.add_css('cubicweb.facets.css')
             actions += self.show_hide_actions(divid, True)
         self.w(u'<div id="%s"' % divid)
         if displayactions:
-            for action in self.vreg['actions'].possible_actions(req, self.rset).get('mainactions', ()):
-                actions.append( (action.url(), req._(action.title), action.html_class(), None) )
+            actionsbycat = self.vreg['actions'].possible_actions(req, self.rset)
+            for action in actionsbycat.get('mainactions', ()):
+                for action in action.actual_actions():
+                    actions.append( (action.url(), req._(action.title),
+                                     action.html_class(), None) )
             self.w(u' cubicweb:displayactions="1">') # close <div tag
         else:
             self.w(u'>') # close <div tag
@@ -293,7 +297,7 @@ class InitialTableView(TableView):
              displaycols=None, displayactions=None, mainindex=None):
         """Dumps a table displaying a composite query"""
         actrql = self.req.form['actualrql']
-        self.ensure_ro_rql(actrql)
+        self.req.ensure_ro_rql(actrql)
         displaycols = self.displaycols(displaycols)
         if displayactions is None and 'displayactions' in self.req.form:
             displayactions = True

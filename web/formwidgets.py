@@ -114,7 +114,7 @@ class PasswordInput(Input):
                   '<br/>',
                   tags.input(name=confirmname, value=values[0], type=self.type,
                              **attrs),
-                  '&nbsp;', tags.span(form.req._('confirm password'),
+                  '&#160;', tags.span(form.req._('confirm password'),
                                       **{'class': 'emphasis'})]
         return u'\n'.join(inputs)
 
@@ -448,14 +448,15 @@ class AddComboBoxWidget(Select):
         # XXX entity form specific
         entity = form.edited_entity
         attrs['cubicweb:etype_to'] = entity.e_schema
-        etype_from = entity.e_schema.subject_relation(self.name).objects(entity.e_schema)[0]
+        etype_from = entity.e_schema.subject_relation(field.name).objects(entity.e_schema)[0]
         attrs['cubicweb:etype_from'] = etype_from
+        return name, values, attrs
 
     def render(self, form, field, renderer):
         return super(AddComboBoxWidget, self).render(form, field, renderer) + u'''
 <div id="newvalue">
   <input type="text" id="newopt" />
-  <a href="javascript:noop()" id="add_newopt">&nbsp;</a></div>
+  <a href="javascript:noop()" id="add_newopt">&#160;</a></div>
 '''
 
 # buttons ######################################################################

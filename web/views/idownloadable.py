@@ -50,7 +50,7 @@ class DownloadBox(EntityBoxTemplate):
     order = 10
 
     def cell_call(self, row, col, title=None, label=None, **kwargs):
-        entity = self.entity(row, col)
+        entity = self.rset.get_entity(row, col)
         download_box(self.w, entity, title, label)
 
 
@@ -91,7 +91,7 @@ class DownloadLinkView(EntityView):
 
 
     def cell_call(self, row, col, title=None, **kwargs):
-        entity = self.entity(row, col)
+        entity = self.rset.get_entity(row, col)
         url = xml_escape(entity.download_url())
         self.w(u'<a href="%s">%s</a>' % (url, xml_escape(title or entity.dc_title())))
 
@@ -123,7 +123,7 @@ class IDownloadableLineView(baseviews.OneLineView):
 
     def cell_call(self, row, col, title=None, **kwargs):
         """the oneline view is a link to download the file"""
-        entity = self.entity(row, col)
+        entity = self.rset.get_entity(row, col)
         url = xml_escape(entity.absolute_url())
         name = xml_escape(title or entity.download_file_name())
         durl = xml_escape(entity.download_url())
@@ -145,19 +145,19 @@ class ImageView(EntityView):
             self.w(u'</div>')
 
     def cell_call(self, row, col, width=None, height=None, link=False):
-        entity = self.entity(row, col)
+        entity = self.rset.get_entity(row, col)
         #if entity.data_format.startswith('image/'):
-        imgtag = u'<img src="%s" alt="%s" ' % (xml_escape(entity.download_url()),
-                                               xml_escape(entity.download_file_name()))
+        imgtag = u'<img src="%s" alt="%s" ' % (
+            xml_escape(entity.download_url()),
+            (self.req._('download %s')  % xml_escape(entity.download_file_name())))
         if width:
             imgtag += u'width="%i" ' % width
         if height:
             imgtag += u'height="%i" ' % height
         imgtag += u'/>'
         if link:
-            self.w(u'<a href="%s" alt="%s">%s</a>' % (entity.absolute_url(vid='download'),
-                                                      self.req._('download image'),
-                                                      imgtag))
+            self.w(u'<a href="%s">%s</a>' % (entity.absolute_url(vid='download'),
+                                             imgtag))
         else:
             self.w(imgtag)
 

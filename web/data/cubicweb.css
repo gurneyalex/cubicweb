@@ -256,13 +256,17 @@ div#stateheader{
 }
 
 /* Popup on login box and userActionBox */
+div.popupWrapper{
+ position:relative;
+ z-index:100;
+}
+
 div.popup {
   position: absolute;
-  z-index: 400;
   background: #fff;
   border: 1px solid black;
   text-align: left;
-  float:left;
+  z-index:400;
 }
 
 div.popup ul li a {
@@ -388,7 +392,7 @@ ul.boxListing a {
   padding: 1px 9px 1px 3px;
 }
 
-ul.boxListing a.selected {
+ul.boxListing .selected {
   color: #FF4500;
   font-weight: bold;
 }
@@ -520,6 +524,20 @@ div#userActionsBox {
 div#userActionsBox a.popupMenu {
   color: black;
   text-decoration: underline;
+}
+
+/* download box XXX move to its own file? */
+div.downloadBoxTitle{
+ background : #8FBC8F;
+ font-weight: bold;
+}
+
+div.downloadBox{
+ font-weight: bold;
+}
+
+div.downloadBox div.sideBoxBody{
+ background : #EEFED9;
 }
 
 /**************/
@@ -838,4 +856,12 @@ input.validateButton {
   border: 1px solid #edecd2;
   border-color:#edecd2 #cfceb7 #cfceb7  #edecd2;
   background: #fffff8 url("button.png") bottom left repeat-x;
+}
+
+/********************************/
+/* placement of alt. view icons */
+/********************************/
+
+.otherView {
+  float: right;
 }

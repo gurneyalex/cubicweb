@@ -15,9 +15,15 @@ from simplejson import dumps
 from cubicweb.common import tags
 from cubicweb.appobject import AppObject
 from cubicweb.selectors import entity_implements, yes
-from cubicweb.web import eid_param
-from cubicweb.web import formwidgets as fwdgs
+from cubicweb.web import eid_param, formwidgets as fwdgs
 from cubicweb.web.widgets import checkbox
+
+def checkbox(name, value, attrs='', checked=None):
+    if checked is None:
+        checked = value
+    checked = checked and 'checked="checked"' or ''
+    return u'<input type="checkbox" name="%s" value="%s" %s %s />' % (
+        name, value, checked, attrs)
 
 
 class FormRenderer(AppObject):
@@ -47,7 +53,7 @@ class FormRenderer(AppObject):
     button_bar_class = u'formButtonBar'
 
     def __init__(self, req=None, rset=None, row=None, col=None, **kwargs):
-        super(FormRenderer, self).__init__(req, rset, row, col)
+        super(FormRenderer, self).__init__(req, rset=rset, row=row, col=col)
         if self._set_options(kwargs):
             raise ValueError('unconsumed arguments %s' % kwargs)
 
@@ -86,7 +92,10 @@ class FormRenderer(AppObject):
     def render_label(self, form, field):
         if field.label is None:
             return u''
-        label = self.req._(field.label)
+        if isinstance(field.label, tuple): # i.e. needs contextual translation
+            label = self.req.pgettext(*field.label)
+        else:
+            label = self.req._(field.label)
         attrs = {'for': form.context[field]['id']}
         if field.required:
             attrs['class'] = 'required'
@@ -103,7 +112,7 @@ class FormRenderer(AppObject):
         if example:
             help.append('<div class="helper">(%s: %s)</div>'
                         % (self.req._('sample format'), example))
-        return u'&nbsp;'.join(help)
+        return u'&#160;'.join(help)
 
     # specific methods (mostly to ease overriding) #############################
 
@@ -124,7 +133,7 @@ class FormRenderer(AppObject):
                 if len(errors) > 1:
                     templstr = '<li>%s</li>\n'
                 else:
-                    templstr = '&nbsp;%s\n'
+                    templstr = '&#160;%s\n'
                 for field, err in errors:
                     if field is None:
                         errormsg += templstr % err
@@ -274,7 +283,7 @@ class HTableFormRenderer(FormRenderer):
             if self.display_help:
                 w(self.render_help(form, field))
         # empty slot for buttons
-        w(u'<th class="labelCol">&nbsp;</th>')
+        w(u'<th class="labelCol">&#160;</th>')
         w(u'</tr>')
         w(u'<tr>')
         for field in fields:
@@ -402,12 +411,13 @@ class EntityFormRenderer(EntityBaseFormRenderer):
             super(EntityFormRenderer, self).render_buttons(w, form)
 
     def relations_form(self, w, form):
-        srels_by_cat = form.srelations_by_category('generic', 'add')
+        srels_by_cat = form.srelations_by_category('generic', 'add', strict=True)
         if not srels_by_cat:
             return u''
         req = self.req
         _ = req._
-        label = u'%s :' % _('This %s' % form.edited_entity.e_schema).capitalize()
+        __ = _
+        label = u'%s :' % __('This %s' % form.edited_entity.e_schema).capitalize()
         eid = form.edited_entity.eid
         w(u'<fieldset class="subentity">')
         w(u'<legend class="iformTitle">%s</legend>' % label)
@@ -431,7 +441,7 @@ class EntityFormRenderer(EntityBaseFormRenderer):
                 w(u'</tr>')
         pendings = list(form.restore_pending_inserts())
         if not pendings:
-            w(u'<tr><th>&nbsp;</th><td>&nbsp;</td></tr>')
+            w(u'<tr><th>&#160;</th><td>&#160;</td></tr>')
         else:
             for row in pendings:
                 # soon to be linked to entities
@@ -461,6 +471,9 @@ class EntityFormRenderer(EntityBaseFormRenderer):
         w(u'</table>')
         w(u'</fieldset>')
 
+    # NOTE: should_* and display_* method extracted and moved to the form to
+    # ease overriding
+
     def inline_entities_form(self, w, form):
         """create a form to edit entity's inlined relations"""
         if not hasattr(form, 'inlined_relations'):
@@ -479,13 +492,11 @@ class EntityFormRenderer(EntityBaseFormRenderer):
 
     def inline_relation_form(self, w, form, rschema, targettype, role):
         entity = form.edited_entity
-        __ = self.req.__
+        __ = self.req.pgettext
+        i18nctx = 'inlined:%s.%s.%s' % (entity.e_schema, rschema, role)
         w(u'<div id="inline%sslot">' % rschema)
-        existant = entity.has_eid() and entity.related(rschema)
-        if existant:
-            # display inline-edition view for all existing related entities
-            w(form.view('inline-edition', existant, rtype=rschema, role=role,
-                        ptype=entity.e_schema, peid=entity.eid))
+        existant = form.display_inline_edition_form(w, rschema, targettype,
+                                                    role, i18nctx)
         if role == 'subject':
             card = rschema.rproperty(entity.e_schema, targettype, 'cardinality')[0]
         else:
@@ -493,23 +504,23 @@ class EntityFormRenderer(EntityBaseFormRenderer):
         # there is no related entity and we need at least one: we need to
         # display one explicit inline-creation view
         if form.should_display_inline_creation_form(rschema, existant, card):
-            w(form.view('inline-creation', None, etype=targettype,
-                        peid=entity.eid, ptype=entity.e_schema,
-                        rtype=rschema, role=role))
+            form.display_inline_creation_form(w, rschema, targettype,
+                                              role, i18nctx)
+            existant = True
         # we can create more than one related entity, we thus display a link
         # to add new related entities
         if form.should_display_add_new_relation_link(rschema, existant, card):
             divid = "addNew%s%s%s:%s" % (targettype, rschema, role, entity.eid)
             w(u'<div class="inlinedform" id="%s" cubicweb:limit="true">'
               % divid)
-            js = "addInlineCreationForm('%s', '%s', '%s', '%s')" % (
-                entity.eid, targettype, rschema, role)
-            if card in '1?':
+            js = "addInlineCreationForm('%s', '%s', '%s', '%s', '%s')" % (
+                entity.eid, targettype, rschema, role, i18nctx)
+            if form.should_hide_add_new_relation_link(rschema, card):
                 js = "toggleVisibility('%s'); %s" % (divid, js)
             w(u'<a class="addEntity" id="add%s:%slink" href="javascript: %s" >+ %s.</a>'
-              % (rschema, entity.eid, js, __('add a %s' % targettype)))
+              % (rschema, entity.eid, js, __(i18nctx, 'add a %s' % targettype)))
             w(u'</div>')
-            w(u'<div class="trame_grise">&nbsp;</div>')
+            w(u'<div class="trame_grise">&#160;</div>')
         w(u'</div>')
 
 
@@ -531,7 +542,9 @@ class EntityInlinedFormRenderer(EntityFormRenderer):
             w(u'<div id="notice-%s" class="notice">%s</div>' % (
                 values['divid'], self.req._('click on the box to cancel the deletion')))
         w(u'<div class="iformBody">')
-        values['removemsg'] = self.req.__('remove this %s' % form.edited_entity.e_schema)
+        eschema = form.edited_entity.e_schema
+        ctx = values.pop('i18nctx')
+        values['removemsg'] = self.req.pgettext(ctx, 'remove this %s' % eschema)
         w(u'<div class="iformTitle"><span>%(title)s</span> '
           '#<span class="icounter">%(counter)s</span> '
           '[<a href="javascript: %(removejs)s;noop();">%(removemsg)s</a>]</div>'

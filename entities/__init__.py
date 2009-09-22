@@ -150,15 +150,15 @@ class AnyEntity(Entity):
 
     # edition helper functions ################################################
 
-    def linked_to(self, rtype, target, remove=True):
+    def linked_to(self, rtype, role, remove=True):
         """if entity should be linked to another using __linkto form param for
-        the given relation/target, return eids of related entities
+        the given relation/role, return eids of related entities
 
         This method is consuming matching link-to information from form params
         if `remove` is True (by default).
         """
         try:
-            return self.__linkto[(rtype, target)]
+            return self.__linkto[(rtype, role)]
         except AttributeError:
             self.__linkto = {}
         except KeyError:
@@ -166,15 +166,15 @@ class AnyEntity(Entity):
         linktos = list(self.req.list_form_param('__linkto'))
         linkedto = []
         for linkto in linktos[:]:
-            ltrtype, eid, lttarget = linkto.split(':')
-            if rtype == ltrtype and target == lttarget:
+            ltrtype, eid, ltrole = linkto.split(':')
+            if rtype == ltrtype and role == ltrole:
                 # delete __linkto from form param to avoid it being added as
                 # hidden input
                 if remove:
                     linktos.remove(linkto)
                     self.req.form['__linkto'] = linktos
                 linkedto.append(typed_eid(eid))
-        self.__linkto[(rtype, target)] = linkedto
+        self.__linkto[(rtype, role)] = linkedto
         return linkedto
 
     # edit controller callbacks ###############################################
@@ -203,85 +203,6 @@ class AnyEntity(Entity):
         of previously sent email
         """
         return ()
-
-    # XXX deprecates, may be killed once old widgets system is gone ###########
-
-    @classmethod
-    def get_widget(cls, rschema, x='subject'):
-        """return a widget to view or edit a relation
-
-        notice that when the relation support multiple target types, the widget
-        is necessarily the same for all those types
-        """
-        # let ImportError propage if web par isn't available
-        from cubicweb.web.widgets import widget
-        if isinstance(rschema, basestring):
-            rschema = cls.schema.rschema(rschema)
-        if x == 'subject':
-            tschema = rschema.objects(cls.e_schema)[0]
-            wdg = widget(cls.vreg, cls, rschema, tschema, 'subject')
-        else:
-            tschema = rschema.subjects(cls.e_schema)[0]
-            wdg = widget(cls.vreg, tschema, rschema, cls, 'object')
-        return wdg
-
-    @deprecated('use EntityFieldsForm.subject_relation_vocabulary')
-    def subject_relation_vocabulary(self, rtype, limit):
-        form = self.vreg.select('forms', 'edition', self.req, entity=self)
-        return form.subject_relation_vocabulary(rtype, limit)
-
-    @deprecated('use EntityFieldsForm.object_relation_vocabulary')
-    def object_relation_vocabulary(self, rtype, limit):
-        form = self.vreg.select('forms', 'edition', self.req, entity=self)
-        return form.object_relation_vocabulary(rtype, limit)
-
-    @deprecated('use AutomaticEntityForm.[e]relations_by_category')
-    def relations_by_category(self, categories=None, permission=None):
-        from cubicweb.web.views.autoform import AutomaticEntityForm
-        return AutomaticEntityForm.erelations_by_category(self, categories, permission)
-
-    @deprecated('use AutomaticEntityForm.[e]srelations_by_category')
-    def srelations_by_category(self, categories=None, permission=None):
-        from cubicweb.web.views.autoform import AutomaticEntityForm
-        return AutomaticEntityForm.esrelations_by_category(self, categories, permission)
-
-    def attribute_values(self, attrname):
-        if self.has_eid() or attrname in self:
-            try:
-                values = self[attrname]
-            except KeyError:
-                values = getattr(self, attrname)
-            # actual relation return a list of entities
-            if isinstance(values, list):
-                return [v.eid for v in values]
-            return (values,)
-        # the entity is being created, try to find default value for
-        # this attribute
-        try:
-            values = self.req.form[attrname]
-        except KeyError:
-            try:
-                values = self[attrname] # copying
-            except KeyError:
-                values = getattr(self, 'default_%s' % attrname,
-                                 self.e_schema.default(attrname))
-                if callable(values):
-                    values = values()
-        if values is None:
-            values = ()
-        elif not isinstance(values, (list, tuple)):
-            values = (values,)
-        return values
-
-    def use_fckeditor(self, attr):
-        """return True if fckeditor should be used to edit entity's attribute named
-        `attr`, according to user preferences
-        """
-        if self.req.use_fckeditor() and self.e_schema.has_metadata(attr, 'format'):
-            if self.has_eid() or '%s_format' % attr in self:
-                return self.attr_metadata(attr, 'format') == 'text/html'
-            return self.req.property_value('ui.default-text-format') == 'text/html'
-        return False
 
 # XXX:  store a reference to the AnyEntity class since it is hijacked in goa
 #       configuration and we need the actual reference to avoid infinite loops

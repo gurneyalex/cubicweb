@@ -20,6 +20,7 @@ import logging
 from smtplib import SMTP
 from threading import Lock
 from os.path import exists, join, expanduser, abspath, normpath, basename, isdir
+import tempfile
 
 from logilab.common.decorators import cached
 from logilab.common.deprecation import deprecated
@@ -134,6 +135,9 @@ CFGTYPE2ETYPE_MAP = {
     'float' : 'Float',
     }
 
+_forced_mode = os.environ.get('CW_MODE')
+assert _forced_mode in (None, 'system', 'user')
+
 class CubicWebNoAppConfiguration(ConfigurationMixIn):
     """base class for cubicweb configuration without a specific instance directory
     """
@@ -150,7 +154,7 @@ class CubicWebNoAppConfiguration(ConfigurationMixIn):
         CUBES_DIR = '%(APYCOT_ROOT)s/local/share/cubicweb/cubes/' % os.environ
         # create __init__ file
         file(join(CUBES_DIR, '__init__.py'), 'w').close()
-    elif exists(join(CW_SOFTWARE_ROOT, '.hg')) or os.environ.get('CW_MODE') == 'user':
+    elif (exists(join(CW_SOFTWARE_ROOT, '.hg')) and _forced_mode != 'system') or _forced_mode == 'user':
         mode = 'dev'
         CUBES_DIR = abspath(normpath(join(CW_SOFTWARE_ROOT, '../cubes')))
     else:
@@ -316,7 +320,7 @@ this option is set to yes",
         return getattr(cls.cube_pkginfo(cube), '__recommend__', ())
 
     @classmethod
-    def expand_cubes(cls, cubes):
+    def expand_cubes(cls, cubes, with_recommends=False):
         """expand the given list of top level cubes used by adding recursivly
         each cube dependencies
         """
@@ -329,6 +333,12 @@ this option is set to yes",
                     depcube = CW_MIGRATION_MAP.get(depcube, depcube)
                     cubes.append(depcube)
                     todo.append(depcube)
+            if with_recommends:
+                for depcube in cls.cube_recommends(cube):
+                    if depcube not in cubes:
+                        depcube = CW_MIGRATION_MAP.get(depcube, depcube)
+                        cubes.append(depcube)
+                        todo.append(depcube)
         return cubes
 
     @classmethod
@@ -382,7 +392,11 @@ this option is set to yes",
                         'server/serverctl.py', 'hercule.py',
                         'devtools/devctl.py', 'goa/goactl.py'):
             if exists(join(CW_SOFTWARE_ROOT, ctlfile)):
-                load_module_from_file(join(CW_SOFTWARE_ROOT, ctlfile))
+                try:
+                    load_module_from_file(join(CW_SOFTWARE_ROOT, ctlfile))
+                except ImportError, err:
+                    cls.critical('could not import the command provider %s (cause : %s)' %
+                                (ctlfile, err))
                 cls.info('loaded cubicweb-ctl plugin %s', ctlfile)
         for cube in cls.available_cubes():
             pluginfile = join(cls.cube_dir(cube), 'ecplugin.py')
@@ -517,13 +531,13 @@ class CubicWebConfiguration(CubicWebNoAppConfiguration):
     if CubicWebNoAppConfiguration.mode == 'test':
         root = os.environ['APYCOT_ROOT']
         REGISTRY_DIR = '%s/etc/cubicweb.d/' % root
-        RUNTIME_DIR = '/tmp/'
+        RUNTIME_DIR = tempfile.gettempdir()
         MIGRATION_DIR = '%s/local/share/cubicweb/migration/' % root
         if not exists(REGISTRY_DIR):
             os.makedirs(REGISTRY_DIR)
     elif CubicWebNoAppConfiguration.mode == 'dev':
         REGISTRY_DIR = expanduser('~/etc/cubicweb.d/')
-        RUNTIME_DIR = '/tmp/'
+        RUNTIME_DIR = tempfile.gettempdir()
         MIGRATION_DIR = join(CW_SOFTWARE_ROOT, 'misc', 'migration')
     else: #mode = 'installed'
         REGISTRY_DIR = '/etc/cubicweb.d/'
@@ -642,7 +656,7 @@ the repository',
     def default_log_file(self):
         """return default path to the log file of the instance'server"""
         if self.mode == 'dev':
-            basepath = '/tmp/%s-%s' % (basename(self.appid), self.name)
+            basepath = join(tempfile.gettempdir(), '%s-%s' % (basename(self.appid), self.name))
             path = basepath + '.log'
             i = 1
             while exists(path) and i < 100: # arbitrary limit to avoid infinite loop
@@ -785,8 +799,8 @@ the repository',
         from glob import glob
         yield 'en' # ensure 'en' is yielded even if no .mo found
         for path in glob(join(self.apphome, 'i18n',
-                              '*', 'LC_MESSAGES', 'cubicweb.mo')):
-            lang = path.split(os.sep)[-3]
+                              '*', 'LC_MESSAGES')):
+            lang = path.split(os.sep)[-2]
             if lang != 'en':
                 yield lang
 
@@ -798,7 +812,7 @@ the repository',
             self.info("loading language %s", language)
             try:
                 tr = translation('cubicweb', path, languages=[language])
-                self.translations[language] = tr.ugettext
+                self.translations[language] = (tr.ugettext, tr.upgettext)
             except (ImportError, AttributeError, IOError):
                 self.exception('localisation support error for language %s',
                                language)

@@ -97,8 +97,15 @@ Relation._ms_table_key = lambda x: x.r_type
 # str() Constant.value to ensure generated table name won't be unicode
 Constant._ms_table_key = lambda x: str(x.value)
 
-AbstractSource.dont_cross_relations = ()
-AbstractSource.cross_relations = ()
+def need_source_access_relation(vargraph):
+    if not vargraph:
+        return False
+    # check vargraph contains some other relation than the identity relation
+    # test of key nature since it may be a variable name (don't care about that)
+    # or a 2-uple (var1, var2) associated to the relation to traverse to go from
+    # var1 to var2
+    return any(key for key, val in vargraph.iteritems()
+               if isinstance(key, tuple) and val != 'identity')
 
 def need_aggr_step(select, sources, stepdefs=None):
     """return True if a temporary table is necessary to store some partial
@@ -257,7 +264,7 @@ class PartPlanInformation(object):
         self._conflicts = []
         if rqlhelper is not None: # else test
             self._insert_identity_variable = rqlhelper._annotator.rewrite_shared_optional
-        if server.DEBUG:
+        if server.DEBUG & server.DBG_MS:
             print 'sourcesterms:'
             self._debug_sourcesterms()
 
@@ -337,7 +344,7 @@ class PartPlanInformation(object):
                         # * at least one supported relation specified
                         if not varobj._q_invariant or \
                                any(imap(source.support_relation,
-                                        (r.r_type for r in rels if r.r_type != 'eid'))):
+                                        (r.r_type for r in rels if r.r_type not in ('identity', 'eid')))):
                             sourcesterms.setdefault(source, {}).setdefault(varobj, set()).add(i)
                         # if variable is not invariant and is used by a relation
                         # not supported by this source, we'll have to split the
@@ -559,7 +566,8 @@ class PartPlanInformation(object):
             # testing for rqlst with nothing in vargraph nor defined_vars is the
             # simplest way the check the condition explained below
             if not self.system_source in self._sourcesterms and \
-                   not self.rqlst.vargraph and not self.rqlst.defined_vars:
+                   not self.rqlst.defined_vars and \
+                   not need_source_access_relation(self.rqlst.vargraph):
                 self._sourcesterms = {self.system_source: {}}
         elif not self.needsplit:
             if not allequals(self._sourcesterms.itervalues()):
@@ -1012,7 +1020,7 @@ class MSPlanner(SSPlanner):
 
         the rqlst should not be tagged at this point
         """
-        if server.DEBUG:
+        if server.DEBUG & server.DBG_MS:
             print '-'*80
             print 'PLANNING', rqlst
         for select in rqlst.children:
@@ -1029,7 +1037,7 @@ class MSPlanner(SSPlanner):
         ppis = [PartPlanInformation(plan, select, self.rqlhelper)
                 for select in rqlst.children]
         steps = self._union_plan(plan, rqlst, ppis)
-        if server.DEBUG:
+        if server.DEBUG & server.DBG_MS:
             from pprint import pprint
             for step in plan.steps:
                 pprint(step.test_repr())
@@ -1224,7 +1232,7 @@ class TermsFiltererVisitor(object):
         return rqlst
 
     def filter(self, sources, terms, rqlst, solindices, needsel, final):
-        if server.DEBUG:
+        if server.DEBUG & server.DBG_MS:
             print 'filter', final and 'final' or '', sources, terms, rqlst, solindices, needsel
         newroot = Select()
         self.sources = sorted(sources)
@@ -1318,7 +1326,7 @@ class TermsFiltererVisitor(object):
                     elif ored:
                         newroot.remove_node(rel)
         add_types_restriction(self.schema, rqlst, newroot, solutions)
-        if server.DEBUG:
+        if server.DEBUG & server.DBG_MS:
             print '--->', newroot
         return newroot, self.insertedvars
 

@@ -13,8 +13,8 @@ from logilab.mtconverter import xml_escape
 from cubicweb.appobject import objectify_selector
 from cubicweb.selectors import match_kwargs
 from cubicweb.view import View, MainTemplate, NOINDEX, NOFOLLOW
-from cubicweb.utils import make_uid, UStringIO
-
+from cubicweb.utils import make_uid, UStringIO, can_do_pdf_conversion
+from cubicweb.schema import display_name
 
 # main templates ##############################################################
 
@@ -113,9 +113,9 @@ class TheMainTemplate(MainTemplate):
         if vtitle:
             w(u'<h1 class="vtitle">%s</h1>\n' % xml_escape(vtitle))
         # display entity type restriction component
-        etypefilter = self.vreg['components'].select_vobject(
+        etypefilter = self.vreg['components'].select_or_none(
             'etypenavigation', self.req, rset=self.rset)
-        if etypefilter:
+        if etypefilter and etypefilter.cw_propval('visible'):
             etypefilter.render(w=w)
         self.nav_html = UStringIO()
         if view and view.need_navigation:
@@ -154,12 +154,11 @@ class TheMainTemplate(MainTemplate):
         w(u'<div id="page"><table width="100%" border="0" id="mainLayout"><tr>\n')
         self.nav_column(view, 'left')
         w(u'<td id="contentcol">\n')
-        rqlcomp = self.vreg['components'].select_object('rqlinput', self.req,
-                                                        rset=self.rset)
+        components = self.vreg['components']
+        rqlcomp = components.select_or_none('rqlinput', self.req, rset=self.rset)
         if rqlcomp:
             rqlcomp.render(w=self.w, view=view)
-        msgcomp = self.vreg['components'].select_object('applmessages',
-                                                        self.req, rset=self.rset)
+        msgcomp = components.select_or_none('applmessages', self.req, rset=self.rset)
         if msgcomp:
             msgcomp.render(w=self.w)
         self.content_header(view)
@@ -173,7 +172,7 @@ class TheMainTemplate(MainTemplate):
         self.w(u'</body>')
 
     def nav_column(self, view, context):
-        boxes = list(self.vreg['boxes'].possible_vobjects(
+        boxes = list(self.vreg['boxes'].poss_visible_objects(
             self.req, rset=self.rset, view=view, context=context))
         if boxes:
             self.w(u'<td class="navcol"><div class="navboxes">\n')
@@ -242,7 +241,7 @@ class SimpleMainTemplate(TheMainTemplate):
         w(u'<table width="100%" height="100%" border="0"><tr>\n')
         w(u'<td class="navcol">\n')
         self.topleft_header()
-        boxes = list(self.vreg['boxes'].possible_vobjects(
+        boxes = list(self.vreg['boxes'].poss_visible_objects(
             self.req, rset=self.rset, view=view, context='left'))
         if boxes:
             w(u'<div class="navboxes">\n')
@@ -257,14 +256,53 @@ class SimpleMainTemplate(TheMainTemplate):
             w(u'<h1 class="vtitle">%s</h1>' % xml_escape(vtitle))
 
     def topleft_header(self):
-        logo = self.vreg['components'].select_vobject('logo', self.req,
+        logo = self.vreg['components'].select_or_none('logo', self.req,
                                                       rset=self.rset)
-        if logo:
+        if logo and logo.cw_propval('visible'):
             self.w(u'<table id="header"><tr>\n')
             self.w(u'<td>')
             logo.render(w=self.w)
             self.w(u'</td>\n')
             self.w(u'</tr></table>\n')
+
+if can_do_pdf_conversion():
+    from xml.etree.cElementTree import ElementTree
+    from subprocess import Popen as sub
+    from StringIO import StringIO
+    from tempfile import NamedTemporaryFile
+    from cubicweb.ext.xhtml2fo import ReportTransformer
+
+    class PdfMainTemplate(TheMainTemplate):
+        id = 'pdf-main-template'
+
+        def call(self, view):
+            """build the standard view, then when it's all done, convert xhtml to pdf
+            """
+            super(PdfMainTemplate, self).call(view)
+            section = self.req.form.pop('section', 'contentmain')
+            pdf = self.to_pdf(self._stream, section)
+            self.req.set_content_type('application/pdf', filename='report.pdf')
+            self.binary = True
+            self.w = None
+            self.set_stream()
+            # pylint needs help
+            self.w(pdf)
+
+        def to_pdf(self, stream, section):
+            # XXX see ticket/345282
+            stream = stream.getvalue().replace('&nbsp;', '&#160;').encode('utf-8')
+            xmltree = ElementTree()
+            xmltree.parse(StringIO(stream))
+            foptree = ReportTransformer(section).transform(xmltree)
+            foptmp = NamedTemporaryFile()
+            pdftmp = NamedTemporaryFile()
+            foptree.write(foptmp)
+            foptmp.flush()
+            fopproc = sub(['/usr/bin/fop', foptmp.name, pdftmp.name])
+            fopproc.wait()
+            pdftmp.seek(0)
+            pdf = pdftmp.read()
+            return pdf
 
 # page parts templates ########################################################
 
@@ -299,8 +337,8 @@ class HTMLHeader(View):
             self.req.add_js(jscript, localfile=False)
 
     def alternates(self):
-        urlgetter = self.vreg['components'].select_object('rss_feed_url',
-                                            self.req, rset=self.rset)
+        urlgetter = self.vreg['components'].select_or_none('rss_feed_url',
+                                                           self.req, rset=self.rset)
         if urlgetter is not None:
             self.whead(u'<link rel="alternate" type="application/rss+xml" title="RSS feed" href="%s"/>\n'
                        %  xml_escape(urlgetter.feed_url()))
@@ -315,6 +353,7 @@ class HTMLHeader(View):
 class HTMLPageHeader(View):
     """default html page header"""
     id = 'header'
+    main_cell_components = ('appliname', 'breadcrumbs')
 
     def call(self, view, **kwargs):
         self.main_header(view)
@@ -329,29 +368,29 @@ class HTMLPageHeader(View):
         """build the top menu with authentification info and the rql box"""
         self.w(u'<table id="header"><tr>\n')
         self.w(u'<td id="firstcolumn">')
-        logo = self.vreg['components'].select_vobject(
+        logo = self.vreg['components'].select_or_none(
             'logo', self.req, rset=self.rset)
-        if logo:
+        if logo and logo.cw_propval('visible'):
             logo.render(w=self.w)
         self.w(u'</td>\n')
         # appliname and breadcrumbs
         self.w(u'<td id="headtext">')
-        for cid in ('appliname', 'breadcrumbs'):
-            comp = self.vreg['components'].select_vobject(
+        for cid in self.main_cell_components:
+            comp = self.vreg['components'].select_or_none(
                 cid, self.req, rset=self.rset)
-            if comp:
+            if comp and comp.cw_propval('visible'):
                 comp.render(w=self.w)
         self.w(u'</td>')
         # logged user and help
         self.w(u'<td>\n')
-        comp = self.vreg['components'].select_vobject(
+        comp = self.vreg['components'].select_or_none(
             'loggeduserlink', self.req, rset=self.rset)
-        if comp:
+        if comp and comp.cw_propval('visible'):
             comp.render(w=self.w)
         self.w(u'</td><td>')
-        helpcomp = self.vreg['components'].select_vobject(
+        helpcomp = self.vreg['components'].select_or_none(
             'help', self.req, rset=self.rset)
-        if helpcomp:
+        if helpcomp and helpcomp.cw_propval('visible'):
             helpcomp.render(w=self.w)
         self.w(u'</td>')
         # lastcolumn
@@ -392,7 +431,7 @@ class HTMLPageFooter(View):
                                             req._(ChangeLogView.title).lower()))
         self.w(u'<a href="%s">%s</a> | ' % (req.build_url('doc/about'),
                                             req._('about this site')))
-        self.w(u'© 2001-2009 <a href="http://www.logilab.fr">Logilab S.A.</a>')
+        self.w(u'<a href="http://www.cubicweb.org">%s</a>' % req._('powered by CubicWeb'))
         self.w(u'</div>')
 
 
@@ -405,7 +444,7 @@ class HTMLContentHeader(View):
 
     def call(self, view, **kwargs):
         """by default, display informal messages in content header"""
-        components = self.vreg['contentnavigation'].possible_vobjects(
+        components = self.vreg['contentnavigation'].poss_visible_objects(
             self.req, rset=self.rset, view=view, context='navtop')
         if components:
             self.w(u'<div id="contentheader">')
@@ -421,7 +460,7 @@ class HTMLContentFooter(View):
     id = 'contentfooter'
 
     def call(self, view, **kwargs):
-        components = self.vreg['contentnavigation'].possible_vobjects(
+        components = self.vreg['contentnavigation'].poss_visible_objects(
             self.req, rset=self.rset, view=view, context='navbottom')
         if components:
             self.w(u'<div id="contentfooter">')
@@ -440,8 +479,12 @@ class LogFormTemplate(View):
         self.req.add_css('cubicweb.login.css')
         self.w(u'<div id="%s" class="%s">' % (id, klass))
         if title:
-            self.w(u'<div id="loginTitle">%s</div>'
-                   % (self.req.property_value('ui.site-title') or u'&nbsp;'))
+            stitle = self.req.property_value('ui.site-title')
+            if stitle:
+                stitle = xml_escape(stitle)
+            else:
+                stitle = u'&#160;'
+            self.w(u'<div id="loginTitle">%s</div>' % stitle)
         self.w(u'<div id="loginContent">\n')
 
         if message:
@@ -472,7 +515,7 @@ class LogFormTemplate(View):
         self.w(u'<td><label for="__password" >%s</label></td>' % _('password'))
         self.w(u'<td><input name="__password" id="__password" class="data" type="password" /></td>\n')
         self.w(u'</tr><tr>\n')
-        self.w(u'<td>&nbsp;</td><td><input type="submit" class="loginButton right" value="%s" />\n</td>' % _('log in'))
+        self.w(u'<td>&#160;</td><td><input type="submit" class="loginButton right" value="%s" />\n</td>' % _('log in'))
         self.w(u'</tr>\n')
         self.w(u'</table>\n')
         self.w(u'</form>\n')
@@ -489,4 +532,4 @@ def login_form_url(config, req):
 
 ## vregistry registration callback ############################################
 def registration_callback(vreg):
-    vreg.register_all(globals().values(), modname=__name__)
+    vreg.register_all(globals().values(), __name__)

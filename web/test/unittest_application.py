@@ -14,7 +14,7 @@ from urllib import unquote
 from logilab.common.testlib import TestCase, unittest_main
 from logilab.common.decorators import clear_cache
 
-from cubicweb.devtools.apptest import EnvBasedTC
+from cubicweb.devtools.testlib import CubicWebTC
 from cubicweb.devtools.fake import FakeRequest
 from cubicweb.web import Redirect, AuthenticationError, ExplicitLogin, INTERNAL_FIELD_VALUE
 from cubicweb.web.views.basecontrollers import ViewController
@@ -69,14 +69,17 @@ class RequestBaseTC(TestCase):
 
 
     def test_from_controller(self):
+        self.req.vreg['controllers'] = {'view': 1, 'login': 1}
         self.assertEquals(self.req.from_controller(), 'view')
         req = FakeRequest(url='project?vid=list')
+        req.vreg['controllers'] = {'view': 1, 'login': 1}
         # this assertion is just to make sure that relative_path can be
         # correctly computed as it is used in from_controller()
         self.assertEquals(req.relative_path(False), 'project')
         self.assertEquals(req.from_controller(), 'view')
         # test on a valid non-view controller
         req = FakeRequest(url='login?x=1&y=2')
+        req.vreg['controllers'] = {'view': 1, 'login': 1}
         self.assertEquals(req.relative_path(False), 'login')
         self.assertEquals(req.from_controller(), 'login')
 
@@ -134,7 +137,7 @@ class UtilsTC(TestCase):
                            for i in (12, 13, 14)])
 
 
-class ApplicationTC(EnvBasedTC):
+class ApplicationTC(CubicWebTC):
 
     def publish(self, req, path='view'):
         return self.app.publish(path, req)

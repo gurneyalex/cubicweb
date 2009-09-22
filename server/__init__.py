@@ -12,18 +12,24 @@ __docformat__ = "restructuredtext en"
 
 import sys
 from os.path import join, exists
+from glob import glob
 
 from logilab.common.modutils import LazyObject
 from logilab.common.textutils import splitstrip
 
+from yams import BASE_GROUPS
+
+from cubicweb import CW_SOFTWARE_ROOT
+
 # server-side debugging #########################################################
 
 # server debugging flags. They may be combined using binary operators.
-DBG_NONE = 0 # no debug information
-DBG_RQL = 1  # rql execution information
-DBG_SQL = 2  # executed sql
-DBG_REPO = 4 # repository events
-DBG_MORE = 8 # repository events
+DBG_NONE = 0  # no debug information
+DBG_RQL = 1   # rql execution information
+DBG_SQL = 2   # executed sql
+DBG_REPO = 4  # repository events
+DBG_MS = 8    # multi-sources
+DBG_MORE = 16 # repository events
 
 # current debug mode
 DEBUG = 0
@@ -92,8 +98,6 @@ def init_repository(config, interactive=True, drop=False, vreg=None):
     with the minimal set of entities (ie at least the schema, base groups and
     a initial user)
     """
-    from glob import glob
-    from yams import BASE_GROUPS
     from cubicweb.dbapi import in_memory_cnx
     from cubicweb.server.repository import Repository
     from cubicweb.server.utils import manager_userpasswd
@@ -140,7 +144,7 @@ def init_repository(config, interactive=True, drop=False, vreg=None):
         #               if not repo.system_source.support_entity(str(e))])
     sqlexec(schemasql, execute, pbtitle=_title)
     # install additional driver specific sql files
-    for fpath in glob(join(config.schemas_lib_dir(), '*.sql.%s' % driver)):
+    for fpath in glob(join(CW_SOFTWARE_ROOT, 'schemas', '*.sql.%s' % driver)):
         print '-> installing', fpath
         sqlexec(open(fpath).read(), execute, False, delimiter=';;')
     for directory in config.cubes_path():
@@ -176,22 +180,6 @@ def init_repository(config, interactive=True, drop=False, vreg=None):
     handler = config.migration_handler(schema, interactive=False,
                                        cnx=cnx, repo=repo)
     initialize_schema(config, schema, handler)
-    # insert versions
-    handler.cmd_add_entity('CWProperty', pkey=u'system.version.cubicweb',
-                           value=unicode(config.cubicweb_version()))
-    for cube in config.cubes():
-        handler.cmd_add_entity('CWProperty',
-                               pkey=u'system.version.%s' % cube.lower(),
-                               value=unicode(config.cube_version(cube)))
-    # some entities have been added before schema entities, fix the 'is' and
-    # 'is_instance_of' relations
-    for rtype in ('is', 'is_instance_of'):
-        handler.sqlexec(
-            'INSERT INTO %s_relation '
-            'SELECT X.eid, ET.cw_eid FROM entities as X, cw_CWEType as ET '
-            'WHERE X.type=ET.cw_name AND NOT EXISTS('
-            '      SELECT 1 from is_relation '
-            '      WHERE eid_from=X.eid AND eid_to=ET.cw_eid)' % rtype)
     # yoo !
     cnx.commit()
     config.enabled_sources = None
@@ -223,7 +211,8 @@ def initialize_schema(config, schema, mhandler, event='create'):
     for path in reversed(paths):
         mhandler.exec_event_script('pre%s' % event, path)
     # enter instance'schema into the database
-    serialize_schema(mhandler.rqlcursor, schema)
+    mhandler.session.set_pool()
+    serialize_schema(mhandler.session, schema)
     # execute cubicweb's post<event> script
     mhandler.exec_event_script('post%s' % event)
     # execute cubes'post<event> script if any

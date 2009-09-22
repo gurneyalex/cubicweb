@@ -17,9 +17,8 @@ import simplejson
 from logilab.common.decorators import cached
 
 from cubicweb import NoSelectableObject, ValidationError, ObjectNotFound, typed_eid
-from cubicweb.utils import strptime
+from cubicweb.utils import strptime, CubicWebJsonEncoder
 from cubicweb.selectors import yes, match_user_groups
-from cubicweb.view import STRICT_DOCTYPE, STRICT_DOCTYPE_NOEXT
 from cubicweb.common.mail import format_mail
 from cubicweb.web import ExplicitLogin, Redirect, RemoteCallFailed, json_dumps
 from cubicweb.web.controller import Controller
@@ -129,7 +128,8 @@ class ViewController(Controller):
             if rset:
                 req.set_message(req._("The view %s can not be applied to this query") % vid)
             else:
-                req.set_message(req._("You have no access to this view or it's not applyable to current data"))
+                req.set_message(req._("You have no access to this view or it can not "
+                                      "be used to display the current data."))
             self.warning("the view %s can not be applied to this query", vid)
             vid = vid_from_rset(req, rset, self.schema)
             view = self.vreg['views'].select(vid, req, rset=rset)
@@ -180,48 +180,55 @@ def _validation_error(req, ex):
             break
     return (foreid, ex.errors)
 
+
 def _validate_form(req, vreg):
     # XXX should use the `RemoteCallFailed` mechanism
     try:
         ctrl = vreg['controllers'].select('edit', req=req)
     except NoSelectableObject:
-        return (False, {None: req._('not authorized')})
+        return (False, {None: req._('not authorized')}, None)
     try:
         ctrl.publish(None)
     except ValidationError, ex:
-        return (False, _validation_error(req, ex))
+        return (False, _validation_error(req, ex), ctrl._edited_entity)
     except Redirect, ex:
+        if ctrl._edited_entity:
+            ctrl._edited_entity.complete()
         try:
             req.cnx.commit() # ValidationError may be raise on commit
         except ValidationError, ex:
-            return (False, _validation_error(req, ex))
+            return (False, _validation_error(req, ex), ctrl._edited_entity)
         else:
-            return (True, ex.location)
+            return (True, ex.location, ctrl._edited_entity)
     except Exception, ex:
         req.cnx.rollback()
         req.exception('unexpected error while validating form')
-        return (False, req._(str(ex).decode('utf-8')))
-    return (False, '???')
+        return (False, req._(str(ex).decode('utf-8')), ctrl._edited_entity)
+    return (False, '???', None)
 
 
 class FormValidatorController(Controller):
     id = 'validateform'
 
-    def response(self, domid, status, args):
+    def response(self, domid, status, args, entity):
+        callback = str(self.req.form.get('__onsuccess', 'null'))
+        errback = str(self.req.form.get('__onfailure', 'null'))
+        cbargs = str(self.req.form.get('__cbargs', 'null'))
         self.req.set_content_type('text/html')
-        jsargs = simplejson.dumps( (status, args) )
+        jsargs = simplejson.dumps((status, args, entity), cls=CubicWebJsonEncoder)
         return """<script type="text/javascript">
- window.parent.handleFormValidationResponse('%s', null, null, %s);
-</script>""" %  (domid, jsargs)
+ wp = window.parent;
+ window.parent.handleFormValidationResponse('%s', %s, %s, %s, %s);
+</script>""" %  (domid, callback, errback, jsargs, cbargs)
 
     def publish(self, rset=None):
         self.req.json_request = True
         # XXX unclear why we have a separated controller here vs
         # js_validate_form on the json controller
-        status, args = _validate_form(self.req, self.vreg)
+        status, args, entity = _validate_form(self.req, self.vreg)
         domid = self.req.form.get('__domid', 'entityForm').encode(
             self.req.encoding)
-        return self.response(domid, status, args)
+        return self.response(domid, status, args, entity)
 
 
 class JSonController(Controller):
@@ -290,13 +297,38 @@ class JSonController(Controller):
     def _exec(self, rql, args=None, eidkey=None, rocheck=True):
         """json mode: execute RQL and return resultset as json"""
         if rocheck:
-            self.ensure_ro_rql(rql)
+            self.req.ensure_ro_rql(rql)
         try:
             return self.req.execute(rql, args, eidkey)
         except Exception, ex:
             self.exception("error in _exec(rql=%s): %s", rql, ex)
             return None
         return None
+
+    def _call_view(self, view, **kwargs):
+        req = self.req
+        divid = req.form.get('divid', 'pageContent')
+        # we need to call pagination before with the stream set
+        stream = view.set_stream()
+        if req.form.get('paginate'):
+            if divid == 'pageContent':
+                # mimick main template behaviour
+                stream.write(u'<div id="pageContent">')
+                vtitle = self.req.form.get('vtitle')
+                if vtitle:
+                    stream.write(u'<h1 class="vtitle">%s</h1>\n' % vtitle)
+            view.paginate()
+            if divid == 'pageContent':
+                stream.write(u'<div id="contentmain">')
+        view.render(**kwargs)
+        extresources = req.html_headers.getvalue(skiphead=True)
+        if extresources:
+            stream.write(u'<div class="ajaxHtmlHead">\n') # XXX use a widget ?
+            stream.write(extresources)
+            stream.write(u'</div>\n')
+        if req.form.get('paginate') and divid == 'pageContent':
+            stream.write(u'</div></div>')
+        return stream.getvalue()
 
     @xhtmlize
     def js_view(self):
@@ -313,28 +345,7 @@ class JSonController(Controller):
         except NoSelectableObject:
             vid = req.form.get('fallbackvid', 'noresult')
             view = self.vreg['views'].select(vid, req, rset=rset)
-        divid = req.form.get('divid', 'pageContent')
-        # we need to call pagination before with the stream set
-        stream = view.set_stream()
-        if req.form.get('paginate'):
-            if divid == 'pageContent':
-                # mimick main template behaviour
-                stream.write(u'<div id="pageContent">')
-                vtitle = self.req.form.get('vtitle')
-                if vtitle:
-                    stream.write(u'<h1 class="vtitle">%s</h1>\n' % vtitle)
-            view.pagination(req, rset, view.w, not view.need_navigation)
-            if divid == 'pageContent':
-                stream.write(u'<div id="contentmain">')
-        view.render()
-        extresources = req.html_headers.getvalue(skiphead=True)
-        if extresources:
-            stream.write(u'<div class="ajaxHtmlHead">\n') # XXX use a widget ?
-            stream.write(extresources)
-            stream.write(u'</div>\n')
-        if req.form.get('paginate') and divid == 'pageContent':
-            stream.write(u'</div></div>')
-        return stream.getvalue()
+        return self._call_view(view)
 
     @xhtmlize
     def js_prop_widget(self, propkey, varname, tabindex=None):
@@ -366,11 +377,12 @@ class JSonController(Controller):
 
     @check_pageid
     @xhtmlize
-    def js_inline_creation_form(self, peid, ttype, rtype, role):
+    def js_inline_creation_form(self, peid, ttype, rtype, role, i18nctx):
         view = self.vreg['views'].select('inline-creation', self.req,
                                          etype=ttype, peid=peid, rtype=rtype,
                                          role=role)
-        return view.render(etype=ttype, peid=peid, rtype=rtype, role=role)
+        return self._call_view(view, etype=ttype, peid=peid,
+                               rtype=rtype, role=role, i18nctx=i18nctx)
 
     @jsonize
     def js_validate_form(self, action, names, values):
@@ -382,7 +394,7 @@ class JSonController(Controller):
 
     @jsonize
     def js_edit_field(self, action, names, values, rtype, eid, default):
-        success, args = self.validate_form(action, names, values)
+        success, args, _ = self.validate_form(action, names, values)
         if success:
             # Any X,N where we don't seem to use N is an optimisation
             # printable_value won't need to query N again

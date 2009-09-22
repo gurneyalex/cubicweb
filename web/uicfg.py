@@ -67,9 +67,9 @@ Automatic form configuration
 """
 __docformat__ = "restructuredtext en"
 
-from cubicweb import neg_role, onevent
+from cubicweb import neg_role
 from cubicweb.rtags import (RelationTags, RelationTagsBool,
-                            RelationTagsSet, RelationTagsDict)
+                            RelationTagsSet, RelationTagsDict, register_rtag)
 from cubicweb.web import formwidgets
 
 
@@ -149,14 +149,30 @@ primaryview_display_ctrl = DisplayCtrlRelationTags('primaryview_display_ctrl',
 # * 'application'
 # * 'system'
 # * 'schema'
+# * 'hidden'
 # * 'subobject' (not displayed by default)
 
-indexview_etype_section = {'EmailAddress': 'subobject',
-                           'CWUser': 'system',
-                           'CWGroup': 'system',
-                           'CWPermission': 'system',
-                           }
+class InitializableDict(dict):
+    def __init__(self, *args, **kwargs):
+        super(InitializableDict, self).__init__(*args, **kwargs)
+        register_rtag(self)
 
+    def init(self, schema, check=True):
+        for eschema in schema.entities():
+            if eschema.schema_entity():
+                self.setdefault(eschema, 'schema')
+            elif eschema.is_subobject(strict=True):
+                self.setdefault(eschema, 'subobject')
+            else:
+                self.setdefault(eschema, 'application')
+
+indexview_etype_section = InitializableDict(EmailAddress='subobject',
+                                            CWUser='system',
+                                            CWGroup='system',
+                                            CWPermission='system',
+                                            CWCache='system',
+                                            BaseTransition='hidden',
+                                            )
 
 # autoform.AutomaticEntityForm configuration ##################################
 
@@ -164,23 +180,29 @@ indexview_etype_section = {'EmailAddress': 'subobject',
 
 def init_autoform_section(rtag, sschema, rschema, oschema, role):
     if rtag.get(sschema, rschema, oschema, role) is None:
-        if role == 'subject':
-            card = rschema.rproperty(sschema, oschema, 'cardinality')[0]
-            composed = rschema.rproperty(sschema, oschema, 'composite') == 'object'
-        else:
-            card = rschema.rproperty(sschema, oschema, 'cardinality')[1]
-            composed = rschema.rproperty(sschema, oschema, 'composite') == 'subject'
-        if sschema.is_metadata(rschema):
+        if autoform_is_inlined.get(sschema, rschema, oschema, role) or \
+               autoform_is_inlined.get(sschema, rschema, oschema, neg_role(role)):
+            section = 'generated'
+        elif sschema.is_metadata(rschema):
             section = 'metadata'
-        elif card in '1+':
-            if not rschema.is_final() and composed:
-                section = 'generated'
-            else:
-                section = 'primary'
-        elif rschema.is_final():
-            section = 'secondary'
         else:
-            section = 'generic'
+            if role == 'subject':
+                card = rschema.rproperty(sschema, oschema, 'cardinality')[0]
+                composed = rschema.rproperty(sschema, oschema, 'composite') == 'object'
+            else:
+                card = rschema.rproperty(sschema, oschema, 'cardinality')[1]
+                composed = rschema.rproperty(sschema, oschema, 'composite') == 'subject'
+            if card in '1+':
+                if not rschema.is_final() and composed:
+                    # XXX why? probably because we want it unlined, though this
+                    # is not the case by default
+                    section = 'generated'
+                else:
+                    section = 'primary'
+            elif rschema.is_final():
+                section = 'secondary'
+            else:
+                section = 'generic'
         rtag.tag_relation((sschema, rschema, oschema, role), section)
 
 autoform_section = RelationTags('autoform_section', init_autoform_section,
@@ -216,15 +238,3 @@ def init_actionbox_appearsin_addmenu(rtag, sschema, rschema, oschema, role):
 
 actionbox_appearsin_addmenu = RelationTagsBool('actionbox_appearsin_addmenu',
                                                init_actionbox_appearsin_addmenu)
-
-@onevent('before-source-reload')
-def clear_rtag_objects():
-    print 'YAHOO ' * 80
-    primaryview_section.clear()
-    primaryview_display_ctrl.clear()
-    autoform_section.clear()
-    autoform_field.clear()
-    autoform_field_kwargs.clear()
-    autoform_is_inlined.clear()
-    autoform_permissions_overrides.clear()
-    actionbox_appearsin_addmenu.clear()

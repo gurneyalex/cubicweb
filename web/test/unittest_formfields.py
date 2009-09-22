@@ -11,7 +11,7 @@ from logilab.common.testlib import TestCase, unittest_main, mock_object as mock
 from yams.constraints import StaticVocabularyConstraint, SizeConstraint
 
 from cubicweb.devtools import TestServerConfiguration
-from cubicweb.devtools.testlib import EnvBasedTC
+from cubicweb.devtools.testlib import CubicWebTC
 from cubicweb.web.formwidgets import PasswordInput, TextArea, Select, Radio
 from cubicweb.web.formfields import *
 from cubicweb.web.views.forms import EntityFieldsForm
@@ -112,11 +112,11 @@ class GuessFieldTC(TestCase):
                           [(u'maybe', '1'), (u'no', '')])
 
 
-class MoreFieldsTC(EnvBasedTC):
+class MoreFieldsTC(CubicWebTC):
     def test_rtf_format_field(self):
         req = self.request()
         req.use_fckeditor = lambda: False
-        e = self.etype_instance('State')
+        e = self.vreg['etypes'].etype_class('State')(req)
         form = EntityFieldsForm(req, entity=e)
         description_field = guess_field(schema['State'], schema['description'])
         description_format_field = description_field.get_format_field(form)
@@ -127,6 +127,17 @@ class MoreFieldsTC(EnvBasedTC):
         self.execute('INSERT CWProperty X: X pkey "ui.default-text-format", X value "text/rest", X for_user U WHERE U login "admin"')
         self.commit()
         self.assertEquals(description_format_field.initial(form), 'text/rest')
+
+
+class UtilsTC(TestCase):
+    def test_vocab_sort(self):
+        self.assertEquals(vocab_sort([('Z', 1), ('A', 2),
+                                      ('Group 1', None), ('Y', 3), ('B', 4),
+                                      ('Group 2', None), ('X', 5), ('C', 6)]),
+                          [('A', 2), ('Z', 1),
+                           ('Group 1', None), ('B', 4), ('Y', 3),
+                           ('Group 2', None), ('C', 6), ('X', 5)]
+                          )
 
 if __name__ == '__main__':
     unittest_main()

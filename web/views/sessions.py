@@ -15,12 +15,17 @@ from cubicweb.web.application import AbstractSessionManager
 class InMemoryRepositorySessionManager(AbstractSessionManager):
     """manage session data associated to a session identifier"""
 
-    def __init__(self):
-        AbstractSessionManager.__init__(self)
+    def __init__(self, *args, **kwargs):
+        AbstractSessionManager.__init__(self, *args, **kwargs)
         # XXX require a RepositoryAuthenticationManager which violates
         #     authenticate interface by returning a session instead of a user
         #assert isinstance(self.authmanager, RepositoryAuthenticationManager)
         self._sessions = {}
+
+    def dump_data(self):
+        return self._sessions
+    def restore_data(self, data):
+        self._sessions = data
 
     def current_sessions(self):
         return self._sessions.values()

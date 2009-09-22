@@ -5,15 +5,22 @@ CubicWeb main instances controller.
 %s"""
 
 import sys
-from os import remove, listdir, system, kill, getpgid, pathsep
+from os import remove, listdir, system, pathsep
+try:
+    from os import kill, getpgid
+except ImportError:
+    def kill(*args): pass
+    def getpgid(): pass
+
 from os.path import exists, join, isfile, isdir
 
 from logilab.common.clcommands import register_commands, pop_arg
 from logilab.common.shellutils import ASK
 
-from cubicweb import ConfigurationError, ExecutionError, BadCommandUsage, underline_title
+from cubicweb import ConfigurationError, ExecutionError, BadCommandUsage
 from cubicweb.cwconfig import CubicWebConfiguration as cwcfg, CONFIGURATIONS
-from cubicweb.toolsutils import Command, main_run,  rm, create_dir
+from cubicweb.toolsutils import Command, main_run, rm, create_dir, underline_title
+
 
 def wait_process_end(pid, maxtry=10, waittime=1):
     """wait for a process to actually die"""
@@ -23,7 +30,7 @@ def wait_process_end(pid, maxtry=10, waittime=1):
     while nbtry < maxtry:
         try:
             kill(pid, signal.SIGUSR1)
-        except OSError:
+        except (OSError, AttributeError): # XXX win32
             break
         nbtry += 1
         sleep(waittime)
@@ -103,7 +110,7 @@ class InstanceCommand(Command):
         for appid in args:
             if askconfirm:
                 print '*'*72
-                if not confirm('%s instance %r ?' % (self.name, appid)):
+                if not ASK.confirm('%s instance %r ?' % (self.name, appid)):
                     continue
             self.run_arg(appid)
 
@@ -137,7 +144,7 @@ class InstanceCommandFork(InstanceCommand):
         for appid in args:
             if askconfirm:
                 print '*'*72
-                if not confirm('%s instance %r ?' % (self.name, appid)):
+                if not ASK.confirm('%s instance %r ?' % (self.name, appid)):
                     continue
             if forkcmd:
                 status = system('%s %s' % (forkcmd, appid))
@@ -145,6 +152,7 @@ class InstanceCommandFork(InstanceCommand):
                     print '%s exited with status %s' % (forkcmd, status)
             else:
                 self.run_arg(appid)
+
 
 # base commands ###############################################################
 
@@ -307,8 +315,8 @@ repository and the web server.',
         errors = config.i18ncompile(langs)
         if errors:
             print '\n'.join(errors)
-            if not confirm('error while compiling message catalogs, '
-                           'continue anyway ?'):
+            if not ASK.confirm('error while compiling message catalogs, '
+                               'continue anyway ?'):
                 print 'creation not completed'
                 return
         # create the additional data directory for this instance
@@ -359,7 +367,7 @@ class DeleteInstanceCommand(Command):
 
 # instance commands ########################################################
 
-class StartInstanceCommand(InstanceCommand):
+class StartInstanceCommand(InstanceCommandFork):
     """Start the given instances. If no instance is given, start them all.
 
     <instance>...
@@ -391,17 +399,15 @@ running.'}),
 
     def start_instance(self, appid):
         """start the instance's server"""
-        # use get() since start may be used from other commands (eg upgrade)
-        # without all options defined
-        debug = self.get('debug')
-        force = self.get('force')
-        loglevel = self.get('loglevel')
+        debug = self['debug']
+        force = self['force']
+        loglevel = self['loglevel']
         config = cwcfg.config_for(appid)
         if loglevel is not None:
             loglevel = 'LOG_%s' % loglevel.upper()
             config.global_set_option('log-threshold', loglevel)
             config.init_log(loglevel, debug=debug, force=True)
-        if self.get('profile'):
+        if self['profile']:
             config.global_set_option('profile', self.config.profile)
         helper = self.config_helper(config, cmdname='start')
         pidf = config['pid-file']
@@ -409,8 +415,10 @@ running.'}),
             msg = "%s seems to be running. Remove %s by hand if necessary or use \
 the --force option."
             raise ExecutionError(msg % (appid, pidf))
-        helper.start_command(config, debug)
-        return True
+        helper.start_server(config, debug)
+        if not debug:
+            # in debug mode, we reach this point once the instance is stopped...
+            print 'instance %s %s' % (appid, self.actionverb)
 
 
 class StopInstanceCommand(InstanceCommand):
@@ -463,8 +471,7 @@ class StopInstanceCommand(InstanceCommand):
         print 'instance %s stopped' % appid
 
 
-class RestartInstanceCommand(StartInstanceCommand,
-                                StopInstanceCommand):
+class RestartInstanceCommand(StartInstanceCommand):
     """Restart the given instances.
 
     <instance>...
@@ -483,14 +490,12 @@ class RestartInstanceCommand(StartInstanceCommand,
         print ('some specific start order is specified, will first stop all '
                'instances then restart them.')
         # get instances in startorder
-        stopped = []
         for appid in args:
             if askconfirm:
                 print '*'*72
-                if not confirm('%s instance %r ?' % (self.name, appid)):
+                if not ASK.confirm('%s instance %r ?' % (self.name, appid)):
                     continue
-            self.stop_instance(appid)
-            stopped.append(appid)
+            StopInstanceCommand().stop_instance(appid)
         forkcmd = [w for w in sys.argv if not w in args]
         forkcmd[1] = 'start'
         forkcmd = ' '.join(forkcmd)
@@ -500,9 +505,8 @@ class RestartInstanceCommand(StartInstanceCommand,
                 sys.exit(status)
 
     def restart_instance(self, appid):
-        self.stop_instance(appid)
-        if self.start_instance(appid):
-            print 'instance %s %s' % (appid, self.actionverb)
+        StopInstanceCommand().stop_instance(appid)
+        self.start_instance(appid)
 
 
 class ReloadConfigurationCommand(RestartInstanceCommand):
@@ -553,9 +557,7 @@ class StatusCommand(InstanceCommand):
             print "running with pid %s" % (pid)
 
 
-class UpgradeInstanceCommand(InstanceCommandFork,
-                                StartInstanceCommand,
-                                StopInstanceCommand):
+class UpgradeInstanceCommand(InstanceCommandFork):
     """Upgrade an instance after cubicweb and/or component(s) upgrade.
 
     For repository update, you will be prompted for a login / password to use
@@ -611,10 +613,6 @@ given, appropriate sources for migration will be automatically selected \
           }),
         )
 
-    def ordered_instances(self):
-        # need this since mro return StopInstanceCommand implementation
-        return InstanceCommand.ordered_instances(self)
-
     def upgrade_instance(self, appid):
         print '\n' + underline_title('Upgrading the instance %s' % appid)
         from logilab.common.changelog import Version
@@ -661,7 +659,7 @@ given, appropriate sources for migration will be automatically selected \
             print '-> migration needed from %s to %s for %s' % (fromversion, toversion, cube)
         # only stop once we're sure we have something to do
         if not (cwcfg.mode == 'dev' or self.config.nostartstop):
-            self.stop_instance(appid)
+            StopInstanceCommand().stop_instance(appid)
         # run cubicweb/componants migration scripts
         mih.migrate(vcconf, reversed(toupgrade), self.config)
         # rewrite main configuration file
@@ -676,15 +674,15 @@ given, appropriate sources for migration will be automatically selected \
         errors = config.i18ncompile(langs)
         if errors:
             print '\n'.join(errors)
-            if not confirm('Error while compiling message catalogs, '
-                           'continue anyway ?'):
+            if not ASK.confirm('Error while compiling message catalogs, '
+                               'continue anyway ?'):
                 print '-> migration not completed.'
                 return
         mih.shutdown()
         print
         print '-> instance migrated.'
         if not (cwcfg.mode == 'dev' or self.config.nostartstop):
-            self.start_instance(appid)
+            StartInstanceCommand().start_instance(appid)
         print
 
 
@@ -716,7 +714,13 @@ will connect to all defined sources. If 'migration' is given, appropriate \
 sources for migration will be automatically selected.",
           }),
 
+        ('force',
+         {'short': 'f', 'action' : 'store_true',
+          'default' : False,
+          'help': 'don\'t check instance is up to date.'}
+         ),
         )
+
     def run(self, args):
         appid = pop_arg(args, 99, msg="No instance specified !")
         config = cwcfg.config_for(appid)
@@ -728,6 +732,7 @@ sources for migration will be automatically selected.",
         else:
             sources = ('all',)
         config.set_sources_mode(sources)
+        config.repairing = self.config.force
         mih = config.migration_handler()
         if args:
             for arg in args:

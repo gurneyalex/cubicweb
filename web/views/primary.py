@@ -38,7 +38,8 @@ class PrimaryView(EntityView):
         return []
 
     def cell_call(self, row, col):
-        self.row = row
+        self.cw_row = row
+        self.cw_col = col
         self.maxrelated = self.req.property_value('navigation.related-limit')
         entity = self.complete_entity(row, col)
         self.render_entity(entity)
@@ -51,6 +52,7 @@ class PrimaryView(EntityView):
         boxes = self._prepare_side_boxes(entity)
         if boxes or hasattr(self, 'render_side_related'):
             self.w(u'<table width="100%"><tr><td style="width: 75%">')
+        self.render_entity_summary(entity)
         self.w(u'<div class="mainInfo">')
         self.content_navigation_components('navcontenttop')
         self.render_entity_attributes(entity)
@@ -71,7 +73,7 @@ class PrimaryView(EntityView):
 
     def content_navigation_components(self, context):
         self.w(u'<div class="%s">' % context)
-        for comp in self.vreg['contentnavigation'].possible_vobjects(
+        for comp in self.vreg['contentnavigation'].poss_visible_objects(
             self.req, rset=self.rset, row=self.row, view=self, context=context):
             try:
                 comp.render(w=self.w, row=self.row, view=self)
@@ -90,6 +92,8 @@ class PrimaryView(EntityView):
 
     def render_entity_metadata(self, entity):
         entity.view('metadata', w=self.w)
+
+    def render_entity_summary(self, entity):
         summary = self.summary(entity) # deprecate summary?
         if summary:
             self.w(u'<div class="summary">%s</div>' % summary)
@@ -147,7 +151,7 @@ class PrimaryView(EntityView):
             label = display_name(self.req, rschema.type, role)
             vid = dispctrl.get('vid', 'sidebox')
             sideboxes.append( (label, rset, vid) )
-        sideboxes += self.vreg['boxes'].possible_vobjects(
+        sideboxes += self.vreg['boxes'].poss_visible_objects(
             self.req, rset=self.rset, row=self.row, view=self,
             context='incontext')
         return sideboxes
@@ -229,9 +233,9 @@ class RelatedView(EntityView):
 
 for rtype in ('eid', 'creation_date', 'modification_date', 'cwuri',
               'is', 'is_instance_of', 'identity',
-              'owned_by', 'created_by',
-              'in_state', 'wf_info_for', 'require_permission',
-              'from_entity', 'to_entity',
+              'owned_by', 'created_by', 'in_state',
+              'wf_info_for', 'by_transition', 'from_state', 'to_state',
+              'require_permission', 'from_entity', 'to_entity',
               'see_also'):
     uicfg.primaryview_section.tag_subject_of(('*', rtype, '*'), 'hidden')
     uicfg.primaryview_section.tag_object_of(('*', rtype, '*'), 'hidden')

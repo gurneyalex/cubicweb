@@ -78,7 +78,8 @@ class EditController(ViewController):
         try:
             methodname = req.form.pop('__method', None)
             for eid in req.edited_eids():
-                formparams = req.extract_entity_params(eid)
+                # __type and eid
+                formparams = req.extract_entity_params(eid, minparams=2)
                 if methodname is not None:
                     entity = req.entity_from_eid(eid)
                     method = getattr(entity, methodname)
@@ -193,6 +194,7 @@ class EditController(ViewController):
         errorurl = self.req.form.get('__errorurl')
         if errorurl:
             self.req.cancel_edition(errorurl)
+        self.req.message = self.req._('edit canceled')
         return self.reset()
 
     def _action_delete(self):

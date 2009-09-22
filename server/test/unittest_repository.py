@@ -18,10 +18,11 @@ from logilab.common.testlib import TestCase, unittest_main
 
 from yams.constraints import UniqueConstraint
 
-from cubicweb import BadConnectionId, RepositoryError, ValidationError, UnknownEid, AuthenticationError
+from cubicweb import (BadConnectionId, RepositoryError, ValidationError,
+                      UnknownEid, AuthenticationError)
 from cubicweb.schema import CubicWebSchema, RQLConstraint
 from cubicweb.dbapi import connect, repo_connect, multiple_connections_unfix
-from cubicweb.devtools.apptest import RepositoryBasedTC
+from cubicweb.devtools.testlib import CubicWebTC
 from cubicweb.devtools.repotest import tuplify
 from cubicweb.server import repository
 from cubicweb.server.sqlutils import SQL_PREFIX
@@ -31,48 +32,35 @@ from cubicweb.server.sqlutils import SQL_PREFIX
 os.system('pyro-ns >/dev/null 2>/dev/null &')
 
 
-class RepositoryTC(RepositoryBasedTC):
+class RepositoryTC(CubicWebTC):
     """ singleton providing access to a persistent storage for entities
     and relation
     """
 
-#     def setUp(self):
-#         pass
-
-#     def tearDown(self):
-#         self.repo.config.db_perms = True
-#         cnxid = self.repo.connect(*self.default_user_password())
-#         for etype in ('Affaire', 'Note', 'Societe', 'Personne'):
-#             self.repo.execute(cnxid, 'DELETE %s X' % etype)
-#             self.repo.commit(cnxid)
-#         self.repo.close(cnxid)
-
     def test_fill_schema(self):
         self.repo.schema = CubicWebSchema(self.repo.config.appid)
         self.repo.config._cubes = None # avoid assertion error
+        self.repo.config.repairing = True # avoid versions checking
         self.repo.fill_schema()
-        pool = self.repo._get_pool()
         table = SQL_PREFIX + 'CWEType'
         namecol = SQL_PREFIX + 'name'
         finalcol = SQL_PREFIX + 'final'
-        try:
-            cu = self.session.system_sql('SELECT %s FROM %s WHERE %s is NULL' % (
-                namecol, table, finalcol))
-            self.assertEquals(cu.fetchall(), [])
-            cu = self.session.system_sql('SELECT %s FROM %s WHERE %s=%%(final)s ORDER BY %s'
-                              % (namecol, table, finalcol, namecol), {'final': 'TRUE'})
-            self.assertEquals(cu.fetchall(), [(u'Boolean',), (u'Bytes',),
-                                                     (u'Date',), (u'Datetime',),
-                                                     (u'Decimal',),(u'Float',),
-                                                     (u'Int',),
-                                                     (u'Interval',), (u'Password',),
-                                                     (u'String',), (u'Time',)])
-        finally:
-            self.repo._free_pool(pool)
+        self.session.set_pool()
+        cu = self.session.system_sql('SELECT %s FROM %s WHERE %s is NULL' % (
+            namecol, table, finalcol))
+        self.assertEquals(cu.fetchall(), [])
+        cu = self.session.system_sql('SELECT %s FROM %s WHERE %s=%%(final)s ORDER BY %s'
+                          % (namecol, table, finalcol, namecol), {'final': 'TRUE'})
+        self.assertEquals(cu.fetchall(), [(u'Boolean',), (u'Bytes',),
+                                          (u'Date',), (u'Datetime',),
+                                          (u'Decimal',),(u'Float',),
+                                          (u'Int',),
+                                          (u'Interval',), (u'Password',),
+                                          (u'String',), (u'Time',)])
 
     def test_schema_has_owner(self):
         repo = self.repo
-        cnxid = repo.connect(*self.default_user_password())
+        cnxid = repo.connect(self.admlogin, self.admpassword)
         self.failIf(repo.execute(cnxid, 'CWEType X WHERE NOT X owned_by U'))
         self.failIf(repo.execute(cnxid, 'CWRType X WHERE NOT X owned_by U'))
         self.failIf(repo.execute(cnxid, 'CWAttribute X WHERE NOT X owned_by U'))
@@ -81,18 +69,17 @@ class RepositoryTC(RepositoryBasedTC):
         self.failIf(repo.execute(cnxid, 'CWConstraintType X WHERE NOT X owned_by U'))
 
     def test_connect(self):
-        login, passwd = self.default_user_password()
-        self.assert_(self.repo.connect(login, passwd))
+        self.assert_(self.repo.connect(self.admlogin, self.admpassword))
         self.assertRaises(AuthenticationError,
-                          self.repo.connect, login, 'nimportnawak')
+                          self.repo.connect, self.admlogin, 'nimportnawak')
         self.assertRaises(AuthenticationError,
-                          self.repo.connect, login, None)
+                          self.repo.connect, self.admlogin, None)
         self.assertRaises(AuthenticationError,
                           self.repo.connect, None, None)
 
     def test_execute(self):
         repo = self.repo
-        cnxid = repo.connect(*self.default_user_password())
+        cnxid = repo.connect(self.admlogin, self.admpassword)
         repo.execute(cnxid, 'Any X')
         repo.execute(cnxid, 'Any X where X is Personne')
         repo.execute(cnxid, 'Any X where X is Personne, X nom ~= "to"')
@@ -101,8 +88,8 @@ class RepositoryTC(RepositoryBasedTC):
 
     def test_login_upassword_accent(self):
         repo = self.repo
-        cnxid = repo.connect(*self.default_user_password())
-        repo.execute(cnxid, 'INSERT CWUser X: X login %(login)s, X upassword %(passwd)s, X in_state S, X in_group G WHERE S name "activated", G name "users"',
+        cnxid = repo.connect(self.admlogin, self.admpassword)
+        repo.execute(cnxid, 'INSERT CWUser X: X login %(login)s, X upassword %(passwd)s, X in_group G WHERE G name "users"',
                      {'login': u"barnabé", 'passwd': u"héhéhé".encode('UTF8')})
         repo.commit(cnxid)
         repo.close(cnxid)
@@ -110,9 +97,9 @@ class RepositoryTC(RepositoryBasedTC):
 
     def test_invalid_entity_rollback(self):
         repo = self.repo
-        cnxid = repo.connect(*self.default_user_password())
+        cnxid = repo.connect(self.admlogin, self.admpassword)
         # no group
-        repo.execute(cnxid, 'INSERT CWUser X: X login %(login)s, X upassword %(passwd)s, X in_state S WHERE S name "activated"',
+        repo.execute(cnxid, 'INSERT CWUser X: X login %(login)s, X upassword %(passwd)s',
                      {'login': u"tutetute", 'passwd': 'tutetute'})
         self.assertRaises(ValidationError, repo.commit, cnxid)
         rset = repo.execute(cnxid, 'CWUser X WHERE X login "tutetute"')
@@ -120,7 +107,7 @@ class RepositoryTC(RepositoryBasedTC):
 
     def test_close(self):
         repo = self.repo
-        cnxid = repo.connect(*self.default_user_password())
+        cnxid = repo.connect(self.admlogin, self.admpassword)
         self.assert_(cnxid)
         repo.close(cnxid)
         self.assertRaises(BadConnectionId, repo.execute, cnxid, 'Any X')
@@ -131,9 +118,9 @@ class RepositoryTC(RepositoryBasedTC):
 
     def test_shared_data(self):
         repo = self.repo
-        cnxid = repo.connect(*self.default_user_password())
+        cnxid = repo.connect(self.admlogin, self.admpassword)
         repo.set_shared_data(cnxid, 'data', 4)
-        cnxid2 = repo.connect(*self.default_user_password())
+        cnxid2 = repo.connect(self.admlogin, self.admpassword)
         self.assertEquals(repo.get_shared_data(cnxid, 'data'), 4)
         self.assertEquals(repo.get_shared_data(cnxid2, 'data'), None)
         repo.set_shared_data(cnxid2, 'data', 5)
@@ -151,14 +138,14 @@ class RepositoryTC(RepositoryBasedTC):
 
     def test_check_session(self):
         repo = self.repo
-        cnxid = repo.connect(*self.default_user_password())
+        cnxid = repo.connect(self.admlogin, self.admpassword)
         self.assertEquals(repo.check_session(cnxid), None)
         repo.close(cnxid)
         self.assertRaises(BadConnectionId, repo.check_session, cnxid)
 
     def test_transaction_base(self):
         repo = self.repo
-        cnxid = repo.connect(*self.default_user_password())
+        cnxid = repo.connect(self.admlogin, self.admpassword)
         # check db state
         result = repo.execute(cnxid, 'Personne X')
         self.assertEquals(result.rowcount, 0)
@@ -177,7 +164,7 @@ class RepositoryTC(RepositoryBasedTC):
 
     def test_transaction_base2(self):
         repo = self.repo
-        cnxid = repo.connect(*self.default_user_password())
+        cnxid = repo.connect(self.admlogin, self.admpassword)
         # rollback relation insertion
         repo.execute(cnxid, "SET U in_group G WHERE U login 'admin', G name 'guests'")
         result = repo.execute(cnxid, "Any U WHERE U in_group G, U login 'admin', G name 'guests'")
@@ -188,25 +175,22 @@ class RepositoryTC(RepositoryBasedTC):
 
     def test_transaction_base3(self):
         repo = self.repo
-        cnxid = repo.connect(*self.default_user_password())
+        cnxid = repo.connect(self.admlogin, self.admpassword)
         # rollback state change which trigger TrInfo insertion
-        ueid = repo._get_session(cnxid).user.eid
-        rset = repo.execute(cnxid, 'TrInfo T WHERE T wf_info_for X, X eid %(x)s', {'x': ueid})
+        user = repo._get_session(cnxid).user
+        user.fire_transition('deactivate')
+        rset = repo.execute(cnxid, 'TrInfo T WHERE T wf_info_for X, X eid %(x)s', {'x': user.eid})
         self.assertEquals(len(rset), 1)
-        repo.execute(cnxid, 'SET X in_state S WHERE X eid %(x)s, S name "deactivated"',
-                     {'x': ueid}, 'x')
-        rset = repo.execute(cnxid, 'TrInfo T WHERE T wf_info_for X, X eid %(x)s', {'x': ueid})
-        self.assertEquals(len(rset), 2)
         repo.rollback(cnxid)
-        rset = repo.execute(cnxid, 'TrInfo T WHERE T wf_info_for X, X eid %(x)s', {'x': ueid})
-        self.assertEquals(len(rset), 1)
+        rset = repo.execute(cnxid, 'TrInfo T WHERE T wf_info_for X, X eid %(x)s', {'x': user.eid})
+        self.assertEquals(len(rset), 0)
 
     def test_transaction_interleaved(self):
         self.skip('implement me')
 
     def test_close_wait_processing_request(self):
         repo = self.repo
-        cnxid = repo.connect(*self.default_user_password())
+        cnxid = repo.connect(self.admlogin, self.admpassword)
         repo.execute(cnxid, 'INSERT CWUser X: X login "toto", X upassword "tutu", X in_group G WHERE G name "users"')
         repo.commit(cnxid)
         # close has to be in the thread due to sqlite limitations
@@ -290,7 +274,7 @@ class RepositoryTC(RepositoryBasedTC):
 
     def test_internal_api(self):
         repo = self.repo
-        cnxid = repo.connect(*self.default_user_password())
+        cnxid = repo.connect(self.admlogin, self.admpassword)
         session = repo._get_session(cnxid, setpool=True)
         self.assertEquals(repo.type_and_source_from_eid(1, session),
                           ('CWGroup', 'system', None))
@@ -308,7 +292,7 @@ class RepositoryTC(RepositoryBasedTC):
 
     def test_session_api(self):
         repo = self.repo
-        cnxid = repo.connect(*self.default_user_password())
+        cnxid = repo.connect(self.admlogin, self.admpassword)
         self.assertEquals(repo.user_info(cnxid), (5, 'admin', set([u'managers']), {}))
         self.assertEquals(repo.describe(cnxid, 1), (u'CWGroup', u'system', None))
         repo.close(cnxid)
@@ -317,7 +301,7 @@ class RepositoryTC(RepositoryBasedTC):
 
     def test_shared_data_api(self):
         repo = self.repo
-        cnxid = repo.connect(*self.default_user_password())
+        cnxid = repo.connect(self.admlogin, self.admpassword)
         self.assertEquals(repo.get_shared_data(cnxid, 'data'), None)
         repo.set_shared_data(cnxid, 'data', 4)
         self.assertEquals(repo.get_shared_data(cnxid, 'data'), 4)
@@ -342,38 +326,51 @@ class RepositoryTC(RepositoryBasedTC):
 #             self.set_debug(False)
 #         print 'test time: %.3f (time) %.3f (cpu)' % ((time() - t), clock() - c)
 
+    def test_delete_if_singlecard1(self):
+        note = self.add_entity('Affaire')
+        p1 = self.add_entity('Personne', nom=u'toto')
+        self.execute('SET A todo_by P WHERE A eid %(x)s, P eid %(p)s',
+                     {'x': note.eid, 'p': p1.eid})
+        rset = self.execute('Any P WHERE A todo_by P, A eid %(x)s',
+                            {'x': note.eid})
+        self.assertEquals(len(rset), 1)
+        p2 = self.add_entity('Personne', nom=u'tutu')
+        self.execute('SET A todo_by P WHERE A eid %(x)s, P eid %(p)s',
+                     {'x': note.eid, 'p': p2.eid})
+        rset = self.execute('Any P WHERE A todo_by P, A eid %(x)s',
+                            {'x': note.eid})
+        self.assertEquals(len(rset), 1)
+        self.assertEquals(rset.rows[0][0], p2.eid)
 
-class DataHelpersTC(RepositoryBasedTC):
 
-    def setUp(self):
-        """ called before each test from this class """
-        cnxid = self.repo.connect(*self.default_user_password())
-        self.session = self.repo._sessions[cnxid]
-        self.session.set_pool()
-
-    def tearDown(self):
-        self.session.rollback()
+class DataHelpersTC(CubicWebTC):
 
     def test_create_eid(self):
+        self.session.set_pool()
         self.assert_(self.repo.system_source.create_eid(self.session))
 
     def test_source_from_eid(self):
+        self.session.set_pool()
         self.assertEquals(self.repo.source_from_eid(1, self.session),
                           self.repo.sources_by_uri['system'])
 
     def test_source_from_eid_raise(self):
+        self.session.set_pool()
         self.assertRaises(UnknownEid, self.repo.source_from_eid, -2, self.session)
 
     def test_type_from_eid(self):
+        self.session.set_pool()
         self.assertEquals(self.repo.type_from_eid(1, self.session), 'CWGroup')
 
     def test_type_from_eid_raise(self):
+        self.session.set_pool()
         self.assertRaises(UnknownEid, self.repo.type_from_eid, -2, self.session)
 
     def test_add_delete_info(self):
         entity = self.repo.vreg['etypes'].etype_class('Personne')(self.session)
         entity.eid = -1
         entity.complete = lambda x: None
+        self.session.set_pool()
         self.repo.add_info(self.session, entity, self.repo.sources_by_uri['system'])
         cu = self.session.system_sql('SELECT * FROM entities WHERE eid = -1')
         data = cu.fetchall()
@@ -388,13 +385,14 @@ class DataHelpersTC(RepositoryBasedTC):
         self.assertEquals(data, [])
 
 
-class FTITC(RepositoryBasedTC):
+class FTITC(CubicWebTC):
 
     def test_reindex_and_modified_since(self):
         eidp = self.execute('INSERT Personne X: X nom "toto", X prenom "tutu"')[0][0]
         self.commit()
         ts = datetime.now()
         self.assertEquals(len(self.execute('Personne X WHERE X has_text "tutu"')), 1)
+        self.session.set_pool()
         cu = self.session.system_sql('SELECT mtime, eid FROM entities WHERE eid = %s' % eidp)
         omtime = cu.fetchone()[0]
         # our sqlite datetime adapter is ignore seconds fraction, so we have to
@@ -403,6 +401,7 @@ class FTITC(RepositoryBasedTC):
         self.execute('SET X nom "tata" WHERE X eid %(x)s', {'x': eidp}, 'x')
         self.commit()
         self.assertEquals(len(self.execute('Personne X WHERE X has_text "tutu"')), 1)
+        self.session.set_pool()
         cu = self.session.system_sql('SELECT mtime FROM entities WHERE eid = %s' % eidp)
         mtime = cu.fetchone()[0]
         self.failUnless(omtime < mtime)
@@ -440,7 +439,7 @@ class FTITC(RepositoryBasedTC):
         self.assertEquals(rset.rows, [[self.session.user.eid]])
 
 
-class DBInitTC(RepositoryBasedTC):
+class DBInitTC(CubicWebTC):
 
     def test_versions_inserted(self):
         inserted = [r[0] for r in self.execute('Any K ORDERBY K WHERE P pkey K, P pkey ~= "system.version.%"')]
@@ -450,11 +449,11 @@ class DBInitTC(RepositoryBasedTC):
                            u'system.version.file', u'system.version.folder',
                            u'system.version.tag'])
 
-class InlineRelHooksTC(RepositoryBasedTC):
+class InlineRelHooksTC(CubicWebTC):
     """test relation hooks are called for inlined relations
     """
     def setUp(self):
-        RepositoryBasedTC.setUp(self)
+        CubicWebTC.setUp(self)
         self.hm = self.repo.hm
         self.called = []
 
@@ -485,11 +484,11 @@ class InlineRelHooksTC(RepositoryBasedTC):
 
     def test_after_add_inline(self):
         """make sure after_<event>_relation hooks are deferred"""
+        p1 = self.add_entity('Personne', nom=u'toto')
         self.hm.register_hook(self._after_relation_hook,
-                             'after_add_relation', 'in_state')
-        eidp = self.execute('INSERT CWUser X: X login "toto", X upassword "tutu", X in_state S WHERE S name "activated"')[0][0]
-        eids = self.execute('State X WHERE X name "activated"')[0][0]
-        self.assertEquals(self.called, [(eidp, 'in_state', eids,)])
+                             'after_add_relation', 'ecrit_par')
+        eidn = self.execute('INSERT Note N: N ecrit_par P WHERE P nom "toto"')[0][0]
+        self.assertEquals(self.called, [(eidn, 'ecrit_par', p1.eid,)])
 
     def test_before_delete_inline_relation(self):
         """make sure before_<event>_relation hooks are called directly"""

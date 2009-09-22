@@ -9,7 +9,7 @@ __docformat__ = "restructuredtext en"
 
 from logilab.common.decorators import cached, clear_cache, copy_cache
 
-from rql import nodes
+from rql import nodes, stmts
 
 from cubicweb import NotAnEntity
 
@@ -83,7 +83,7 @@ class ResultSet(object):
         try:
             return self._rsetactions[key]
         except KeyError:
-            actions = self.vreg['actions'].possible_vobjects(
+            actions = self.vreg['actions'].poss_visible_objects(
                 self.req, rset=self, **kwargs)
             self._rsetactions[key] = actions
             return actions
@@ -240,14 +240,57 @@ class ResultSet(object):
                 rset = mapping[key]
             rset.rows.append(self.rows[idx])
             rset.description.append(self.description[idx])
-
-
         for rset in result:
             rset.rowcount = len(rset.rows)
         if return_dict:
             return mapping
         else:
             return result
+
+    def limited_rql(self):
+        """return a printable rql for the result set associated to the object,
+        with limit/offset correctly set according to maximum page size and
+        currently displayed page when necessary
+        """
+        # try to get page boundaries from the navigation component
+        # XXX we should probably not have a ref to this component here (eg in
+        #     cubicweb.common)
+        nav = self.vreg['components'].select_or_none('navigation', self.req,
+                                                     rset=self)
+        if nav:
+            start, stop = nav.page_boundaries()
+            rql = self._limit_offset_rql(stop - start, start)
+        # result set may have be limited manually in which case navigation won't
+        # apply
+        elif self.limited:
+            rql = self._limit_offset_rql(*self.limited)
+        # navigation component doesn't apply and rset has not been limited, no
+        # need to limit query
+        else:
+            rql = self.printable_rql()
+        return rql
+
+    def _limit_offset_rql(self, limit, offset):
+        rqlst = self.syntax_tree()
+        if len(rqlst.children) == 1:
+            select = rqlst.children[0]
+            olimit, ooffset = select.limit, select.offset
+            select.limit, select.offset = limit, offset
+            rql = rqlst.as_string(kwargs=self.args)
+            # restore original limit/offset
+            select.limit, select.offset = olimit, ooffset
+        else:
+            newselect = stmts.Select()
+            newselect.limit = limit
+            newselect.offset = offset
+            aliases = [nodes.VariableRef(newselect.get_variable(vref.name, i))
+                       for i, vref in enumerate(rqlst.selection)]
+            newselect.set_with([nodes.SubQuery(aliases, rqlst)], check=False)
+            newunion = stmts.Union()
+            newunion.append(newselect)
+            rql = rqlst.as_string(kwargs=self.args)
+            rqlst.parent = None
+        return rql
 
     def limit(self, limit, offset=0, inplace=False):
         """limit the result set to the given number of rows optionaly starting
@@ -318,6 +361,14 @@ class ResultSet(object):
             if self.rows[i][col] is not None:
                 yield self.get_entity(i, col)
 
+    def complete_entity(self, row, col=0, skip_bytes=True):
+        """short cut to get an completed entity instance for a particular
+        row (all instance's attributes have been fetched)
+        """
+        entity = self.get_entity(row, col)
+        entity.complete(skip_bytes=skip_bytes)
+        return entity
+
     @cached
     def get_entity(self, row, col=None):
         """special method for query retreiving a single entity, returns a
@@ -371,16 +422,17 @@ class ResultSet(object):
         #     new attributes found in this resultset ?
         try:
             entity = req.entity_cache(eid)
-            if entity.rset is None:
-                # entity has no rset set, this means entity has been cached by
-                # the repository (req is a repository session) which had no rset
-                # info. Add id.
-                entity.rset = self
-                entity.row = row
-                entity.col = col
-            return entity
         except KeyError:
             pass
+        else:
+            if entity.rset is None:
+                # entity has no rset set, this means entity has been created by
+                # the querier (req is a repository session) and so jas no rset
+                # info. Add it.
+                entity.cw_rset = self
+                entity.cw_row = row
+                entity.cw_col = col
+            return entity
         # build entity instance
         etype = self.description[row][col]
         entity = self.vreg['etypes'].etype_class(etype)(req, rset=self,
@@ -395,7 +447,7 @@ class ResultSet(object):
             if rqlst.TYPE == 'select':
                 # UNION query, find the subquery from which this entity has been
                 # found
-                rqlst = rqlst.locate_subquery(col, etype, self.args)
+                rqlst, col = rqlst.locate_subquery(col, etype, self.args)
             # take care, due to outer join support, we may find None
             # values for non final relation
             for i, attr, x in attr_desc_iterator(rqlst, col):
@@ -495,7 +547,8 @@ class ResultSet(object):
                     if len(self.column_types(i)) > 1:
                         break
         # UNION query, find the subquery from which this entity has been found
-        select = rqlst.locate_subquery(locate_query_col, etype, self.args)
+        select = rqlst.locate_subquery(locate_query_col, etype, self.args)[0]
+        col = rqlst.subquery_selection_index(select, col)
         try:
             myvar = select.selection[col].variable
         except AttributeError:
@@ -503,7 +556,7 @@ class ResultSet(object):
             return None, None
         rel = myvar.main_relation()
         if rel is not None:
-            index = rel.children[0].variable.selected_index()
+            index = rel.children[0].root_selection_index()
             if index is not None and self.rows[row][index]:
                 return self.get_entity(row, index), rel.r_type
         return None, None

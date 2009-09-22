@@ -15,7 +15,7 @@ from cubicweb.selectors import (EntitySelector,
     authenticated_user, match_user_groups, match_search_state,
     has_permission, has_add_permission,
     )
-from cubicweb.web import uicfg
+from cubicweb.web import uicfg, controller
 from cubicweb.web.action import Action
 from cubicweb.web.views import linksearch_select_url, vid_from_rset
 from cubicweb.web.views.autoform import AutomaticEntityForm
@@ -32,10 +32,10 @@ class has_editable_relation(EntitySelector):
         # if user has no update right but it can modify some relation,
         # display action anyway
         for dummy in AutomaticEntityForm.esrelations_by_category(
-            entity, 'generic', 'add'):
+            entity, 'generic', 'add', strict=True):
             return 1
         for rschema, targetschemas, role in AutomaticEntityForm.erelations_by_category(
-            entity, ('primary', 'secondary'), 'add'):
+            entity, ('primary', 'secondary'), 'add', strict=True):
             if not rschema.is_final():
                 return 1
         return 0
@@ -112,8 +112,8 @@ class ViewAction(Action):
 
     def url(self):
         params = self.req.form.copy()
-        params.pop('vid', None)
-        params.pop('__message', None)
+        for param in ('vid', '__message') + controller.NAV_FORM_PARAMETERS:
+            params.pop(param, None)
         return self.build_url(self.req.relative_path(includeparams=False),
                               **params)
 
@@ -158,14 +158,13 @@ class ManagePermissionsAction(Action):
     order = 15
 
     @classmethod
-    def registered(cls, vreg):
-        super(ManagePermissionsAction, cls).registered(vreg)
+    def __registered__(cls, vreg):
         if 'require_permission' in vreg.schema:
             cls.__select__ = (one_line_rset() & non_final_entity() &
                               (match_user_groups('managers')
                                | relation_possible('require_permission', 'subject', 'CWPermission',
                                                    action='add')))
-        return super(ManagePermissionsAction, cls).registered(vreg)
+        return super(ManagePermissionsAction, cls).__registered__(vreg)
 
     def url(self):
         return self.rset.get_entity(self.row or 0, self.col or 0).absolute_url(vid='security')
@@ -224,6 +223,71 @@ class AddNewAction(MultipleEditAction):
 
     def url(self):
         return self.build_url('add/%s' % self.rsettype)
+
+
+class AddRelatedActions(Action):
+    """fill 'addrelated' sub-menu of the actions box"""
+    id = 'addrelated'
+    __select__ = Action.__select__ & one_line_rset() & non_final_entity()
+
+    submenu = _('addrelated')
+    order = 20
+
+    def fill_menu(self, box, menu):
+        # when there is only one item in the sub-menu, replace the sub-menu by
+        # item's title prefixed by 'add'
+        menu.label_prefix = self.req._('add')
+        super(AddRelatedActions, self).fill_menu(box, menu)
+
+    def actual_actions(self):
+        entity = self.rset.get_entity(self.row or 0, self.col or 0)
+        eschema = entity.e_schema
+        for rschema, teschema, x in self.add_related_schemas(entity):
+            if x == 'subject':
+                label = 'add %s %s %s %s' % (eschema, rschema, teschema, x)
+                url = self.linkto_url(entity, rschema, teschema, 'object')
+            else:
+                label = 'add %s %s %s %s' % (teschema, rschema, eschema, x)
+                url = self.linkto_url(entity, rschema, teschema, 'subject')
+            yield self.build_action(self.req._(label), url)
+
+    def add_related_schemas(self, entity):
+        """this is actually used ui method to generate 'addrelated' actions from
+        the schema.
+
+        If you don't want any auto-generated actions, you should overrides this
+        method to return an empty list. If you only want some, you can configure
+        them by using uicfg.actionbox_appearsin_addmenu
+        """
+        appearsin_addmenu = uicfg.actionbox_appearsin_addmenu
+        req = self.req
+        eschema = entity.e_schema
+        for role, rschemas in (('subject', eschema.subject_relations()),
+                               ('object', eschema.object_relations())):
+            for rschema in rschemas:
+                if rschema.is_final():
+                    continue
+                # check the relation can be added as well
+                # XXX consider autoform_permissions_overrides?
+                if role == 'subject'and not rschema.has_perm(req, 'add',
+                                                             fromeid=entity.eid):
+                    continue
+                if role == 'object'and not rschema.has_perm(req, 'add',
+                                                            toeid=entity.eid):
+                    continue
+                # check the target types can be added as well
+                for teschema in rschema.targets(eschema, role):
+                    if not appearsin_addmenu.etype_get(eschema, rschema,
+                                                       role, teschema):
+                        continue
+                    if teschema.has_local_role('add') or teschema.has_perm(req, 'add'):
+                        yield rschema, teschema, role
+
+    def linkto_url(self, entity, rtype, etype, target):
+        return self.build_url('add/%s' % etype,
+                              __linkto='%s:%s:%s' % (rtype, entity.eid, target),
+                              __redirectpath=entity.rest_path(), # should not be url quoted!
+                              __redirectvid=self.req.form.get('vid', ''))
 
 
 # logged user actions #########################################################
