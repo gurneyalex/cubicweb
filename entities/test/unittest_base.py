@@ -11,15 +11,14 @@ from logilab.common.testlib import unittest_main
 from logilab.common.decorators import clear_cache
 from logilab.common.interface import implements
 
-from cubicweb.devtools.apptest import EnvBasedTC
+from cubicweb.devtools.testlib import CubicWebTC
 
 from cubicweb import ValidationError
 from cubicweb.interfaces import IMileStone, IWorkflowable
 from cubicweb.entities import AnyEntity
-from cubicweb.web.widgets import AutoCompletionWidget
 
 
-class BaseEntityTC(EnvBasedTC):
+class BaseEntityTC(CubicWebTC):
 
     def setup_database(self):
         self.member = self.create_user('member')
@@ -95,7 +94,7 @@ class CWUserTC(BaseEntityTC):
         self.failIf(e.matching_groups(('xyz', 'abcd')))
 
 
-class InterfaceTC(EnvBasedTC):
+class InterfaceTC(CubicWebTC):
 
     def test_nonregr_subclasses_and_mixins_interfaces(self):
         CWUser = self.vreg['etypes'].etype_class('CWUser')
@@ -115,7 +114,7 @@ class InterfaceTC(EnvBasedTC):
         self.failIf(implements(MyUser, IWorkflowable))
 
 
-class SpecializedEntityClassesTC(EnvBasedTC):
+class SpecializedEntityClassesTC(CubicWebTC):
 
     def select_eclass(self, etype):
         # clear selector cache

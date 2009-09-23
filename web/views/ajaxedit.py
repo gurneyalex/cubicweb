@@ -21,7 +21,7 @@ class AddRelationView(EditRelationBoxTemplate):
     __registry__ = 'views'
     __select__ = (match_form_params('rtype', 'target')
                   | match_kwargs('rtype', 'target'))
-    property_defs = {} # don't want to inherit this from Box
+    cw_property_defs = {} # don't want to inherit this from Box
     id = 'xaddrelation'
     expected_kwargs = form_params = ('rtype', 'target')
 
@@ -31,7 +31,7 @@ class AddRelationView(EditRelationBoxTemplate):
         self.rtype = rtype or self.req.form['rtype']
         self.target = target or self.req.form['target']
         self.etype = etype or self.req.form.get('etype')
-        entity = self.entity(row, col)
+        entity = self.rset.get_entity(row, col)
         rschema = self.schema.rschema(self.rtype)
         if not self.etype:
             if self.target == 'object':
