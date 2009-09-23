@@ -10,8 +10,7 @@ _ = unicode
 
 from cubicweb import target
 from cubicweb.selectors import (partial_relation_possible, match_search_state,
-                                one_line_rset, partial_may_add_relation, yes,
-                                accepts_compat, condition_compat, deprecate)
+                                one_line_rset, partial_may_add_relation, yes)
 from cubicweb.appobject import AppObject
 
 
@@ -22,7 +21,7 @@ class Action(AppObject):
     __registry__ = 'actions'
     __select__ = match_search_state('normal')
 
-    property_defs = {
+    cw_property_defs = {
         'visible':  dict(type='Boolean', default=True,
                          help=_('display the action or not')),
         'order':    dict(type='Int', default=99,
@@ -67,7 +66,7 @@ class UnregisteredAction(Action):
     id = None
 
     def __init__(self, req, rset, title, path, **kwargs):
-        Action.__init__(self, req, rset)
+        Action.__init__(self, req, rset=rset)
         self.title = req._(title)
         self._path = path
         self.__dict__.update(kwargs)
@@ -86,7 +85,6 @@ class LinkToEntityAction(Action):
     __select__ = (match_search_state('normal') & one_line_rset()
                   & partial_relation_possible(action='add')
                   & partial_may_add_relation())
-    registered = accepts_compat(Action.registered)
 
     submenu = 'addrelated'
 
@@ -96,11 +94,4 @@ class LinkToEntityAction(Action):
         return self.build_url('add/%s' % self.etype, __linkto=linkto,
                               __redirectpath=current_entity.rest_path(), # should not be url quoted!
                               __redirectvid=self.req.form.get('__redirectvid', ''))
-
-class EntityAction(Action):
-    """DEPRECATED / BACKWARD COMPAT
-    """
-    registered = deprecate(condition_compat(accepts_compat(Action.registered)),
-                           msg='EntityAction is deprecated, use Action with '
-                           'appropriate selectors')
 
