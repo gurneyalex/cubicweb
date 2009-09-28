@@ -46,7 +46,6 @@ import logging
 from warnings import warn
 
 from logilab.common.compat import all
-from logilab.common.deprecation import deprecated
 from logilab.common.interface import implements as implements_iface
 
 from yams import BASE_TYPES
@@ -55,6 +54,7 @@ from cubicweb import (Unauthorized, NoSelectableObject, NotAnEntity,
                       role, typed_eid)
 # even if not used, let yes here so it's importable through this module
 from cubicweb.appobject import Selector, objectify_selector, yes
+from cubicweb.vregistry import class_regid
 from cubicweb.cwconfig import CubicWebConfiguration
 from cubicweb.schema import split_expression
 
@@ -75,7 +75,7 @@ def lltrace(selector):
         else:
             selname = selector.__name__
             vobj = cls
-        oid = vobj.id
+        oid = class_regid(vobj)
         ret = selector(cls, *args, **kwargs)
         if TRACED_OIDS == 'all' or oid in TRACED_OIDS:
             #SELECTOR_LOGGER.warning('selector %s returned %s for %s', selname, ret, cls)
@@ -113,13 +113,13 @@ class traced_selection(object):
         return traceback is None
 
 
-def score_interface(cls_or_inst, cls, iface):
+def score_interface(etypesreg, cls_or_inst, cls, iface):
     """Return XXX if the give object (maybe an instance or class) implements
     the interface.
     """
     if getattr(iface, '__registry__', None) == 'etypes':
         # adjust score if the interface is an entity class
-        parents = cls_or_inst.parent_classes()
+        parents = etypesreg.parent_classes(cls_or_inst.__regid__)
         if iface is cls:
             return len(parents) + 4
         if iface is parents[-1]: # Any
@@ -158,17 +158,18 @@ class ImplementsMixIn(object):
         return '%s(%s)' % (self.__class__.__name__,
                            ','.join(str(s) for s in self.expected_ifaces))
 
-    def score_interfaces(self, cls_or_inst, cls):
+    def score_interfaces(self, req, cls_or_inst, cls):
         score = 0
-        vreg, eschema = cls_or_inst.vreg, cls_or_inst.e_schema
+        etypesreg = req.vreg['etypes']
+        eschema = cls_or_inst.e_schema
         for iface in self.expected_ifaces:
             if isinstance(iface, basestring):
                 # entity type
                 try:
-                    iface = vreg['etypes'].etype_class(iface)
+                    iface = etypesreg.etype_class(iface)
                 except KeyError:
                     continue # entity type not in the schema
-            score += score_interface(cls_or_inst, cls, iface)
+            score += score_interface(etypesreg, cls_or_inst, cls, iface)
         return score
 
 
@@ -212,7 +213,7 @@ class EClassSelector(Selector):
     def score(self, cls, req, etype):
         if etype in BASE_TYPES:
             return 0
-        return self.score_class(cls.vreg['etypes'].etype_class(etype), req)
+        return self.score_class(req.vreg['etypes'].etype_class(etype), req)
 
     def score_class(self, eclass, req):
         raise NotImplementedError()
@@ -426,7 +427,8 @@ def match_context_prop(cls, req, rset=None, row=None, col=0, context=None,
     * context (`basestring`) is matching the context property value for the
       given cls
     """
-    propval = req.property_value('%s.%s.context' % (cls.__registry__, cls.id))
+    propval = req.property_value('%s.%s.context' % (cls.__registry__,
+                                                    cls.__regid__))
     if not propval:
         propval = cls.context
     if context is not None and propval and context != propval:
@@ -541,7 +543,7 @@ class match_view(match_search_state):
     """
     @lltrace
     def __call__(self, cls, req, rset=None, row=None, col=0, view=None, **kwargs):
-        if view is None or not view.id in self.expected:
+        if view is None or not view.__regid__ in self.expected:
             return 0
         return 1
 
@@ -559,7 +561,7 @@ class appobject_selectable(Selector):
 
     def __call__(self, cls, req, **kwargs):
         try:
-            cls.vreg[self.registry].select(self.oid, req, **kwargs)
+            req.vreg[self.registry].select(self.oid, req, **kwargs)
             return 1
         except NoSelectableObject:
             return 0
@@ -583,7 +585,7 @@ class implements(ImplementsMixIn, EClassSelector):
           proximity so the most specific object'll be selected
     """
     def score_class(self, eclass, req):
-        return self.score_interfaces(eclass, eclass)
+        return self.score_interfaces(req, eclass, eclass)
 
 
 class specified_etype_implements(implements):
@@ -613,11 +615,11 @@ class specified_etype_implements(implements):
                 # only check this is a known type if etype comes from req.form,
                 # else we want the error to propagate
                 try:
-                    etype = cls.vreg.case_insensitive_etypes[etype.lower()]
+                    etype = req.vreg.case_insensitive_etypes[etype.lower()]
                     req.form['etype'] = etype
                 except KeyError:
                     return 0
-        return self.score_class(cls.vreg['etypes'].etype_class(etype), req)
+        return self.score_class(req.vreg['etypes'].etype_class(etype), req)
 
 
 class entity_implements(ImplementsMixIn, EntitySelector):
@@ -636,7 +638,7 @@ class entity_implements(ImplementsMixIn, EntitySelector):
           proximity so the most specific object'll be selected
     """
     def score_entity(self, entity):
-        return self.score_interfaces(entity, entity.__class__)
+        return self.score_interfaces(entity._cw, entity, entity.__class__)
 
 
 class relation_possible(EClassSelector):
@@ -663,7 +665,7 @@ class relation_possible(EClassSelector):
 
     @lltrace
     def __call__(self, cls, req, *args, **kwargs):
-        rschema = cls.schema.rschema(self.rtype)
+        rschema = req.vreg.schema.rschema(self.rtype)
         if not (rschema.has_perm(req, self.action)
                 or rschema.has_local_role(self.action)):
             return 0
@@ -741,9 +743,9 @@ class may_add_relation(EntitySelector):
     def score_entity(self, entity):
         rschema = entity.schema.rschema(self.rtype)
         if self.role == 'subject':
-            if not rschema.has_perm(entity.req, 'add', fromeid=entity.eid):
+            if not rschema.has_perm(entity._cw, 'add', fromeid=entity.eid):
                 return 0
-        elif not rschema.has_perm(entity.req, 'add', toeid=entity.eid):
+        elif not rschema.has_perm(entity._cw, 'add', toeid=entity.eid):
             return 0
         return 1
 
@@ -794,7 +796,7 @@ class has_related_entities(EntitySelector):
 
     def score_entity(self, entity):
         relpossel = relation_possible(self.rtype, self.role, self.target_etype)
-        if not relpossel.score_class(entity.__class__, entity.req):
+        if not relpossel.score_class(entity.__class__, entity._cw):
             return 0
         rset = entity.related(self.rtype, self.role)
         if self.target_etype:
@@ -856,7 +858,7 @@ class has_permission(EntitySelector):
         if row is None:
             score = 0
             need_local_check = []
-            geteschema = cls.schema.eschema
+            geteschema = req.vreg.schema.eschema
             for etype in rset.column_types(0):
                 if etype in BASE_TYPES:
                     return 0
@@ -894,7 +896,7 @@ class has_add_permission(EClassSelector):
     See `EClassSelector` documentation for behaviour when row is not specified.
     """
     def score(self, cls, req, etype):
-        eschema = cls.schema.eschema(etype)
+        eschema = req.vreg.schema.eschema(etype)
         if not (eschema.is_final() or eschema.is_subobject(strict=True)) \
                and eschema.has_perm(req, 'add'):
             return 1
@@ -970,200 +972,3 @@ class score_entity(EntitySelector):
                 return score
             return 1
         self.score_entity = intscore
-
-
-# XXX DEPRECATED ##############################################################
-from cubicweb.vregistry import chainall
-
-yes_selector = deprecated()(yes)
-norset_selector = deprecated()(none_rset)
-rset_selector = deprecated()(any_rset)
-anyrset_selector = deprecated()(nonempty_rset)
-emptyrset_selector = deprecated()(empty_rset)
-onelinerset_selector = deprecated()(one_line_rset)
-twolinerset_selector = deprecated()(two_lines_rset)
-twocolrset_selector = deprecated()(two_cols_rset)
-largerset_selector = deprecated()(paginated_rset)
-sortedrset_selector = deprecated()(sorted_rset)
-oneetyperset_selector = deprecated()(one_etype_rset)
-multitype_selector = deprecated()(two_etypes_rset)
-anonymous_selector = deprecated()(anonymous_user)
-not_anonymous_selector = deprecated()(authenticated_user)
-primaryview_selector = deprecated()(primary_view)
-contextprop_selector = deprecated()(match_context_prop)
-
-@deprecated('use non_final_entity instead of %s')
-def nfentity_selector(cls, req, rset=None, row=None, col=0, **kwargs):
-    return non_final_entity()(cls, req, rset, row, col)
-
-@deprecated('use implements instead of %s')
-def implement_interface(cls, req, rset=None, row=None, col=0, **kwargs):
-    return implements(*cls.accepts_interfaces)(cls, req, rset, row, col)
-_interface_selector = deprecated()(implement_interface)
-interface_selector = deprecated()(implement_interface)
-
-@deprecated('use specified_etype_implements instead of %s')
-def accept_etype(cls, req, *args, **kwargs):
-    """check etype presence in request form *and* accepts conformance"""
-    return specified_etype_implements(*cls.accepts)(cls, req, *args)
-etype_form_selector = accept_etype
-
-@deprecated('use match_search_state instead of %s')
-def searchstate_selector(cls, req, rset=None, row=None, col=0, **kwargs):
-    return match_search_state(cls.search_states)(cls, req, rset, row, col)
-
-@deprecated('use match_user_groups instead of %s')
-def match_user_group(cls, req, rset=None, row=None, col=0, **kwargs):
-    return match_user_groups(*cls.require_groups)(cls, req, rset, row, col, **kwargs)
-in_group_selector = match_user_group
-
-@deprecated('use relation_possible instead of %s')
-def has_relation(cls, req, rset=None, row=None, col=0, **kwargs):
-    return relation_possible(cls.rtype, role(cls), cls.etype,
-                             getattr(cls, 'require_permission', 'read'))(cls, req, rset, row, col, **kwargs)
-
-@deprecated('use relation_possible instead of %s')
-def one_has_relation(cls, req, rset=None, row=None, col=0, **kwargs):
-    return relation_possible(cls.rtype, role(cls), cls.etype,
-                             getattr(cls, 'require_permission', 'read',
-                                     once_is_enough=True))(cls, req, rset, row, col, **kwargs)
-
-@deprecated('use implements instead of %s')
-def accept_rset(cls, req, rset=None, row=None, col=0, **kwargs):
-    """simply delegate to cls.accept_rset method"""
-    return implements(*cls.accepts)(cls, req, rset, row=row, col=col)
-accept_rset_selector = accept_rset
-
-accept = chainall(non_final_entity(), accept_rset, name='accept')
-accept = deprecated('use implements selector')(accept)
-accept_selector = deprecated()(accept)
-
-accept_one = deprecated()(chainall(one_line_rset, accept,
-                                   name='accept_one'))
-accept_one_selector = deprecated()(accept_one)
-
-
-def _rql_condition(cls, req, rset=None, row=None, col=0, **kwargs):
-    if cls.condition:
-        return rql_condition(cls.condition)(cls, req, rset, row, col)
-    return 1
-_rqlcondition_selector = deprecated()(_rql_condition)
-
-rqlcondition_selector = deprecated()(chainall(non_final_entity(), one_line_rset, _rql_condition,
-                         name='rql_condition'))
-
-@deprecated('use but_etype instead of %s')
-def but_etype_selector(cls, req, rset=None, row=None, col=0, **kwargs):
-    return but_etype(cls.etype)(cls, req, rset, row, col)
-
-@lltrace
-def etype_rtype_selector(cls, req, rset=None, row=None, col=0, **kwargs):
-    schema = cls.schema
-    perm = getattr(cls, 'require_permission', 'read')
-    if hasattr(cls, 'etype'):
-        eschema = schema.eschema(cls.etype)
-        if not (eschema.has_perm(req, perm) or eschema.has_local_role(perm)):
-            return 0
-    if hasattr(cls, 'rtype'):
-        rschema = schema.rschema(cls.rtype)
-        if not (rschema.has_perm(req, perm) or rschema.has_local_role(perm)):
-            return 0
-    return 1
-etype_rtype_selector = deprecated()(etype_rtype_selector)
-
-#req_form_params_selector = deprecated()(match_form_params) # form_params
-#kwargs_selector = deprecated()(match_kwargs) # expected_kwargs
-
-# compound selectors ##########################################################
-
-searchstate_accept = chainall(nonempty_rset(), accept,
-                              name='searchstate_accept')
-searchstate_accept_selector = deprecated()(searchstate_accept)
-
-searchstate_accept_one = chainall(one_line_rset, accept, _rql_condition,
-                                  name='searchstate_accept_one')
-searchstate_accept_one_selector = deprecated()(searchstate_accept_one)
-
-searchstate_accept = deprecated()(searchstate_accept)
-searchstate_accept_one = deprecated()(searchstate_accept_one)
-
-# end of deprecation section ##################################################
-
-def unbind_method(selector):
-    def new_selector(registered):
-        # get the unbound method
-        if hasattr(registered, 'im_func'):
-            registered = registered.im_func
-        # don't rebind since it will be done automatically during
-        # the assignment, inside the destination class body
-        return selector(registered)
-    new_selector.__name__ = selector.__name__
-    return new_selector
-
-
-def deprecate(registered, msg):
-    # get the unbound method
-    if hasattr(registered, 'im_func'):
-        registered = registered.im_func
-    def _deprecate(cls, vreg):
-        warn(msg, DeprecationWarning)
-        return registered(cls, vreg)
-    return _deprecate
-
-@unbind_method
-def require_group_compat(registered):
-    def plug_selector(cls, vreg):
-        cls = registered(cls, vreg)
-        if getattr(cls, 'require_groups', None):
-            warn('use "match_user_groups(group1, group2)" instead of using require_groups',
-                 DeprecationWarning)
-            cls.__select__ &= match_user_groups(cls.require_groups)
-        return cls
-    return plug_selector
-
-@unbind_method
-def accepts_compat(registered):
-    def plug_selector(cls, vreg):
-        cls = registered(cls, vreg)
-        if getattr(cls, 'accepts', None):
-            warn('use "implements("EntityType", IFace)" instead of using accepts on %s'
-                 % cls,
-                 DeprecationWarning)
-            cls.__select__ &= implements(*cls.accepts)
-        return cls
-    return plug_selector
-
-@unbind_method
-def accepts_etype_compat(registered):
-    def plug_selector(cls, vreg):
-        cls = registered(cls, vreg)
-        if getattr(cls, 'accepts', None):
-            warn('use "specified_etype_implements("EntityType", IFace)" instead of using accepts',
-                 DeprecationWarning)
-            cls.__select__ &= specified_etype_implements(*cls.accepts)
-        return cls
-    return plug_selector
-
-@unbind_method
-def condition_compat(registered):
-    def plug_selector(cls, vreg):
-        cls = registered(cls, vreg)
-        if getattr(cls, 'condition', None):
-            warn('use "use rql_condition(expression)" instead of using condition',
-                 DeprecationWarning)
-            cls.__select__ &= rql_condition(cls.condition)
-        return cls
-    return plug_selector
-
-@unbind_method
-def has_relation_compat(registered):
-    def plug_selector(cls, vreg):
-        cls = registered(cls, vreg)
-        if getattr(cls, 'etype', None):
-            warn('use relation_possible selector instead of using etype_rtype',
-                 DeprecationWarning)
-            cls.__select__ &= relation_possible(cls.rtype, role(cls),
-                                                getattr(cls, 'etype', None),
-                                                action=getattr(cls, 'require_permission', 'read'))
-        return cls
-    return plug_selector
