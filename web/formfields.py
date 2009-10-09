@@ -195,7 +195,7 @@ class Field(object):
                 except TypeError:
                     warn('[3.3] vocabulary method (eg field.choices) should now take '
                          'the form instance as argument', DeprecationWarning)
-                    vocab = self.choices(req=form.req)
+                    vocab = self.choices(req=form._cw)
             else:
                 vocab = self.choices
             if vocab and not isinstance(vocab[0], (list, tuple)):
@@ -203,7 +203,7 @@ class Field(object):
         else:
             vocab = form.form_field_vocabulary(self)
         if self.internationalizable:
-            vocab = [(form.req._(label), value) for label, value in vocab]
+            vocab = [(form._cw._(label), value) for label, value in vocab]
         if self.sort:
             vocab = vocab_sort(vocab)
         return vocab
@@ -213,6 +213,21 @@ class Field(object):
         initialization requiring the form instance
         """
         pass
+
+    def process_form_value(self, form):
+        """process posted form and return correctly typed value"""
+        widget = self.get_widget(form)
+        return widget.process_field_data(form, self)
+
+    def process_posted(self, form):
+        for field in self.actual_fields(form):
+            if field is self:
+                yield field.name, field.process_form_value(form)
+            else:
+                # recursive function: we might have compound fields
+                # of compound fields (of compound fields of ...)
+                for fieldname, value in field.process_posted(form):
+                    yield fieldname, value
 
 
 class StringField(Field):
@@ -269,7 +284,7 @@ class RichTextField(StringField):
             return self.format_field
         # we have to cache generated field since it's use as key in the
         # context dictionnary
-        req = form.req
+        req = form._cw
         try:
             return req.data[self]
         except KeyError:
@@ -286,6 +301,7 @@ class RichTextField(StringField):
                 fkwargs['choices'] = fcstr.vocabulary(form=form)
                 fkwargs['internationalizable'] = True
                 fkwargs['initial'] = lambda f: f.form_field_format(self)
+            fkwargs['eidparam'] = self.eidparam
             field = StringField(name=self.name + '_format', **fkwargs)
             req.data[self] = field
             return field
@@ -300,7 +316,7 @@ class RichTextField(StringField):
         """return True if fckeditor should be used to edit entity's attribute named
         `attr`, according to user preferences
         """
-        if form.req.use_fckeditor():
+        if form._cw.use_fckeditor():
             return form.form_field_format(self) == 'text/html'
         return False
 
@@ -342,9 +358,9 @@ class FileField(StringField):
             divid = '%s-advanced' % form.context[self]['name']
             wdgs.append(u'<a href="%s" title="%s"><img src="%s" alt="%s"/></a>' %
                         (xml_escape(uilib.toggle_action(divid)),
-                         form.req._('show advanced fields'),
-                         xml_escape(form.req.build_url('data/puce_down.png')),
-                         form.req._('show advanced fields')))
+                         form._cw._('show advanced fields'),
+                         xml_escape(form._cw.build_url('data/puce_down.png')),
+                         form._cw._('show advanced fields')))
             wdgs.append(u'<div id="%s" class="hidden">' % divid)
             if self.name_field:
                 wdgs.append(self.render_subfield(form, self.name_field, renderer))
@@ -358,7 +374,7 @@ class FileField(StringField):
             wdgs.append(u'<br/>')
             wdgs.append(tags.input(name=u'%s__detach' % form.context[self]['name'],
                                    type=u'checkbox'))
-            wdgs.append(form.req._('detach attached file'))
+            wdgs.append(form._cw._('detach attached file'))
         return u'\n'.join(wdgs)
 
     def render_subfield(self, form, field, renderer):
@@ -366,6 +382,25 @@ class FileField(StringField):
                 + field.render(form, renderer)
                 + renderer.render_help(form, field)
                 + u'<br/>')
+
+    def process_form_value(self, form):
+        posted = form._cw.form
+        value = posted.get(form.form_field_name(self))
+        formkey = form.form_field_name(self)
+        if ('%s__detach' % form.context[self]['name']) in posted:
+            # drop current file value
+            value = None
+        # no need to check value when nor explicit detach nor new file
+        # submitted, since it will think the attribute is not modified
+        elif value:
+            filename, _, stream = value
+            # value is a  3-uple (filename, mimetype, stream)
+            value = Binary(stream.read())
+            if not val.getvalue(): # usually an unexistant file
+                value = None
+            else:
+                value.filename = filename
+        return value
 
 
 class EditableFileField(FileField):
@@ -383,19 +418,27 @@ class EditableFileField(FileField):
                     pass
                 else:
                     if not self.required:
-                        msg = form.req._(
+                        msg = form._cw._(
                             'You can either submit a new file using the browse button above'
                             ', or choose to remove already uploaded file by checking the '
                             '"detach attached file" check-box, or edit file content online '
                             'with the widget below.')
                     else:
-                        msg = form.req._(
+                        msg = form._cw._(
                             'You can either submit a new file using the browse button above'
                             ', or edit file content online with the widget below.')
                     wdgs.append(u'<p><b>%s</b></p>' % msg)
                     wdgs.append(TextArea(setdomid=False).render(form, self, renderer))
                     # XXX restore form context?
         return '\n'.join(wdgs)
+
+    def process_form_value(self, form):
+        value = form._cw.form.get(form.form_field_name(self))
+        if isinstance(value, unicode):
+            # file modified using a text widget
+            encoding = form.form_field_encoding(self)
+            return Binary(value.encode(encoding))
+        return super(EditableFileField, self).process_form_value(form)
 
 
 class IntField(Field):
@@ -407,6 +450,8 @@ class IntField(Field):
             self.widget.attrs.setdefault('size', 5)
             self.widget.attrs.setdefault('maxlength', 15)
 
+    def process_form_value(self, form):
+        return int(Field.process_form_value(self, form))
 
 class BooleanField(Field):
     widget = Radio
@@ -414,8 +459,10 @@ class BooleanField(Field):
     def vocabulary(self, form):
         if self.choices:
             return self.choices
-        return [(form.req._('yes'), '1'), (form.req._('no'), '')]
+        return [(form._cw._('yes'), '1'), (form._cw._('no'), '')]
 
+    def process_form_value(self, form):
+        return bool(Field.process_form_value(self, form))
 
 class FloatField(IntField):
     def format_single_value(self, req, value):
@@ -427,6 +474,8 @@ class FloatField(IntField):
     def render_example(self, req):
         return self.format_single_value(req, 1.234)
 
+    def process_form_value(self, form):
+        return float(Field.process_form_value(self, form))
 
 class DateField(StringField):
     format_prop = 'ui.date-format'
@@ -438,26 +487,39 @@ class DateField(StringField):
     def render_example(self, req):
         return self.format_single_value(req, datetime.now())
 
+    def process_form_value(self, form):
+        # widget is supposed to return a date as a correctly formatted string
+        date = Field.process_form_value(self, form)
+        # but for some widgets, it might be simpler to return date objects
+        # directly, so handle that case :
+        if isinstance(date, basestring):
+            date = form.parse_date(wdgdate, 'Date')
+        return date
 
 class DateTimeField(DateField):
     format_prop = 'ui.datetime-format'
 
+    def process_form_value(self, form):
+        # widget is supposed to return a date as a correctly formatted string
+        date = Field.process_form_value(self, form)
+        # but for some widgets, it might be simpler to return date objects
+        # directly, so handle that case :
+        if isinstance(date, basestring):
+            date = form.parse_datetime(wdgdate, 'Datetime')
+        return date
 
 class TimeField(DateField):
     format_prop = 'ui.time-format'
     widget = TextInput
 
-
-class HiddenInitialValueField(Field):
-    def __init__(self, visible_field):
-        name = 'edit%s-%s' % (visible_field.role[0], visible_field.name)
-        super(HiddenInitialValueField, self).__init__(
-            name=name, widget=HiddenInput, eidparam=True)
-        self.visible_field = visible_field
-
-    def format_single_value(self, req, value):
-        return self.visible_field.format_single_value(req, value)
-
+    def process_form_value(self, form):
+        # widget is supposed to return a date as a correctly formatted string
+        time = Field.process_form_value(self, form)
+        # but for some widgets, it might be simpler to return time objects
+        # directly, so handle that case :
+        if isinstance(time, basestring):
+            time = form.parse_time(wdgdate, 'Time')
+        return time
 
 class RelationField(Field):
     # XXX (syt): iirc, we originaly don't sort relation vocabulary since we want
@@ -478,7 +540,7 @@ class RelationField(Field):
 
     def vocabulary(self, form):
         entity = form.edited_entity
-        req = entity.req
+        req = entity._cw
         # first see if its specified by __linkto form parameters
         linkedto = entity.linked_to(self.name, self.role)
         if linkedto:
@@ -539,6 +601,7 @@ def guess_field(eschema, rschema, role='subject', skip_meta_attr=True, **kwargs)
         kwargs.setdefault('label', (eschema.type, rschema.type + '_object'))
     else:
         kwargs.setdefault('label', (eschema.type, rschema.type))
+    kwargs['eidparam'] = True
     kwargs.setdefault('help', help)
     if rschema.is_final():
         if skip_meta_attr and rschema in eschema.meta_attributes():

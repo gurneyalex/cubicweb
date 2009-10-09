@@ -10,32 +10,25 @@
 from datetime import datetime
 
 from cubicweb import Binary, Unauthorized
-from cubicweb.devtools.apptest import EnvBasedTC
+from cubicweb.devtools.testlib import CubicWebTC
 from cubicweb.common.mttransforms import HAS_TAL
 from cubicweb.entities import fetch_config
 
-class EntityTC(EnvBasedTC):
-
-##     def setup_database(self):
-##         self.add_entity('Personne', nom=u'di mascio', prenom=u'adrien')
-##         self.add_entity('Task', title=u'fait ca !', description=u'et plus vite', start=now())
-##         self.add_entity('Tag', name=u'x')
-##         self.add_entity('Link', title=u'perdu', url=u'http://www.perdu.com',
-##                         embed=False)
+class EntityTC(CubicWebTC):
 
     def test_boolean_value(self):
-        e = self.etype_instance('CWUser')
+        e = self.vreg['etypes'].etype_class('CWUser')(self.request())
         self.failUnless(e)
 
     def test_yams_inheritance(self):
         from entities import Note
-        e = self.etype_instance('SubNote')
+        e = self.vreg['etypes'].etype_class('SubNote')(self.request())
         self.assertIsInstance(e, Note)
-        e2 = self.etype_instance('SubNote')
+        e2 = self.vreg['etypes'].etype_class('SubNote')(self.request())
         self.assertIs(e.__class__, e2.__class__)
 
     def test_has_eid(self):
-        e = self.etype_instance('CWUser')
+        e = self.vreg['etypes'].etype_class('CWUser')(self.request())
         self.assertEquals(e.eid, None)
         self.assertEquals(e.has_eid(), False)
         e.eid = 'X'
@@ -102,7 +95,7 @@ class EntityTC(EnvBasedTC):
         user = self.entity('Any X WHERE X eid %(x)s', {'x':self.user().eid}, 'x')
         adeleid = self.execute('INSERT EmailAddress X: X address "toto@logilab.org", U use_email X WHERE U login "admin"')[0][0]
         self.commit()
-        self.assertEquals(user._related_cache.keys(), [])
+        self.assertEquals(user._related_cache, {})
         email = user.primary_email[0]
         self.assertEquals(sorted(user._related_cache), ['primary_email_subject'])
         self.assertEquals(email._related_cache.keys(), ['primary_email_object'])
@@ -273,7 +266,7 @@ class EntityTC(EnvBasedTC):
         self.assertEquals([x.address for x in rset.entities()], [])
 
     def test_unrelated_new_entity(self):
-        e = self.etype_instance('CWUser')
+        e = self.vreg['etypes'].etype_class('CWUser')(self.request())
         unrelated = [r[0] for r in e.unrelated('in_group', 'CWGroup', 'subject')]
         # should be default groups but owners, i.e. managers, users, guests
         self.assertEquals(len(unrelated), 3)
@@ -292,7 +285,6 @@ class EntityTC(EnvBasedTC):
         self.assertEquals(e.printable_value('content'),
                           '<p>\ndu *texte*\n</p>')
         e['title'] = 'zou'
-        #e = self.etype_instance('Task')
         e['content'] = '''\
 a title
 =======
@@ -386,7 +378,7 @@ du :eid:`1:*ReST*`'''
 
 
     def test_fulltextindex(self):
-        e = self.etype_instance('File')
+        e = self.vreg['etypes'].etype_class('File')(self.request())
         e['description'] = 'du <em>html</em>'
         e['description_format'] = 'text/html'
         e['data'] = Binary('some <em>data</em>')
@@ -406,7 +398,7 @@ du :eid:`1:*ReST*`'''
         self.failUnless(not p1.reverse_evaluee)
 
     def test_complete_relation(self):
-        session = self.session()
+        session = self.session
         eid = session.unsafe_execute(
             'INSERT TrInfo X: X comment "zou", X wf_info_for U, X from_state S1, X to_state S2 '
             'WHERE U login "admin", S1 name "activated", S2 name "deactivated"')[0][0]

@@ -7,12 +7,11 @@
 """
 __docformat__ = "restructuredtext en"
 
-from logilab.common.testlib import mock_object as Mock
 from logilab.common.adbh import get_adv_func_helper
 
 from indexer import get_indexer
 
-from cubicweb import RequestSessionMixIn
+from cubicweb.req import RequestSessionBase
 from cubicweb.cwvreg import CubicWebVRegistry
 from cubicweb.web.request import CubicWebRequestBase
 from cubicweb.devtools import BASE_URL, BaseApptestConfiguration
@@ -48,6 +47,8 @@ class FakeRequest(CubicWebRequestBase):
         super(FakeRequest, self).__init__(*args, **kwargs)
         self._session_data = {}
         self._headers = {}
+        self.config = self.vreg.config
+        self.schema = self.vreg.schema
 
     def header_accept_language(self):
         """returns an ordered list of preferred languages"""
@@ -130,7 +131,7 @@ class FakeUser(object):
         return True
 
 
-class FakeSession(RequestSessionMixIn):
+class FakeSession(RequestSessionBase):
     def __init__(self, repo=None, user=None):
         self.repo = repo
         self.vreg = getattr(self.repo, 'vreg', CubicWebVRegistry(FakeConfig(), initlog=False))
