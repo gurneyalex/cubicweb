@@ -15,7 +15,7 @@ from cubicweb.selectors import non_final_entity, match_kwargs, one_line_rset
 from cubicweb.web import INTERNAL_FIELD_VALUE, eid_param
 from cubicweb.web import form, formwidgets as fwdgs
 from cubicweb.web.controller import NAV_FORM_PARAMETERS
-from cubicweb.web.formfields import HiddenInitialValueField, StringField
+from cubicweb.web.formfields import StringField
 
 
 class FieldsForm(form.Form):
@@ -53,7 +53,7 @@ class FieldsForm(form.Form):
 
     * `fieldsets_in_order`: fieldset name sequence, to control order
     """
-    id = 'base'
+    __regid__ = 'base'
 
     internal_fields = ('__errorurl',) + NAV_FORM_PARAMETERS
 
@@ -75,7 +75,7 @@ class FieldsForm(form.Form):
     def __init__(self, req, rset=None, row=None, col=None,
                  submitmsg=None, mainform=True,
                  **kwargs):
-        super(FieldsForm, self).__init__(req, rset, row=row, col=col)
+        super(FieldsForm, self).__init__(req, rset=rset, row=row, col=col)
         self.fields = list(self.__class__._fields_)
         for key, val in kwargs.items():
             if key in NAV_FORM_PARAMETERS:
@@ -120,9 +120,9 @@ class FieldsForm(form.Form):
     def add_media(self):
         """adds media (CSS & JS) required by this widget"""
         if self.needs_js:
-            self.req.add_js(self.needs_js)
+            self._cw.add_js(self.needs_js)
         if self.needs_css:
-            self.req.add_css(self.needs_css)
+            self._cw.add_css(self.needs_css)
 
     def form_render(self, **values):
         """render this form, using the renderer given in args or the default
@@ -135,9 +135,9 @@ class FieldsForm(form.Form):
         return renderer.render(self, values)
 
     def form_default_renderer(self):
-        return self.vreg['formrenderers'].select(self.form_renderer_id,
-                                                self.req, rset=self.rset,
-                                                row=self.row, col=self.col)
+        return self._cw.vreg['formrenderers'].select(self.form_renderer_id,
+                                                     self._cw, rset=self.cw_rset,
+                                                     row=self.cw_row, col=self.cw_col)
 
     def build_context(self, rendervalues=None):
         """build form context values (the .context attribute which is a
@@ -188,17 +188,17 @@ class FieldsForm(form.Form):
                 if callable(value):
                     value = value(self)
             if value != INTERNAL_FIELD_VALUE:
-                value = field.format_value(self.req, value)
+                value = field.format_value(self._cw, value)
         return value
 
     def _req_display_value(self, field):
         qname = self.form_field_name(field)
         if qname in self.form_previous_values:
             return self.form_previous_values[qname]
-        if qname in self.req.form:
-            return self.req.form[qname]
-        if field.name in self.req.form:
-            return self.req.form[field.name]
+        if qname in self._cw.form:
+            return self._cw.form[qname]
+        if field.name in self._cw.form:
+            return self._cw.form[field.name]
         return None
 
     def form_field_value(self, field, load_bytes=False):
@@ -220,11 +220,11 @@ class FieldsForm(form.Form):
 
     def form_field_format(self, field):
         """return MIME type used for the given (text or bytes) field"""
-        return self.req.property_value('ui.default-text-format')
+        return self._cw.property_value('ui.default-text-format')
 
     def form_field_encoding(self, field):
         """return encoding used for the given (text) field"""
-        return self.req.encoding
+        return self._cw.encoding
 
     def form_field_name(self, field):
         """return qualified name for the given field"""
@@ -240,6 +240,9 @@ class FieldsForm(form.Form):
         """
         raise NotImplementedError
 
+    def form_field_modified(self, field):
+        return field.is_visible()
+
     def _field_has_error(self, field):
         """return true if the field has some error in given validation exception
         """
@@ -247,7 +250,7 @@ class FieldsForm(form.Form):
 
 
 class EntityFieldsForm(FieldsForm):
-    id = 'base'
+    __regid__ = 'base'
     __select__ = (match_kwargs('entity')
                   | (one_line_rset() & non_final_entity()))
 
@@ -259,19 +262,19 @@ class EntityFieldsForm(FieldsForm):
         msg = kwargs.pop('submitmsg', None)
         super(EntityFieldsForm, self).__init__(*args, **kwargs)
         if self.edited_entity is None:
-            self.edited_entity = self.complete_entity(self.row or 0, self.col or 0)
+            self.edited_entity = self.cw_rset.complete_entity(self.cw_row or 0, self.cw_col or 0)
         self.form_add_hidden('__type', eidparam=True)
         self.form_add_hidden('eid')
         if kwargs.get('mainform', True): # mainform default to true in parent
             self.form_add_hidden(u'__maineid', self.edited_entity.eid)
             # If we need to directly attach the new object to another one
-            if self.req.list_form_param('__linkto'):
-                for linkto in self.req.list_form_param('__linkto'):
+            if self._cw.list_form_param('__linkto'):
+                for linkto in self._cw.list_form_param('__linkto'):
                     self.form_add_hidden('__linkto', linkto)
                 if msg:
-                    msg = '%s %s' % (msg, self.req._('and linked'))
+                    msg = '%s %s' % (msg, self._cw._('and linked'))
                 else:
-                    msg = self.req._('entity linked')
+                    msg = self._cw._('entity linked')
         if msg:
             self.form_add_hidden('__message', msg)
 
@@ -317,7 +320,7 @@ class EntityFieldsForm(FieldsForm):
         if hasattr(self.edited_entity, defaultattr):
             # XXX bw compat, default_<field name> on the entity
             warn('found %s on %s, should be set on a specific form'
-                 % (defaultattr, self.edited_entity.id), DeprecationWarning)
+                 % (defaultattr, self.edited_entity.__regid__), DeprecationWarning)
             value = getattr(self.edited_entity, defaultattr)
             if callable(value):
                 value = value()
@@ -327,36 +330,15 @@ class EntityFieldsForm(FieldsForm):
         return value
 
     def form_default_renderer(self):
-        return self.vreg['formrenderers'].select(
-            self.form_renderer_id, self.req, rset=self.rset, row=self.row,
-            col=self.col, entity=self.edited_entity)
-
-    def build_context(self, values=None):
-        """overriden to add edit[s|o] hidden fields and to ensure schema fields
-        have eidparam set to True
-
-        edit[s|o] hidden fields are used to indicate the value for the
-        associated field before the (potential) modification made when
-        submitting the form.
-        """
-        if self.context is not None:
-            return
-        eschema = self.edited_entity.e_schema
-        for field in self.fields[:]:
-            for field in field.actual_fields(self):
-                fieldname = field.name
-                if fieldname != 'eid' and (
-                    (eschema.has_subject_relation(fieldname) or
-                     eschema.has_object_relation(fieldname))):
-                    field.eidparam = True
-                    self.fields.append(HiddenInitialValueField(field))
-        return super(EntityFieldsForm, self).build_context(values)
+        return self._cw.vreg['formrenderers'].select(
+            self.form_renderer_id, self._cw, rset=self.cw_rset, row=self.cw_row,
+            col=self.cw_col, entity=self.edited_entity)
 
     def form_field_value(self, field, load_bytes=False):
         """return field's *typed* value
 
         overriden to deal with
-        * special eid / __type / edits- / edito- fields
+        * special eid / __type
         * lookup for values on edited entities
         """
         attr = field.name
@@ -365,17 +347,9 @@ class EntityFieldsForm(FieldsForm):
             return entity.eid
         if not field.eidparam:
             return super(EntityFieldsForm, self).form_field_value(field, load_bytes)
-        if attr.startswith('edits-') or attr.startswith('edito-'):
-            # edit[s|o]- fieds must have the actual value stored on the entity
-            assert hasattr(field, 'visible_field')
-            vfield = field.visible_field
-            assert vfield.eidparam
-            if entity.has_eid():
-                return self.form_field_value(vfield)
-            return INTERNAL_FIELD_VALUE
         if attr == '__type':
-            return entity.id
-        if self.schema.rschema(attr).is_final():
+            return entity.__regid__
+        if self._cw.schema.rschema(attr).is_final():
             attrtype = entity.e_schema.destination(attr)
             if attrtype == 'Password':
                 return entity.has_eid() and INTERNAL_FIELD_VALUE or ''
@@ -404,7 +378,7 @@ class EntityFieldsForm(FieldsForm):
         if field.eidparam and entity.e_schema.has_metadata(field.name, 'format') and (
             entity.has_eid() or '%s_format' % field.name in entity):
             return self.edited_entity.attr_metadata(field.name, 'format')
-        return self.req.property_value('ui.default-text-format')
+        return self._cw.property_value('ui.default-text-format')
 
     def form_field_encoding(self, field):
         """return encoding used for the given (text) field"""
@@ -440,7 +414,7 @@ class EntityFieldsForm(FieldsForm):
                 vocabfunc = getattr(self, '%s_relation_vocabulary' % role)
             else:
                 warn('found %s on %s, should be set on a specific form'
-                     % (method, self.edited_entity.id), DeprecationWarning)
+                     % (method, self.edited_entity.__regid__), DeprecationWarning)
         # NOTE: it is the responsibility of `vocabfunc` to sort the result
         #       (direclty through RQL or via a python sort). This is also
         #       important because `vocabfunc` might return a list with
@@ -448,14 +422,39 @@ class EntityFieldsForm(FieldsForm):
         #       cases, it doesn't make sense to sort results afterwards.
         return vocabfunc(rtype, limit)
 
-    # XXX should be on the field, no?
+    def form_field_modified(self, field):
+        if field.is_visible():
+            # fields not corresponding to an entity attribute / relations
+            # are considered modified
+            if not field.eidparam:
+                return True # XXX
+            try:
+                if field.role == 'subject':
+                    previous_value = getattr(self.edited_entity, field.name)
+                else:
+                    previous_value = getattr(self.edited_entity,
+                                             'reverse_%s' % field.name)
+            except AttributeError:
+                # fields with eidparam=True but not corresponding to an actual
+                # attribute or relation
+                return True
+            # if it's a non final relation, we need the eids
+            if isinstance(previous_value, list):
+                # widget should return untyped eids
+                previous_value = set(unicode(e.eid) for e in previous_value)
+            new_value = field.process_form_value(self)
+            if self.edited_entity.has_eid() and (previous_value == new_value):
+                return False # not modified
+            return True
+        return False
+
     def subject_relation_vocabulary(self, rtype, limit=None):
         """defaut vocabulary method for the given relation, looking for
         relation's object entities (i.e. self is the subject)
         """
         entity = self.edited_entity
         if isinstance(rtype, basestring):
-            rtype = entity.schema.rschema(rtype)
+            rtype = self._cw.vreg.schema.rschema(rtype)
         done = None
         assert not rtype.is_final(), rtype
         if entity.has_eid():
@@ -477,7 +476,7 @@ class EntityFieldsForm(FieldsForm):
         """
         entity = self.edited_entity
         if isinstance(rtype, basestring):
-            rtype = entity.schema.rschema(rtype)
+            rtype = self._cw.vreg.schema.rschema(rtype)
         done = None
         if entity.has_eid():
             done = set(e.eid for e in getattr(entity, 'reverse_%s' % rtype))
@@ -492,8 +491,7 @@ class EntityFieldsForm(FieldsForm):
                 break
         return result
 
-    def srelations_by_category(self, categories=None, permission=None,
-                               strict=False):
+    def editable_relations(self):
         return ()
 
     def should_display_add_new_relation_link(self, rschema, existant, card):
@@ -502,8 +500,8 @@ class EntityFieldsForm(FieldsForm):
 
 class CompositeFormMixIn(object):
     """form composed of sub-forms"""
-    id = 'composite'
-    form_renderer_id = id
+    __regid__ = 'composite'
+    form_renderer_id = __regid__
 
     def __init__(self, *args, **kwargs):
         super(CompositeFormMixIn, self).__init__(*args, **kwargs)
