@@ -67,7 +67,7 @@ class SimpleReqRewriter(URLRewriter):
 
     If the input uri is a regexp, group substitution is allowed
     """
-    id = 'simple'
+    __regid__ = 'simple'
 
     rules = [
         ('/_', dict(vid='manage')),
@@ -181,7 +181,7 @@ class SchemaBasedRewriter(URLRewriter):
     """Here, the rules dict maps regexps or plain strings to
     callbacks that will be called with (input, uri, req, schema)
     """
-    id = 'schemabased'
+    __regid__ = 'schemabased'
     rules = [
         # rgxp : callback
         (rgx('/search/(.+)'), build_rset(rql=r'Any X WHERE X has_text %(text)s',
@@ -200,9 +200,9 @@ class SchemaBasedRewriter(URLRewriter):
                 continue
             if isinstance(inputurl, basestring):
                 if inputurl == uri:
-                    return callback(inputurl, uri, req, self.schema)
+                    return callback(inputurl, uri, req, self._cw.schema)
             elif inputurl.match(uri): # it's a regexp
-                return callback(inputurl, uri, req, self.schema)
+                return callback(inputurl, uri, req, self._cw.schema)
         else:
             self.debug("no schemabased rewrite rule found for %s", uri)
             raise KeyError(uri)
