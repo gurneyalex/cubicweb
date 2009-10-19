@@ -22,8 +22,8 @@ from cubicweb import Unauthorized, typed_eid
 from cubicweb.rset import ResultSet
 from cubicweb.selectors import yes
 from cubicweb.appobject import AppObject
+from cubicweb.schema import RQLVocabularyConstraint, RQLConstraint
 from cubicweb.rqlrewrite import RQLRewriter
-from cubicweb.schema import RQLVocabularyConstraint, RQLConstraint, bw_normalize_etype
 
 from cubicweb.common.uilib import printable_value, soup2xhtml
 from cubicweb.common.mixins import MI_REL_TRIGGERS
@@ -38,101 +38,6 @@ def greater_card(rschema, subjtypes, objtypes, index):
             if card in '+*':
                 return card
     return '1'
-
-
-_MODE_TAGS = set(('link', 'create'))
-_CATEGORY_TAGS = set(('primary', 'secondary', 'generic', 'generated')) # , 'metadata'))
-
-try:
-    from cubicweb.web import formwidgets, uicfg
-
-    def _dispatch_rtags(tags, rtype, role, stype, otype):
-        for tag in tags:
-            if tag in _MODE_TAGS:
-                uicfg.actionbox_appearsin_addmenu.tag_relation(
-                    (stype, rtype, otype, role), tag == 'create')
-            elif tag in _CATEGORY_TAGS:
-                uicfg.autoform_section.tag_relation((stype, rtype, otype, role),
-                                                    tag)
-            elif tag == 'inlineview':
-                uicfg.autoform_is_inlined.tag_relation((stype, rtype, otype, role), True)
-            else:
-                raise ValueError(tag)
-
-except ImportError:
-
-    _dispatch_rtags = None
-
-def _get_etype(bases, classdict):
-    try:
-        return classdict['id']
-    except KeyError:
-        for base in bases:
-            etype = getattr(base, 'id', None)
-            if etype and etype != 'Any':
-                return etype
-
-def _get_defs(attr, name, bases, classdict):
-    try:
-        yield name, classdict.pop(attr)
-    except KeyError:
-        for base in bases:
-            try:
-                value = getattr(base, attr)
-                delattr(base, attr)
-                yield base.__name__, value
-            except AttributeError:
-                continue
-
-
-class _metaentity(type):
-    """this metaclass sets the relation tags on the entity class
-    and deals with the `widgets` attribute
-    """
-    def __new__(mcs, name, bases, classdict):
-        # collect baseclass' rtags
-        etype = _get_etype(bases, classdict)
-        if etype and _dispatch_rtags is not None:
-            for name, rtags in _get_defs('__rtags__', name, bases, classdict):
-                warn('%s: __rtags__ is deprecated' % name, DeprecationWarning)
-                for relation, tags in rtags.iteritems():
-                    # tags must become an iterable
-                    if isinstance(tags, basestring):
-                        tags = (tags,)
-                    # relation must become a 3-uple (rtype, targettype, role)
-                    if isinstance(relation, basestring):
-                        _dispatch_rtags(tags, relation, 'subject', etype, '*')
-                        _dispatch_rtags(tags, relation, 'object', '*', etype)
-                    elif len(relation) == 1: # useful ?
-                        _dispatch_rtags(tags, relation[0], 'subject', etype, '*')
-                        _dispatch_rtags(tags, relation[0], 'object', '*', etype)
-                    elif len(relation) == 2:
-                        rtype, ttype = relation
-                        ttype = bw_normalize_etype(ttype) # XXX bw compat
-                        _dispatch_rtags(tags, rtype, 'subject', etype, ttype)
-                        _dispatch_rtags(tags, rtype, 'object', ttype, etype)
-                    elif len(relation) == 3:
-                        rtype, ttype, role = relation
-                        ttype = bw_normalize_etype(ttype)
-                        if role == 'subject':
-                            _dispatch_rtags(tags, rtype, 'subject', etype, ttype)
-                        else:
-                            _dispatch_rtags(tags, rtype, 'object', ttype, etype)
-                    else:
-                        raise ValueError('bad rtag definition (%r)' % (relation,))
-            for name, widgets in _get_defs('widgets', name, bases, classdict):
-                warn('%s: widgets is deprecated' % name, DeprecationWarning)
-                for rtype, wdgname in widgets.iteritems():
-                    if wdgname in ('URLWidget', 'EmbededURLWidget', 'RawDynamicComboBoxWidget'):
-                        warn('%s widget is deprecated' % wdgname, DeprecationWarning)
-                        continue
-                    if wdgname == 'StringWidget':
-                        wdgname = 'TextInput'
-                    widget = getattr(formwidgets, wdgname)
-                    assert hasattr(widget, 'render')
-                    uicfg.autoform_field_kwargs.tag_subject_of(
-                        (etype, rtype, '*'), {'widget': widget})
-        return super(_metaentity, mcs).__new__(mcs, name, bases, classdict)
 
 
 class Entity(AppObject, dict):
@@ -158,28 +63,24 @@ class Entity(AppObject, dict):
                          as composite relations or relations that have '?1' as object
                          cardinality are always skipped. 
     """
-    __metaclass__ = _metaentity
     __registry__ = 'etypes'
     __select__ = yes()
 
     # class attributes that must be set in class definition
-    id = None
     rest_attr = None
     fetch_attrs = None
     skip_copy_for = ('in_state',)
     # class attributes set automatically at registration time
     e_schema = None
 
-    MODE_TAGS = set(('link', 'create'))
-    CATEGORY_TAGS = set(('primary', 'secondary', 'generic', 'generated')) # , 'metadata'))
     @classmethod
-    def __initialize__(cls):
+    def __initialize__(cls, schema):
         """initialize a specific entity class by adding descriptors to access
         entity type's attributes and relations
         """
-        etype = cls.id
+        etype = cls.__regid__
         assert etype != 'Any', etype
-        cls.e_schema = eschema = cls.schema.eschema(etype)
+        cls.e_schema = eschema = schema.eschema(etype)
         for rschema, _ in eschema.attribute_definitions():
             if rschema.type == 'eid':
                 continue
@@ -208,7 +109,7 @@ class Entity(AppObject, dict):
         """return a rql to fetch all entities of the class type"""
         restrictions = restriction or []
         if settype:
-            restrictions.append('%s is %s' % (mainvar, cls.id))
+            restrictions.append('%s is %s' % (mainvar, cls.__regid__))
         if fetchattrs is None:
             fetchattrs = cls.fetch_attrs
         selection = [mainvar]
@@ -241,7 +142,7 @@ class Entity(AppObject, dict):
                 rschema = eschema.subjrels[attr]
             except KeyError:
                 cls.warning('skipping fetch_attr %s defined in %s (not found in schema)',
-                            attr, cls.id)
+                            attr, cls.__regid__)
                 continue
             if not user.matching_groups(rschema.get_groups('read')):
                 continue
@@ -264,7 +165,8 @@ class Entity(AppObject, dict):
                 # that case the relation may still be missing. As we miss this
                 # later information here, systematically add it.
                 restrictions[-1] += '?'
-                destcls = cls.vreg['etypes'].etype_class(desttype)
+                # XXX user.req.vreg iiiirk
+                destcls = user._cw.vreg['etypes'].etype_class(desttype)
                 destcls._fetch_restrictions(var, varmaker, destcls.fetch_attrs,
                                             selection, orderby, restrictions,
                                             user, ordermethod, visited=visited)
@@ -272,14 +174,6 @@ class Entity(AppObject, dict):
             if orderterm:
                 orderby.append(orderterm)
         return selection, orderby, restrictions
-
-    @classmethod
-    @cached
-    def parent_classes(cls):
-        parents = [cls.vreg['etypes'].etype_class(e.type)
-                   for e in cls.e_schema.ancestors()]
-        parents.append(cls.vreg['etypes'].etype_class('Any'))
-        return parents
 
     @classmethod
     @cached
@@ -299,7 +193,7 @@ class Entity(AppObject, dict):
         return mainattr, needcheck
 
     def __init__(self, req, rset=None, row=None, col=0):
-        AppObject.__init__(self, req, rset, row, col)
+        AppObject.__init__(self, req, rset=rset, row=row, col=col)
         dict.__init__(self)
         self._related_cache = {}
         if rset is not None:
@@ -353,24 +247,26 @@ class Entity(AppObject, dict):
 
     @cached
     def metainformation(self):
-        res = dict(zip(('type', 'source', 'extid'), self.req.describe(self.eid)))
-        res['source'] = self.req.source_defs()[res['source']]
+        res = dict(zip(('type', 'source', 'extid'), self._cw.describe(self.eid)))
+        res['source'] = self._cw.source_defs()[res['source']]
         return res
 
     def clear_local_perm_cache(self, action):
         for rqlexpr in self.e_schema.get_rqlexprs(action):
-            self.req.local_perm_cache.pop((rqlexpr.eid, (('x', self.eid),)), None)
+            self._cw.local_perm_cache.pop((rqlexpr.eid, (('x', self.eid),)), None)
 
     def check_perm(self, action):
-        self.e_schema.check_perm(self.req, action, self.eid)
+        self.e_schema.check_perm(self._cw, action, self.eid)
 
     def has_perm(self, action):
-        return self.e_schema.has_perm(self.req, action, self.eid)
+        return self.e_schema.has_perm(self._cw, action, self.eid)
 
     def view(self, vid, __registry='views', **kwargs):
         """shortcut to apply a view on this entity"""
-        return self.vreg[__registry].render(vid, self.req, rset=self.rset,
-                                            row=self.row, col=self.col, **kwargs)
+        view = self._cw.vreg[__registry].select(vid, self._cw, rset=self.cw_rset,
+                                                row=self.cw_row, col=self.cw_col,
+                                                **kwargs)
+        return view.render(row=self.cw_row, col=self.cw_col, **kwargs)
 
     def absolute_url(self, *args, **kwargs):
         """return an absolute url to view this entity"""
@@ -384,18 +280,18 @@ class Entity(AppObject, dict):
         # in linksearch mode, we don't want external urls else selecting
         # the object for use in the relation is tricky
         # XXX search_state is web specific
-        if getattr(self.req, 'search_state', ('normal',))[0] == 'normal':
+        if getattr(self._cw, 'search_state', ('normal',))[0] == 'normal':
             kwargs['base_url'] = self.metainformation()['source'].get('base-url')
         if method in (None, 'view'):
             try:
                 kwargs['_restpath'] = self.rest_path(kwargs.get('base_url'))
             except TypeError:
-                warn('%s: rest_path() now take use_ext_eid argument, '
-                     'please update' % self.id, DeprecationWarning)
+                warn('[3.4] %s: rest_path() now take use_ext_eid argument, '
+                     'please update' % self.__regid__, DeprecationWarning)
                 kwargs['_restpath'] = self.rest_path()
         else:
             kwargs['rql'] = 'Any X WHERE X eid %s' % self.eid
-        return self.build_url(method, **kwargs)
+        return self._cw.build_url(method, **kwargs)
 
     def rest_path(self, use_ext_eid=False):
         """returns a REST-like (relative) path for this entity"""
@@ -411,7 +307,7 @@ class Entity(AppObject, dict):
                 # make sure url is not ambiguous
                 rql = 'Any COUNT(X) WHERE X is %s, X %s %%(value)s' % (
                     etype, mainattr)
-                nbresults = self.req.execute(rql, {'value' : value})[0][0]
+                nbresults = self._cw.execute(rql, {'value' : value})[0][0]
                 if nbresults != 1: # ambiguity?
                     mainattr = 'eid'
                     path += '/eid'
@@ -420,13 +316,13 @@ class Entity(AppObject, dict):
                 value = self.metainformation()['extid']
             else:
                 value = self.eid
-        return '%s/%s' % (path, self.req.url_quote(value))
+        return '%s/%s' % (path, self._cw.url_quote(value))
 
     def attr_metadata(self, attr, metadata):
         """return a metadata for an attribute (None if unspecified)"""
         value = getattr(self, '%s_%s' % (attr, metadata), None)
         if value is None and metadata == 'encoding':
-            value = self.vreg.property_value('ui.encoding')
+            value = self._cw.vreg.property_value('ui.encoding')
         return value
 
     def printable_value(self, attr, value=_marker, attrtype=None,
@@ -448,11 +344,11 @@ class Entity(AppObject, dict):
             # internalinalized *and* formatted string such as schema
             # description...
             if props.get('internationalizable'):
-                value = self.req._(value)
+                value = self._cw._(value)
             attrformat = self.attr_metadata(attr, 'format')
             if attrformat:
                 return self.mtc_transform(value, attrformat, format,
-                                          self.req.encoding)
+                                          self._cw.encoding)
         elif attrtype == 'Bytes':
             attrformat = self.attr_metadata(attr, 'format')
             if attrformat:
@@ -460,7 +356,7 @@ class Entity(AppObject, dict):
                 return self.mtc_transform(value.getvalue(), attrformat, format,
                                           encoding)
             return u''
-        value = printable_value(self.req, attrtype, value, props,
+        value = printable_value(self._cw, attrtype, value, props,
                                 displaytime=displaytime)
         if format == 'text/html':
             value = xml_escape(value)
@@ -471,7 +367,7 @@ class Entity(AppObject, dict):
         trdata = TransformData(data, format, encoding, appobject=self)
         data = _engine.convert(trdata, target_format).decode()
         if format == 'text/html':
-            data = soup2xhtml(data, self.req.encoding)
+            data = soup2xhtml(data, self._cw.encoding)
         return data
 
     # entity cloning ##########################################################
@@ -485,7 +381,7 @@ class Entity(AppObject, dict):
         Overrides this if you want another behaviour
         """
         assert self.has_eid()
-        execute = self.req.execute
+        execute = self._cw.execute
         for rschema in self.e_schema.subject_relations():
             if rschema.final or rschema.meta:
                 continue
@@ -529,8 +425,8 @@ class Entity(AppObject, dict):
     def as_rset(self):
         """returns a resultset containing `self` information"""
         rset = ResultSet([(self.eid,)], 'Any X WHERE X eid %(x)s',
-                         {'x': self.eid}, [(self.id,)])
-        return self.req.decorate_rset(rset)
+                         {'x': self.eid}, [(self.__regid__,)])
+        return self._cw.decorate_rset(rset)
 
     def to_complete_relations(self):
         """by default complete final relations to when calling .complete()"""
@@ -542,7 +438,7 @@ class Entity(AppObject, dict):
                 # outer join correctly in this case
                 continue
             if rschema.inlined:
-                matching_groups = self.req.user.matching_groups
+                matching_groups = self._cw.user.matching_groups
                 if matching_groups(rschema.get_groups('read')) and \
                    all(matching_groups(es.get_groups('read'))
                        for es in rschema.objects(self.e_schema)):
@@ -557,7 +453,7 @@ class Entity(AppObject, dict):
             if attr == 'eid':
                 continue
             # password retreival is blocked at the repository server level
-            if not self.req.user.matching_groups(rschema.get_groups('read')) \
+            if not self._cw.user.matching_groups(rschema.get_groups('read')) \
                    or attrschema.type == 'Password':
                 self[attr] = None
                 continue
@@ -617,7 +513,7 @@ class Entity(AppObject, dict):
             # if some outer join are included to fetch inlined relations
             rql = 'Any %s,%s %s' % (V, ','.join(var for attr, var in selected),
                                     ','.join(rql))
-            execute = getattr(self.req, 'unsafe_execute', self.req.execute)
+            execute = getattr(self._cw, 'unsafe_execute', self._cw.execute)
             rset = execute(rql, {'x': self.eid}, 'x', build_descr=False)[0]
             # handle attributes
             for i in xrange(1, lastattr):
@@ -628,9 +524,9 @@ class Entity(AppObject, dict):
                 value = rset[i]
                 if value is None:
                     rrset = ResultSet([], rql, {'x': self.eid})
-                    self.req.decorate_rset(rrset)
+                    self._cw.decorate_rset(rrset)
                 else:
-                    rrset = self.req.eid_rset(value)
+                    rrset = self._cw.eid_rset(value)
                 self.set_related_cache(rtype, role, rrset)
 
     def get_value(self, name):
@@ -648,7 +544,7 @@ class Entity(AppObject, dict):
             rql = "Any A WHERE X eid %%(x)s, X %s A" % name
             # XXX should we really use unsafe_execute here? I think so (syt),
             # see #344874
-            execute = getattr(self.req, 'unsafe_execute', self.req.execute)
+            execute = getattr(self._cw, 'unsafe_execute', self._cw.execute)
             try:
                 rset = execute(rql, {'x': self.eid}, 'x')
             except Unauthorized:
@@ -663,7 +559,7 @@ class Entity(AppObject, dict):
                                   name, self.eid)
                     if self.e_schema.destination(name) == 'String':
                         # XXX (syt) imo emtpy string is better
-                        self[name] = value = self.req._('unaccessible')
+                        self[name] = value = self._cw._('unaccessible')
                     else:
                         self[name] = value = None
         return value
@@ -683,13 +579,13 @@ class Entity(AppObject, dict):
         rql = self.related_rql(rtype, role)
         # XXX should we really use unsafe_execute here? I think so (syt),
         # see #344874
-        execute = getattr(self.req, 'unsafe_execute', self.req.execute)
+        execute = getattr(self._cw, 'unsafe_execute', self._cw.execute)
         rset = execute(rql, {'x': self.eid}, 'x')
         self.set_related_cache(rtype, role, rset)
         return self.related(rtype, role, limit, entities)
 
     def related_rql(self, rtype, role='subject', targettypes=None):
-        rschema = self.schema[rtype]
+        rschema = self._cw.vreg.schema[rtype]
         if role == 'subject':
             restriction = 'E eid %%(x)s, E %s X' % rtype
             if targettypes is None:
@@ -707,14 +603,14 @@ class Entity(AppObject, dict):
         if len(targettypes) > 1:
             fetchattrs_list = []
             for ttype in targettypes:
-                etypecls = self.vreg['etypes'].etype_class(ttype)
+                etypecls = self._cw.vreg['etypes'].etype_class(ttype)
                 fetchattrs_list.append(set(etypecls.fetch_attrs))
             fetchattrs = reduce(set.intersection, fetchattrs_list)
-            rql = etypecls.fetch_rql(self.req.user, [restriction], fetchattrs,
+            rql = etypecls.fetch_rql(self._cw.user, [restriction], fetchattrs,
                                      settype=False)
         else:
-            etypecls = self.vreg['etypes'].etype_class(targettypes[0])
-            rql = etypecls.fetch_rql(self.req.user, [restriction], settype=False)
+            etypecls = self._cw.vreg['etypes'].etype_class(targettypes[0])
+            rql = etypecls.fetch_rql(self._cw.user, [restriction], settype=False)
         # optimisation: remove ORDERBY if cardinality is 1 or ? (though
         # greater_card return 1 for those both cases)
         if card == '1':
@@ -738,7 +634,7 @@ class Entity(AppObject, dict):
         """
         ordermethod = ordermethod or 'fetch_unrelated_order'
         if isinstance(rtype, basestring):
-            rtype = self.schema.rschema(rtype)
+            rtype = self._cw.vreg.schema.rschema(rtype)
         if role == 'subject':
             evar, searchedvar = 'S', 'O'
             subjtype, objtype = self.e_schema, targettype
@@ -757,7 +653,7 @@ class Entity(AppObject, dict):
             args = {}
             securitycheck_args = {}
         insertsecurity = (rtype.has_local_role('add') and not
-                          rtype.has_perm(self.req, 'add', **securitycheck_args))
+                          rtype.has_perm(self._cw, 'add', **securitycheck_args))
         constraints = rtype.rproperty(subjtype, objtype, 'constraints')
         if vocabconstraints:
             # RQLConstraint is a subclass for RQLVocabularyConstraint, so they
@@ -767,8 +663,8 @@ class Entity(AppObject, dict):
         else:
             restriction += [cstr.restriction for cstr in constraints
                             if isinstance(cstr, RQLConstraint)]
-        etypecls = self.vreg['etypes'].etype_class(targettype)
-        rql = etypecls.fetch_rql(self.req.user, restriction,
+        etypecls = self._cw.vreg['etypes'].etype_class(targettype)
+        rql = etypecls.fetch_rql(self._cw.user, restriction,
                                  mainvar=searchedvar, ordermethod=ordermethod)
         # ensure we have an order defined
         if not ' ORDERBY ' in rql:
@@ -776,8 +672,8 @@ class Entity(AppObject, dict):
             rql = '%s ORDERBY %s WHERE %s' % (before, searchedvar, after)
         if insertsecurity:
             rqlexprs = rtype.get_rqlexprs('add')
-            rewriter = RQLRewriter(self.req)
-            rqlst = self.req.vreg.parse(self.req, rql, args)
+            rewriter = RQLRewriter(self._cw)
+            rqlst = self._cw.vreg.parse(self._cw, rql, args)
             for select in rqlst.children:
                 rewriter.rewrite(select, [((searchedvar, searchedvar), rqlexprs)],
                                  select.solutions, args)
@@ -792,11 +688,11 @@ class Entity(AppObject, dict):
         try:
             rql, args = self.unrelated_rql(rtype, targettype, role, ordermethod)
         except Unauthorized:
-            return self.req.empty_rset()
+            return self._cw.empty_rset()
         if limit is not None:
             before, after = rql.split(' WHERE ', 1)
             rql = '%s LIMIT %s WHERE %s' % (before, limit, after)
-        return self.req.execute(rql, args, tuple(args))
+        return self._cw.execute(rql, args, tuple(args))
 
     # relations cache handling ################################################
 
@@ -820,8 +716,8 @@ class Entity(AppObject, dict):
     def set_related_cache(self, rtype, role, rset, col=0):
         """set cached values for the given relation"""
         if rset:
-            related = tuple(rset.entities(col))
-            rschema = self.schema.rschema(rtype)
+            related = list(rset.entities(col))
+            rschema = self._cw.vreg.schema.rschema(rtype)
             if role == 'subject':
                 rcard = rschema.rproperty(self.e_schema, related[0].e_schema,
                                           'cardinality')[1]
@@ -870,10 +766,10 @@ class Entity(AppObject, dict):
         # and now update the database
         kwargs['x'] = self.eid
         if _cw_unsafe:
-            self.req.unsafe_execute(
+            self._cw.unsafe_execute(
                 'SET %s WHERE X eid %%(x)s' % ','.join(relations), kwargs, 'x')
         else:
-            self.req.execute('SET %s WHERE X eid %%(x)s' % ','.join(relations),
+            self._cw.execute('SET %s WHERE X eid %%(x)s' % ','.join(relations),
                              kwargs, 'x')
 
     def set_relations(self, _cw_unsafe=False, **kwargs):
@@ -892,7 +788,7 @@ class Entity(AppObject, dict):
 
     def delete(self):
         assert self.has_eid(), self.eid
-        self.req.execute('DELETE %s X WHERE X eid %%(x)s' % self.e_schema,
+        self._cw.execute('DELETE %s X WHERE X eid %%(x)s' % self.e_schema,
                          {'x': self.eid})
 
     # server side utilities ###################################################
@@ -911,10 +807,10 @@ class Entity(AppObject, dict):
         """
         # necessary since eid is handled specifically and yams require it to be
         # in the dictionary
-        if self.req is None:
+        if self._cw is None:
             _ = unicode
         else:
-            _ = self.req._
+            _ = self._cw._
         self.e_schema.check(self, creation=creation, _=_)
 
     def fti_containers(self, _done=None):
@@ -951,7 +847,7 @@ class Entity(AppObject, dict):
         """
         from indexer.query_objects import tokenize
         # take care to cases where we're modyfying the schema
-        pending = self.req.transaction_data.setdefault('pendingrdefs', set())
+        pending = self._cw.transaction_data.setdefault('pendingrdefs', set())
         words = []
         for rschema in self.e_schema.indexable_attributes():
             if (self.e_schema, rschema) in pending:
@@ -975,20 +871,6 @@ class Entity(AppObject, dict):
                 for entity in getattr(self, 'reverse_%s' % rschema.type):
                     words += entity.get_words()
         return words
-
-    @deprecated('[3.2] see new form api')
-    def vocabulary(self, rtype, role='subject', limit=None):
-        """vocabulary functions must return a list of couples
-        (label, eid) that will typically be used to fill the
-        edition view's combobox.
-
-        If `eid` is None in one of these couples, it should be
-        interpreted as a separator in case vocabulary results are grouped
-        """
-        from logilab.common.testlib import mock_object
-        form = self.vreg.select('forms', 'edition', self.req, entity=self)
-        field = mock_object(name=rtype, role=role)
-        return form.form_field_vocabulary(field, limit)
 
 
 # attribute and relation descriptors ##########################################

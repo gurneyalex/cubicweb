@@ -21,12 +21,12 @@ from logilab.common.textutils import splitstrip
 from logilab.common.shellutils import ASK
 from logilab.common.clcommands import register_commands
 
-from cubicweb import (CW_SOFTWARE_ROOT as BASEDIR, BadCommandUsage,
-                      underline_title)
+from cubicweb import CW_SOFTWARE_ROOT as BASEDIR, BadCommandUsage
 from cubicweb.__pkginfo__ import version as cubicwebversion
-from cubicweb.toolsutils import Command, copy_skeleton
+from cubicweb.toolsutils import Command, copy_skeleton, underline_title
 from cubicweb.web.webconfig import WebConfiguration
 from cubicweb.server.serverconfig import ServerConfiguration
+
 
 class DevCubeConfiguration(ServerConfiguration, WebConfiguration):
     """dummy config to get full library schema and entities"""
@@ -124,19 +124,19 @@ def _generate_schema_pot(w, vreg, schema, libconfig=None, cube=None):
     if libconfig is not None:
         from cubicweb.cwvreg import CubicWebVRegistry, clear_rtag_objects
         libschema = libconfig.load_schema(remove_unused_rtypes=False)
-        rinlined = deepcopy(uicfg.autoform_is_inlined)
+        afs = deepcopy(uicfg.autoform_section)
         appearsin_addmenu = deepcopy(uicfg.actionbox_appearsin_addmenu)
         clear_rtag_objects()
         cleanup_sys_modules(libconfig)
         libvreg = CubicWebVRegistry(libconfig)
         libvreg.set_schema(libschema) # trigger objects registration
-        librinlined = uicfg.autoform_is_inlined
+        libafs = uicfg.autoform_section
         libappearsin_addmenu = uicfg.actionbox_appearsin_addmenu
         # prefill vregdone set
         list(_iter_vreg_objids(libvreg, vregdone))
     else:
         libschema = {}
-        rinlined = uicfg.autoform_is_inlined
+        afs = uicfg.autoform_section
         appearsin_addmenu = uicfg.actionbox_appearsin_addmenu
     done = set()
     for eschema in sorted(schema.entities()):
@@ -154,9 +154,11 @@ def _generate_schema_pot(w, vreg, schema, libconfig=None, cube=None):
             continue
         for rschema, targetschemas, role in eschema.relation_definitions(True):
             for tschema in targetschemas:
-                if rinlined.etype_get(eschema, rschema, role, tschema) and \
+                fsections = afs.etype_get(eschema, rschema, role, tschema)
+                if 'inlined_attributes' in fsections and \
                        (libconfig is None or not
-                        librinlined.etype_get(eschema, rschema, role, tschema)):
+                        'inlined_attributes' in libafs.etype_get(
+                            eschema, rschema, role, tschema)):
                     add_msg(w, 'add a %s' % tschema,
                             'inlined:%s.%s.%s' % (etype, rschema, role))
                     add_msg(w, 'remove this %s' % tschema,
@@ -212,14 +214,19 @@ def _generate_schema_pot(w, vreg, schema, libconfig=None, cube=None):
         add_msg(w, '%s_description' % objid)
         add_msg(w, objid)
 
+
 def _iter_vreg_objids(vreg, done, prefix=None):
     for reg, objdict in vreg.items():
         for objects in objdict.values():
             for obj in objects:
-                objid = '%s_%s' % (reg, obj.id)
+                objid = '%s_%s' % (reg, obj.__regid__)
                 if objid in done:
                     break
-                if obj.property_defs:
+                try: # XXX < 3.6 bw compat
+                    pdefs = obj.property_defs
+                except AttributeError:
+                    pdefs = getattr(obj, 'cw_property_defs', {})
+                if pdefs:
                     yield objid
                     done.add(objid)
                     break

@@ -214,7 +214,7 @@ class ServerMigrationHelper(MigrationHelper):
                 login, pwd = manager_userpasswd()
             while True:
                 try:
-                    self._cnx = repo_connect(self.repo, login, pwd)
+                    self._cnx = repo_connect(self.repo, login, password=pwd)
                     if not 'managers' in self._cnx.user(self.session).groups:
                         print 'migration need an account in the managers group'
                     else:
@@ -265,9 +265,9 @@ class ServerMigrationHelper(MigrationHelper):
                         'fsschema': self.fs_schema,
                         'session' : self.session,
                         'repo' : self.repo,
-                        'synchronize_schema': deprecated()(self.cmd_sync_schema_props_perms),
-                        'synchronize_eschema': deprecated()(self.cmd_sync_schema_props_perms),
-                        'synchronize_rschema': deprecated()(self.cmd_sync_schema_props_perms),
+                        'synchronize_schema': deprecated()(self.cmd_sync_schema_props_perms), # 3.4
+                        'synchronize_eschema': deprecated()(self.cmd_sync_schema_props_perms), # 3.4
+                        'synchronize_rschema': deprecated()(self.cmd_sync_schema_props_perms), # 3.4
                         })
         return context
 
@@ -287,7 +287,7 @@ class ServerMigrationHelper(MigrationHelper):
                 from cubicweb.server.hooks import setowner_after_add_entity
                 self.repo.hm.unregister_hook(setowner_after_add_entity,
                                              'after_add_entity', '')
-                self.deactivate_verification_hooks()
+                self.cmd_deactivate_verification_hooks()
             self.info('executing %s', apc)
             confirm = self.confirm
             execscript_confirm = self.execscript_confirm
@@ -301,7 +301,7 @@ class ServerMigrationHelper(MigrationHelper):
                 if self.config.free_wheel:
                     self.repo.hm.register_hook(setowner_after_add_entity,
                                                'after_add_entity', '')
-                    self.reactivate_verification_hooks()
+                    self.cmd_reactivate_verification_hooks()
 
     # schema synchronization internals ########################################
 
@@ -682,8 +682,8 @@ class ServerMigrationHelper(MigrationHelper):
                 continue
             if instspschema.specializes() != eschema:
                 self.rqlexec('SET D specializes P WHERE D eid %(d)s, P name %(pn)s',
-                              {'d': instspschema.eid,
-                               'pn': eschema.type}, ask_confirm=confirm)
+                             {'d': instspschema.eid,
+                              'pn': eschema.type}, ask_confirm=confirm)
                 for rschema, tschemas, role in spschema.relation_definitions(True):
                     for tschema in tschemas:
                         if not tschema in instschema:
@@ -1139,10 +1139,10 @@ class ServerMigrationHelper(MigrationHelper):
         return ForRqlIterator(self, rql, None, ask_confirm)
 
     def cmd_deactivate_verification_hooks(self):
-        self.repo.hm.deactivate_verification_hooks()
+        self.config.disabled_hooks_categories.add('integrity')
 
     def cmd_reactivate_verification_hooks(self):
-        self.repo.hm.reactivate_verification_hooks()
+        self.config.disabled_hooks_categories.remove('integrity')
 
     # broken db commands ######################################################
 

@@ -47,7 +47,7 @@ def toggleable_relation_link(eid, nodeid, label='x'):
 
 
 class DeleteConfForm(forms.CompositeForm):
-    id = 'deleteconf'
+    __regid__ = 'deleteconf'
     __select__ = non_final_entity()
 
     domid = 'deleteconf'
@@ -56,23 +56,24 @@ class DeleteConfForm(forms.CompositeForm):
                     Button(stdmsgs.NO, cwaction='cancel')]
     @property
     def action(self):
-        return self.build_url('edit')
+        return self._cw.build_url('edit')
 
     def __init__(self, *args, **kwargs):
         super(DeleteConfForm, self).__init__(*args, **kwargs)
         done = set()
-        for entity in self.rset.entities():
+        for entity in self.cw_rset.entities():
             if entity.eid in done:
                 continue
             done.add(entity.eid)
-            subform = self.vreg['forms'].select('base', self.req, entity=entity,
-                                                mainform=False)
+            subform = self._cw.vreg['forms'].select('base', self._cw,
+                                                    entity=entity,
+                                                    mainform=False)
             self.add_subform(subform)
 
 
 class DeleteConfFormView(FormViewMixIn, EntityView):
     """form used to confirm deletion of some entities"""
-    id = 'deleteconf'
+    __regid__ = 'deleteconf'
     title = _('delete')
     # don't use navigation, all entities asked to be deleted should be displayed
     # else we will only delete the displayed page
@@ -80,17 +81,19 @@ class DeleteConfFormView(FormViewMixIn, EntityView):
 
     def call(self, onsubmit=None):
         """ask for confirmation before real deletion"""
-        req, w = self.req, self.w
+        req, w = self._cw, self.w
         _ = req._
         w(u'<script type="text/javascript">updateMessage(\'%s\');</script>\n'
           % _('this action is not reversible!'))
         # XXX above message should have style of a warning
         w(u'<h4>%s</h4>\n' % _('Do you want to delete the following element(s) ?'))
-        form = self.vreg['forms'].select(self.id, req, rset=self.rset,
-                                         onsubmit=onsubmit)
+        form = self._cw.vreg['forms'].select(self.__regid__, req,
+                                             rset=self.cw_rset,
+                                             onsubmit=onsubmit)
         w(u'<ul>\n')
-        for entity in self.rset.entities():
-            # don't use outofcontext view or any other that may contain inline edition form
+        for entity in self.cw_rset.entities():
+            # don't use outofcontext view or any other that may contain inline
+            # edition form
             w(u'<li>%s</li>' % tags.a(entity.view('textoutofcontext'),
                                       href=entity.absolute_url()))
         w(u'</ul>\n')
@@ -103,13 +106,9 @@ class ClickAndEditFormView(FormViewMixIn, EntityView):
 
     (double-click on the field to see an appropriate edition widget).
     """
-    id = 'doreledit'
+    __regid__ = 'doreledit'
     __select__ = non_final_entity() & match_kwargs('rtype')
     # FIXME editableField class could be toggleable from userprefs
-
-    # add metadata to allow edition of metadata attributes (not considered by
-    # edition form by default)
-    attrcategories = ('primary', 'secondary', 'metadata')
 
     _onclick = u"showInlineEditionForm(%(eid)s, '%(rtype)s', '%(divid)s')"
     _defaultlandingzone = (u'<img title="%(msg)s" '
@@ -126,15 +125,16 @@ class ClickAndEditFormView(FormViewMixIn, EntityView):
         return self._one_rvid
 
     def _build_landing_zone(self, lzone):
-        return lzone or self._defaultlandingzone % {'msg' : xml_escape(self.req._(self._landingzonemsg))}
+        return lzone or self._defaultlandingzone % {
+            'msg': xml_escape(self._cw._(self._landingzonemsg))}
 
     def _build_renderer(self, entity, rtype, role):
-        return self.vreg['formrenderers'].select(
-            'base', self.req, entity=entity, display_label=False,
-            display_help=False, display_fields=[(rtype, role)], table_class='',
+        return self._cw.vreg['formrenderers'].select(
+            'base', self._cw, entity=entity, display_label=False,
+            display_help=False, table_class='',
             button_bar_class='buttonbar', display_progress_div=False)
 
-    def _build_form(self, entity, rtype, role, formid, default, onsubmit, reload,
+    def _build_form(self, entity, rtype, role, default, onsubmit, reload,
                   extradata=None, **formargs):
         divid = 'd%s' % make_uid('%s-%s' % (rtype, entity.eid))
         event_data = {'divid' : divid, 'eid' : entity.eid, 'rtype' : rtype,
@@ -144,9 +144,10 @@ class ClickAndEditFormView(FormViewMixIn, EntityView):
         onsubmit %= event_data
         cancelclick = "hideInlineEdit(%s,\'%s\',\'%s\')" % (entity.eid, rtype,
                                                             divid)
-        form = self.vreg['forms'].select(
-            formid, self.req, entity=entity, domid='%s-form' % divid,
+        form = self._cw.vreg['forms'].select(
+            'edition', self._cw, entity=entity, domid='%s-form' % divid,
             cssstyle='display: none', onsubmit=onsubmit, action='#',
+            display_fields=[(rtype, role)],
             form_buttons=[SubmitButton(), Button(stdmsgs.BUTTON_CANCEL,
                                                  onclick=cancelclick)],
             **formargs)
@@ -164,17 +165,17 @@ class ClickAndEditFormView(FormViewMixIn, EntityView):
         assert rtype
         assert role in ('subject', 'object')
         if default is None:
-            default = xml_escape(self.req._('<no value>'))
-        entity = self.entity(row, col)
-        rschema = entity.schema.rschema(rtype)
+            default = xml_escape(self._cw._('<no value>'))
+        schema = self._cw.vreg.schema
+        entity = self.cw_rset.get_entity(row, col)
+        rschema = schema.rschema(rtype)
         lzone = self._build_landing_zone(landing_zone)
         # compute value, checking perms, build form
         if rschema.final:
             onsubmit = ("return inlineValidateAttributeForm('%(rtype)s', '%(eid)s', '%(divid)s', "
                         "%(reload)s, '%(default)s');")
             form = self._build_form(
-                entity, rtype, role, 'edition', default, onsubmit, reload,
-                attrcategories=self.attrcategories)
+                entity, rtype, role, default, onsubmit, reload)
             if not self.should_edit_attribute(entity, rschema, role, form):
                 self.w(entity.printable_value(rtype))
                 return
@@ -186,7 +187,7 @@ class ClickAndEditFormView(FormViewMixIn, EntityView):
                 rvid = self._compute_best_vid(entity.e_schema, rschema, role)
             rset = entity.related(rtype, role)
             if rset:
-                value = self.view(rvid, rset)
+                value = self._cw.view(rvid, rset)
             else:
                 value = default
             if not self.should_edit_relation(entity, rschema, role, rvid):
@@ -196,18 +197,16 @@ class ClickAndEditFormView(FormViewMixIn, EntityView):
             onsubmit = ("return inlineValidateRelationForm('%(rtype)s', '%(role)s', '%(eid)s', "
                         "'%(divid)s', %(reload)s, '%(vid)s', '%(default)s', '%(lzone)s');")
             form = self._build_form(
-                entity, rtype, role, 'base', default, onsubmit, reload,
+                entity, rtype, role, default, onsubmit, reload,
                 dict(vid=rvid, role=role, lzone=lzone))
-            field = guess_field(entity.e_schema, entity.schema.rschema(rtype), role)
-            form.append_field(field)
             self.relation_form(lzone, value, form,
                                self._build_renderer(entity, rtype, role))
 
     def should_edit_attribute(self, entity, rschema, role, form):
         rtype = str(rschema)
-        ttype = rschema.targets(entity.id, role)[0]
-        afs = uicfg.autoform_section.etype_get(entity.id, rtype, role, ttype)
-        if not (afs in self.attrcategories and entity.has_perm('update')):
+        ttype = rschema.targets(entity.__regid__, role)[0]
+        afs = uicfg.autoform_section.etype_get(entity.__regid__, rtype, role, ttype)
+        if 'main_hidden' in afs or not entity.has_perm('update'):
             self.w(entity.printable_value(rtype))
             return False
         try:
@@ -218,10 +217,10 @@ class ClickAndEditFormView(FormViewMixIn, EntityView):
         return True
 
     def should_edit_relation(self, entity, rschema, role, rvid):
-        if ((role == 'subject' and not rschema.has_perm(self.req, 'add',
+        if ((role == 'subject' and not rschema.has_perm(self._cw, 'add',
                                                         fromeid=entity.eid))
             or
-            (role == 'object' and not rschema.has_perm(self.req, 'add',
+            (role == 'object' and not rschema.has_perm(self._cw, 'add',
                                                        toeid=entity.eid))):
             self.wview(rvid, entity.related(str(rschema), role), 'null')
             return False
@@ -267,7 +266,7 @@ class AutoClickAndEditFormView(ClickAndEditFormView):
     """same as ClickAndEditFormView but checking if the view *should* be applied
     by checking uicfg configuration and composite relation property.
     """
-    id = 'reledit'
+    __regid__ = 'reledit'
 
     def should_edit_relation(self, entity, rschema, role, rvid):
         eschema = entity.e_schema
@@ -287,7 +286,7 @@ class AutoClickAndEditFormView(ClickAndEditFormView):
 
 class EditionFormView(FormViewMixIn, EntityView):
     """display primary entity edition form"""
-    id = 'edition'
+    __regid__ = 'edition'
     # add yes() so it takes precedence over deprecated views in baseforms,
     # though not baseforms based customized view
     __select__ = one_line_rset() & non_final_entity() & yes()
@@ -295,15 +294,16 @@ class EditionFormView(FormViewMixIn, EntityView):
     title = _('edition')
 
     def cell_call(self, row, col, **kwargs):
-        entity = self.complete_entity(row, col)
+        entity = self.cw_rset.complete_entity(row, col)
         self.render_form(entity)
 
     def render_form(self, entity):
         """fetch and render the form"""
         self.form_title(entity)
-        form = self.vreg['forms'].select('edition', self.req, rset=entity.rset,
-                                         row=entity.row, col=entity.col, entity=entity,
-                                         submitmsg=self.submited_message())
+        form = self._cw.vreg['forms'].select('edition', self._cw, rset=entity.cw_rset,
+                                             row=entity.cw_row, col=entity.cw_col,
+                                             entity=entity,
+                                             submitmsg=self.submited_message())
         self.init_form(form, entity)
         self.w(form.form_render(formvid=u'edition'))
 
@@ -313,18 +313,18 @@ class EditionFormView(FormViewMixIn, EntityView):
 
     def form_title(self, entity):
         """the form view title"""
-        ptitle = self.req._(self.title)
+        ptitle = self._cw._(self.title)
         self.w(u'<div class="formTitle"><span>%s %s</span></div>' % (
             entity.dc_type(), ptitle and '(%s)' % ptitle))
 
     def submited_message(self):
         """return the message that will be displayed on successful edition"""
-        return self.req._('entity edited')
+        return self._cw._('entity edited')
 
 
 class CreationFormView(EditionFormView):
     """display primary entity creation form"""
-    id = 'creation'
+    __regid__ = 'creation'
     __select__ = specified_etype_implements('Any') & yes()
 
     title = _('creation')
@@ -333,48 +333,48 @@ class CreationFormView(EditionFormView):
         """creation view for an entity"""
         # at this point we know etype is a valid entity type, thanks to our
         # selector
-        etype = kwargs.pop('etype', self.req.form.get('etype'))
-        entity = self.vreg['etypes'].etype_class(etype)(self.req)
-        self.initialize_varmaker()
-        entity.eid = self.varmaker.next()
+        etype = kwargs.pop('etype', self._cw.form.get('etype'))
+        entity = self._cw.vreg['etypes'].etype_class(etype)(self._cw)
+        entity.eid = self._cw.varmaker.next()
         self.render_form(entity)
 
     def form_title(self, entity):
         """the form view title"""
-        if '__linkto' in self.req.form:
-            if isinstance(self.req.form['__linkto'], list):
+        if '__linkto' in self._cw.form:
+            if isinstance(self._cw.form['__linkto'], list):
                 # XXX which one should be considered (case: add a ticket to a
                 # version in jpl)
-                rtype, linkto_eid, role = self.req.form['__linkto'][0].split(':')
+                rtype, linkto_eid, role = self._cw.form['__linkto'][0].split(':')
             else:
-                rtype, linkto_eid, role = self.req.form['__linkto'].split(':')
-            linkto_rset = self.req.eid_rset(linkto_eid)
+                rtype, linkto_eid, role = self._cw.form['__linkto'].split(':')
+            linkto_rset = self._cw.eid_rset(linkto_eid)
             linkto_type = linkto_rset.description[0][0]
             if role == 'subject':
-                title = self.req.__('creating %s (%s %s %s %%(linkto)s)' % (
+                title = self._cw.__('creating %s (%s %s %s %%(linkto)s)' % (
                     entity.e_schema, entity.e_schema, rtype, linkto_type))
             else:
-                title = self.req.__('creating %s (%s %%(linkto)s %s %s)' % (
+                title = self._cw.__('creating %s (%s %%(linkto)s %s %s)' % (
                     entity.e_schema, linkto_type, rtype, entity.e_schema))
-            msg = title % {'linkto' : self.view('incontext', linkto_rset)}
+            msg = title % {'linkto' : self._cw.view('incontext', linkto_rset)}
             self.w(u'<div class="formTitle notransform"><span>%s</span></div>' % msg)
         else:
             super(CreationFormView, self).form_title(entity)
 
     def url(self):
         """return the url associated with this view"""
-        return self.create_url(self.req.form.get('etype'))
+        return self.create_url(self._cw.form.get('etype'))
 
     def submited_message(self):
         """return the message that will be displayed on successful edition"""
-        return self.req._('entity created')
+        return self._cw._('entity created')
 
 
 class CopyFormView(EditionFormView):
     """display primary entity creation form initialized with values from another
     entity
     """
-    id = 'copy'
+    __regid__ = 'copy'
+
     title = _('copy')
     warning_message = _('Please note that this is only a shallow copy')
 
@@ -385,10 +385,9 @@ class CopyFormView(EditionFormView):
         entity.complete()
         self.newentity = copy(entity)
         self.copying = entity
-        self.initialize_varmaker()
-        self.newentity.eid = self.varmaker.next()
+        self.newentity.eid = self._cw.varmaker.next()
         self.w(u'<script type="text/javascript">updateMessage("%s");</script>\n'
-               % self.req._(self.warning_message))
+               % self._cw._(self.warning_message))
         super(CopyFormView, self).render_form(self.newentity)
         del self.newentity
 
@@ -398,8 +397,7 @@ class CopyFormView(EditionFormView):
         if entity.eid == self.newentity.eid:
             form.form_add_hidden(eid_param('__cloned_eid', entity.eid),
                                  self.copying.eid)
-        for rschema, _, role in form.relations_by_category(form.attrcategories,
-                                                           'add'):
+        for rschema, role in form.editable_attributes():
             if not rschema.final:
                 # ensure relation cache is filed
                 rset = self.copying.related(rschema, role)
@@ -407,11 +405,11 @@ class CopyFormView(EditionFormView):
 
     def submited_message(self):
         """return the message that will be displayed on successful edition"""
-        return self.req._('entity copied')
+        return self._cw._('entity copied')
 
 
 class TableEditForm(forms.CompositeForm):
-    id = 'muledit'
+    __regid__ = 'muledit'
     domid = 'entityForm'
     onsubmit = "return validateForm('%s', null);" % domid
     form_buttons = [SubmitButton(_('validate modifications on selected items')),
@@ -419,19 +417,19 @@ class TableEditForm(forms.CompositeForm):
 
     def __init__(self, req, rset, **kwargs):
         kwargs.setdefault('__redirectrql', rset.printable_rql())
-        super(TableEditForm, self).__init__(req, rset, **kwargs)
-        for row in xrange(len(self.rset)):
-            form = self.vreg['forms'].select('edition', self.req,
-                                             rset=self.rset, row=row,
-                                             attrcategories=('primary',),
-                                             mainform=False)
+        super(TableEditForm, self).__init__(req, rset=rset, **kwargs)
+        for row in xrange(len(self.cw_rset)):
+            form = self._cw.vreg['forms'].select('edition', self._cw,
+                                                 rset=self.cw_rset, row=row,
+                                                 formtype='muledit',
+                                                 mainform=False)
             # XXX rely on the EntityCompositeFormRenderer to put the eid input
             form.remove_field(form.field_by_name('eid'))
             self.add_subform(form)
 
 
 class TableEditFormView(FormViewMixIn, EntityView):
-    id = 'muledit'
+    __regid__ = 'muledit'
     __select__ = EntityView.__select__ & yes()
     title = _('multiple edit')
 
@@ -440,7 +438,7 @@ class TableEditFormView(FormViewMixIn, EntityView):
         should be the eid
         """
         #self.form_title(entity)
-        form = self.vreg['forms'].select(self.id, self.req, rset=self.rset)
+        form = self._cw.vreg['forms'].select(self.__regid__, self._cw, rset=self.cw_rset)
         self.w(form.form_render())
 
 
@@ -451,7 +449,7 @@ class InlineEntityEditionFormView(FormViewMixIn, EntityView):
     :attr role: the role played by the `peid` in the relation
     :attr pform: the parent form where this inlined form is being displayed
     """
-    id = 'inline-edition'
+    __regid__ = 'inline-edition'
     __select__ = non_final_entity() & match_kwargs('peid', 'rtype')
 
     _select_attrs = ('peid', 'rtype', 'role', 'pform')
@@ -463,14 +461,14 @@ class InlineEntityEditionFormView(FormViewMixIn, EntityView):
         super(InlineEntityEditionFormView, self).__init__(*args, **kwargs)
 
     def _entity(self):
-        assert self.row is not None, self
-        return self.rset.get_entity(self.row, self.col)
+        assert self.cw_row is not None, self
+        return self.cw_rset.get_entity(self.cw_row, self.cw_col)
 
     @property
     @cached
     def form(self):
         entity = self._entity()
-        form = self.vreg['forms'].select('edition', self.req,
+        form = self.vreg['forms'].select('edition', self._cw,
                                          entity=entity,
                                          form_renderer_id='inline',
                                          mainform=False, copy_nav_params=False,
@@ -498,9 +496,9 @@ class InlineEntityEditionFormView(FormViewMixIn, EntityView):
         removejs = self.removejs % (self.peid, self.rtype, entity.eid)
         countkey = '%s_count' % self.rtype
         try:
-            self.req.data[countkey] += 1
-        except KeyError:
-            self.req.data[countkey] = 1
+            self._cw.data[countkey] += 1
+        except:
+            self._cw.data[countkey] = 1
         self.w(self.form.form_render(
             divid=divid, title=title, removejs=removejs, i18nctx=i18nctx,
             counter=self.req.data[countkey], **kwargs))
@@ -519,7 +517,7 @@ class InlineEntityEditionFormView(FormViewMixIn, EntityView):
             return True
         # are we regenerating form because of a validation error ?
         if form.form_previous_values:
-            cdvalues = self.req.list_form_param(eid_param(self.rtype, self.peid),
+            cdvalues = self._cw.list_form_param(eid_param(self.rtype, self.peid),
                                                 form.form_previous_values)
             if unicode(entity.eid) not in cdvalues:
                 return False
@@ -530,7 +528,7 @@ class InlineEntityCreationFormView(InlineEntityEditionFormView):
     """
     :attr etype: the entity type being created in the inline form
     """
-    id = 'inline-creation'
+    __regid__ = 'inline-creation'
     __select__ = (match_kwargs('peid', 'rtype')
                   & specified_etype_implements('Any'))
     _select_attrs = InlineEntityEditionFormView._select_attrs + ('etype',)
@@ -539,9 +537,9 @@ class InlineEntityCreationFormView(InlineEntityEditionFormView):
     @cached
     def _entity(self):
         try:
-            cls = self.vreg['etypes'].etype_class(self.etype)
+            cls = self._cw.vreg['etypes'].etype_class(self.etype)
         except:
-            self.w(self.req._('no such entity type %s') % etype)
+            self.w(self._cw._('no such entity type %s') % etype)
             return
         self.initialize_varmaker()
         entity = cls(self.req)
@@ -556,7 +554,7 @@ class InlineAddNewLinkView(InlineEntityCreationFormView):
     """
     :attr card: the cardinality of the relation according to role of `peid`
     """
-    id = 'inline-addnew-link'
+    __regid__ = 'inline-addnew-link'
     __select__ = (match_kwargs('peid', 'rtype')
                   & specified_etype_implements('Any'))
 
