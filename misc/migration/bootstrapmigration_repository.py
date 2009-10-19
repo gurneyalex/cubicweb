@@ -11,11 +11,9 @@ it should only include low level schema changes
 applcubicwebversion, cubicwebversion = versions_map['cubicweb']
 
 if applcubicwebversion < (3, 4, 0) and cubicwebversion >= (3, 4, 0):
-    from cubicweb import RepositoryError
-    from cubicweb.server.hooks import uniquecstrcheck_before_modification
+
     session.set_shared_data('do-not-insert-cwuri', True)
-    repo.hm.unregister_hook(uniquecstrcheck_before_modification, 'before_add_entity', '')
-    repo.hm.unregister_hook(uniquecstrcheck_before_modification, 'before_update_entity', '')
+    deactivate_verification_hooks()
     add_relation_type('cwuri')
     base_url = session.base_url()
     # use an internal session since some entity might forbid modifications to admin
@@ -26,8 +24,7 @@ if applcubicwebversion < (3, 4, 0) and cubicwebversion >= (3, 4, 0):
             isession.execute('SET X cwuri %(u)s WHERE X eid %(x)s',
                              {'x': eid, 'u': base_url + u'eid/%s' % eid})
     isession.commit()
-    repo.hm.register_hook(uniquecstrcheck_before_modification, 'before_add_entity', '')
-    repo.hm.register_hook(uniquecstrcheck_before_modification, 'before_update_entity', '')
+    reactivate_verification_hooks()
     session.set_shared_data('do-not-insert-cwuri', False)
 
 if applcubicwebversion < (3, 5, 0) and cubicwebversion >= (3, 5, 0):
@@ -38,14 +35,22 @@ if applcubicwebversion < (3, 5, 0) and cubicwebversion >= (3, 5, 0):
     # drop explicit 'State allowed_transition Transition' since it should be
     # infered due to yams inheritance.  However we've to disable the schema
     # sync hook first to avoid to destroy existing data...
-    from cubicweb.server.schemahooks import after_del_relation_type
-    repo.hm.unregister_hook(after_del_relation_type,
-                            'after_delete_relation', 'relation_type')
     try:
-        drop_relation_definition('State', 'allowed_transition', 'Transition')
-    finally:
-        repo.hm.register_hook(after_del_relation_type,
-                              'after_delete_relation', 'relation_type')
+        from cubicweb.hooks import syncschema
+        repo.vreg.unregister(syncschema.AfterDelRelationTypeHook)
+        try:
+            drop_relation_definition('State', 'allowed_transition', 'Transition')
+        finally:
+            repo.vreg.register(syncschema.AfterDelRelationTypeHook)
+    except ImportError: # syncschema is in CW >= 3.6 only
+        from cubicweb.server.schemahooks import after_del_relation_type
+        repo.hm.unregister_hook(after_del_relation_type,
+                                'after_delete_relation', 'relation_type')
+        try:
+            drop_relation_definition('State', 'allowed_transition', 'Transition')
+        finally:
+            repo.hm.register_hook(after_del_relation_type,
+                                  'after_delete_relation', 'relation_type')
     schema.rebuild_infered_relations() # need to be explicitly called once everything is in place
 
     for et in rql('DISTINCT Any ET,ETN WHERE S state_of ET, ET name ETN',

@@ -175,7 +175,7 @@ def init_repository(config, interactive=True, drop=False, vreg=None):
     session.commit()
     # reloging using the admin user
     config._cubes = None # avoid assertion error
-    repo, cnx = in_memory_cnx(config, login, pwd)
+    repo, cnx = in_memory_cnx(config, login, password=pwd)
     # trigger vreg initialisation of entity classes
     config.cubicweb_appobject_path = set(('entities',))
     config.cube_appobject_path = set(('entities',))
