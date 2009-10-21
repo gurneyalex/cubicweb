@@ -117,13 +117,13 @@ def display_name(req, key, form='', context=None):
     else:
         return unicode(req._(key)).lower()
 
-__builtins__['display_name'] = deprecated('display_name should be imported from cubicweb.schema')(display_name)
+__builtins__['display_name'] = deprecated('[3.4] display_name should be imported from cubicweb.schema')(display_name)
 
-def ERSchema_display_name(self, req, form=''):
+def ERSchema_display_name(self, req, form='', context=None):
     """return a internationalized string for the entity/relation type name in
     a given form
     """
-    return display_name(req, self.type, form)
+    return display_name(req, self.type, form, context)
 ERSchema.display_name = ERSchema_display_name
 
 @cached
@@ -958,12 +958,12 @@ NEED_PERM_FORMATS = [_('text/cubicweb-page-template')]
 
 @monkeypatch(FormatConstraint)
 def vocabulary(self, entity=None, form=None):
-    req = None
+    cw = None
     if form is None and entity is not None:
-        req = entity.req
+        cw = entity._cw
     elif form is not None:
-        req = form.req
-    if req is not None and req.user.has_permission(PERM_USE_TEMPLATE_FORMAT):
+        cw = form._cw
+    if cw is not None and cw.user.has_permission(PERM_USE_TEMPLATE_FORMAT):
         return self.regular_formats + tuple(NEED_PERM_FORMATS)
     return self.regular_formats
 
@@ -998,5 +998,6 @@ stmts.Select.set_statement_type = bw_set_statement_type
 
 # XXX deprecated
 from yams.constraints import format_constraint
+format_constraint = deprecated('[3.4] use RichString instead of format_constraint')(format_constraint)
 from yams.buildobjs import RichString
 PyFileReader.context['format_constraint'] = format_constraint
