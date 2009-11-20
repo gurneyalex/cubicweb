@@ -16,20 +16,21 @@ from cubicweb.web import form, formwidgets as fwdgs
 from cubicweb.web.formfields import guess_field
 from cubicweb.web.views import forms, editforms
 
+_afs = uicfg.autoform_section
 
 class AutomaticEntityForm(forms.EntityFieldsForm):
     """base automatic form to edit any entity.
 
     Designed to be fully generated from schema but highly configurable through:
-    * rtags (rcategories, rfields, rwidgets, inlined, rpermissions)
-    * various standard form parameters
 
-    XXX s/rtags/uicfg/ ?
+    * uicfg (autoform_* relation tags)
+    * various standard form parameters
+    * overriding
 
     You can also easily customise it by adding/removing fields in
-    AutomaticEntityForm instances.
+    AutomaticEntityForm instances or by inheriting from it.
     """
-    id = 'edition'
+    __regid__ = 'edition'
 
     cwtarget = 'eformframe'
     cssclass = 'entityForm'
@@ -37,17 +38,20 @@ class AutomaticEntityForm(forms.EntityFieldsForm):
     form_buttons = [fwdgs.SubmitButton(),
                     fwdgs.Button(stdmsgs.BUTTON_APPLY, cwaction='apply'),
                     fwdgs.Button(stdmsgs.BUTTON_CANCEL, cwaction='cancel')]
-    attrcategories = ('primary', 'secondary')
+    # for attributes selection when searching in uicfg.autoform_section
+    formtype = 'main'
+    # set this to a list of [(relation, role)] if you want to explictily tell
+    # which relations should be edited
+    display_fields = None
     # class attributes below are actually stored in the uicfg module since we
     # don't want them to be reloaded
-    rcategories = uicfg.autoform_section
     rfields = uicfg.autoform_field
     rfields_kwargs = uicfg.autoform_field_kwargs
-    rinlined = uicfg.autoform_is_inlined
-    rpermissions_overrides = uicfg.autoform_permissions_overrides
 
     # class methods mapping schema relations to fields in the form ############
 
+<<<<<<< /home/syt/src/fcubicweb/cubicweb/web/views/autoform.py
+=======
     @classmethod
     def erelations_by_category(cls, entity, categories=None, permission=None,
                                rtags=None, strict=False):
@@ -133,6 +137,7 @@ class AutomaticEntityForm(forms.EntityFieldsForm):
             result.append((rschema.display_name(entity.req, role), rschema, role))
         return sorted(result)
 
+>>>>>>> /tmp/autoform.py~other.rHDQ-C
     @iclassmethod
     def field_by_name(cls_or_self, name, role='subject', eschema=None):
         """return field with the given name and role. If field is not explicitly
@@ -142,9 +147,9 @@ class AutomaticEntityForm(forms.EntityFieldsForm):
         try:
             return super(AutomaticEntityForm, cls_or_self).field_by_name(name, role)
         except form.FieldNotFound:
-            if eschema is None or not name in cls_or_self.schema:
+            if eschema is None or not name in cls_or_self._cw.schema:
                 raise
-            rschema = cls_or_self.schema.rschema(name)
+            rschema = cls_or_self._cw.schema.rschema(name)
             # XXX use a sample target type. Document this.
             tschemas = rschema.targets(eschema, role)
             fieldcls = cls_or_self.rfields.etype_get(eschema, rschema, role,
@@ -169,23 +174,23 @@ class AutomaticEntityForm(forms.EntityFieldsForm):
         entity = self.edited_entity
         if entity.has_eid():
             entity.complete()
-        for rschema, role in self.editable_attributes():
+        for rtype, role in self.editable_attributes():
             try:
-                self.field_by_name(rschema.type, role)
+                self.field_by_name(str(rtype), role)
                 continue # explicitly specified
             except form.FieldNotFound:
                 # has to be guessed
                 try:
-                    field = self.field_by_name(rschema.type, role,
+                    field = self.field_by_name(str(rtype), role,
                                                eschema=entity.e_schema)
                     self.fields.append(field)
                 except form.FieldNotFound:
                     # meta attribute such as <attr>_format
                     continue
+        self.maxrelitems = self._cw.property_value('navigation.related-limit')
+        self.force_display = bool(self._cw.form.get('__force_display'))
         fnum = len(self.fields)
         self.fields.sort(key=lambda f: f.order is None and fnum or f.order)
-        self.maxrelitems = self.req.property_value('navigation.related-limit')
-        self.force_display = bool(self.req.form.get('__force_display'))
 
     @property
     def related_limit(self):
@@ -236,7 +241,7 @@ class AutomaticEntityForm(forms.EntityFieldsForm):
         try:
             return self._action
         except AttributeError:
-            return self.build_url('validateform')
+            return self._cw.build_url('validateform')
 
     def set_action(self, value):
         """override default action"""
@@ -246,36 +251,38 @@ class AutomaticEntityForm(forms.EntityFieldsForm):
 
     # methods mapping edited entity relations to fields in the form ############
 
-    def relations_by_category(self, categories=None, permission=None):
+    def _relations_by_section(self, section, permission='add', strict=False):
         """return a list of (relation schema, target schemas, role) matching
         given category(ies) and permission
         """
-        return self.erelations_by_category(self.edited_entity, categories,
-                                           permission)
+        return _afs.relations_by_section(
+            self.edited_entity, self.formtype, section, permission, strict)
+
+    def editable_attributes(self, strict=False):
+        """return a list of (relation schema, role) to edit for the entity"""
+        if self.display_fields is not None:
+            return self.display_fields
+        # XXX we should simply put eid in the generated section, no?
+        return [(rtype, role) for rtype, _, role in self._relations_by_section(
+            'attributes', strict=strict) if rtype != 'eid']
+
+    def editable_relations(self):
+        """return a sorted list of (relation's label, relation'schema, role) for
+        relations in the 'relations' section
+        """
+        result = []
+        for rschema, _, role in self._relations_by_section('relations',
+                                                           strict=True):
+            result.append( (rschema.display_name(self.edited_entity._cw, role,
+                                                 self.edited_entity.__regid__),
+                            rschema, role) )
+        return sorted(result)
 
     def inlined_relations(self):
         """return a list of (relation schema, target schemas, role) matching
         given category(ies) and permission
         """
-        # we'll need an initialized varmaker if there are some inlined relation
-        self.initialize_varmaker()
-        return self.erelations_by_category(self.edited_entity, True, 'add',
-                                           self.rinlined)
-
-    def srelations_by_category(self, categories=None, permission=None,
-                               strict=False):
-        """filter out result of relations_by_category(categories, permission) by
-        removing final relations
-
-        return a sorted list of (relation's label, relation'schema, role)
-        """
-        return self.esrelations_by_category(self.edited_entity, categories,
-                                           permission, strict=strict)
-
-    def editable_attributes(self):
-        """return a list of (relation schema, role) to edit for the entity"""
-        return [(rschema, role) for rschema, _, role in self.relations_by_category(
-                self.attrcategories, 'add') if rschema != 'eid']
+        return self._relations_by_section('inlined')
 
     # generic relations modifier ###############################################
 
@@ -288,11 +295,10 @@ class AutomaticEntityForm(forms.EntityFieldsForm):
           - oneline view of related entity
         """
         entity = self.edited_entity
-        pending_deletes = self.req.get_pending_deletes(entity.eid)
-        for label, rschema, role in self.srelations_by_category('generic', 'add',
-                                                                strict=True):
+        pending_deletes = self._cw.get_pending_deletes(entity.eid)
+        for label, rschema, role in self.editable_relations():
             relatedrset = entity.related(rschema, role, limit=self.related_limit)
-            if rschema.has_perm(self.req, 'delete'):
+            if rschema.has_perm(self._cw, 'delete'):
                 toggleable_rel_link_func = editforms.toggleable_relation_link
             else:
                 toggleable_rel_link_func = lambda x, y, z: u''
@@ -307,7 +313,7 @@ class AutomaticEntityForm(forms.EntityFieldsForm):
                     status = u''
                     label = 'x'
                 dellink = toggleable_rel_link_func(entity.eid, nodeid, label)
-                eview = self.view('oneline', relatedrset, row=row)
+                eview = self._cw.view('oneline', relatedrset, row=row)
                 related.append((nodeid, dellink, status, eview))
             yield (rschema, role, related)
 
@@ -317,22 +323,24 @@ class AutomaticEntityForm(forms.EntityFieldsForm):
         """
         eid = self.edited_entity.eid
         cell = cell and "div_insert_" or "tr"
-        pending_inserts = set(self.req.get_pending_inserts(eid))
+        pending_inserts = set(self._cw.get_pending_inserts(eid))
         for pendingid in pending_inserts:
             eidfrom, rtype, eidto = pendingid.split(':')
             if typed_eid(eidfrom) == eid: # subject
-                label = display_name(self.req, rtype, 'subject')
+                label = display_name(self._cw, rtype, 'subject',
+                                     self.edited_entity.__regid__)
                 reid = eidto
             else:
-                label = display_name(self.req, rtype, 'object')
+                label = display_name(self._cw, rtype, 'object',
+                                     self.edited_entity.__regid__)
                 reid = eidfrom
             jscall = "javascript: cancelPendingInsert('%s', '%s', null, %s);" \
                      % (pendingid, cell, eid)
-            rset = self.req.eid_rset(reid)
-            eview = self.view('text', rset, row=0)
+            rset = self._cw.eid_rset(reid)
+            eview = self._cw.view('text', rset, row=0)
             # XXX find a clean way to handle baskets
             if rset.description[0][0] == 'Basket':
-                eview = '%s (%s)' % (eview, display_name(self.req, 'Basket'))
+                eview = '%s (%s)' % (eview, display_name(self._cw, 'Basket'))
             yield rtype, pendingid, jscall, label, reid, eview
 
     # inlined forms support ####################################################
@@ -381,6 +389,9 @@ class AutomaticEntityForm(forms.EntityFieldsForm):
     def should_inline_relation_form(self, rschema, targettype, role):
         """return true if the given relation with entity has role and a
         targettype target should be inlined
+
+        At this point we now relation has inlined_attributes tag (eg is returned
+        by `inlined_relations()`. Overrides this for more finer control.
         """
         return True
 
@@ -389,7 +400,7 @@ class AutomaticEntityForm(forms.EntityFieldsForm):
 
         by default true if there is no related entity and we need at least one
         """
-        return not existant and card in '1+' or self.req.form.has_key('force_%s_display' % rschema)
+        return not existant and card in '1+' or self._cw.form.has_key('force_%s_display' % rschema)
 
     def should_display_add_new_relation_link(self, rschema, existant, card):
         """return true if we should add a link to add a new creation form
@@ -415,11 +426,11 @@ class AutomaticEntityForm(forms.EntityFieldsForm):
         entity = self.edited_entity
         related = entity.has_eid() and entity.related(rschema, role)
         if related:
-            vvreg = self.vreg['views']
+            vvreg = self._cw.vreg['views']
             # display inline-edition view for all existing related entities
             for i, relentity in enumerate(related.entities()):
                 if relentity.has_perm('update'):
-                    yield vvreg.select('inline-edition', self.req, rset=related,
+                    yield vvreg.select('inline-edition', self._cw, rset=related,
                                        row=i, col=0, rtype=rschema, role=role,
                                        peid=entity.eid, pform=self)
 
@@ -427,9 +438,9 @@ class AutomaticEntityForm(forms.EntityFieldsForm):
         """yield inline form views to a newly related (hence created) entity
         through the given relation
         """
-        yield self.vreg['views'].select('inline-creation', self.req,
-                                        etype=ttype, rtype=rschema, role=role,
-                                        peid=self.edited_entity.eid, pform=self)
+        yield self._cw.vreg['views'].select('inline-creation', self._cw,
+                                            etype=ttype, rtype=rschema, role=role,
+                                            peid=self.edited_entity.eid, pform=self)
 
 
 def etype_relation_field(etype, rtype, role='subject'):
@@ -439,43 +450,46 @@ def etype_relation_field(etype, rtype, role='subject'):
 
 ## default form ui configuration ##############################################
 
+_afs = uicfg.autoform_section
 # use primary and not generated for eid since it has to be an hidden
-uicfg.autoform_section.tag_attribute(('*', 'eid'), 'primary')
-uicfg.autoform_section.tag_attribute(('*', 'description'), 'secondary')
-uicfg.autoform_section.tag_attribute(('*', 'creation_date'), 'metadata')
-uicfg.autoform_section.tag_attribute(('*', 'modification_date'), 'metadata')
-uicfg.autoform_section.tag_attribute(('*', 'cwuri'), 'metadata')
-uicfg.autoform_section.tag_attribute(('*', 'has_text'), 'generated')
-uicfg.autoform_section.tag_subject_of(('*', 'in_state', '*'), 'generated')
-uicfg.autoform_section.tag_subject_of(('*', 'owned_by', '*'), 'metadata')
-uicfg.autoform_section.tag_subject_of(('*', 'created_by', '*'), 'metadata')
-uicfg.autoform_section.tag_subject_of(('*', 'is', '*'), 'generated')
-uicfg.autoform_section.tag_object_of(('*', 'is', '*'), 'generated')
-uicfg.autoform_section.tag_subject_of(('*', 'is_instance_of', '*'), 'generated')
-uicfg.autoform_section.tag_object_of(('*', 'is_instance_of', '*'), 'generated')
-uicfg.autoform_section.tag_subject_of(('*', 'identity', '*'), 'generated')
-uicfg.autoform_section.tag_object_of(('*', 'identity', '*'), 'generated')
-uicfg.autoform_section.tag_subject_of(('*', 'require_permission', '*'), 'generated')
-uicfg.autoform_section.tag_subject_of(('*', 'by_transition', '*'), 'primary')
-uicfg.autoform_section.tag_object_of(('*', 'by_transition', '*'), 'generated')
-uicfg.autoform_section.tag_object_of(('*', 'from_state', '*'), 'generated')
-uicfg.autoform_section.tag_object_of(('*', 'to_state', '*'), 'generated')
-uicfg.autoform_section.tag_subject_of(('*', 'wf_info_for', '*'), 'primary')
-uicfg.autoform_section.tag_object_of(('*', 'wf_info_for', '*'), 'generated')
-uicfg.autoform_section.tag_subject_of(('*', 'for_user', '*'), 'generated')
-uicfg.autoform_section.tag_object_of(('*', 'for_user', '*'), 'generated')
-uicfg.autoform_section.tag_subject_of(('CWPermission', 'require_group', '*'), 'primary')
-uicfg.autoform_section.tag_attribute(('CWEType', 'final'), 'generated')
-uicfg.autoform_section.tag_attribute(('CWRType', 'final'), 'generated')
-uicfg.autoform_section.tag_attribute(('CWUser', 'firstname'), 'secondary')
-uicfg.autoform_section.tag_attribute(('CWUser', 'surname'), 'secondary')
-uicfg.autoform_section.tag_attribute(('CWUser', 'last_login_time'), 'metadata')
-uicfg.autoform_section.tag_subject_of(('CWUser', 'in_group', '*'), 'primary')
-uicfg.autoform_section.tag_object_of(('*', 'owned_by', 'CWUser'), 'generated')
-uicfg.autoform_section.tag_object_of(('*', 'created_by', 'CWUser'), 'generated')
-uicfg.autoform_section.tag_object_of(('*', 'bookmarked_by', 'CWUser'), 'metadata')
-uicfg.autoform_section.tag_attribute(('Bookmark', 'path'), 'primary')
-uicfg.autoform_section.tag_subject_of(('*', 'primary_email', '*'), 'generic')
+_afs.tag_attribute(('*', 'eid'), 'main', 'attributes')
+_afs.tag_attribute(('*', 'eid'), 'muledit', 'attributes')
+_afs.tag_attribute(('*', 'description'), 'main', 'attributes')
+_afs.tag_attribute(('*', 'creation_date'), 'main', 'metadata')
+_afs.tag_attribute(('*', 'modification_date'), 'main', 'metadata')
+_afs.tag_attribute(('*', 'cwuri'), 'main', 'metadata')
+_afs.tag_attribute(('*', 'has_text'), 'main', 'hidden')
+_afs.tag_subject_of(('*', 'in_state', '*'), 'main', 'hidden')
+_afs.tag_subject_of(('*', 'owned_by', '*'), 'main', 'metadata')
+_afs.tag_subject_of(('*', 'created_by', '*'), 'main', 'metadata')
+_afs.tag_subject_of(('*', 'require_permission', '*'), 'main', 'hidden')
+_afs.tag_subject_of(('*', 'by_transition', '*'), 'main', 'attributes')
+_afs.tag_subject_of(('*', 'by_transition', '*'), 'muledit', 'attributes')
+_afs.tag_object_of(('*', 'by_transition', '*'), 'main', 'hidden')
+_afs.tag_object_of(('*', 'from_state', '*'), 'main', 'hidden')
+_afs.tag_object_of(('*', 'to_state', '*'), 'main', 'hidden')
+_afs.tag_subject_of(('*', 'wf_info_for', '*'), 'main', 'attributes')
+_afs.tag_subject_of(('*', 'wf_info_for', '*'), 'muledit', 'attributes')
+_afs.tag_object_of(('*', 'wf_info_for', '*'), 'main', 'hidden')
+_afs.tag_subject_of(('*', 'for_user', '*'), 'main', 'hidden')
+_afs.tag_object_of(('*', 'for_user', '*'), 'main', 'hidden')
+_afs.tag_subject_of(('CWPermission', 'require_group', '*'), 'main', 'attributes')
+_afs.tag_subject_of(('CWPermission', 'require_group', '*'), 'muledit', 'attributes')
+_afs.tag_attribute(('CWEType', 'final'), 'main', 'hidden')
+_afs.tag_attribute(('CWRType', 'final'), 'main', 'hidden')
+_afs.tag_attribute(('CWUser', 'firstname'), 'main', 'attributes')
+_afs.tag_attribute(('CWUser', 'surname'), 'main', 'attributes')
+_afs.tag_attribute(('CWUser', 'last_login_time'), 'main', 'metadata')
+_afs.tag_subject_of(('CWUser', 'in_group', '*'), 'main', 'attributes')
+_afs.tag_subject_of(('CWUser', 'in_group', '*'), 'muledit', 'attributes')
+_afs.tag_object_of(('*', 'bookmarked_by', 'CWUser'), 'main', 'metadata')
+_afs.tag_attribute(('Bookmark', 'path'), 'main', 'attributes')
+_afs.tag_attribute(('Bookmark', 'path'), 'muledit', 'attributes')
+_afs.tag_subject_of(('*', 'primary_email', '*'), 'main', 'relations')
+_afs.tag_subject_of(('*', 'use_email', '*'), 'main', 'inlined')
+_afs.tag_subject_of(('CWRelation', 'relation_type', '*'), 'main', 'inlined')
+_afs.tag_subject_of(('CWRelation', 'from_entity', '*'), 'main', 'inlined')
+_afs.tag_subject_of(('CWRelation', 'to_entity', '*'), 'main', 'inlined')
 
 uicfg.autoform_field_kwargs.tag_attribute(('RQLExpression', 'expression'),
                                           {'widget': fwdgs.TextInput})
@@ -483,8 +497,3 @@ uicfg.autoform_field_kwargs.tag_attribute(('Bookmark', 'path'),
                                           {'widget': fwdgs.TextInput})
 uicfg.autoform_field_kwargs.tag_subject_of(('TrInfo', 'wf_info_for', '*'),
                                            {'widget': fwdgs.HiddenInput})
-
-uicfg.autoform_is_inlined.tag_subject_of(('*', 'use_email', '*'), True)
-uicfg.autoform_is_inlined.tag_subject_of(('CWRelation', 'relation_type', '*'), True)
-uicfg.autoform_is_inlined.tag_subject_of(('CWRelation', 'from_entity', '*'), True)
-uicfg.autoform_is_inlined.tag_subject_of(('CWRelation', 'to_entity', '*'), True)

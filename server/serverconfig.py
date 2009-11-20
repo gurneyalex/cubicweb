@@ -76,7 +76,7 @@ class ServerConfiguration(CubicWebConfiguration):
     """standalone RQL server"""
     name = 'repository'
 
-    cubicweb_appobject_path = CubicWebConfiguration.cubicweb_appobject_path | set(['sobjects'])
+    cubicweb_appobject_path = CubicWebConfiguration.cubicweb_appobject_path | set(['sobjects', 'hooks'])
     cube_appobject_path = CubicWebConfiguration.cube_appobject_path | set(['sobjects', 'hooks'])
 
     options = merge_options((
@@ -177,14 +177,9 @@ and if not set, it will be choosen randomly',
     # check user's state at login time
     consider_user_state = True
 
-    # hooks registration configuration
+    # hooks activation configuration
     # all hooks should be activated during normal execution
-    core_hooks = True
-    usergroup_hooks = True
-    schema_hooks = True
-    notification_hooks = True
-    security_hooks = True
-    instance_hooks = True
+    disabled_hooks_categories = set()
 
     # should some hooks be deactivated during [pre|post]create script execution
     free_wheel = False
@@ -247,20 +242,6 @@ and if not set, it will be choosen randomly',
     def pyro_enabled(self):
         """pyro is always enabled in standalone repository configuration"""
         return True
-
-    def load_hooks(self, vreg):
-        hooks = {}
-        try:
-            apphookdefs = vreg['hooks'].all_objects()
-        except RegistryNotFound:
-            return hooks
-        for hookdef in apphookdefs:
-            for event, ertype in hookdef.register_to():
-                if ertype == 'Any':
-                    ertype = ''
-                cb = hookdef.make_callback(event)
-                hooks.setdefault(event, {}).setdefault(ertype, []).append(cb)
-        return hooks
 
     def load_schema(self, expand_cubes=False, **kwargs):
         from cubicweb.schema import CubicWebSchemaLoader

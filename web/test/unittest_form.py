@@ -13,7 +13,7 @@ from logilab.common.testlib import unittest_main, mock_object
 from logilab.common.compat import any
 
 from cubicweb import Binary
-from cubicweb.devtools.testlib import WebTest
+from cubicweb.devtools.testlib import CubicWebTC
 from cubicweb.web.formfields import (IntField, StringField, RichTextField,
                                      DateTimeField, DateTimePicker,
                                      FileField, EditableFileField)
@@ -23,7 +23,7 @@ from cubicweb.web.views.workflow import ChangeStateForm
 from cubicweb.web.views.formrenderers import FormRenderer
 
 
-class FieldsFormTC(WebTest):
+class FieldsFormTC(CubicWebTC):
 
     def test_form_field_format(self):
         form = FieldsForm(self.request(), None)
@@ -33,7 +33,7 @@ class FieldsFormTC(WebTest):
         self.assertEquals(form.form_field_format(None), 'text/rest')
 
 
-class EntityFieldsFormTC(WebTest):
+class EntityFieldsFormTC(CubicWebTC):
 
     def setUp(self):
         super(EntityFieldsFormTC, self).setUp()
@@ -57,8 +57,8 @@ class EntityFieldsFormTC(WebTest):
 
 
     def test_form_field_vocabulary_new_entity(self):
-        e = self.etype_instance('CWUser')
-        form = EntityFieldsForm(self.request(), None, entity=e)
+        e = self.vreg['etypes'].etype_class('CWUser')(self.request())
+        form = EntityFieldsForm(e.req, None, entity=e)
         unrelated = [rview for rview, reid in form.subject_relation_vocabulary('in_group')]
         # should be default groups but owners, i.e. managers, users, guests
         self.assertEquals(unrelated, [u'guests', u'managers', u'users'])
@@ -78,7 +78,7 @@ class EntityFieldsFormTC(WebTest):
     #     self.assertEquals(states[0][0], u'deactivated') # list of (combobox view, state eid)
 
     def test_consider_req_form_params(self):
-        e = self.etype_instance('CWUser')
+        e = self.vreg['etypes'].etype_class('CWUser')(self.request())
         e.eid = 'A'
         form = EntityFieldsForm(self.request(login=u'toto'), None, entity=e)
         field = StringField(name='login', eidparam=True)
@@ -88,7 +88,7 @@ class EntityFieldsFormTC(WebTest):
 
 
     def test_linkto_field_duplication(self):
-        e = self.etype_instance('CWUser')
+        e = self.vreg['etypes'].etype_class('CWUser')(self.request())
         e.eid = 'A'
         e.req = self.req
         geid = self.execute('CWGroup X WHERE X name "users"')[0][0]

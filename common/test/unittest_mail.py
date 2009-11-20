@@ -13,7 +13,7 @@ import sys
 from logilab.common.testlib import unittest_main
 from logilab.common.umessage import message_from_string
 
-from cubicweb.devtools.apptest import EnvBasedTC
+from cubicweb.devtools.testlib import CubicWebTC
 from cubicweb.common.mail import format_mail
 
 
@@ -29,7 +29,7 @@ def getlogin():
         return os.environ.get('USERNAME')
 
 
-class EmailTC(EnvBasedTC):
+class EmailTC(CubicWebTC):
 
     def test_format_mail(self):
         self.set_option('sender-addr', 'bim@boum.fr')

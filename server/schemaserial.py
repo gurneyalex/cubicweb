@@ -9,6 +9,7 @@ __docformat__ = "restructuredtext en"
 
 import os
 import sys
+import os
 from itertools import chain
 
 from logilab.common.shellutils import ProgressBar
@@ -277,11 +278,13 @@ def serialize_schema(cursor, schema, verbose=False):
     """synchronize schema and permissions in the database according to
     current schema
     """
-    _title = '-> storing the schema in the database '
-    print _title,
+    quiet = os.environ.get('APYCOT_ROOT')
+    if not quiet:
+        _title = '-> storing the schema in the database '
+        print _title,
     eschemas = schema.entities()
     aller = eschemas + schema.relations()
-    if not verbose and not os.environ.get('APYCOT_ROOT'):
+    if not verbose and not quiet:
         pb_size = len(aller) + len(CONSTRAINTS) + len([x for x in eschemas if x.specializes()])
         pb = ProgressBar(pb_size, title=_title)
     else:
@@ -316,7 +319,8 @@ def serialize_schema(cursor, schema, verbose=False):
         cursor.execute(rql, kwargs)
         if pb is not None:
             pb.update()
-    print
+    if not quiet:
+        print
 
 
 def _ervalues(erschema):
