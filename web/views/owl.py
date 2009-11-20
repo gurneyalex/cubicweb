@@ -58,26 +58,33 @@ OWL_CLOSING_ROOT = u'</rdf:RDF>'
 
 class OWLView(StartupView):
     """This view export in owl format schema database. It is the TBOX"""
-    id = 'owl'
+    __regid__ = 'owl'
     title = _('owl')
     templatable = False
     content_type = 'application/xml' # 'text/xml'
 
     def call(self, writeprefix=True):
-        skipmeta = int(self.req.form.get('skipmeta', True))
+        skipmeta = int(self._cw.form.get('skipmeta', True))
         if writeprefix:
-            self.w(OWL_OPENING_ROOT % {'appid': self.schema.name})
+            self.w(OWL_OPENING_ROOT % {'appid': self._cw.vreg.schema.name})
         self.visit_schema(skiptypes=skipmeta and schema.SKIP_TYPES or ())
         if writeprefix:
             self.w(OWL_CLOSING_ROOT)
 
+<<<<<<< /home/syt/src/fcubicweb/cubicweb/web/views/owl.py
+    def should_display_rschema(self, rschema):
+        return not rschema in self.skiptypes and (
+            rschema.has_local_role('read') or
+            rschema.has_perm(self._cw, 'read'))
+=======
     def should_display_rschema(self, eschema, rschema, tschemas, role):
         return rschema.may_have_permissions('read', self.req, eschema, role)
+>>>>>>> /tmp/owl.py~other.-maWGS
 
     def visit_schema(self, skiptypes):
         """get a layout for a whole schema"""
         self.skiptypes = skiptypes
-        entities = sorted(eschema for eschema in self.schema.entities()
+        entities = sorted(eschema for eschema in self._cw.vreg.schema.entities()
                           if not eschema.final or eschema in skiptypes)
         self.w(u'<!-- classes definition -->')
         for eschema in entities:
@@ -143,29 +150,29 @@ class OWLView(StartupView):
 
 class OWLABOXView(EntityView):
     '''This view represents a part of the ABOX for a given entity.'''
-    id = 'owlabox'
+    __regid__ = 'owlabox'
     title = _('owlabox')
     templatable = False
     content_type = 'application/xml' # 'text/xml'
 
     def call(self):
-        self.w(OWL_OPENING_ROOT % {'appid': self.schema.name})
-        for i in xrange(self.rset.rowcount):
+        self.w(OWL_OPENING_ROOT % {'appid': self._cw.vreg.schema.name})
+        for i in xrange(self.cw_rset.rowcount):
             self.cell_call(i, 0)
         self.w(OWL_CLOSING_ROOT)
 
     def cell_call(self, row, col):
-        self.wview('owlaboxitem', self.rset, row=row, col=col)
+        self.wview('owlaboxitem', self.cw_rset, row=row, col=col)
 
 
 class OWLABOXItemView(EntityView):
     '''This view represents a part of the ABOX for a given entity.'''
-    id = 'owlaboxitem'
+    __regid__ = 'owlaboxitem'
     templatable = False
     content_type = 'application/xml' # 'text/xml'
 
     def cell_call(self, row, col):
-        entity = self.complete_entity(row, col)
+        entity = self.cw_rset.complete_entity(row, col)
         eschema = entity.e_schema
         self.w(u'<%s rdf:ID="%s">' % (eschema, entity.eid))
         self.w(u'<!--attributes-->')
@@ -173,7 +180,7 @@ class OWLABOXItemView(EntityView):
             if rschema.meta:
                 continue
             rdef = rschema.rdef(eschema, aschema)
-            if not rdef.may_have_permission('read', self.req):
+            if not rdef.may_have_permission('read', self._cw):
                 continue
             aname = rschema.type
             if aname == 'eid':
@@ -190,23 +197,26 @@ class OWLABOXItemView(EntityView):
                 continue
             for tschema in targetschemas:
                 rdef = rschema.role_rdef(eschema, tschema, role)
-                if not rdef.may_have_permission('read', self.req):
-                    continue
+                if rdef.may_have_permission('read', self.req):
+                    break
+            else:
+                # no read perms to any relation of this type. Skip.
+                continue
             if role == 'object':
                 attr = 'reverse_%s' % rschema.type
             else:
                 attr = rschema.type
             for x in getattr(entity, attr):
-                self.w(u'<%s>%s %s</%s>' % (attr, x.id, x.eid, attr))
+                self.w(u'<%s>%s %s</%s>' % (attr, x.__regid__, x.eid, attr))
         self.w(u'</%s>'% eschema)
 
 
 class DownloadOWLSchemaAction(Action):
-    id = 'download_as_owl'
+    __regid__ = 'download_as_owl'
     __select__ = none_rset() & match_view('schema')
 
     category = 'mainactions'
     title = _('download schema as owl')
 
     def url(self):
-        return self.build_url('view', vid='owl')
+        return self._cw.build_url('view', vid='owl')

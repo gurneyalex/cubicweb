@@ -159,6 +159,7 @@ class CWProperty(EntityType):
                                              ' a global property'))
 
 
+# XXX find a better relation name
 class for_user(RelationType):
     """link a property to the user which want this property customization. Unless
     you're a site manager, this relation will be handled automatically.
@@ -169,6 +170,10 @@ class for_user(RelationType):
         'delete': ('managers',),
         }
     inlined = True
+    subject = 'CWProperty'
+    object = 'CWUser'
+    composite = 'object'
+    cardinality = '?*'
 
 
 class CWPermission(EntityType):

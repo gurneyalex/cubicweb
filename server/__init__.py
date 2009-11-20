@@ -175,7 +175,7 @@ def init_repository(config, interactive=True, drop=False, vreg=None):
     session.commit()
     # reloging using the admin user
     config._cubes = None # avoid assertion error
-    repo, cnx = in_memory_cnx(config, login, pwd)
+    repo, cnx = in_memory_cnx(config, login, password=pwd)
     # trigger vreg initialisation of entity classes
     config.cubicweb_appobject_path = set(('entities',))
     config.cube_appobject_path = set(('entities',))
@@ -216,7 +216,9 @@ def initialize_schema(config, schema, mhandler, event='create'):
         mhandler.exec_event_script('pre%s' % event, path)
     # enter instance'schema into the database
     mhandler.session.set_pool()
+    config.disabled_hooks_categories.add('syncschema')
     serialize_schema(mhandler.session, schema)
+    config.disabled_hooks_categories.remove('syncschema')
     # execute cubicweb's post<event> script
     mhandler.exec_event_script('post%s' % event)
     # execute cubes'post<event> script if any

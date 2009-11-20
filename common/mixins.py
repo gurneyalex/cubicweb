@@ -38,7 +38,7 @@ class TreeMixIn(object):
                            entities=entities)
         if entities:
             return [e for e in res if e.e_schema != self.e_schema]
-        return res.filtered_rset(lambda x: x.e_schema != self.e_schema, self.col)
+        return res.filtered_rset(lambda x: x.e_schema != self.e_schema, self.cw_col)
 
     def same_type_children(self, entities=True):
         """return children entities of the same type as this entity.
@@ -50,14 +50,14 @@ class TreeMixIn(object):
                            entities=entities)
         if entities:
             return [e for e in res if e.e_schema == self.e_schema]
-        return res.filtered_rset(lambda x: x.e_schema == self.e_schema, self.col)
+        return res.filtered_rset(lambda x: x.e_schema == self.e_schema, self.cw_col)
 
     def iterchildren(self, _done=None):
         if _done is None:
             _done = set()
         for child in self.children():
             if child.eid in _done:
-                self.error('loop in %s tree', self.id.lower())
+                self.error('loop in %s tree', self.__regid__.lower())
                 continue
             yield child
             _done.add(child.eid)
@@ -83,7 +83,7 @@ class TreeMixIn(object):
         parent = self
         while parent:
             if parent.eid in path:
-                self.error('loop in %s tree', self.id.lower())
+                self.error('loop in %s tree', self.__regid__.lower())
                 break
             path.append(parent.eid)
             try:
@@ -152,7 +152,7 @@ class TreeMixIn(object):
 
     def root(self):
         """return the root object"""
-        return self.req.entity_from_eid(self.path()[0])
+        return self._cw.entity_from_eid(self.path()[0])
 
 
 class EmailableMixIn(object):
@@ -206,9 +206,9 @@ def _done_init(done, view, row, col):
     """handle an infinite recursion safety belt"""
     if done is None:
         done = set()
-    entity = view.entity(row, col)
+    entity = view.cw_rset.get_entity(row, col)
     if entity.eid in done:
-        msg = entity.req._('loop in %(rel)s relation (%(eid)s)') % {
+        msg = entity._cw._('loop in %(rel)s relation (%(eid)s)') % {
             'rel': entity.tree_attribute,
             'eid': entity.eid
             }
@@ -219,7 +219,7 @@ def _done_init(done, view, row, col):
 
 class TreeViewMixIn(object):
     """a recursive tree view"""
-    id = 'tree'
+    __regid__ = 'tree'
     item_vid = 'treeitem'
     __select__ = implements(ITree)
 
@@ -237,18 +237,18 @@ class TreeViewMixIn(object):
         self.open_item(entity)
         entity.view(vid or self.item_vid, w=self.w, **kwargs)
         relatedrset = entity.children(entities=False)
-        self.wview(self.id, relatedrset, 'null', done=done, **kwargs)
+        self.wview(self.__regid__, relatedrset, 'null', done=done, **kwargs)
         self.close_item(entity)
 
     def open_item(self, entity):
-        self.w(u'<li class="%s">\n' % entity.id.lower())
+        self.w(u'<li class="%s">\n' % entity.__regid__.lower())
     def close_item(self, entity):
         self.w(u'</li>\n')
 
 
 class TreePathMixIn(object):
     """a recursive path view"""
-    id = 'path'
+    __regid__ = 'path'
     item_vid = 'oneline'
     separator = u'&#160;&gt;&#160;'
 
@@ -265,7 +265,7 @@ class TreePathMixIn(object):
             return
         parent = entity.parent()
         if parent:
-            parent.view(self.id, w=self.w, done=done)
+            parent.view(self.__regid__, w=self.w, done=done)
             self.w(self.separator)
         entity.view(vid or self.item_vid, w=self.w)
 

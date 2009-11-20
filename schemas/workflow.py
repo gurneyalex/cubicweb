@@ -169,10 +169,12 @@ class workflow_of(RelationType):
 class state_of(RelationType):
     """link a state to one or more workflow"""
     __permissions__ = META_RTYPE_PERMS
+    inlined = True
 
 class transition_of(RelationType):
     """link a transition to one or more workflow"""
-    __permissions__ = META_RTYPE_PERMS
+    permissions = META_RTYPE_PERMS
+    inlined = True
 
 class subworkflow(RelationType):
     """link a transition to one or more workflow"""
