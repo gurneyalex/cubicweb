@@ -46,7 +46,7 @@ class MakeSchemaTC(TestCase):
                           ('C0 text,C1 integer', {'A': 'table0.C0', 'B': 'table0.C1'}))
 
 
-repo, cnx = init_test_database('sqlite')
+repo, cnx = init_test_database()
 
 
 
@@ -907,7 +907,8 @@ class QuerierTC(BaseQuerierTC):
         self.execute("INSERT Personne Y: Y nom 'toto'")
         rset = self.execute('Personne X WHERE X nom "toto"')
         self.assertEqual(len(rset.rows), 1)
-        self.execute("DELETE Personne Y WHERE Y nom 'toto'")
+        drset = self.execute("DELETE Personne Y WHERE Y nom 'toto'")
+        self.assertEqual(drset.rows, rset.rows)
         rset = self.execute('Personne X WHERE X nom "toto"')
         self.assertEqual(len(rset.rows), 0)
 
