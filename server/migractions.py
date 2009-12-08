@@ -221,7 +221,7 @@ class ServerMigrationHelper(MigrationHelper):
                 login, pwd = manager_userpasswd()
             while True:
                 try:
-                    self._cnx = repo_connect(self.repo, login, pwd)
+                    self._cnx = repo_connect(self.repo, login, password=pwd)
                     if not 'managers' in self._cnx.user(self.session).groups:
                         print 'migration need an account in the managers group'
                     else:
@@ -272,9 +272,9 @@ class ServerMigrationHelper(MigrationHelper):
                         'fsschema': self.fs_schema,
                         'session' : self.session,
                         'repo' : self.repo,
-                        'synchronize_schema': deprecated()(self.cmd_sync_schema_props_perms),
-                        'synchronize_eschema': deprecated()(self.cmd_sync_schema_props_perms),
-                        'synchronize_rschema': deprecated()(self.cmd_sync_schema_props_perms),
+                        'synchronize_schema': deprecated()(self.cmd_sync_schema_props_perms), # 3.4
+                        'synchronize_eschema': deprecated()(self.cmd_sync_schema_props_perms), # 3.4
+                        'synchronize_rschema': deprecated()(self.cmd_sync_schema_props_perms), # 3.4
                         })
         return context
 
@@ -294,7 +294,7 @@ class ServerMigrationHelper(MigrationHelper):
                 from cubicweb.server.hooks import setowner_after_add_entity
                 self.repo.hm.unregister_hook(setowner_after_add_entity,
                                              'after_add_entity', '')
-                self.deactivate_verification_hooks()
+                self.cmd_deactivate_verification_hooks()
             self.info('executing %s', apc)
             confirm = self.confirm
             execscript_confirm = self.execscript_confirm
@@ -308,7 +308,7 @@ class ServerMigrationHelper(MigrationHelper):
                 if self.config.free_wheel:
                     self.repo.hm.register_hook(setowner_after_add_entity,
                                                'after_add_entity', '')
-                    self.reactivate_verification_hooks()
+                    self.cmd_reactivate_verification_hooks()
 
     def install_custom_sql_scripts(self, directory, driver):
         self.session.set_pool() # ensure pool is set
@@ -327,35 +327,33 @@ class ServerMigrationHelper(MigrationHelper):
 
     # schema synchronization internals ########################################
 
-    def _synchronize_permissions(self, ertype):
+    def _synchronize_permissions(self, erschema, teid):
         """permission synchronization for an entity or relation type"""
-        if ertype in VIRTUAL_RTYPES:
+        if erschema in VIRTUAL_RTYPES:
             return
-        newrschema = self.fs_schema[ertype]
-        teid = self.repo.schema[ertype].eid
-        if 'update' in newrschema.ACTIONS or newrschema.final:
+        assert teid, erschema
+        if 'update' in erschema.ACTIONS or erschema.final:
             # entity type
             exprtype = u'ERQLExpression'
         else:
             # relation type
             exprtype = u'RRQLExpression'
-        assert teid, ertype
         gm = self.group_mapping()
         confirm = self.verbosity >= 2
         # * remove possibly deprecated permission (eg in the persistent schema
         #   but not in the new schema)
         # * synchronize existing expressions
         # * add new groups/expressions
-        for action in newrschema.ACTIONS:
+        for action in erschema.ACTIONS:
             perm = '%s_permission' % action
             # handle groups
-            newgroups = list(newrschema.get_groups(action))
+            newgroups = list(erschema.get_groups(action))
             for geid, gname in self.rqlexec('Any G, GN WHERE T %s G, G name GN, '
                                             'T eid %%(x)s' % perm, {'x': teid}, 'x',
                                             ask_confirm=False):
                 if not gname in newgroups:
                     if not confirm or self.confirm('remove %s permission of %s to %s?'
-                                                   % (action, ertype, gname)):
+                                                   % (action, erschema, gname)):
                         self.rqlexec('DELETE T %s G WHERE G eid %%(x)s, T eid %s'
                                      % (perm, teid),
                                      {'x': geid}, 'x', ask_confirm=False)
@@ -363,18 +361,18 @@ class ServerMigrationHelper(MigrationHelper):
                     newgroups.remove(gname)
             for gname in newgroups:
                 if not confirm or self.confirm('grant %s permission of %s to %s?'
-                                               % (action, ertype, gname)):
+                                               % (action, erschema, gname)):
                     self.rqlexec('SET T %s G WHERE G eid %%(x)s, T eid %s'
                                  % (perm, teid),
                                  {'x': gm[gname]}, 'x', ask_confirm=False)
             # handle rql expressions
-            newexprs = dict((expr.expression, expr) for expr in newrschema.get_rqlexprs(action))
+            newexprs = dict((expr.expression, expr) for expr in erschema.get_rqlexprs(action))
             for expreid, expression in self.rqlexec('Any E, EX WHERE T %s E, E expression EX, '
                                                     'T eid %s' % (perm, teid),
                                                     ask_confirm=False):
                 if not expression in newexprs:
                     if not confirm or self.confirm('remove %s expression for %s permission of %s?'
-                                                   % (expression, action, ertype)):
+                                                   % (expression, action, erschema)):
                         # deleting the relation will delete the expression entity
                         self.rqlexec('DELETE T %s E WHERE E eid %%(x)s, T eid %s'
                                      % (perm, teid),
@@ -384,7 +382,7 @@ class ServerMigrationHelper(MigrationHelper):
             for expression in newexprs.values():
                 expr = expression.expression
                 if not confirm or self.confirm('add %s expression for %s permission of %s?'
-                                               % (expr, action, ertype)):
+                                               % (expr, action, erschema)):
                     self.rqlexec('INSERT RQLExpression X: X exprtype %%(exprtype)s, '
                                  'X expression %%(expr)s, X mainvars %%(vars)s, T %s X '
                                  'WHERE T eid %%(x)s' % perm,
@@ -416,9 +414,7 @@ class ServerMigrationHelper(MigrationHelper):
             for subj, obj in rschema.iter_rdefs():
                 if not reporschema.has_rdef(subj, obj):
                     continue
-                self._synchronize_rdef_schema(subj, rschema, obj)
-        if syncperms:
-            self._synchronize_permissions(rtype)
+                self._synchronize_rdef_schema(subj, rschema, obj, syncperms=syncperms)
 
     def _synchronize_eschema(self, etype, syncperms=True):
         """synchronize properties of the persistent entity schema against
@@ -468,9 +464,9 @@ class ServerMigrationHelper(MigrationHelper):
                         continue
                     self._synchronize_rdef_schema(subj, rschema, obj)
         if syncperms:
-            self._synchronize_permissions(etype)
+            self._synchronize_permissions(eschema, repoeschema.eid)
 
-    def _synchronize_rdef_schema(self, subjtype, rtype, objtype):
+    def _synchronize_rdef_schema(self, subjtype, rtype, objtype, syncperms=True):
         """synchronize properties of the persistent relation definition schema
         against its current definition:
         * order and other properties
@@ -489,12 +485,14 @@ class ServerMigrationHelper(MigrationHelper):
         self.rqlexecall(ss.updaterdef2rql(rschema, subjtype, objtype),
                         ask_confirm=confirm)
         # constraints
-        newconstraints = list(rschema.rproperty(subjtype, objtype, 'constraints'))
+        rdef = rschema.rdef(subjtype, objtype)
+        repordef = reporschema.rdef(subjtype, objtype)
+        newconstraints = list(rdef.constraints)
         # 1. remove old constraints and update constraints of the same type
         # NOTE: don't use rschema.constraint_by_type because it may be
         #       out of sync with newconstraints when multiple
         #       constraints of the same type are used
-        for cstr in reporschema.rproperty(subjtype, objtype, 'constraints'):
+        for cstr in repordef.constraints:
             for newcstr in newconstraints:
                 if newcstr.type() == cstr.type():
                     break
@@ -518,12 +516,14 @@ class ServerMigrationHelper(MigrationHelper):
             self.rqlexecall(ss.constraint2rql(rschema, subjtype, objtype,
                                               newcstr),
                             ask_confirm=confirm)
+        if syncperms:
+            self._synchronize_permissions(rdef, repordef.eid)
 
     # base actions ############################################################
 
-    def checkpoint(self):
+    def checkpoint(self, ask_confirm=True):
         """checkpoint action"""
-        if self.confirm('commit now ?', shell=False):
+        if not ask_confirm or self.confirm('commit now ?', shell=False):
             self.commit()
 
     def cmd_add_cube(self, cube, update_database=True):
@@ -686,12 +686,9 @@ class ServerMigrationHelper(MigrationHelper):
             eschema = self.fs_schema.eschema(etype)
         confirm = self.verbosity >= 2
         # register the entity into CWEType
-        self.rqlexecall(ss.eschema2rql(eschema), ask_confirm=confirm)
+        self.rqlexecall(ss.eschema2rql(eschema, self.group_mapping()), ask_confirm=confirm)
         # add specializes relation if needed
         self.rqlexecall(ss.eschemaspecialize2rql(eschema), ask_confirm=confirm)
-        # register groups / permissions for the entity
-        self.rqlexecall(ss.erperms2rql(eschema, self.group_mapping()),
-                        ask_confirm=confirm)
         # register entity's attributes
         for rschema, attrschema in eschema.attribute_definitions():
             # ignore those meta relations, they will be automatically added
@@ -714,8 +711,8 @@ class ServerMigrationHelper(MigrationHelper):
                 continue
             if instspschema.specializes() != eschema:
                 self.rqlexec('SET D specializes P WHERE D eid %(d)s, P name %(pn)s',
-                              {'d': instspschema.eid,
-                               'pn': eschema.type}, ask_confirm=confirm)
+                             {'d': instspschema.eid,
+                              'pn': eschema.type}, ask_confirm=confirm)
                 for rschema, tschemas, role in spschema.relation_definitions(True):
                     for tschema in tschemas:
                         if not tschema in instschema:
@@ -828,12 +825,9 @@ class ServerMigrationHelper(MigrationHelper):
         # definitions
         self.rqlexecall(ss.rschema2rql(rschema, addrdef=False),
                         ask_confirm=self.verbosity>=2)
-        # register groups / permissions for the relation
-        self.rqlexecall(ss.erperms2rql(rschema, self.group_mapping()),
-                        ask_confirm=self.verbosity>=2)
         if addrdef:
             self.commit()
-            self.rqlexecall(ss.rdef2rql(rschema),
+            self.rqlexecall(ss.rdef2rql(rschema, groupmap=self.group_mapping()),
                             ask_confirm=self.verbosity>=2)
             if rtype in META_RTYPES:
                 # if the relation is in META_RTYPES, ensure we're adding it for
@@ -880,7 +874,7 @@ class ServerMigrationHelper(MigrationHelper):
         rschema = self.fs_schema.rschema(rtype)
         if not rtype in self.repo.schema:
             self.cmd_add_relation_type(rtype, addrdef=False, commit=True)
-        self.rqlexecall(ss.rdef2rql(rschema, subjtype, objtype),
+        self.rqlexecall(ss.rdef2rql(rschema, subjtype, objtype, groupmap=self.group_mapping()),
                         ask_confirm=self.verbosity>=2)
         if commit:
             self.commit()
@@ -913,7 +907,8 @@ class ServerMigrationHelper(MigrationHelper):
             if isinstance(ertype, (tuple, list)):
                 assert len(ertype) == 3, 'not a relation definition'
                 assert syncprops, 'can\'t update permission for a relation definition'
-                self._synchronize_rdef_schema(*ertype)
+                self._synchronize_rdef_schema(ertype[0], ertype[1], ertype[2],
+                                              syncperms=syncperms)
             elif syncprops:
                 erschema = self.repo.schema[ertype]
                 if isinstance(erschema, CubicWebRelationSchema):
@@ -922,13 +917,14 @@ class ServerMigrationHelper(MigrationHelper):
                 else:
                     self._synchronize_eschema(erschema, syncperms=syncperms)
             else:
-                self._synchronize_permissions(ertype)
+                erschema = self.repo.schema[ertype]
+                self._synchronize_permissions(self.fs_schema[ertype], erschema.eid)
         else:
             for etype in self.repo.schema.entities():
                 if syncprops:
                     self._synchronize_eschema(etype, syncperms=syncperms)
                 else:
-                    self._synchronize_permissions(etype)
+                    self._synchronize_permissions(self.fs_schema[etype], erschema.eid)
         if commit:
             self.commit()
 
@@ -1171,10 +1167,10 @@ class ServerMigrationHelper(MigrationHelper):
         return ForRqlIterator(self, rql, None, ask_confirm)
 
     def cmd_deactivate_verification_hooks(self):
-        self.repo.hm.deactivate_verification_hooks()
+        self.config.disabled_hooks_categories.add('integrity')
 
     def cmd_reactivate_verification_hooks(self):
-        self.repo.hm.reactivate_verification_hooks()
+        self.config.disabled_hooks_categories.remove('integrity')
 
     # broken db commands ######################################################
 
