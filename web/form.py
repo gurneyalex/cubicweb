@@ -18,7 +18,6 @@ from cubicweb.web import stdmsgs, httpcache, formfields
 class FormViewMixIn(object):
     """abstract form view mix-in"""
     category = 'form'
-    controller = 'edit'
     http_cache_manager = httpcache.NoHTTPCacheManager
     add_to_breadcrumbs = False
 
@@ -215,11 +214,16 @@ class FieldNotFound(Exception):
     found
     """
 
-class Form(FormMixIn, AppObject):
+class Form(AppObject):
     __metaclass__ = metafieldsform
     __registry__ = 'forms'
 
     parent_form = None
+    force_session_key = None
+
+    def __init__(self, req, rset, **kwargs):
+        super(Form, self).__init__(req, rset=rset, **kwargs)
+        self.restore_previous_post(self.session_key())
 
     @property
     def root_form(self):
@@ -227,6 +231,18 @@ class Form(FormMixIn, AppObject):
         if self.parent_form is None:
             return self
         return self.parent_form.root_form
+
+    @property
+    def form_previous_values(self):
+        if self.parent_form is None:
+            return self._form_previous_values
+        return self.parent_form.form_previous_values
+
+    @property
+    def form_valerror(self):
+        if self.parent_form is None:
+            return self._form_valerror
+        return self.parent_form.form_valerror
 
     @iclassmethod
     def _fieldsattr(cls_or_self):
@@ -273,3 +289,35 @@ class Form(FormMixIn, AppObject):
         field = cls_or_self.field_by_name(name, role)
         fields = cls_or_self._fieldsattr()
         fields.insert(fields.index(field)+1, new_field)
+
+    def session_key(self):
+        """return the key that may be used to store / retreive data about a
+        previous post which failed because of a validation error
+        """
+        if self.force_session_key is None:
+            return '%s#%s' % (self.req.url(), self.domid)
+        return self.force_session_key
+
+    def restore_previous_post(self, sessionkey):
+        # get validation session data which may have been previously set.
+        # deleting validation errors here breaks form reloading (errors are
+        # no more available), they have to be deleted by application's publish
+        # method on successful commit
+        forminfo = self._cw.get_session_data(sessionkey, pop=True)
+        if forminfo:
+            # XXX remove _cw.data assigment once cw.web.widget is killed
+            self._cw.data['formvalues'] = self._form_previous_values = forminfo['values']
+            self._cw.data['formerrors'] = self._form_valerror = forminfo['errors']
+            self._cw.data['displayederrors'] = self.form_displayed_errors = set()
+            # if some validation error occured on entity creation, we have to
+            # get the original variable name from its attributed eid
+            foreid = self.form_valerror.entity
+            for var, eid in forminfo['eidmap'].items():
+                if foreid == eid:
+                    self.form_valerror.eid = var
+                    break
+            else:
+                self.form_valerror.eid = foreid
+        else:
+            self._form_previous_values = {}
+            self._form_valerror = None
