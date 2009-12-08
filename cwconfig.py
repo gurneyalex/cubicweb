@@ -331,6 +331,10 @@ this option is set to yes",
     def available_cubes(cls):
         cubes = set()
         for directory in cls.cubes_search_path():
+            if not os.path.exists(directory):
+                self.error('unexistant directory in cubes search path: %s'
+                           % directory)
+                continue
             for cube in os.listdir(directory):
                 if isdir(join(directory, cube)) and not cube == 'shared':
                     cubes.add(cube)
@@ -922,11 +926,11 @@ the repository',
 
     def migration_handler(self):
         """return a migration handler instance"""
-        from cubicweb.common.migration import MigrationHelper
+        from cubicweb.migration import MigrationHelper
         return MigrationHelper(self, verbosity=self.verbosity)
 
     def i18ncompile(self, langs=None):
-        from cubicweb.common import i18n
+        from cubicweb import i18n
         if langs is None:
             langs = self.available_languages()
         i18ndir = join(self.apphome, 'i18n')
