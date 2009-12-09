@@ -196,7 +196,7 @@ class PrimaryView(EntityView):
                 # default to 1000 so view boxes occurs after component boxes
                 return x[-1].get('order', 1000)
             # x is a component box
-            return x.propval('order')
+            return x.cw_propval('order')
         return sorted(sideboxes, key=get_order)
 
     def _section_def(self, entity, where):
