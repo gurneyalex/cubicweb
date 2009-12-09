@@ -109,8 +109,8 @@ def _may_be_removed(rel, schema, mainvar):
     if rel.optional in (opt, 'both'):
         # optional relation
         return ovar
-    if all(rdefs.cardinality[cardidx] in '1+'
-           for rdefs in rschema.rdefs.itervalues()):
+    if all(rdef.cardinality[cardidx] in '1+'
+           for rdef in rschema.rdefs.values()):
         # mandatory relation without any restriction on the other variable
         for orel in ovar.stinfo['relations']:
             if rel is orel:
