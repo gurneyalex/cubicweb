@@ -6,19 +6,9 @@
 :license: GNU Lesser General Public License, v2.1 - http://www.gnu.org/licenses
 """
 from logilab.common.testlib import unittest_main
-from cubicweb.devtools.apptest import EnvBasedTC
+from cubicweb.devtools.testlib import CubicWebTC
 
-class HooksTC(EnvBasedTC):
-
-    def test_euser_login_stripped(self):
-        u = self.create_user('  joe  ')
-        tname = self.execute('Any L WHERE E login L, E eid %(e)s',
-                             {'e': u.eid})[0][0]
-        self.assertEquals(tname, 'joe')
-        self.execute('SET X login " jijoe " WHERE X eid %(x)s', {'x': u.eid})
-        tname = self.execute('Any L WHERE E login L, E eid %(e)s',
-                             {'e': u.eid})[0][0]
-        self.assertEquals(tname, 'jijoe')
+class BookmarkHooksTC(CubicWebTC):
 
 
     def test_auto_delete_bookmarks(self):
