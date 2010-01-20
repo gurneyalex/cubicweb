@@ -10,10 +10,11 @@ __docformat__ = "restructuredtext en"
 from datetime import date
 from warnings import warn
 
-from cubicweb.common import tags, uilib
-from cubicweb.web import stdmsgs, INTERNAL_FIELD_VALUE
-
 from logilab.mtconverter import xml_escape
+from logilab.common.deprecation import deprecated
+
+from cubicweb import tags, uilib
+from cubicweb.web import stdmsgs, INTERNAL_FIELD_VALUE, ProcessFormError
 
 class FieldWidget(object):
     """abstract widget class"""
@@ -40,9 +41,9 @@ class FieldWidget(object):
     def add_media(self, form):
         """adds media (CSS & JS) required by this widget"""
         if self.needs_js:
-            form.req.add_js(self.needs_js)
+            form._cw.add_js(self.needs_js)
         if self.needs_css:
-            form.req.add_css(self.needs_css)
+            form._cw.add_css(self.needs_css)
 
     def render(self, form, field, renderer):
         """render the widget for the given `field` of `form`.
@@ -50,19 +51,30 @@ class FieldWidget(object):
         """
         raise NotImplementedError
 
-    def _render_attrs(self, form, field):
-        """return html tag name, attributes and a list of values for the field
-        """
-        name = form.context[field]['name']
-        values = form.context[field]['value']
+    def values_and_attributes(self, form, field):
+        values = field.display_value(form)
         if not isinstance(values, (tuple, list)):
             values = (values,)
         attrs = dict(self.attrs)
         if self.setdomid:
-            attrs['id'] = form.context[field]['id']
+            attrs['id'] = field.dom_id(form)
         if self.settabindex and not 'tabindex' in attrs:
-            attrs['tabindex'] = form.req.next_tabindex()
-        return name, values, attrs
+            attrs['tabindex'] = form._cw.next_tabindex()
+        return values, attrs
+
+    def process_field_data(self, form, field):
+        posted = form._cw.form
+        val = posted.get(field.input_name(form))
+        if isinstance(val, basestring):
+            val = val.strip() or None
+        return val
+
+    @deprecated('[3.6] use values_and_attributes')
+    def _render_attrs(self, form, field):
+        """return html tag name, attributes and a list of values for the field
+        """
+        values, attrs = self.values_and_attributes(form, field)
+        return field.input_name(form), values, attrs
 
 
 class Input(FieldWidget):
@@ -75,11 +87,12 @@ class Input(FieldWidget):
         Generate one <input> tag for each field's value
         """
         self.add_media(form)
-        name, values, attrs = self._render_attrs(form, field)
+        values, attrs = self.values_and_attributes(form, field)
         # ensure something is rendered
         if not values:
             values = (INTERNAL_FIELD_VALUE,)
-        inputs = [tags.input(name=name, value=value, type=self.type, **attrs)
+        inputs = [tags.input(name=field.input_name(form), type=self.type,
+                             value=value, **attrs)
                   for value in values]
         return u'\n'.join(inputs)
 
@@ -99,36 +112,47 @@ class PasswordInput(Input):
 
     def render(self, form, field, renderer):
         self.add_media(form)
-        name, values, attrs = self._render_attrs(form, field)
+        values, attrs = self.values_and_attributes(form, field)
         assert len(values) == 1
         id = attrs.pop('id')
-        try:
-            confirmname = '%s-confirm:%s' % tuple(name.rsplit(':', 1))
-        except TypeError:
-            confirmname = '%s-confirm' % name
-        inputs = [tags.input(name=name, value=values[0], type=self.type, id=id,
-                             **attrs),
+        inputs = [tags.input(name=field.input_name(form),
+                             value=values[0], type=self.type, id=id, **attrs),
                   '<br/>',
-                  tags.input(name=confirmname, value=values[0], type=self.type,
-                             **attrs),
-                  '&#160;', tags.span(form.req._('confirm password'),
+                  tags.input(name=field.input_name(form, '-confirm'),
+                             value=values[0], type=self.type, **attrs),
+                  '&#160;', tags.span(form._cw._('confirm password'),
                                       **{'class': 'emphasis'})]
         return u'\n'.join(inputs)
+
+    def process_field_data(self, form, field):
+        passwd1 = super(PasswordInput, self).process_field_data(form, field)
+        passwd2 = form._cw.form.get(field.input_name(form, '-confirm'))
+        if passwd1 == passwd2:
+            if passwd1 is None:
+                return None
+            return passwd1.encode('utf-8')
+        raise ProcessFormError(form._cw._("password and confirmation don't match"))
 
 
 class PasswordSingleInput(Input):
     """<input type='password'> without a confirmation field"""
     type = 'password'
 
+    def process_field_data(self, form, field):
+        value = super(PasswordSingleInput, self).process_field_data(form, field)
+        if value is not None:
+            return value.encode('utf-8')
+        return value
+
 
 class FileInput(Input):
     """<input type='file'>"""
     type = 'file'
 
-    def _render_attrs(self, form, field):
+    def values_and_attributes(self, form, field):
         # ignore value which makes no sense here (XXX even on form validation error?)
-        name, values, attrs = super(FileInput, self)._render_attrs(form, field)
-        return name, ('',), attrs
+        values, attrs = super(FileInput, self).values_and_attributes(form, field)
+        return ('',), attrs
 
 
 class HiddenInput(Input):
@@ -151,7 +175,7 @@ class TextArea(FieldWidget):
     """<textarea>"""
 
     def render(self, form, field, renderer):
-        name, values, attrs = self._render_attrs(form, field)
+        values, attrs = self.values_and_attributes(form, field)
         attrs.setdefault('onkeyup', 'autogrow(this)')
         if not values:
             value = u''
@@ -165,7 +189,7 @@ class TextArea(FieldWidget):
             linecount += len(line) / 80
         attrs.setdefault('cols', 80)
         attrs.setdefault('rows', min(15, linecount + 2))
-        return tags.textarea(value, name=name, **attrs)
+        return tags.textarea(value, name=field.input_name(form), **attrs)
 
 
 class FCKEditor(TextArea):
@@ -175,7 +199,7 @@ class FCKEditor(TextArea):
         self.attrs['cubicweb:type'] = 'wysiwyg'
 
     def render(self, form, field, renderer):
-        form.req.fckeditor_config()
+        form._cw.fckeditor_config()
         return super(FCKEditor, self).render(form, field, renderer)
 
 
@@ -188,7 +212,7 @@ class Select(FieldWidget):
         self._multiple = multiple
 
     def render(self, form, field, renderer):
-        name, curvalues, attrs = self._render_attrs(form, field)
+        curvalues, attrs = self.values_and_attributes(form, field)
         if not 'size' in attrs:
             attrs['size'] = self._multiple and '5' or '1'
         options = []
@@ -213,7 +237,7 @@ class Select(FieldWidget):
                 options.append(tags.option(label, value=value, **oattrs))
         if optgroup_opened:
             options.append(u'</optgroup>')
-        return tags.select(name=name, multiple=self._multiple,
+        return tags.select(name=field.input_name(form), multiple=self._multiple,
                            options=options, **attrs)
 
 
@@ -225,7 +249,7 @@ class CheckBox(Input):
     vocabulary_widget = True
 
     def render(self, form, field, renderer):
-        name, curvalues, attrs = self._render_attrs(form, field)
+        curvalues, attrs = self.values_and_attributes(form, field)
         domid = attrs.pop('id', None)
         sep = attrs.pop('separator', u'<br/>\n')
         options = []
@@ -241,7 +265,8 @@ class CheckBox(Input):
                 iattrs.setdefault('id', domid)
             if value in curvalues:
                 iattrs['checked'] = u'checked'
-            tag = tags.input(name=name, type=self.type, value=value, **iattrs)
+            tag = tags.input(name=field.input_name(form), type=self.type,
+                             value=value, **iattrs)
             options.append(tag + label)
         return sep.join(options)
 
@@ -276,9 +301,9 @@ autoform_section.tag_attribute(('Concert', 'maxprice'), 'generated')
         actual_fields = field.fields
         assert len(actual_fields) == 2
         return u'<div>%s %s %s %s</div>' % (
-            form.req._('from_interval_start'),
+            form._cw._('from_interval_start'),
             actual_fields[0].render(form, renderer),
-            form.req._('to_interval_end'),
+            form._cw._('to_interval_end'),
             actual_fields[1].render(form, renderer),
             )
 
@@ -316,7 +341,7 @@ class DateTimePicker(TextInput):
     @classmethod
     def add_localized_infos(cls, req):
         """inserts JS variables defining localized months and days"""
-        # import here to avoid dependancy from cubicweb-common to simplejson
+        # import here to avoid dependancy from cubicweb to simplejson
         _ = req._
         monthnames = [_(mname) for mname in cls.monthnames]
         daynames = [_(dname) for dname in cls.daynames]
@@ -325,22 +350,22 @@ class DateTimePicker(TextInput):
 
     def render(self, form, field, renderer):
         txtwidget = super(DateTimePicker, self).render(form, field, renderer)
-        self.add_localized_infos(form.req)
+        self.add_localized_infos(form._cw)
         cal_button = self._render_calendar_popup(form, field)
         return txtwidget + cal_button
 
     def _render_calendar_popup(self, form, field):
-        value = form.form_field_value(field)
+        value = field.typed_value(form)
         if not value:
             value = date.today()
-        inputid = form.context[field]['id']
+        inputid = field.dom_id(form)
         helperid = '%shelper' % inputid
         year, month = value.year, value.month
         return (u"""<a onclick="toggleCalendar('%s', '%s', %s, %s);" class="calhelper">
 <img src="%s" title="%s" alt="" /></a><div class="calpopup hidden" id="%s"></div>"""
                 % (helperid, inputid, year, month,
-                   form.req.external_resource('CALENDAR_ICON'),
-                   form.req._('calendar'), helperid) )
+                   form._cw.external_resource('CALENDAR_ICON'),
+                   form._cw._('calendar'), helperid) )
 
 
 
@@ -365,7 +390,7 @@ class AjaxWidget(FieldWidget):
 
     def render(self, form, field, renderer):
         self.add_media(form)
-        attrs = self._render_attrs(form, field)[-1]
+        attrs = self.values_and_attributes(form, field)[-1]
         return tags.div(**attrs)
 
 
@@ -389,14 +414,14 @@ class AutoCompletionWidget(TextInput):
             self.autocomplete_initfunc = None
         super(AutoCompletionWidget, self).__init__(*args, **kwargs)
 
-    def _render_attrs(self, form, field):
-        name, values, attrs = super(AutoCompletionWidget, self)._render_attrs(form, field)
+    def values_and_attributes(self, form, field):
+        values, attrs = super(AutoCompletionWidget, self).values_and_attributes(form, field)
         init_ajax_attributes(attrs, self.wdgtype, self.loadtype)
         # XXX entity form specific
         attrs['cubicweb:dataurl'] = self._get_url(form.edited_entity, field)
         if not values:
             values = ('',)
-        return name, values, attrs
+        return values, attrs
 
     def _get_url(self, entity, field):
         if self.autocomplete_initfunc is None:
@@ -404,8 +429,8 @@ class AutoCompletionWidget(TextInput):
             fname = entity.autocomplete_initfuncs[field.name]
         else:
             fname = self.autocomplete_initfunc
-        return entity.req.build_url('json', fname=fname, mode='remote',
-                                    pageid=entity.req.pageid)
+        return entity._cw.build_url('json', fname=fname, mode='remote',
+                                    pageid=entity._cw.pageid)
 
 
 class StaticFileAutoCompletionWidget(AutoCompletionWidget):
@@ -418,7 +443,7 @@ class StaticFileAutoCompletionWidget(AutoCompletionWidget):
             fname = entity.autocomplete_initfuncs[field.name]
         else:
             fname = self.autocomplete_initfunc
-        return entity.req.datadir_url + fname
+        return entity._cw.datadir_url + fname
 
 
 class RestrictedAutoCompletionWidget(AutoCompletionWidget):
@@ -427,15 +452,15 @@ class RestrictedAutoCompletionWidget(AutoCompletionWidget):
 
 
 class AddComboBoxWidget(Select):
-    def _render_attrs(self, form, field):
-        name, values, attrs = super(AddComboBoxWidget, self)._render_attrs(form, field)
+    def values_and_attributes(self, form, field):
+        values, attrs = super(AddComboBoxWidget, self).values_and_attributes(form, field)
         init_ajax_attributes(self.attrs, 'AddComboBox')
         # XXX entity form specific
         entity = form.edited_entity
         attrs['cubicweb:etype_to'] = entity.e_schema
         etype_from = entity.e_schema.subjrels[field.name].objects(entity.e_schema)[0]
         attrs['cubicweb:etype_from'] = etype_from
-        return name, values, attrs
+        return values, attrs
 
     def render(self, form, field, renderer):
         return super(AddComboBoxWidget, self).render(form, field, renderer) + u'''
@@ -470,7 +495,7 @@ class Button(Input):
         self.attrs.setdefault('klass', 'validateButton')
 
     def render(self, form, field=None, renderer=None):
-        label = form.req._(self.label)
+        label = form._cw._(self.label)
         attrs = self.attrs.copy()
         if self.cwaction:
             assert self.onclick is None
@@ -483,9 +508,9 @@ class Button(Input):
             if self.setdomid:
                 attrs['id'] = self.name
         if self.settabindex and not 'tabindex' in attrs:
-            attrs['tabindex'] = form.req.next_tabindex()
+            attrs['tabindex'] = form._cw.next_tabindex()
         if self.icon:
-            img = tags.img(src=form.req.external_resource(self.icon), alt=self.icon)
+            img = tags.img(src=form._cw.external_resource(self.icon), alt=self.icon)
         else:
             img = u''
         return tags.button(img + xml_escape(label), escapecontent=False,
@@ -518,8 +543,8 @@ class ImgButton(object):
         self.label = label
 
     def render(self, form, field=None, renderer=None):
-        label = form.req._(self.label)
-        imgsrc = form.req.external_resource(self.imgressource)
+        label = form._cw._(self.label)
+        imgsrc = form._cw.external_resource(self.imgressource)
         return '<a id="%(domid)s" href="%(href)s">'\
                '<img src="%(imgsrc)s" alt="%(label)s"/>%(label)s</a>' % {
             'label': label, 'imgsrc': imgsrc,
