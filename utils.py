@@ -18,6 +18,7 @@ from datetime import datetime, timedelta, date
 from time import time, mktime
 from random import randint, seed
 from calendar import monthrange
+import decimal
 
 # initialize random seed from current time
 seed()
