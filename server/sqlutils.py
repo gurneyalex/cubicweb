@@ -23,7 +23,7 @@ from indexer import get_indexer
 
 from cubicweb import Binary, ConfigurationError
 from cubicweb.utils import todate, todatetime
-from cubicweb.common.uilib import remove_html_tags
+from cubicweb.uilib import remove_html_tags
 from cubicweb.toolsutils import restrict_perms_to_user
 from cubicweb.schema import PURE_VIRTUAL_RTYPES
 from cubicweb.server import SQL_CONNECT_HOOKS
@@ -313,6 +313,29 @@ def init_sqlite_connexion(cnx):
     import yams.constraints
     if hasattr(yams.constraints, 'patch_sqlite_decimal'):
         yams.constraints.patch_sqlite_decimal()
+
+    def fspath(eid, etype, attr):
+        try:
+            cu = cnx.cursor()
+            cu.execute('SELECT X.cw_%s FROM cw_%s as X '
+                       'WHERE X.cw_eid=%%(eid)s' % (attr, etype),
+                       {'eid': eid})
+            return cu.fetchone()[0]
+        except:
+            import traceback
+            traceback.print_exc()
+            raise
+    cnx.create_function('fspath', 3, fspath)
+
+    def _fsopen(fspath):
+        if fspath:
+            try:
+                return buffer(file(fspath).read())
+            except:
+                import traceback
+                traceback.print_exc()
+                raise
+    cnx.create_function('_fsopen', 1, _fsopen)
 
 
 sqlite_hooks = SQL_CONNECT_HOOKS.setdefault('sqlite', [])

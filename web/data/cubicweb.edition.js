@@ -331,15 +331,22 @@ function _displayValidationerrors(formid, eid, errors) {
     for (fieldname in errors) {
 	var errmsg = errors[fieldname];
 	var fieldid = fieldname + ':' + eid;
-	var field = jqNode(fieldname + ':' + eid);
-	if (field && getNodeAttribute(field, 'type') != 'hidden') {
-	    if ( !firsterrfield ) {
-		firsterrfield = 'err-' + fieldid;
+	var suffixes = ['', '-subject', '-object'];
+	var found = false;
+	for (var i=0, length=suffixes.length; i<length;i++) {
+	    var field = jqNode(fieldname + suffixes[i] + ':' + eid);
+	    if (field && getNodeAttribute(field, 'type') != 'hidden') {
+		if ( !firsterrfield ) {
+		    firsterrfield = 'err-' + fieldid;
+		}
+		addElementClass(field, 'error');
+		var span = SPAN({'id': 'err-' + fieldid, 'class': "error"}, errmsg);
+		field.before(span);
+		found = true;
+		break;
 	    }
-	    addElementClass(field, 'error');
-	    var span = SPAN({'id': 'err-' + fieldid, 'class': "error"}, errmsg);
-	    field.before(span);
-	} else {
+	}
+	if (!found) {
 	    firsterrfield = formid;
 	    globalerrors.push(_(fieldname) + ' : ' + errmsg);
 	}
@@ -348,7 +355,7 @@ function _displayValidationerrors(formid, eid, errors) {
 	if (globalerrors.length == 1) {
 	    var innernode = SPAN(null, globalerrors[0]);
 	} else {
-	    var innernode = UL(null, map(LI, globalerrors));
+	    var innernode = UL(null, map(partial(LI, null), globalerrors));
 	}
 	// insert DIV and innernode before the form
 	var div = DIV({'class' : "errorMessage", 'id': formid + 'ErrorMessage'});
@@ -407,11 +414,14 @@ function freezeFormButtons(formid) {
 function postForm(bname, bvalue, formid) {
     var form = getNode(formid);
     if (bname) {
-	form.appendChild(INPUT({type: 'hidden', name: bname, value: bvalue}));
+	var child = form.appendChild(INPUT({type: 'hidden', name: bname, value: bvalue}));
     }
     var onsubmit = form.onsubmit;
     if (!onsubmit || (onsubmit && onsubmit())) {
 	form.submit();
+    }
+    if (bname) {
+	jQuery(child).remove(); /* cleanup */
     }
 }
 

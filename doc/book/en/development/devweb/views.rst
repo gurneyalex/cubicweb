@@ -162,7 +162,7 @@ Let us now improve the primary view of a blog
              self.w(u'<p>%s</p>' % entry.view('inblogcontext'))
 
  class BlogEntryInBlogView(EntityView):
-     'inblogcontext'
+     id = 'inblogcontext'
      __select__ = implements('BlogEntry')
 
      def cell_call(self, row, col):
