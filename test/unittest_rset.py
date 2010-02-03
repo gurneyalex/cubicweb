@@ -1,5 +1,5 @@
 # coding: utf-8
-"""unit tests for module cubicweb.common.utils
+"""unit tests for module cubicweb.utils
 
 :organization: Logilab
 :copyright: 2001-2010 LOGILAB S.A. (Paris, FRANCE), license is LGPL v2.
@@ -10,7 +10,7 @@
 
 from logilab.common.testlib import TestCase, unittest_main
 
-from cubicweb.devtools.apptest import EnvBasedTC
+from cubicweb.devtools.testlib import CubicWebTC
 from cubicweb.selectors import traced_selection
 
 from urlparse import urlsplit
@@ -55,7 +55,7 @@ class AttrDescIteratorTC(TestCase):
 
 
 
-class ResultSetTC(EnvBasedTC):
+class ResultSetTC(CubicWebTC):
 
     def setUp(self):
         super(ResultSetTC, self).setUp()
@@ -100,12 +100,12 @@ class ResultSetTC(EnvBasedTC):
                        'Any U,L where U is CWUser, U login L',
                        description=[['CWUser', 'String']] * 3)
         rs.req = self.request()
-        rs.vreg = self.env.vreg
+        rs.vreg = self.vreg
 
         self.assertEquals(rs.limit(2).rows, [[12000, 'adim'], [13000, 'syt']])
         rs2 = rs.limit(2, offset=1)
         self.assertEquals(rs2.rows, [[13000, 'syt'], [14000, 'nico']])
-        self.assertEquals(rs2.get_entity(0, 0).row, 0)
+        self.assertEquals(rs2.get_entity(0, 0).cw_row, 0)
         self.assertEquals(rs.limit(2, offset=2).rows, [[14000, 'nico']])
         self.assertEquals(rs.limit(2, offset=3).rows, [])
 
@@ -115,7 +115,7 @@ class ResultSetTC(EnvBasedTC):
                        'Any U,L where U is CWUser, U login L',
                        description=[['CWUser', 'String']] * 3)
         rs.req = self.request()
-        rs.vreg = self.env.vreg
+        rs.vreg = self.vreg
         def test_filter(entity):
             return entity.login != 'nico'
 
@@ -140,7 +140,7 @@ class ResultSetTC(EnvBasedTC):
                        'Any U,L where U is CWUser, U login L',
                        description=[['CWUser', 'String']] * 3)
         rs.req = self.request()
-        rs.vreg = self.env.vreg
+        rs.vreg = self.vreg
 
         rs2 = rs.sorted_rset(lambda e:e['login'])
         self.assertEquals(len(rs2), 3)
@@ -170,7 +170,7 @@ class ResultSetTC(EnvBasedTC):
                        'D created_by U, D title T',
                        description=[['CWUser', 'String', 'String']] * 5)
         rs.req = self.request()
-        rs.vreg = self.env.vreg
+        rs.vreg = self.vreg
 
         rsets = rs.split_rset(lambda e:e['login'])
         self.assertEquals(len(rsets), 3)
@@ -229,16 +229,16 @@ class ResultSetTC(EnvBasedTC):
         rset = self.execute('Any X,Y,XT,YN WHERE X bookmarked_by Y, X title XT, Y login YN')
 
         e = rset.get_entity(0, 0)
-        self.assertEquals(e.row, 0)
-        self.assertEquals(e.col, 0)
+        self.assertEquals(e.cw_row, 0)
+        self.assertEquals(e.cw_col, 0)
         self.assertEquals(e['title'], 'zou')
         self.assertRaises(KeyError, e.__getitem__, 'path')
         self.assertEquals(e.view('text'), 'zou')
         self.assertEquals(pprelcachedict(e._related_cache), [])
 
         e = rset.get_entity(0, 1)
-        self.assertEquals(e.row, 0)
-        self.assertEquals(e.col, 1)
+        self.assertEquals(e.cw_row, 0)
+        self.assertEquals(e.cw_col, 1)
         self.assertEquals(e['login'], 'anon')
         self.assertRaises(KeyError, e.__getitem__, 'firstname')
         self.assertEquals(pprelcachedict(e._related_cache),
@@ -304,8 +304,8 @@ class ResultSetTC(EnvBasedTC):
                     ('Bookmark', 'manger'), ('CWGroup', 'owners'),
                     ('CWGroup', 'users'))
         for entity in rset.entities(): # test get_entity for each row actually
-            etype, n = expected[entity.row]
-            self.assertEquals(entity.id, etype)
+            etype, n = expected[entity.cw_row]
+            self.assertEquals(entity.__regid__, etype)
             attr = etype == 'Bookmark' and 'title' or 'name'
             self.assertEquals(entity[attr], n)
 
@@ -326,7 +326,7 @@ class ResultSetTC(EnvBasedTC):
         self.assertEquals(entity.eid, e.eid)
         self.assertEquals(rtype, 'title')
         entity, rtype = rset.related_entity(1, 1)
-        self.assertEquals(entity.id, 'CWGroup')
+        self.assertEquals(entity.__regid__, 'CWGroup')
         self.assertEquals(rtype, 'name')
         #
         rset = self.execute('Any X,N ORDERBY N WHERE X is Bookmark WITH X,N BEING '
@@ -344,6 +344,14 @@ class ResultSetTC(EnvBasedTC):
         entity, rtype = rset.related_entity(0, 1)
         self.assertEquals(entity.eid, e.eid)
         self.assertEquals(rtype, 'title')
+
+    def test_related_entity_trap_subquery(self):
+        req = self.request()
+        req.create_entity('Bookmark', title=u'test bookmark', path=u'')
+        self.execute('SET B bookmarked_by U WHERE U login "admin"')
+        rset = self.execute('Any B,T,L WHERE B bookmarked_by U, U login L '
+                            'WITH B,T BEING (Any B,T WHERE B is Bookmark, B title T)')
+        rset.related_entity(0, 2)
 
     def test_entities(self):
         rset = self.execute('Any U,G WHERE U in_group G')
