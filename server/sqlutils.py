@@ -23,7 +23,7 @@ from indexer import get_indexer
 
 from cubicweb import Binary, ConfigurationError
 from cubicweb.utils import todate, todatetime
-from cubicweb.common.uilib import remove_html_tags
+from cubicweb.uilib import remove_html_tags
 from cubicweb.toolsutils import restrict_perms_to_user
 from cubicweb.schema import PURE_VIRTUAL_RTYPES
 from cubicweb.server import SQL_CONNECT_HOOKS
@@ -32,6 +32,15 @@ from cubicweb.server.utils import crypt_password
 
 lgc.USE_MX_DATETIME = False
 SQL_PREFIX = 'cw_'
+
+def _run_command(cmd):
+    """backup/restore command are string w/ lgc < 0.47, lists with earlier versions
+    """
+    if isinstance(cmd, basestring):
+        print '->', cmd
+        return subprocess.call(cmd, shell=True)
+    print ' '.join(cmd)
+    return subprocess.call(cmd)
 
 
 def sqlexec(sqlstmts, cursor_or_execute, withpb=not os.environ.get('APYCOT_ROOT'),
@@ -171,11 +180,12 @@ class SQLAdapterMixIn(object):
         return cnx
 
     def backup_to_file(self, backupfile):
-        cmd = self.dbhelper.backup_command(self.dbname, self.dbhost,
-                                           self.dbuser, backupfile,
-                                           keepownership=False)
-        if subprocess.call(cmd, shell=isinstance(cmd, str)):
-            raise Exception('Failed command: %s' % cmd)
+        for cmd in self.dbhelper.backup_commands(self.dbname, self.dbhost,
+                                                 self.dbuser, backupfile,
+                                                 keepownership=False):
+            if _run_command(cmd):
+                if not confirm('   [Failed] Continue anyway?', default='n'):
+                    raise Exception('Failed command: %s' % cmd)
 
     def restore_from_file(self, backupfile, confirm, drop=True):
         for cmd in self.dbhelper.restore_commands(self.dbname, self.dbhost,
@@ -183,9 +193,8 @@ class SQLAdapterMixIn(object):
                                                   self.encoding,
                                                   keepownership=False,
                                                   drop=drop):
-            if subprocess.call(cmd, shell=isinstance(cmd, str)):
-                print '-> Failed command: %s' % cmd
-                if not confirm('Continue anyway?', default='n'):
+            if _run_command(cmd):
+                if not confirm('   [Failed] Continue anyway?', default='n'):
                     raise Exception('Failed command: %s' % cmd)
 
     def merge_args(self, args, query_args):
@@ -228,7 +237,6 @@ class SQLAdapterMixIn(object):
                 result.append(process_value(value, descr[col], encoding, binary))
             results[i] = result
         return results
-
 
     def preprocess_entity(self, entity):
         """return a dictionary to use as extra argument to cursor.execute
@@ -313,6 +321,29 @@ def init_sqlite_connexion(cnx):
     import yams.constraints
     if hasattr(yams.constraints, 'patch_sqlite_decimal'):
         yams.constraints.patch_sqlite_decimal()
+
+    def fspath(eid, etype, attr):
+        try:
+            cu = cnx.cursor()
+            cu.execute('SELECT X.cw_%s FROM cw_%s as X '
+                       'WHERE X.cw_eid=%%(eid)s' % (attr, etype),
+                       {'eid': eid})
+            return cu.fetchone()[0]
+        except:
+            import traceback
+            traceback.print_exc()
+            raise
+    cnx.create_function('fspath', 3, fspath)
+
+    def _fsopen(fspath):
+        if fspath:
+            try:
+                return buffer(file(fspath).read())
+            except:
+                import traceback
+                traceback.print_exc()
+                raise
+    cnx.create_function('_fsopen', 1, _fsopen)
 
 
 sqlite_hooks = SQL_CONNECT_HOOKS.setdefault('sqlite', [])
