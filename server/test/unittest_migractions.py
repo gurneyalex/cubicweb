@@ -9,19 +9,10 @@ from os.path import join
 from logilab.common.testlib import TestCase, unittest_main
 
 from cubicweb import ConfigurationError
-from cubicweb.devtools.testlib import CubicWebTC, get_versions
+from cubicweb.devtools.testlib import CubicWebTC
 from cubicweb.schema import CubicWebSchemaLoader
 from cubicweb.server.sqlutils import SQL_PREFIX
-from cubicweb.server.repository import Repository
 from cubicweb.server.migractions import *
-
-orig_get_versions = Repository.get_versions
-
-def setup_module(*args):
-    Repository.get_versions = get_versions
-
-def teardown_module(*args):
-    Repository.get_versions = orig_get_versions
 
 
 class MigrationCommandsTC(CubicWebTC):
@@ -43,7 +34,7 @@ class MigrationCommandsTC(CubicWebTC):
     @classmethod
     def _refresh_repo(cls):
         super(MigrationCommandsTC, cls)._refresh_repo()
-        cls.repo.schema = cls.vreg.schema = deepcopy(cls.origschema)
+        cls.repo.set_schema(deepcopy(cls.origschema), resetvreg=False)
 
     def setUp(self):
         CubicWebTC.setUp(self)
