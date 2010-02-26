@@ -9,7 +9,6 @@ __docformat__ = "restructuredtext en"
 
 import simplejson as json
 
-from logilab.common.decorators import monkeypatch
 from logilab.mtconverter import xml_escape
 from cubicweb.utils import make_uid
 from cubicweb.interfaces import ITree
@@ -59,8 +58,12 @@ jQuery("#tree-%s").treeview({toggle: toggleTree, prerendered: true});""" % treei
             self._init_headers(treeid, toplevel_thru_ajax)
             ulid = ' id="tree-%s"' % treeid
         self.w(u'<ul%s class="%s">' % (ulid, self.css_classes))
+        # XXX force sorting on x.sortvalue() (which return dc_title by default)
+        # we need proper ITree & co specification to avoid this.
+        # (pb when type ambiguity at the other side of the tree relation,
+        # unability to provide generic implementation on eg Folder...)
         for i, entity in enumerate(sorted(self.cw_rset.entities(),
-                                          key=lambda x: x.dc_title())):
+                                          key=lambda x: x.sortvalue())):
             if i+1 < len(self.cw_rset):
                 morekwargs['is_last'] = False
             else:
@@ -111,7 +114,6 @@ class DefaultTreeViewItemView(EntityView):
 
     def cell_call(self, row, col, vid='oneline', treeid=None, **morekwargs):
         assert treeid is not None
-        entity = self.cw_rset.get_entity(row, col)
         itemview = self._cw.view(vid, self.cw_rset, row=row, col=col)
         last_class = morekwargs['is_last'] and ' class="last"' or ''
         self.w(u'<li%s>%s</li>' % (last_class, itemview))
@@ -173,8 +175,8 @@ class TreeViewItemView(EntityView):
             if treeid.startswith('throw_away'):
                 divtail = ''
             else:
-                divtail = """ onclick="asyncRemoteExec('node_clicked', '%s', '%s')" """ %\
-                    (treeid, entity.eid)
+                divtail = """ onclick="asyncRemoteExec('node_clicked', '%s', '%s')" """ % (
+                    treeid, entity.eid)
             w(u'<div class="%s"%s></div>' % (u' '.join(divclasses), divtail))
 
             # add empty <ul> because jquery's treeview plugin checks for

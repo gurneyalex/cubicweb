@@ -13,11 +13,8 @@ import types
 from logging import getLogger
 from warnings import warn
 
-from logilab.common.decorators import classproperty
 from logilab.common.deprecation import deprecated
 from logilab.common.logging_ext import set_log_methods
-
-from cubicweb import Unauthorized, NoSelectableObject
 
 
 # selector base classes and operations ########################################
@@ -268,7 +265,7 @@ class AppObject(object):
             pdef['default'] = getattr(cls, propid, pdef['default'])
             pdef['sitewide'] = getattr(cls, 'site_wide', pdef.get('sitewide'))
             registry.vreg.register_property(cls._cwpropkey(propid), **pdef)
-        assert callable(cls.__select__), obj
+        assert callable(cls.__select__), cls
         return cls
 
     def __init__(self, req, **extra):
@@ -404,7 +401,7 @@ class AppObject(object):
     def format_date(self, date, date_format=None, time=False):
         return self._cw.format_date(date, date_format, time)
 
-    @deprecated('[3.6] use self._cw.format_timoe')
+    @deprecated('[3.6] use self._cw.format_time')
     def format_time(self, time):
         return self._cw.format_time(time)
 
