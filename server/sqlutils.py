@@ -9,9 +9,7 @@ __docformat__ = "restructuredtext en"
 
 import os
 import subprocess
-from os.path import exists
-from warnings import warn
-from datetime import datetime, date, timedelta
+from datetime import datetime, date
 
 import logilab.common as lgc
 from logilab.common import db
@@ -24,7 +22,6 @@ from indexer import get_indexer
 
 from cubicweb import Binary, ConfigurationError
 from cubicweb.uilib import remove_html_tags
-from cubicweb.toolsutils import restrict_perms_to_user
 from cubicweb.schema import PURE_VIRTUAL_RTYPES
 from cubicweb.server import SQL_CONNECT_HOOKS
 from cubicweb.server.utils import crypt_password
@@ -178,6 +175,7 @@ class SQLAdapterMixIn(object):
     def backup_to_file(self, backupfile):
         for cmd in self.dbhelper.backup_commands(self.dbname, self.dbhost,
                                                  self.dbuser, backupfile,
+                                                 dbport=self.dbport,
                                                  keepownership=False):
             if _run_command(cmd):
                 if not confirm('   [Failed] Continue anyway?', default='n'):
@@ -187,6 +185,7 @@ class SQLAdapterMixIn(object):
         for cmd in self.dbhelper.restore_commands(self.dbname, self.dbhost,
                                                   self.dbuser, backupfile,
                                                   self.encoding,
+                                                  dbport=self.dbport,
                                                   keepownership=False,
                                                   drop=drop):
             if _run_command(cmd):

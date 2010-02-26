@@ -15,7 +15,7 @@ from datetime import date, datetime, timedelta
 from logilab.mtconverter import xml_escape
 from logilab.common.graph import has_path
 from logilab.common.decorators import cached
-from logilab.common.date import datetime2ticks, ustrftime
+from logilab.common.date import datetime2ticks
 from logilab.common.compat import all
 
 from rql import parse, nodes
@@ -267,25 +267,17 @@ class AbstractFacet(AppObject):
     context = ''
     needs_update = False
     start_unfolded = True
+    cw_rset = None # ensure facets have a cw_rset attribute
 
-    def __init__(self, req, rset=None, rqlst=None, filtered_variable=None,
+    def __init__(self, req, rqlst=None, filtered_variable=None,
                  **kwargs):
-        super(AbstractFacet, self).__init__(req, rset=rset, **kwargs)
-        assert rset is not None or rqlst is not None
+        super(AbstractFacet, self).__init__(req, **kwargs)
+        assert rqlst is not None
         assert filtered_variable
-        # facet retreived using `object_by_id` from an ajax call
-        if rset is None:
-            self.init_from_form(rqlst=rqlst)
-        # facet retreived from `select` using the result set to filter
-        else:
-            self.init_from_rset()
-        self.filtered_variable = filtered_variable
-
-    def init_from_rset(self):
-        self.rqlst = self.cw_rset.syntax_tree().children[0]
-
-    def init_from_form(self, rqlst):
+        # take care: facet may be retreived using `object_by_id` from an ajax call
+        # or from `select` using the result set to filter
         self.rqlst = rqlst
+        self.filtered_variable = filtered_variable
 
     @property
     def operator(self):
@@ -521,6 +513,9 @@ class RangeFacet(AttributeFacet):
     def get_widget(self):
         """return the widget instance to use to display this facet"""
         values = set(value for _, value in self.vocabulary() if value is not None)
+        # Rset with entities (the facet is selected) but without values
+        if len(values) == 0:
+            return None
         return self.wdgclass(self, min(values), max(values))
 
     def infvalue(self):

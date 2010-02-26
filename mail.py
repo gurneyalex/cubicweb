@@ -8,7 +8,6 @@
 __docformat__ = "restructuredtext en"
 
 from base64 import b64encode, b64decode
-from itertools import repeat
 from time import time
 from email.MIMEMultipart import MIMEMultipart
 from email.MIMEText import MIMEText
@@ -200,7 +199,8 @@ class NotificationView(EntityView):
                 continue
             except Exception, ex:
                 # shouldn't make the whole transaction fail because of rendering
-                # error (unauthorized or such)
+                # error (unauthorized or such) XXX check it doesn't actually
+                # occurs due to rollback on such error
                 self.exception(str(ex))
                 continue
             msg = format_mail(self.user_data, [emailaddr], content, subject,

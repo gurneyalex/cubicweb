@@ -15,15 +15,14 @@ from warnings import warn
 
 from logilab.common.decorators import cached, clear_cache, monkeypatch
 from logilab.common.logging_ext import set_log_methods
-from logilab.common.deprecation import deprecated
+from logilab.common.deprecation import deprecated, class_moved
 from logilab.common.graph import get_cycles
 from logilab.common.compat import any
 
 from yams import BadSchemaDefinition, buildobjs as ybo
 from yams.schema import Schema, ERSchema, EntitySchema, RelationSchema, \
      RelationDefinitionSchema, PermissionMixIn
-from yams.constraints import (BaseConstraint, StaticVocabularyConstraint,
-                              FormatConstraint)
+from yams.constraints import BaseConstraint, FormatConstraint
 from yams.reader import (CONSTRAINTS, PyFileReader, SchemaLoader,
                          obsolete as yobsolete, cleanup_sys_modules)
 
@@ -254,7 +253,9 @@ def check_perm(self, session, action, **kwargs):
         return
     # if 'owners' in allowed groups, check if the user actually owns this
     # object, if so that's enough
-    if 'owners' in groups and 'eid' in kwargs and session.user.owns(kwargs['eid']):
+    if 'owners' in groups and (
+          kwargs.get('creating')
+          or ('eid' in kwargs and session.user.owns(kwargs['eid']))):
         return
     # else if there is some rql expressions, check them
     if any(rqlexpr.check(session, **kwargs)
@@ -283,22 +284,10 @@ def check_permission_definitions(self):
                    isinstance(group_or_rqlexpr, RQLExpression):
                 msg = "can't use rql expression for read permission of %s"
                 raise BadSchemaDefinition(msg % self)
-            elif self.final and isinstance(group_or_rqlexpr, RRQLExpression):
-                if schema.reading_from_database:
-                    # we didn't have final relation earlier, so turn
-                    # RRQLExpression into ERQLExpression now
-                    rqlexpr = group_or_rqlexpr
-                    newrqlexprs = [x for x in self.get_rqlexprs(action)
-                                   if not x is rqlexpr]
-                    newrqlexprs.append(ERQLExpression(rqlexpr.expression,
-                                                      rqlexpr.mainvars,
-                                                      rqlexpr.eid))
-                    self.set_rqlexprs(action, newrqlexprs)
-                else:
-                    msg = "can't use RRQLExpression on %s, use an ERQLExpression"
-                    raise BadSchemaDefinition(msg % self)
-            elif not self.final and \
-                     isinstance(group_or_rqlexpr, ERQLExpression):
+            if self.final and isinstance(group_or_rqlexpr, RRQLExpression):
+                msg = "can't use RRQLExpression on %s, use an ERQLExpression"
+                raise BadSchemaDefinition(msg % self)
+            if not self.final and isinstance(group_or_rqlexpr, ERQLExpression):
                 msg = "can't use ERQLExpression on %s, use a RRQLExpression"
                 raise BadSchemaDefinition(msg % self)
 RelationDefinitionSchema.check_permission_definitions = check_permission_definitions
@@ -314,13 +303,14 @@ class CubicWebEntitySchema(EntitySchema):
         if eid is None and edef is not None:
             eid = getattr(edef, 'eid', None)
         self.eid = eid
-        # take care: no _groups attribute when deep-copying
-        if getattr(self, 'permissions', None):
-            for groups in self.permissions.itervalues():
-                for group_or_rqlexpr in groups:
-                    if isinstance(group_or_rqlexpr, RRQLExpression):
-                        msg = "can't use RRQLExpression on an entity type, use an ERQLExpression (%s)"
-                        raise BadSchemaDefinition(msg % self.type)
+
+    def check_permission_definitions(self):
+        super(CubicWebEntitySchema, self).check_permission_definitions()
+        for groups in self.permissions.itervalues():
+            for group_or_rqlexpr in groups:
+                if isinstance(group_or_rqlexpr, RRQLExpression):
+                    msg = "can't use RRQLExpression on %s, use an ERQLExpression"
+                    raise BadSchemaDefinition(msg % self.type)
 
     def attribute_definitions(self):
         """return an iterator on attribute definitions
@@ -426,14 +416,24 @@ class CubicWebRelationSchema(RelationSchema):
 
     def has_perm(self, session, action, **kwargs):
         """return true if the action is granted globaly or localy"""
-        if 'fromeid' in kwargs:
-            subjtype = session.describe(kwargs['fromeid'])[0]
+        if self.final:
+            assert not ('fromeid' in kwargs or 'toeid' in kwargs), kwargs
+            assert action in ('read', 'update')
+            if 'eid' in kwargs:
+                subjtype = session.describe(kwargs['eid'])[0]
+            else:
+                subjtype = objtype = None
         else:
-            subjtype = None
-        if 'toeid' in kwargs:
-            objtype = session.describe(kwargs['toeid'])[0]
-        else:
-            objtype = None
+            assert not 'eid' in kwargs, kwargs
+            assert action in ('read', 'add', 'delete')
+            if 'fromeid' in kwargs:
+                subjtype = session.describe(kwargs['fromeid'])[0]
+            else:
+                subjtype = None
+            if 'toeid' in kwargs:
+                objtype = session.describe(kwargs['toeid'])[0]
+            else:
+                objtype = None
         if objtype and subjtype:
             return self.rdef(subjtype, objtype).has_perm(session, action, **kwargs)
         elif subjtype:
@@ -460,7 +460,6 @@ class CubicWebRelationSchema(RelationSchema):
 class CubicWebSchema(Schema):
     """set of entities and relations schema defining the possible data sets
     used in an application
-
 
     :type name: str
     :ivar name: name of the schema, usually the instance identifier
@@ -766,7 +765,7 @@ class RQLExpression(object):
                     rqlst.add_selected(objvar)
                 else:
                     colindex = selected.index(objvar.name)
-                found.append((action, objvar, colindex))
+                found.append((action, colindex))
                 # remove U eid %(u)s if U is not used in any other relation
                 uvrefs = rqlst.defined_vars['U'].references()
                 if len(uvrefs) == 1:
@@ -788,20 +787,25 @@ class RQLExpression(object):
 
         session may actually be a request as well
         """
-        if self.eid is not None:
+        creating = kwargs.get('creating')
+        if not creating and self.eid is not None:
             key = (self.eid, tuple(sorted(kwargs.iteritems())))
             try:
                 return session.local_perm_cache[key]
             except KeyError:
                 pass
         rql, has_perm_defs, keyarg = self.transform_has_permission()
+        if creating:
+            # when creating an entity, consider has_*_permission satisfied
+            if has_perm_defs:
+                return True
+            return False
         if keyarg is None:
             # on the server side, use unsafe_execute, but this is not available
             # on the client side (session is actually a request)
             execute = getattr(session, 'unsafe_execute', session.execute)
-            # XXX what if 'u' in kwargs
+            kwargs.setdefault('u', session.user.eid)
             cachekey = kwargs.keys()
-            kwargs['u'] = session.user.eid
             try:
                 rset = execute(rql, kwargs, cachekey, build_descr=True)
             except NotImplementedError:
@@ -829,7 +833,7 @@ class RQLExpression(object):
             # check every special has_*_permission relation is satisfied
             get_eschema = session.vreg.schema.eschema
             try:
-                for eaction, var, col in has_perm_defs:
+                for eaction, col in has_perm_defs:
                     for i in xrange(len(rset)):
                         eschema = get_eschema(rset.description[i][col])
                         eschema.check_perm(session, eaction, eid=rset[i][col])
@@ -865,12 +869,15 @@ class ERQLExpression(RQLExpression):
             rql += ', U eid %(u)s'
         return rql
 
-    def check(self, session, eid=None):
+    def check(self, session, eid=None, creating=False, **kwargs):
         if 'X' in self.rqlst.defined_vars:
             if eid is None:
+                if creating:
+                    return self._check(session, creating=True, **kwargs)
                 return False
-            return self._check(session, x=eid)
-        return self._check(session)
+            assert creating == False
+            return self._check(session, x=eid, **kwargs)
+        return self._check(session, **kwargs)
 
 
 class RRQLExpression(RQLExpression):
@@ -919,6 +926,11 @@ class RRQLExpression(RQLExpression):
             kwargs['o'] = toeid
         return self._check(session, **kwargs)
 
+# in yams, default 'update' perm for attributes granted to managers and owners.
+# Within cw, we want to default to users who may edit the entity holding the
+# attribute.
+ybo.DEFAULT_ATTRPERMS['update'] = (
+    'managers', ERQLExpression('U has_update_permission X'))
 
 # workflow extensions #########################################################
 
@@ -1078,6 +1090,12 @@ stmts.Select.set_statement_type = bw_set_statement_type
 # XXX deprecated
 
 from yams.buildobjs import RichString
+from yams.constraints import StaticVocabularyConstraint
+
+RichString = class_moved(RichString)
+
+StaticVocabularyConstraint = class_moved(StaticVocabularyConstraint)
+FormatConstraint = class_moved(FormatConstraint)
 
 PyFileReader.context['ERQLExpression'] = yobsolete(ERQLExpression)
 PyFileReader.context['RRQLExpression'] = yobsolete(RRQLExpression)

@@ -9,7 +9,7 @@ __docformat__ = "restructuredtext en"
 _ = unicode
 
 from yams.buildobjs import (EntityType, RelationType, SubjectRelation,
-                            ObjectRelation, RichString, String)
+                            RichString, String)
 from cubicweb.schema import RQLConstraint, RQLUniqueConstraint
 from cubicweb.schemas import (META_ETYPE_PERMS, META_RTYPE_PERMS,
                               HOOKS_RTYPE_PERMS)
@@ -97,12 +97,13 @@ class BaseTransition(EntityType):
 
 class Transition(BaseTransition):
     """use to define a transition from one or multiple states to a destination
-    states in workflow's definitions.
+    states in workflow's definitions. Transition without destination state will
+    go back to the state from which we arrived to the current state.
     """
     __specializes_schema__ = True
 
     destination_state = SubjectRelation(
-        'State', cardinality='1*',
+        'State', cardinality='?*',
         constraints=[RQLConstraint('S transition_of WF, O state_of WF',
                                    msg=_('state and transition don\'t belong the the same workflow'))],
         description=_('destination state for this transition'))
@@ -172,6 +173,7 @@ class by_transition(RelationType):
     }
     inlined = True
 
+
 class workflow_of(RelationType):
     """link a workflow to one or more entity type"""
     __permissions__ = META_RTYPE_PERMS
@@ -186,27 +188,6 @@ class transition_of(RelationType):
     __permissions__ = META_RTYPE_PERMS
     inlined = True
 
-class subworkflow(RelationType):
-    """link a transition to one or more workflow"""
-    __permissions__ = META_RTYPE_PERMS
-    inlined = True
-
-class exit_point(RelationType):
-    """link a transition to one or more workflow"""
-    __permissions__ = META_RTYPE_PERMS
-
-class subworkflow_state(RelationType):
-    """link a transition to one or more workflow"""
-    __permissions__ = META_RTYPE_PERMS
-    inlined = True
-
-class initial_state(RelationType):
-    """indicate which state should be used by default when an entity using
-    states is created
-    """
-    __permissions__ = META_RTYPE_PERMS
-    inlined = True
-
 class destination_state(RelationType):
     """destination state of a transition"""
     __permissions__ = META_RTYPE_PERMS
@@ -215,6 +196,33 @@ class destination_state(RelationType):
 class allowed_transition(RelationType):
     """allowed transitions from this state"""
     __permissions__ = META_RTYPE_PERMS
+
+class initial_state(RelationType):
+    """indicate which state should be used by default when an entity using
+    states is created
+    """
+    __permissions__ = META_RTYPE_PERMS
+    inlined = True
+
+
+class subworkflow(RelationType):
+    __permissions__ = META_RTYPE_PERMS
+    inlined = True
+
+class exit_point(RelationType):
+    __permissions__ = META_RTYPE_PERMS
+
+class subworkflow_state(RelationType):
+    __permissions__ = META_RTYPE_PERMS
+    inlined = True
+
+
+class condition(RelationType):
+    __permissions__ = META_RTYPE_PERMS
+
+# already defined in base.py
+# class require_group(RelationType):
+#     __permissions__ = META_RTYPE_PERMS
 
 
 # "abstract" relations, set by WorkflowableEntityType ##########################

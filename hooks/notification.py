@@ -9,7 +9,6 @@ __docformat__ = "restructuredtext en"
 
 from logilab.common.textutils import normalize_text
 
-from cubicweb import RegistryException
 from cubicweb.selectors import implements
 from cubicweb.server import hook
 from cubicweb.sobjects.supervising import SupervisionMailOp
@@ -30,8 +29,8 @@ class NotificationHook(hook.Hook):
     category = 'notification'
 
     def select_view(self, vid, rset, row=0, col=0):
-        return self._cw.vreg['views'].select_or_none(vid, self._cw,
-                                                     rset=rset, row=0, col=0)
+        return self._cw.vreg['views'].select_or_none(vid, self._cw, rset=rset,
+                                                     row=row, col=col)
 
 
 class StatusChangeHook(NotificationHook):
@@ -126,7 +125,7 @@ class EntityUpdateHook(NotificationHook):
             rqlsel.append(var)
             rqlrestr.append('X %s %s' % (attr, var))
         rql = 'Any %s WHERE %s' % (','.join(rqlsel), ','.join(rqlrestr))
-        rset = session.execute(rql, {'x': self.entity.eid}, 'x')
+        rset = session.unsafe_execute(rql, {'x': self.entity.eid}, 'x')
         for i, attr in enumerate(attrs):
             oldvalue = rset[0][i]
             newvalue = self.entity[attr]
