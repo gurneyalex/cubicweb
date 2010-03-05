@@ -12,12 +12,10 @@ from datetime import datetime
 
 from cubicweb.selectors import implements
 from cubicweb.server import hook
-from cubicweb.server.repository import FTIndexEntityOp
 
 
-def eschema_type_eid(session, etype):
+def eschema_eid(session, eschema):
     """get eid of the CWEType entity for the given yams type"""
-    eschema = session.repo.schema.eschema(etype)
     # eschema.eid is None if schema has been readen from the filesystem, not
     # from the database (eg during tests)
     if eschema.eid is None:
@@ -76,7 +74,10 @@ class _SetCreatorOp(hook.Operation):
 
 
 class SetIsHook(MetaDataHook):
-    """create a new entity -> set is relation"""
+    """create a new entity -> set is and is_instance_of relations
+
+    those relations are inserted using sql so they are not hookable.
+    """
     __regid__ = 'setis'
     events = ('after_add_entity',)
 
@@ -86,18 +87,14 @@ class SetIsHook(MetaDataHook):
         session = self._cw
         entity = self.entity
         try:
-            #session.add_relation(entity.eid, 'is',
-            #                     eschema_type_eid(session, entity.__regid__))
             session.system_sql('INSERT INTO is_relation(eid_from,eid_to) VALUES (%s,%s)'
-                           % (entity.eid, eschema_type_eid(session, entity.__regid__)))
+                           % (entity.eid, eschema_eid(session, entity.e_schema)))
         except IndexError:
             # during schema serialization, skip
             return
-        for etype in entity.e_schema.ancestors() + [entity.e_schema]:
-            #session.add_relation(entity.eid, 'is_instance_of',
-            #                     eschema_type_eid(session, etype))
+        for eschema in entity.e_schema.ancestors() + [entity.e_schema]:
             session.system_sql('INSERT INTO is_instance_of_relation(eid_from,eid_to) VALUES (%s,%s)'
-                               % (entity.eid, eschema_type_eid(session, etype)))
+                               % (entity.eid, eschema_eid(session, eschema)))
 
 
 class SetOwnershipHook(MetaDataHook):
@@ -150,7 +147,8 @@ class FixUserOwnershipHook(MetaDataHook):
 
 
 class UpdateFTIHook(MetaDataHook):
-    """sync fulltext index when relevant relation is added / removed
+    """sync fulltext index text index container when a relation with
+    fulltext_container set is added / removed
     """
     __regid__ = 'updateftirel'
     events = ('after_add_relation', 'after_delete_relation')
@@ -158,15 +156,19 @@ class UpdateFTIHook(MetaDataHook):
     def __call__(self):
         rtype = self.rtype
         session = self._cw
+        ftcontainer = session.vreg.schema.rschema(rtype).fulltext_container
         if self.event == 'after_add_relation':
-            # Reindexing the contained entity is enough since it will implicitly
-            # reindex the container entity.
-            ftcontainer = session.vreg.schema.rschema(rtype).fulltext_container
             if ftcontainer == 'subject':
-                FTIndexEntityOp(session, entity=session.entity_from_eid(self.eidto))
+                session.repo.system_source.index_entity(
+                    session, session.entity_from_eid(self.eidfrom))
             elif ftcontainer == 'object':
-                FTIndexEntityOp(session, entity=session.entity_from_eid(self.eidfrom))
-        elif session.repo.schema.rschema(rtype).fulltext_container:
-            FTIndexEntityOp(session, entity=session.entity_from_eid(self.eidto))
-            FTIndexEntityOp(session, entity=session.entity_from_eid(self.eidfrom))
+                session.repo.system_source.index_entity(
+                    session, session.entity_from_eid(self.eidto))
+        # after delete relation
+        elif ftcontainer == 'subject':
+            session.repo.system_source.index_entity(
+                session, entity=session.entity_from_eid(self.eidfrom))
+        elif ftcontainer == 'object':
+            session.repo.system_source.index_entity(
+                session, entity=session.entity_from_eid(self.eidto))
 
