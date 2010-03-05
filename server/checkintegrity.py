@@ -68,7 +68,6 @@ def reindex_entities(schema, session, withpb=True):
     """reindex all entities in the repository"""
     # deactivate modification_date hook since we don't want them
     # to be updated due to the reindexation
-    from cubicweb.server.repository import FTIndexEntityOp
     repo = session.repo
     cursor = session.pool['system']
     if not repo.system_source.indexer.has_fti_table(cursor):
@@ -80,7 +79,7 @@ def reindex_entities(schema, session, withpb=True):
         cursor.execute(indexer.sql_init_fti())
     repo.config.disabled_hooks_categories.add('metadata')
     repo.config.disabled_hooks_categories.add('integrity')
-    repo.do_fti = True  # ensure full-text indexation is activated
+    repo.system_source.do_fti = True  # ensure full-text indexation is activated
     etypes = set()
     for eschema in schema.entities():
         if eschema.final:
@@ -104,9 +103,11 @@ def reindex_entities(schema, session, withpb=True):
         pb.update()
     # reindex entities by generating rql queries which set all indexable
     # attribute to their current value
+    source = repo.system_source
     for eschema in etypes:
         for entity in session.execute('Any X WHERE X is %s' % eschema).entities():
-            FTIndexEntityOp(session, entity=entity)
+            source.fti_unindex_entity(session, entity.eid)
+            source.fti_index_entity(session, entity)
         if withpb:
             pb.update()
     # restore Entity.check
