@@ -203,11 +203,6 @@ class DBAPIRequest(RequestSessionBase):
             self.pgettext = lambda x, y: y
         self.debug('request default language: %s', self.lang)
 
-    def decorate_rset(self, rset):
-        rset.vreg = self.vreg
-        rset.req = self
-        return rset
-
     def describe(self, eid):
         """return a tuple (type, sourceuri, extid) for the entity with id <eid>"""
         return self.cnx.describe(eid)
@@ -242,7 +237,7 @@ class DBAPIRequest(RequestSessionBase):
     def get_session_data(self, key, default=None, pop=False):
         """return value associated to `key` in session data"""
         if self.cnx is None:
-            return None # before the connection has been established
+            return default # before the connection has been established
         return self.cnx.get_session_data(key, default, pop)
 
     def set_session_data(self, key, value):
@@ -398,14 +393,20 @@ class Connection(object):
 
     def check(self):
         """raise `BadSessionId` if the connection is no more valid"""
+        if self._closed is not None:
+            raise ProgrammingError('Closed connection')
         self._repo.check_session(self.sessionid)
 
     def set_session_props(self, **props):
         """raise `BadSessionId` if the connection is no more valid"""
+        if self._closed is not None:
+            raise ProgrammingError('Closed connection')
         self._repo.set_session_props(self.sessionid, props)
 
     def get_shared_data(self, key, default=None, pop=False):
         """return value associated to `key` in shared data"""
+        if self._closed is not None:
+            raise ProgrammingError('Closed connection')
         return self._repo.get_shared_data(self.sessionid, key, default, pop)
 
     def set_shared_data(self, key, value, querydata=False):
@@ -416,6 +417,8 @@ class Connection(object):
         transaction, and won't be available through the connexion, only on the
         repository side.
         """
+        if self._closed is not None:
+            raise ProgrammingError('Closed connection')
         return self._repo.set_shared_data(self.sessionid, key, value, querydata)
 
     def get_schema(self):
@@ -501,6 +504,8 @@ class Connection(object):
     def user(self, req=None, props=None):
         """return the User object associated to this connection"""
         # cnx validity is checked by the call to .user_info
+        if self._closed is not None:
+            raise ProgrammingError('Closed connection')
         eid, login, groups, properties = self._repo.user_info(self.sessionid,
                                                               props)
         if req is None:
@@ -521,6 +526,8 @@ class Connection(object):
                 pass
 
     def describe(self, eid):
+        if self._closed is not None:
+            raise ProgrammingError('Closed connection')
         return self._repo.describe(self.sessionid, eid)
 
     def close(self):
@@ -535,6 +542,7 @@ class Connection(object):
         if self._closed:
             raise ProgrammingError('Connection is already closed')
         self._repo.close(self.sessionid)
+        del self._repo # necessary for proper garbage collection
         self._closed = 1
 
     def commit(self):
@@ -646,11 +654,11 @@ class Cursor(object):
         Return values are not defined by the DB-API, but this here it returns a
         ResultSet object.
         """
-        self._res = res = self._repo.execute(self._sessid, operation,
-                                             parameters, eid_key, build_descr)
-        self.req.decorate_rset(res)
+        self._res = rset = self._repo.execute(self._sessid, operation,
+                                              parameters, eid_key, build_descr)
+        rset.req = self.req
         self._index = 0
-        return res
+        return rset
 
 
     def executemany(self, operation, seq_of_parameters):
