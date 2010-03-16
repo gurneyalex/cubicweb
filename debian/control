@@ -7,10 +7,10 @@ Uploaders: Sylvain Thenault <sylvain.thenault@logilab.fr>,
            Adrien Di Mascio <Adrien.DiMascio@logilab.fr>,
            Aurélien Campéas <aurelien.campeas@logilab.fr>,
            Nicolas Chauvat <nicolas.chauvat@logilab.fr>
-Build-Depends: debhelper (>= 5), python-dev (>=2.4), python-central (>= 0.5)
+Build-Depends: debhelper (>= 5), python-dev (>=2.5), python-central (>= 0.5)
 Standards-Version: 3.8.0
 Homepage: http://www.cubicweb.org
-XS-Python-Version: >= 2.4, << 2.6
+XS-Python-Version: >= 2.5, << 2.6
 
 Package: cubicweb
 Architecture: all
@@ -34,7 +34,7 @@ Conflicts: cubicweb-multisources
 Replaces: cubicweb-multisources
 Provides: cubicweb-multisources
 # postgresql/mysql -client packages for backup/restore of non local database
-Depends: ${python:Depends}, cubicweb-common (= ${source:Version}), cubicweb-ctl (= ${source:Version}), python-indexer (>= 0.6.1), (python-psycopg2, postgresql-client) | (python-mysqldb, mysql-client) | python-pysqlite2
+Depends: ${python:Depends}, cubicweb-common (= ${source:Version}), cubicweb-ctl (= ${source:Version}), python-logilab-database, (python-psycopg2, postgresql-client) | (python-mysqldb, mysql-client) | python-pysqlite2
 Recommends: pyro, cubicweb-documentation (= ${source:Version})
 Description: server part of the CubicWeb framework
  CubicWeb is a semantic web application framework.
