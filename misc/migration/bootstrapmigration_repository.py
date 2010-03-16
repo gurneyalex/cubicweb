@@ -20,8 +20,7 @@ def _add_relation_definition_no_perms(subjtype, rtype, objtype):
 if applcubicwebversion == (3, 6, 0) and cubicwebversion >= (3, 6, 0):
     _add_relation_definition_no_perms('CWAttribute', 'update_permission', 'CWGroup')
     _add_relation_definition_no_perms('CWAttribute', 'update_permission', 'RQLExpression')
-    session.set_pool()
-    session.unsafe_execute('SET X update_permission Y WHERE X is CWAttribute, X add_permission Y')
+    rql('SET X update_permission Y WHERE X is CWAttribute, X add_permission Y')
     drop_relation_definition('CWAttribute', 'add_permission', 'CWGroup')
     drop_relation_definition('CWAttribute', 'add_permission', 'RQLExpression')
     drop_relation_definition('CWAttribute', 'delete_permission', 'CWGroup')
@@ -29,10 +28,9 @@ if applcubicwebversion == (3, 6, 0) and cubicwebversion >= (3, 6, 0):
 
 elif applcubicwebversion < (3, 6, 0) and cubicwebversion >= (3, 6, 0):
     session.set_pool()
-    session.execute = session.unsafe_execute
     permsdict = ss.deserialize_ertype_permissions(session)
 
-    config.disabled_hooks_categories.add('integrity')
+    changes = session.disable_hook_categories.add('integrity')
     for rschema in repo.schema.relations():
         rpermsdict = permsdict.get(rschema.eid, {})
         for rdef in rschema.rdefs.values():
@@ -72,7 +70,8 @@ elif applcubicwebversion < (3, 6, 0) and cubicwebversion >= (3, 6, 0):
     for action in ('read', 'add', 'delete'):
         drop_relation_definition('CWRType', '%s_permission' % action, 'CWGroup', commit=False)
         drop_relation_definition('CWRType', '%s_permission' % action, 'RQLExpression')
-    config.disabled_hooks_categories.remove('integrity')
+    if changes:
+        session.enable_hook_categories.add(*changes)
 
 if applcubicwebversion < (3, 4, 0) and cubicwebversion >= (3, 4, 0):
 
@@ -80,13 +79,11 @@ if applcubicwebversion < (3, 4, 0) and cubicwebversion >= (3, 4, 0):
     deactivate_verification_hooks()
     add_relation_type('cwuri')
     base_url = session.base_url()
-    # use an internal session since some entity might forbid modifications to admin
-    isession = repo.internal_session()
     for eid, in rql('Any X', ask_confirm=False):
         type, source, extid = session.describe(eid)
         if source == 'system':
-            isession.execute('SET X cwuri %(u)s WHERE X eid %(x)s',
-                             {'x': eid, 'u': base_url + u'eid/%s' % eid})
+            rql('SET X cwuri %(u)s WHERE X eid %(x)s',
+                {'x': eid, 'u': base_url + u'eid/%s' % eid})
     isession.commit()
     reactivate_verification_hooks()
     session.set_shared_data('do-not-insert-cwuri', False)

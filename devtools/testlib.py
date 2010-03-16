@@ -228,7 +228,9 @@ class CubicWebTC(TestCase):
     @property
     def session(self):
         """return current server side session (using default manager account)"""
-        return self.repo._sessions[self.cnx.sessionid]
+        session = self.repo._sessions[self.cnx.sessionid]
+        session.set_pool()
+        return session
 
     @property
     def adminsession(self):
@@ -319,7 +321,10 @@ class CubicWebTC(TestCase):
 
     @nocoverage
     def commit(self):
-        self.cnx.commit()
+        try:
+            return self.cnx.commit()
+        finally:
+            self.session.set_pool() # ensure pool still set after commit
 
     @nocoverage
     def rollback(self):
@@ -327,6 +332,8 @@ class CubicWebTC(TestCase):
             self.cnx.rollback()
         except ProgrammingError:
             pass
+        finally:
+            self.session.set_pool() # ensure pool still set after commit
 
     # # server side db api #######################################################
 
