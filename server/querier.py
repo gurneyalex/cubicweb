@@ -6,6 +6,8 @@ security checking and data aggregation.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
 :license: GNU Lesser General Public License, v2.1 - http://www.gnu.org/licenses
 """
+from __future__ import with_statement
+
 __docformat__ = "restructuredtext en"
 
 from itertools import repeat
@@ -22,9 +24,8 @@ from cubicweb.rset import ResultSet
 
 from cubicweb.server.utils import cleanup_solutions
 from cubicweb.server.rqlannotation import SQLGenAnnotator, set_qdata
-from cubicweb.server.ssplanner import add_types_restriction
-
-READ_ONLY_RTYPES = set(('eid', 'has_text', 'is', 'is_instance_of', 'identity'))
+from cubicweb.server.ssplanner import READ_ONLY_RTYPES, add_types_restriction
+from cubicweb.server.session import security_enabled
 
 def empty_rset(rql, args, rqlst=None):
     """build an empty result set object"""
@@ -201,8 +202,11 @@ class ExecutionPlan(object):
         return rqlst to actually execute
         """
         noinvariant = set()
-        if security and not self.session.is_super_session:
-            self._insert_security(union, noinvariant)
+        if security and self.session.read_security:
+            # ensure security is turned of when security is inserted,
+            # else we may loop for ever...
+            with security_enabled(self.session, read=False):
+                self._insert_security(union, noinvariant)
         self.rqlhelper.simplify(union)
         self.sqlannotate(union)
         set_qdata(self.schema.rschema, union, noinvariant)
@@ -300,7 +304,6 @@ class ExecutionPlan(object):
 
         note: rqlst should not have been simplified at this point
         """
-        assert not self.session.is_super_session
         user = self.session.user
         schema = self.schema
         msgs = []
@@ -376,39 +379,6 @@ class InsertPlan(ExecutionPlan):
         self._r_subj_index = {}
         self._r_obj_index = {}
         self._expanded_r_defs = {}
-
-    def relation_definitions(self, rqlst, to_build):
-        """add constant values to entity def, mark variables to be selected
-        """
-        to_select = {}
-        for relation in rqlst.main_relations:
-            lhs, rhs = relation.get_variable_parts()
-            rtype = relation.r_type
-            if rtype in READ_ONLY_RTYPES:
-                raise QueryError("can't assign to %s" % rtype)
-            try:
-                edef = to_build[str(lhs)]
-            except KeyError:
-                # lhs var is not to build, should be selected and added as an
-                # object relation
-                edef = to_build[str(rhs)]
-                to_select.setdefault(edef, []).append((rtype, lhs, 1))
-            else:
-                if isinstance(rhs, Constant) and not rhs.uid:
-                    # add constant values to entity def
-                    value = rhs.eval(self.args)
-                    eschema = edef.e_schema
-                    attrtype = eschema.subjrels[rtype].objects(eschema)[0]
-                    if attrtype == 'Password' and isinstance(value, unicode):
-                        value = value.encode('UTF8')
-                    edef[rtype] = value
-                elif to_build.has_key(str(rhs)):
-                    # create a relation between two newly created variables
-                    self.add_relation_def((edef, rtype, to_build[rhs.name]))
-                else:
-                    to_select.setdefault(edef, []).append( (rtype, rhs, 0) )
-        return to_select
-
 
     def add_entity_def(self, edef):
         """add an entity definition to build"""
@@ -629,20 +599,20 @@ class QuerierHelper(object):
             try:
                 self.solutions(session, rqlst, args)
             except UnknownEid:
-                # we want queries such as "Any X WHERE X eid 9999"
-                # return an empty result instead of raising UnknownEid
+                # we want queries such as "Any X WHERE X eid 9999" return an
+                # empty result instead of raising UnknownEid
                 return empty_rset(rql, args, rqlst)
             self._rql_cache[cachekey] = rqlst
         orig_rqlst = rqlst
         if not rqlst.TYPE == 'select':
-            if not session.is_super_session:
+            if session.read_security:
                 check_no_password_selected(rqlst)
-            # write query, ensure session's mode is 'write' so connections
-            # won't be released until commit/rollback
+            # write query, ensure session's mode is 'write' so connections won't
+            # be released until commit/rollback
             session.mode = 'write'
             cachekey = None
         else:
-            if not session.is_super_session:
+            if session.read_security:
                 for select in rqlst.children:
                     check_no_password_selected(select)
             # on select query, always copy the cached rqlst so we don't have to
