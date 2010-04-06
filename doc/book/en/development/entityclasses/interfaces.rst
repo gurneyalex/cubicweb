@@ -1,7 +1,9 @@
 Interfaces
 ----------
 
-Same thing as object-oriented programming interfaces.
+This is the same thing as object-oriented programming `interfaces`_.
+
+.. _`interfaces`: http://java.sun.com/docs/books/tutorial/java/concepts/interface.html
 
 Definition of an interface is quite trivial. An example from cubicweb
 itself (found in cubicweb/interfaces.py):
@@ -17,7 +19,7 @@ itself (found in cubicweb/interfaces.py):
             """returns the item's children"""
 
         def children_rql(self):
-            """XXX returns RQL to get children"""
+            """returns RQL to get children"""
 
         def iterchildren(self):
             """iterates over the item's children"""
@@ -53,7 +55,7 @@ implementation to help implement correct behaviour.
 Interfaces (and some implementations as mixins) defined in the library
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. automodule:: cubicweb.interface
+.. automodule:: cubicweb.interfaces
    :members:
 
 .. automodule:: cubicweb.mixins

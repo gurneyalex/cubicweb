@@ -20,12 +20,6 @@ class ConnectionWrapper(object):
         self.source = source
         self._cnx = None
 
-    @property
-    def logged_user(self):
-        if self._cnx is None:
-            self._cnx = self.source._sqlcnx
-        return self._cnx.logged_user
-
     def cursor(self):
         if self._cnx is None:
             self._cnx = self.source._sqlcnx
@@ -93,11 +87,11 @@ repository.',
         AbstractSource.__init__(self, repo, appschema, source_config,
                                 *args, **kwargs)
 
-    def backup(self, backupfile):
+    def backup(self, backupfile, confirm):
         """method called to create a backup of the source's data"""
         self.close_pool_connections()
         try:
-            self.sqladapter.backup_to_file(backupfile)
+            self.sqladapter.backup_to_file(backupfile, confirm)
         finally:
             self.open_pool_connections()
 
@@ -193,9 +187,10 @@ repository.',
         if self._need_sql_create:
             return []
         assert dbg_st_search(self.uri, union, varmap, args, cachekey)
-        sql, query_args = self.rqlsqlgen.generate(union, args)
-        args = self.sqladapter.merge_args(args, query_args)
-        results = self.sqladapter.process_result(self.doexec(session, sql, args))
+        sql, qargs, cbs = self.rqlsqlgen.generate(union, args)
+        args = self.sqladapter.merge_args(args, qargs)
+        cursor = self.doexec(session, sql, args)
+        results = self.sqladapter.process_result(cursor, cbs)
         assert dbg_results(results)
         return results
 
@@ -231,15 +226,15 @@ repository.',
         """update an entity in the source"""
         raise NotImplementedError()
 
-    def delete_entity(self, session, etype, eid):
+    def delete_entity(self, session, entity):
         """delete an entity from the source
 
         this is not deleting a file in the svn but deleting entities from the
         source. Main usage is to delete repository content when a Repository
         entity is deleted.
         """
-        attrs = {SQL_PREFIX + 'eid': eid}
-        sql = self.sqladapter.sqlgen.delete(SQL_PREFIX + etype, attrs)
+        attrs = {'cw_eid': entity.eid}
+        sql = self.sqladapter.sqlgen.delete(SQL_PREFIX + entity.__regid__, attrs)
         self.doexec(session, sql, attrs)
 
     def local_add_relation(self, session, subject, rtype, object):

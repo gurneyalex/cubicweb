@@ -19,8 +19,11 @@ after_update_entity, before_delete_entity, after_delete_entity) all have an
 Relation (eg before_add_relation, after_add_relation, before_delete_relation,
 after_delete_relation) all have `eidfrom`, `rtype`, `eidto` attributes.
 
-Server start/stop hooks (eg server_startup, server_shutdown) have a `repo`
-attribute, but *their `_cw` attribute is None*.
+Server start/maintenance/stop hooks (eg server_startup, server_maintenance,
+server_shutdown) have a `repo` attribute, but *their `_cw` attribute is None*.
+The `server_startup` is called on regular startup, while `server_maintenance`
+is called on cubicweb-ctl upgrade or shell commands. `server_shutdown` is
+called anyway.
 
 Backup/restore hooks (eg server_backup, server_restore) have a `repo` and a
 `timestamp` attributes, but *their `_cw` attribute is None*.
@@ -33,6 +36,8 @@ Session hooks (eg session_open, session_close) have no special attribute.
 :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
 :license: GNU Lesser General Public License, v2.1 - http://www.gnu.org/licenses
 """
+from __future__ import with_statement
+
 __docformat__ = "restructuredtext en"
 
 from warnings import warn
@@ -43,11 +48,12 @@ from logilab.common.decorators import classproperty
 from logilab.common.deprecation import deprecated
 from logilab.common.logging_ext import set_log_methods
 
+from cubicweb import RegistryNotFound
 from cubicweb.cwvreg import CWRegistry, VRegistry
 from cubicweb.selectors import (objectify_selector, lltrace, ExpectedValueSelector,
                                 implements)
 from cubicweb.appobject import AppObject
-
+from cubicweb.server.session import security_enabled
 
 ENTITIES_HOOKS = set(('before_add_entity',    'after_add_entity',
                       'before_update_entity', 'after_update_entity',
@@ -55,47 +61,65 @@ ENTITIES_HOOKS = set(('before_add_entity',    'after_add_entity',
 RELATIONS_HOOKS = set(('before_add_relation',   'after_add_relation' ,
                        'before_delete_relation','after_delete_relation'))
 SYSTEM_HOOKS = set(('server_backup', 'server_restore',
-                    'server_startup', 'server_shutdown',
+                    'server_startup', 'server_maintenance', 'server_shutdown',
                     'session_open', 'session_close'))
 ALL_HOOKS = ENTITIES_HOOKS | RELATIONS_HOOKS | SYSTEM_HOOKS
 
 
 class HooksRegistry(CWRegistry):
+    def initialization_completed(self):
+        for appobjects in self.values():
+            for cls in appobjects:
+                if not cls.enabled:
+                    warn('[3.6] %s: enabled is deprecated' % cls)
+                    self.unregister(cls)
 
     def register(self, obj, **kwargs):
-        try:
-            iter(obj.events)
-        except AttributeError:
-            raise
-        except:
-            raise Exception('bad .events attribute %s on %s.%s' % (
-                obj.events, obj.__module__, obj.__name__))
         for event in obj.events:
             if event not in ALL_HOOKS:
                 raise Exception('bad event %s on %s.%s' % (
                     event, obj.__module__, obj.__name__))
         super(HooksRegistry, self).register(obj, **kwargs)
 
-    def call_hooks(self, event, req=None, **kwargs):
+    def call_hooks(self, event, session=None, **kwargs):
         kwargs['event'] = event
-        for hook in sorted(self.possible_objects(req, **kwargs), key=lambda x: x.order):
-            if hook.enabled:
+        if session is None:
+            for hook in sorted(self.possible_objects(session, **kwargs),
+                               key=lambda x: x.order):
                 hook()
-            else:
-                warn('[3.6] %s: enabled is deprecated' % hook.__class__)
+        else:
+            # by default, hooks are executed with security turned off
+            with security_enabled(session, read=False):
+                hooks = sorted(self.possible_objects(session, **kwargs),
+                               key=lambda x: x.order)
+                with security_enabled(session, write=False):
+                    for hook in hooks:
+                        hook()
 
-VRegistry.REGISTRY_FACTORY['hooks'] = HooksRegistry
+class HooksManager(object):
+    def __init__(self, vreg):
+        self.vreg = vreg
+
+    def call_hooks(self, event, session=None, **kwargs):
+        try:
+            self.vreg['%s_hooks' % event].call_hooks(event, session, **kwargs)
+        except RegistryNotFound:
+            pass # no hooks for this event
 
 
+for event in ALL_HOOKS:
+    VRegistry.REGISTRY_FACTORY['%s_hooks' % event] = HooksRegistry
+
+_MARKER = object()
 def entity_oldnewvalue(entity, attr):
     """returns the couple (old attr value, new attr value)
     NOTE: will only work in a before_update_entity hook
     """
     # get new value and remove from local dict to force a db query to
     # fetch old value
-    newvalue = entity.pop(attr, None)
+    newvalue = entity.pop(attr, _MARKER)
     oldvalue = getattr(entity, attr)
-    if newvalue is not None:
+    if newvalue is not _MARKER:
         entity[attr] = newvalue
     return oldvalue, newvalue
 
@@ -104,28 +128,17 @@ def entity_oldnewvalue(entity, attr):
 
 @objectify_selector
 @lltrace
-def match_event(cls, req, **kwargs):
-    if kwargs.get('event') in cls.events:
-        return 1
-    return 0
-
-@objectify_selector
-@lltrace
 def enabled_category(cls, req, **kwargs):
     if req is None:
-        # server startup / shutdown event
-        config = kwargs['repo'].config
-    else:
-        config = req.vreg.config
-    return config.is_hook_activated(cls)
+        return True # XXX how to deactivate server startup / shutdown event
+    return req.is_hook_activated(cls)
 
 @objectify_selector
 @lltrace
-def regular_session(cls, req, **kwargs):
-    if req is None or req.is_super_session:
-        return 0
-    return 1
-
+def from_dbapi_query(cls, req, **kwargs):
+    if req.running_dbapi_query:
+        return 1
+    return 0
 
 class rechain(object):
     def __init__(self, *iterators):
@@ -174,17 +187,27 @@ class match_rtype_sets(ExpectedValueSelector):
                 return 1
         return 0
 
+
 # base class for hook ##########################################################
 
 class Hook(AppObject):
-    __registry__ = 'hooks'
-    __select__ = match_event() & enabled_category()
+    __select__ = enabled_category()
     # set this in derivated classes
     events = None
     category = None
     order = 0
     # XXX deprecated
     enabled = True
+
+    @classproperty
+    def __registries__(cls):
+        try:
+            return ['%s_hooks' % ev for ev in cls.events]
+        except AttributeError:
+            raise
+        except TypeError:
+            raise Exception('bad .events attribute %s on %s.%s' % (
+                cls.events, cls.__module__, cls.__name__))
 
     @classproperty
     def __regid__(cls):
@@ -263,7 +286,7 @@ class PropagateSubjectRelationHook(Hook):
         else:
             assert self.rtype in self.object_relations
             meid, seid = self.eidto, self.eidfrom
-        self._cw.unsafe_execute(
+        self._cw.execute(
             'SET E %s P WHERE X %s P, X eid %%(x)s, E eid %%(e)s, NOT E %s P'\
             % (self.main_rtype, self.main_rtype, self.main_rtype),
             {'x': meid, 'e': seid}, ('x', 'e'))
@@ -281,7 +304,7 @@ class PropagateSubjectRelationAddHook(Hook):
 
     def __call__(self):
         eschema = self._cw.vreg.schema.eschema(self._cw.describe(self.eidfrom)[0])
-        execute = self._cw.unsafe_execute
+        execute = self._cw.execute
         for rel in self.subject_relations:
             if rel in eschema.subjrels:
                 execute('SET R %s P WHERE X eid %%(x)s, P eid %%(p)s, '
@@ -306,7 +329,7 @@ class PropagateSubjectRelationDelHook(Hook):
 
     def __call__(self):
         eschema = self._cw.vreg.schema.eschema(self._cw.describe(self.eidfrom)[0])
-        execute = self._cw.unsafe_execute
+        execute = self._cw.execute
         for rel in self.subject_relations:
             if rel in eschema.subjrels:
                 execute('DELETE R %s P WHERE X eid %%(x)s, P eid %%(p)s, '
@@ -434,6 +457,24 @@ class Operation(object):
 set_log_methods(Operation, getLogger('cubicweb.session'))
 
 
+def set_operation(session, datakey, value, opcls, **opkwargs):
+    """Search for session.transaction_data[`datakey`] (expected to be a set):
+
+    * if found, simply append `value`
+
+    * else, initialize it to set([`value`]) and instantiate the given `opcls`
+      operation class with additional keyword arguments.
+
+    You should use this instead of creating on operation for each `value`,
+    since handling operations becomes coslty on massive data import.
+    """
+    try:
+        session.transaction_data[datakey].add(value)
+    except KeyError:
+        opcls(session, *opkwargs)
+        session.transaction_data[datakey] = set((value,))
+
+
 class LateOperation(Operation):
     """special operation which should be called after all possible (ie non late)
     operations
@@ -510,6 +551,43 @@ class SendMailOp(SingleLastOperation):
 
 class RQLPrecommitOperation(Operation):
     def precommit_event(self):
-        execute = self.session.unsafe_execute
+        execute = self.session.execute
         for rql in self.rqls:
             execute(*rql)
+
+
+class CleanupNewEidsCacheOp(SingleLastOperation):
+    """on rollback of a insert query we have to remove from repository's
+    type/source cache eids of entities added in that transaction.
+
+    NOTE: querier's rqlst/solutions cache may have been polluted too with
+    queries such as Any X WHERE X eid 32 if 32 has been rollbacked however
+    generated queries are unpredictable and analysing all the cache probably
+    too expensive. Notice that there is no pb when using args to specify eids
+    instead of giving them into the rql string.
+    """
+
+    def rollback_event(self):
+        """the observed connections pool has been rollbacked,
+        remove inserted eid from repository type/source cache
+        """
+        try:
+            self.session.repo.clear_caches(
+                self.session.transaction_data['neweids'])
+        except KeyError:
+            pass
+
+class CleanupDeletedEidsCacheOp(SingleLastOperation):
+    """on commit of delete query, we have to remove from repository's
+    type/source cache eids of entities deleted in that transaction.
+    """
+
+    def commit_event(self):
+        """the observed connections pool has been rollbacked,
+        remove inserted eid from repository type/source cache
+        """
+        try:
+            self.session.repo.clear_caches(
+                self.session.transaction_data['pendingeids'])
+        except KeyError:
+            pass

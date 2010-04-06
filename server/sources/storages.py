@@ -4,22 +4,38 @@ from os import unlink, path as osp
 from cubicweb import Binary
 from cubicweb.server.hook import Operation
 
-
-ETYPE_ATTR_STORAGE = {}
 def set_attribute_storage(repo, etype, attr, storage):
-    ETYPE_ATTR_STORAGE.setdefault(etype, {})[attr] = storage
-    repo.system_source.map_attribute(etype, attr, storage.sqlgen_callback)
+    repo.system_source.set_storage(etype, attr, storage)
 
 def unset_attribute_storage(repo, etype, attr):
-    ETYPE_ATTR_STORAGE.setdefault(etype, {}).pop(attr, None)
-    repo.system_source.unmap_attribute(etype, attr)
-
+    repo.system_source.unset_storage(etype, attr)
 
 class Storage(object):
-    """abstract storage"""
-    def sqlgen_callback(self, generator, relation, linkedvar):
-        """sql generator callback when some attribute with a custom storage is
-        accessed
+    """abstract storage
+
+    * If `source_callback` is true (by default), the callback will be run during
+      query result process of fetched attribute's valu and should have the
+      following prototype::
+
+        callback(self, source, value)
+
+      where `value` is the value actually stored in the backend. None values
+      will be skipped (eg callback won't be called).
+
+    * if `source_callback` is false, the callback will be run during sql
+      generation when some attribute with a custom storage is accessed and
+      should have the following prototype::
+
+        callback(self, generator, relation, linkedvar)
+
+      where `generator` is the sql generator, `relation` the current rql syntax
+      tree relation and linkedvar the principal syntax tree variable holding the
+      attribute.
+    """
+    is_source_callback = True
+
+    def callback(self, *args):
+        """see docstring for prototype, which vary according to is_source_callback
         """
         raise NotImplementedError()
 
@@ -43,39 +59,36 @@ class BytesFileSystemStorage(Storage):
     def __init__(self, defaultdir):
         self.default_directory = defaultdir
 
-    def sqlgen_callback(self, generator, linkedvar, relation):
+    def callback(self, source, value):
         """sql generator callback when some attribute with a custom storage is
         accessed
         """
-        linkedvar.accept(generator)
-        return '_fsopen(%s.cw_%s)' % (
-            linkedvar._q_sql.split('.', 1)[0], # table name
-            relation.r_type) # attribute name
+        fpath = source.binary_to_str(value)
+        try:
+            return Binary(file(fpath).read())
+        except OSError, ex:
+            source.critical("can't open %s: %s", value, ex)
+            return None
 
     def entity_added(self, entity, attr):
         """an entity using this storage for attr has been added"""
-        if not entity._cw.transaction_data.get('fs_importing'):
-            try:
-                value = entity.pop(attr)
-            except KeyError:
-                pass
-            else:
-                fpath = self.new_fs_path(entity, attr)
-                # bytes storage used to store file's path
-                entity[attr] = Binary(fpath)
-                file(fpath, 'w').write(value.getvalue())
-                AddFileOp(entity._cw, filepath=fpath)
-        # else entity[attr] is expected to be an already existant file path
+        if entity._cw.transaction_data.get('fs_importing'):
+            binary = Binary(file(entity[attr].getvalue()).read())
+        else:
+            binary = entity.pop(attr)
+            fpath = self.new_fs_path(entity, attr)
+            # bytes storage used to store file's path
+            entity[attr] = Binary(fpath)
+            file(fpath, 'w').write(binary.getvalue())
+            AddFileOp(entity._cw, filepath=fpath)
+        return binary
 
     def entity_updated(self, entity, attr):
         """an entity using this storage for attr has been updatded"""
-        try:
-            value = entity.pop(attr)
-        except KeyError:
-            pass
-        else:
-            fpath = self.current_fs_path(entity, attr)
-            UpdateFileOp(entity._cw, filepath=fpath, filedata=value.getvalue())
+        binary = entity.pop(attr)
+        fpath = self.current_fs_path(entity, attr)
+        UpdateFileOp(entity._cw, filepath=fpath, filedata=binary.getvalue())
+        return binary
 
     def entity_deleted(self, entity, attr):
         """an entity using this storage for attr has been deleted"""
@@ -92,9 +105,11 @@ class BytesFileSystemStorage(Storage):
         cu = sysource.doexec(entity._cw,
                              'SELECT cw_%s FROM cw_%s WHERE cw_eid=%s' % (
                                  attr, entity.__regid__, entity.eid))
-        dbmod = sysource.dbapi_module
-        return dbmod.process_value(cu.fetchone()[0], [None, dbmod.BINARY],
-                                   binarywrap=str)
+        rawvalue = cu.fetchone()[0]
+        if rawvalue is None: # no previous value
+            return self.new_fs_path(entity, attr)
+        return sysource._process_value(rawvalue, cu.description[0],
+                                       binarywrap=str)
 
 
 class AddFileOp(Operation):

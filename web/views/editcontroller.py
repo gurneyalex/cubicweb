@@ -7,6 +7,8 @@
 """
 __docformat__ = "restructuredtext en"
 
+from warnings import warn
+
 from rql.utils import rqlvar_maker
 
 from logilab.common.textutils import splitstrip
@@ -15,6 +17,11 @@ from cubicweb import Binary, ValidationError, typed_eid
 from cubicweb.web import INTERNAL_FIELD_VALUE, RequestError, NothingToEdit, ProcessFormError
 from cubicweb.web.views import basecontrollers, autoform
 
+def valerror_eid(eid):
+    try:
+        return typed_eid(eid)
+    except (ValueError, TypeError):
+        return eid
 
 class RqlQuery(object):
     def __init__(self):
@@ -108,7 +115,7 @@ class EditController(basecontrollers.ViewController):
         self._cw.remove_pending_operations()
         if self.errors:
             errors = dict((f.name, unicode(ex)) for f, ex in self.errors)
-            raise ValidationError(form.get('__maineid'), errors)
+            raise ValidationError(valerror_eid(form.get('__maineid')), errors)
 
     def _insert_entity(self, etype, eid, rqlquery):
         rql = rqlquery.insert_query(etype)
@@ -164,7 +171,7 @@ class EditController(basecontrollers.ViewController):
                     self.handle_formfield(form, field, rqlquery)
         if self.errors:
             errors = dict((f.role_name(), unicode(ex)) for f, ex in self.errors)
-            raise ValidationError(entity.eid, errors)
+            raise ValidationError(valerror_eid(entity.eid), errors)
         if eid is None: # creation or copy
             entity.eid = self._insert_entity(etype, formparams['eid'], rqlquery)
         elif rqlquery.edited: # edition of an existant entity
@@ -250,6 +257,25 @@ class EditController(basecontrollers.ViewController):
             for reid in seteids:
                 self.relations_rql.append((rql, {'x': eid, 'y': reid}, ('x', 'y')))
 
+    def delete_entities(self, eidtypes):
+        """delete entities from the repository"""
+        redirect_info = set()
+        eidtypes = tuple(eidtypes)
+        for eid, etype in eidtypes:
+            entity = self._cw.entity_from_eid(eid, etype)
+            path, params = entity.after_deletion_path()
+            redirect_info.add( (path, tuple(params.iteritems())) )
+            entity.delete()
+        if len(redirect_info) > 1:
+            # In the face of ambiguity, refuse the temptation to guess.
+            self._after_deletion_path = 'view', ()
+        else:
+            self._after_deletion_path = iter(redirect_info).next()
+        if len(eidtypes) > 1:
+            self._cw.set_message(self._cw._('entities deleted'))
+        else:
+            self._cw.set_message(self._cw._('entity deleted'))
+
     def _action_apply(self):
         self._default_publish()
         self.reset()
@@ -258,11 +284,9 @@ class EditController(basecontrollers.ViewController):
         errorurl = self._cw.form.get('__errorurl')
         if errorurl:
             self._cw.cancel_edition(errorurl)
-        self._cw.message = self._cw._('edit canceled')
+        self._cw.set_message(self._cw._('edit canceled'))
         return self.reset()
 
     def _action_delete(self):
         self.delete_entities(self._cw.edited_eids(withtype=True))
         return self.reset()
-
-

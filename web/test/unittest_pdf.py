@@ -1,12 +1,11 @@
-from unittest import TestCase
 import os.path as osp
-from xml.etree.cElementTree import ElementTree, fromstring, tostring, dump
-
 from tempfile import NamedTemporaryFile
 from subprocess import Popen as sub
+from xml.etree.cElementTree import ElementTree, fromstring, tostring, dump
+
+from logilab.common.testlib import TestCase, unittest_main
 
 from cubicweb.utils import can_do_pdf_conversion
-
 from cubicweb.ext.xhtml2fo import ReportTransformer
 
 DATADIR = osp.join(osp.dirname(__file__), 'data')
@@ -36,3 +35,7 @@ class PDFTC(TestCase):
         self.assertEquals( len(output), len(reference) )
         # cut begin & end 'cause they contain variyng data
         self.assertTextEquals(output[150:1500], reference[150:1500])
+
+if __name__ == '__main__':
+    unittest_main()
+

@@ -300,14 +300,16 @@ have the python imaging library installed to use captcha)',
 
     def _init_base_url(self):
         # normalize base url(s)
-        baseurl = self['base-url']
+        baseurl = self['base-url'] or self.default_base_url()
         if baseurl and baseurl[-1] != '/':
             baseurl += '/'
+        if not self.repairing:
             self.global_set_option('base-url', baseurl)
         httpsurl = self['https-url']
         if httpsurl and httpsurl[-1] != '/':
             httpsurl += '/'
-            self.global_set_option('https-url', httpsurl)
+            if not self.repairing:
+                self.global_set_option('https-url', httpsurl)
 
     def _build_ext_resources(self):
         libresourcesfile = join(self.shared_dir(), 'data', 'external_resources')

@@ -63,9 +63,17 @@ def source_cnx(source, dbname=None, special_privs=False, verbose=True):
             password = getpass('password: ')
     extra_args = source.get('db-extra-arguments')
     extra = extra_args and {'extra_args': extra_args} or {}
-    return get_connection(driver, dbhost, dbname, user, password=password,
-                          port=source.get('db-port'),
-                          **extra)
+    cnx = get_connection(driver, dbhost, dbname, user, password=password,
+                         port=source.get('db-port'),
+                         **extra)
+    try:
+        cnx.logged_user = user
+    except AttributeError:
+        # C object, __slots__
+        from logilab.database import _SimpleConnectionWrapper
+        cnx = _SimpleConnectionWrapper(cnx)
+        cnx.logged_user = user
+    return cnx
 
 def system_source_cnx(source, dbms_system_base=False,
                       special_privs='CREATE/DROP DATABASE', verbose=True):
@@ -75,8 +83,8 @@ def system_source_cnx(source, dbms_system_base=False,
     create/drop the instance database)
     """
     if dbms_system_base:
-        from logilab.common.adbh import get_adv_func_helper
-        system_db = get_adv_func_helper(source['db-driver']).system_database()
+        from logilab.database import get_db_helper
+        system_db = get_db_helper(source['db-driver']).system_database()
         return source_cnx(source, system_db, special_privs=special_privs, verbose=verbose)
     return source_cnx(source, special_privs=special_privs, verbose=verbose)
 
@@ -85,11 +93,11 @@ def _db_sys_cnx(source, what, db=None, user=None, verbose=True):
     or a database
     """
     import logilab.common as lgp
-    from logilab.common.adbh import get_adv_func_helper
+    from logilab.database import get_db_helper
     lgp.USE_MX_DATETIME = False
     special_privs = ''
     driver = source['db-driver']
-    helper = get_adv_func_helper(driver)
+    helper = get_db_helper(driver)
     if user is not None and helper.users_support:
         special_privs += '%s USER' % what
     if db is not None:
@@ -202,10 +210,10 @@ class RepositoryDeleteHandler(CommandHandler):
 
     def cleanup(self):
         """remove instance's configuration and database"""
-        from logilab.common.adbh import get_adv_func_helper
+        from logilab.database import get_db_helper
         source = self.config.sources()['system']
         dbname = source['db-name']
-        helper = get_adv_func_helper(source['db-driver'])
+        helper = get_db_helper(source['db-driver'])
         if ASK.confirm('Delete database %s ?' % dbname):
             user = source['db-user'] or None
             cnx = _db_sys_cnx(source, 'DROP DATABASE', user=user)
@@ -285,8 +293,7 @@ class CreateInstanceDBCommand(Command):
         )
     def run(self, args):
         """run the command with its specific arguments"""
-        from logilab.common.adbh import get_adv_func_helper
-        from indexer import get_indexer
+        from logilab.database import get_db_helper
         verbose = self.get('verbose')
         automatic = self.get('automatic')
         appid = pop_arg(args, msg='No instance specified !')
@@ -295,7 +302,7 @@ class CreateInstanceDBCommand(Command):
         dbname = source['db-name']
         driver = source['db-driver']
         create_db = self.config.create_db
-        helper = get_adv_func_helper(driver)
+        helper = get_db_helper(driver)
         if driver == 'sqlite':
             if os.path.exists(dbname) and automatic or \
                    ASK.confirm('Database %s already exists -- do you want to drop it ?' % dbname):
@@ -322,7 +329,7 @@ class CreateInstanceDBCommand(Command):
                                            source['db-encoding'])
                 else:
                     helper.create_database(cursor, dbname,
-                                           encoding=source['db-encoding'])
+                                           dbencoding=source['db-encoding'])
                 dbcnx.commit()
                 print '-> database %s created.' % dbname
             except:
@@ -330,8 +337,7 @@ class CreateInstanceDBCommand(Command):
                 raise
         cnx = system_source_cnx(source, special_privs='LANGUAGE C', verbose=verbose)
         cursor = cnx.cursor()
-        indexer = get_indexer(driver)
-        indexer.init_extensions(cursor)
+        helper.init_fti_extensions(cursor)
         # postgres specific stuff
         if driver == 'postgres':
             # install plpythonu/plpgsql language if not installed by the cube
@@ -383,7 +389,7 @@ tables, indexes... (no by default)'}),
             get_connection(
                 system['db-driver'], database=system['db-name'],
                 host=system.get('db-host'), port=system.get('db-port'),
-                user=system.get('db-user'), password=system.get('db-password'), 
+                user=system.get('db-user'), password=system.get('db-password'),
                 **extra)
         except Exception, ex:
             raise ConfigurationError(
@@ -566,17 +572,16 @@ def _remote_dump(host, appid, output, sudo=False):
 
 def _local_dump(appid, output):
     config = ServerConfiguration.config_for(appid)
-    # schema=1 to avoid unnecessary schema loading
-    mih = config.migration_handler(connect=False, schema=1, verbosity=1)
+    config.quick_start = True
+    mih = config.migration_handler(connect=False, verbosity=1)
     mih.backup_database(output, askconfirm=False)
     mih.shutdown()
 
 def _local_restore(appid, backupfile, drop, systemonly=True):
     config = ServerConfiguration.config_for(appid)
     config.verbosity = 1 # else we won't be asked for confirmation on problems
-    config.repairing = 1 # don't check versions
-    # schema=1 to avoid unnecessary schema loading
-    mih = config.migration_handler(connect=False, schema=1, verbosity=1)
+    config.quick_start = True
+    mih = config.migration_handler(connect=False, verbosity=1)
     mih.restore_database(backupfile, drop, systemonly, askconfirm=False)
     repo = mih.repo_connect()
     # version of the database

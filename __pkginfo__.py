@@ -7,7 +7,7 @@ software
 distname = "cubicweb"
 modname = "cubicweb"
 
-numversion = (3, 6, 1)
+numversion = (3, 7, 3)
 version = '.'.join(str(num) for num in numversion)
 
 license = 'LGPL'
@@ -30,7 +30,7 @@ This package contains:
 
 web = 'http://www.cubicweb.org'
 ftp = 'ftp://ftp.logilab.org/pub/cubicweb'
-pyversions = ['2.4', '2.5']
+pyversions = ['2.5', '2.6']
 
 classifiers = [
            'Environment :: Web Environment',
@@ -89,6 +89,8 @@ try:
          [join(data_dir, fname) for fname in listdir(data_dir) if not isdir(join(data_dir, fname))]],
         [join('share', 'cubicweb', 'cubes', 'shared', 'data', 'timeline'),
          [join(data_dir, 'timeline', fname) for fname in listdir(join(data_dir, 'timeline'))]],
+        [join('share', 'cubicweb', 'cubes', 'shared', 'data', 'images'),
+         [join(data_dir, 'images', fname) for fname in listdir(join(data_dir, 'images'))]],
         [join('share', 'cubicweb', 'cubes', 'shared', 'wdoc'),
          [join(wdoc_dir, fname) for fname in listdir(wdoc_dir) if not isdir(join(wdoc_dir, fname))]],
         [join('share', 'cubicweb', 'cubes', 'shared', 'wdoc', 'images'),
