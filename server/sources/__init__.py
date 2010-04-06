@@ -100,7 +100,7 @@ class AbstractSource(object):
         """method called by the repository once ready to handle request"""
         pass
 
-    def backup(self, backupfile):
+    def backup(self, backupfile, confirm):
         """method called to create a backup of source's data"""
         pass
 
@@ -351,7 +351,7 @@ class AbstractSource(object):
         """update an entity in the source"""
         raise NotImplementedError()
 
-    def delete_entity(self, session, etype, eid):
+    def delete_entity(self, session, entity):
         """delete an entity from the source"""
         raise NotImplementedError()
 
@@ -372,13 +372,33 @@ class AbstractSource(object):
     def create_eid(self, session):
         raise NotImplementedError()
 
-    def add_info(self, session, entity, source, extid=None):
+    def add_info(self, session, entity, source, extid):
         """add type and source info for an eid into the system table"""
         raise NotImplementedError()
 
-    def delete_info(self, session, eid, etype, uri, extid):
+    def update_info(self, session, entity, need_fti_update):
+        """mark entity as being modified, fulltext reindex if needed"""
+        raise NotImplementedError()
+
+    def delete_info(self, session, entity, uri, extid, attributes, relations):
         """delete system information on deletion of an entity by transfering
         record from the entities table to the deleted_entities table
+        """
+        raise NotImplementedError()
+
+    def modified_entities(self, session, etypes, mtime):
+        """return a 2-uple:
+        * list of (etype, eid) of entities of the given types which have been
+          modified since the given timestamp (actually entities whose full text
+          index content has changed)
+        * list of (etype, eid) of entities of the given types which have been
+          deleted since the given timestamp
+        """
+        raise NotImplementedError()
+
+    def index_entity(self, session, entity):
+        """create an operation to [re]index textual content of the given entity
+        on commit
         """
         raise NotImplementedError()
 
@@ -390,16 +410,6 @@ class AbstractSource(object):
 
     def fti_index_entity(self, session, entity):
         """add text content of a created/modified entity to the full text index
-        """
-        raise NotImplementedError()
-
-    def modified_entities(self, session, etypes, mtime):
-        """return a 2-uple:
-        * list of (etype, eid) of entities of the given types which have been
-          modified since the given timestamp (actually entities whose full text
-          index content has changed)
-        * list of (etype, eid) of entities of the given types which have been
-          deleted since the given timestamp
         """
         raise NotImplementedError()
 

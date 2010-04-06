@@ -14,15 +14,14 @@ from datetime import datetime
 
 from logilab.mtconverter import xml_escape
 from logilab.common.date import ustrftime
-from logilab.common.decorators import cached
 
-from yams.schema import KNOWN_METAATTRIBUTES
+from yams.schema import KNOWN_METAATTRIBUTES, role_name
 from yams.constraints import (SizeConstraint, StaticVocabularyConstraint,
                               FormatConstraint)
 
 from cubicweb import Binary, tags, uilib
 from cubicweb.web import INTERNAL_FIELD_VALUE, ProcessFormError, eid_param, \
-     formwidgets as fw
+     formwidgets as fw, uicfg
 
 
 class UnmodifiedField(Exception):
@@ -189,24 +188,33 @@ class Field(object):
         """return the widget instance associated to this field"""
         return self.widget
 
-    # cached is necessary else we get some pb on entity creation : entity.eid is
-    # modified from creation mark (eg 'X') to its actual eid (eg 123), and then
-    # `field.input_name()` won't return the right key anymore if not cached
-    # (first call to input_name done *before* eventual eid affectation).
-    @cached
     def input_name(self, form, suffix=None):
         """return 'qualified name' for this field"""
-        name = self.role_name()
-        if suffix is not None:
-            name += suffix
-        if self.eidparam:
-            return eid_param(name, form.edited_entity.eid)
-        return name
+        # caching is necessary else we get some pb on entity creation :
+        # entity.eid is modified from creation mark (eg 'X') to its actual eid
+        # (eg 123), and then `field.input_name()` won't return the right key
+        # anymore if not cached (first call to input_name done *before* eventual
+        # eid affectation).
+        #
+        # note that you should NOT use @cached else it will create a memory leak
+        # on persistent fields (eg created once for all on a form class) because
+        # of the 'form' appobject argument: the cache will keep growing as new
+        # form are created...
+        try:
+            return form.formvalues[(self, 'input_name', suffix)]
+        except KeyError:
+            name = self.role_name()
+            if suffix is not None:
+                name += suffix
+            if self.eidparam:
+                name = eid_param(name, form.edited_entity.eid)
+            form.formvalues[(self, 'input_name', suffix)] = name
+            return name
 
     def role_name(self):
         """return <field.name>-<field.role> if role is specified, else field.name"""
         if self.role is not None:
-            return '%s-%s' % (self.name, self.role)
+            return role_name(self.name, self.role)
         return self.name
 
     def dom_id(self, form, suffix=None):
@@ -373,7 +381,10 @@ class Field(object):
         for field in self.actual_fields(form):
             if field is self:
                 try:
-                    yield field, field.process_form_value(form)
+                    value = field.process_form_value(form)
+                    if value is None and field.required:
+                        raise ProcessFormError(form._cw._("required field"))
+                    yield field, value
                 except UnmodifiedField:
                     continue
             else:
@@ -856,7 +867,7 @@ class RelationField(Field):
             eids.add(typed_eid)
         return eids
 
-
+# XXX use cases where we don't actually want a better widget?
 class CompoundField(Field):
     def __init__(self, fields, *args, **kwargs):
         super(CompoundField, self).__init__(*args, **kwargs)
@@ -866,8 +877,14 @@ class CompoundField(Field):
         return self.fields
 
     def actual_fields(self, form):
-        return [self] + list(self.fields)
+        # don't add [self] to actual fields, compound field is usually kinda
+        # virtual, all interesting values are in subfield. Skipping it may avoid
+        # error when processed by the editcontroller : it may be marked as required
+        # while it has no value, hence generating a false error.
+        return list(self.fields)
 
+
+_AFF_KWARGS = uicfg.autoform_field_kwargs
 
 def guess_field(eschema, rschema, role='subject', skip_meta_attr=True, **kwargs):
     """return the most adapated widget to edit the relation
@@ -883,14 +900,14 @@ def guess_field(eschema, rschema, role='subject', skip_meta_attr=True, **kwargs)
     else:
         targetschema = rdef.subject
     card = rdef.role_cardinality(role)
-    kwargs['required'] = card in '1+'
     kwargs['name'] = rschema.type
     kwargs['role'] = role
+    kwargs['eidparam'] = True
+    kwargs.setdefault('required', card in '1+')
     if role == 'object':
         kwargs.setdefault('label', (eschema.type, rschema.type + '_object'))
     else:
         kwargs.setdefault('label', (eschema.type, rschema.type))
-    kwargs['eidparam'] = True
     kwargs.setdefault('help', rdef.description)
     if rschema.final:
         if skip_meta_attr and rschema in eschema.meta_attributes():
@@ -918,8 +935,10 @@ def guess_field(eschema, rschema, role='subject', skip_meta_attr=True, **kwargs)
             for metadata in KNOWN_METAATTRIBUTES:
                 metaschema = eschema.has_metadata(rschema, metadata)
                 if metaschema is not None:
+                    metakwargs = _AFF_KWARGS.etype_get(eschema, metaschema, 'subject')
                     kwargs['%s_field' % metadata] = guess_field(eschema, metaschema,
-                                                                skip_meta_attr=False)
+                                                                skip_meta_attr=False,
+                                                                **metakwargs)
         return fieldclass(**kwargs)
     return RelationField.fromcardinality(card, **kwargs)
 

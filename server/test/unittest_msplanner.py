@@ -60,6 +60,11 @@ X_ALL_SOLS = sorted([{'X': 'Affaire'}, {'X': 'BaseTransition'}, {'X': 'Basket'},
 # keep cnx so it's not garbage collected and the associated session is closed
 repo, cnx = init_test_database()
 
+def teardown_module(*args):
+    global repo, cnx
+    del repo, cnx
+
+
 class BaseMSPlannerTC(BasePlannerTC):
     """test planner related feature on a 3-sources repository:
 
@@ -87,10 +92,10 @@ class BaseMSPlannerTC(BasePlannerTC):
         self.add_source(FakeCardSource, 'cards')
 
     def tearDown(self):
-        super(BaseMSPlannerTC, self).tearDown()
         # restore hijacked security
         self.restore_orig_affaire_security()
         self.restore_orig_cwuser_security()
+        super(BaseMSPlannerTC, self).tearDown()
 
     def restore_orig_affaire_security(self):
         affreadperms = list(self.schema['Affaire'].permissions['read'])
@@ -771,13 +776,12 @@ class MSPlannerTC(BaseMSPlannerTC):
                          [{'X': 'Basket'}]),
                         ('Any X WHERE X has_text "bla", EXISTS(X owned_by 5), X is CWUser',
                          [{'X': 'CWUser'}]),
-                        ('Any X WHERE X has_text "bla", X is IN(BaseTransition, Card, Comment, Division, Email, EmailThread, File, Folder, Image, Note, Personne, Societe, State, SubDivision, Tag, Transition, Workflow, WorkflowTransition)',
-                         [{'X': 'BaseTransition'}, {'X': 'Card'}, {'X': 'Comment'},
+                        ('Any X WHERE X has_text "bla", X is IN(Card, Comment, Division, Email, EmailThread, File, Folder, Image, Note, Personne, Societe, SubDivision, Tag)',
+                         [{'X': 'Card'}, {'X': 'Comment'},
                           {'X': 'Division'}, {'X': 'Email'}, {'X': 'EmailThread'},
                           {'X': 'File'}, {'X': 'Folder'}, {'X': 'Image'},
                           {'X': 'Note'}, {'X': 'Personne'}, {'X': 'Societe'},
-                          {'X': 'State'}, {'X': 'SubDivision'}, {'X': 'Tag'},
-                          {'X': 'Transition'}, {'X': 'Workflow'}, {'X': 'WorkflowTransition'}]),],
+                          {'X': 'SubDivision'}, {'X': 'Tag'}]),],
                        None, None, [self.system], {}, []),
                       ])
                      ])
@@ -798,24 +802,22 @@ class MSPlannerTC(BaseMSPlannerTC):
                             [{'X': 'Basket'}]),
                            ('Any X WHERE X has_text "bla", EXISTS(X owned_by 5), X is CWUser',
                             [{'X': 'CWUser'}]),
-                           ('Any X WHERE X has_text "bla", X is IN(BaseTransition, Card, Comment, Division, Email, EmailThread, File, Folder, Image, Note, Personne, Societe, State, SubDivision, Tag, Transition, Workflow, WorkflowTransition)',
-                            [{'X': 'BaseTransition'}, {'X': 'Card'}, {'X': 'Comment'},
+                           ('Any X WHERE X has_text "bla", X is IN(Card, Comment, Division, Email, EmailThread, File, Folder, Image, Note, Personne, Societe, SubDivision, Tag)',
+                            [{'X': 'Card'}, {'X': 'Comment'},
                              {'X': 'Division'}, {'X': 'Email'}, {'X': 'EmailThread'},
                              {'X': 'File'}, {'X': 'Folder'}, {'X': 'Image'},
                              {'X': 'Note'}, {'X': 'Personne'}, {'X': 'Societe'},
-                             {'X': 'State'}, {'X': 'SubDivision'}, {'X': 'Tag'},
-                             {'X': 'Transition'}, {'X': 'Workflow'}, {'X': 'WorkflowTransition'}])],
+                             {'X': 'SubDivision'}, {'X': 'Tag'}])],
                           [self.system], {}, {'X': 'table0.C0'}, []),
                          ]),
                     ('OneFetchStep',
                      [('Any X LIMIT 10 OFFSET 10',
-                       [{'X': 'Affaire'}, {'X': 'BaseTransition'}, {'X': 'Basket'},
+                       [{'X': 'Affaire'}, {'X': 'Basket'},
                         {'X': 'CWUser'}, {'X': 'Card'}, {'X': 'Comment'},
                         {'X': 'Division'}, {'X': 'Email'}, {'X': 'EmailThread'},
                         {'X': 'File'}, {'X': 'Folder'}, {'X': 'Image'},
                         {'X': 'Note'}, {'X': 'Personne'}, {'X': 'Societe'},
-                        {'X': 'State'}, {'X': 'SubDivision'}, {'X': 'Tag'},
-                        {'X': 'Transition'}, {'X': 'Workflow'}, {'X': 'WorkflowTransition'}])],
+                        {'X': 'SubDivision'}, {'X': 'Tag'}])],
                      10, 10, [self.system], {'X': 'table0.C0'}, [])
                      ])
 
@@ -1008,7 +1010,7 @@ class MSPlannerTC(BaseMSPlannerTC):
         self.session = self.user_groups_session('guests')
         self._test('Any X,XT,U WHERE X is Card, X owned_by U?, X title XT, U login L',
                    [('FetchStep',
-                     [('Any U,L WHERE U identity 5, U login L, U is CWUser',
+                     [('Any U,L WHERE U login L, EXISTS(U identity 5), U is CWUser',
                        [{'L': 'String', u'U': 'CWUser'}])],
                      [self.system], {}, {'L': 'table0.C1', 'U': 'table0.C0', 'U.login': 'table0.C1'}, []),
                     ('FetchStep',
@@ -1520,15 +1522,11 @@ class MSPlannerTC(BaseMSPlannerTC):
         repo._type_source_cache[999999] = ('Note', 'cards', 999999)
         repo._type_source_cache[999998] = ('State', 'system', None)
         self._test('INSERT Note X: X in_state S, X type T WHERE S eid %(s)s, N eid %(n)s, N type T',
-                   [('FetchStep', [('Any T WHERE N eid 999999, N type T, N is Note',
-                                    [{'N': 'Note', 'T': 'String'}])],
-                     [self.cards], None, {'N.type': 'table0.C0', 'T': 'table0.C0'}, []),
-                    ('InsertStep',
-                     [('RelationsStep',
-                       [('OneFetchStep', [('Any 999998,T WHERE N type T, N is Note',
+                   [('InsertStep',
+                     [('InsertRelationsStep',
+                       [('OneFetchStep', [('Any T WHERE N eid 999999, N type T, N is Note',
                                            [{'N': 'Note', 'T': 'String'}])],
-                        None, None, [self.system],
-                        {'N.type': 'table0.C0', 'T': 'table0.C0'}, [])])
+                        None, None, [self.cards], {}, [])])
                       ])
                     ],
                    {'n': 999999, 's': 999998})
@@ -1537,15 +1535,11 @@ class MSPlannerTC(BaseMSPlannerTC):
         repo._type_source_cache[999999] = ('Note', 'cards', 999999)
         repo._type_source_cache[999998] = ('State', 'system', None)
         self._test('INSERT Note X: X in_state S, X type T, X migrated_from N WHERE S eid %(s)s, N eid %(n)s, N type T',
-                   [('FetchStep', [('Any T,N WHERE N eid 999999, N type T, N is Note',
-                                    [{'N': 'Note', 'T': 'String'}])],
-                     [self.cards], None, {'N': 'table0.C1', 'N.type': 'table0.C0', 'T': 'table0.C0'}, []),
-                    ('InsertStep',
-                     [('RelationsStep',
-                       [('OneFetchStep', [('Any 999998,T,N WHERE N type T, N is Note',
+                   [('InsertStep',
+                     [('InsertRelationsStep',
+                       [('OneFetchStep', [('Any T WHERE N eid 999999, N type T, N is Note',
                                            [{'N': 'Note', 'T': 'String'}])],
-                         None, None, [self.system],
-                         {'N': 'table0.C1', 'N.type': 'table0.C0', 'T': 'table0.C0'}, [])
+                         None, None, [self.cards], {}, [])
                         ])
                       ])
                     ],
@@ -1556,8 +1550,8 @@ class MSPlannerTC(BaseMSPlannerTC):
         repo._type_source_cache[999998] = ('State', 'cards', 999998)
         self._test('INSERT Note X: X in_state S, X type T WHERE S eid %(s)s, N eid %(n)s, N type T',
                    [('InsertStep',
-                     [('RelationsStep',
-                       [('OneFetchStep', [('Any 999998,T WHERE N eid 999999, N type T, N is Note',
+                     [('InsertRelationsStep',
+                       [('OneFetchStep', [('Any T WHERE N eid 999999, N type T, N is Note',
                                            [{'N': 'Note', 'T': 'String'}])],
                          None, None, [self.cards], {}, [])]
                        )]
@@ -1569,10 +1563,7 @@ class MSPlannerTC(BaseMSPlannerTC):
         repo._type_source_cache[999998] = ('State', 'system', None)
         self._test('INSERT Note X: X in_state S, X type "bla", X migrated_from N WHERE S eid %(s)s, N eid %(n)s',
                    [('InsertStep',
-                     [('RelationsStep',
-                       [('OneFetchStep', [('Any 999998,999999', [{}])],
-                         None, None, [self.system], {}, [])]
-                       )]
+                      [('InsertRelationsStep', [])]
                      )],
                    {'n': 999999, 's': 999998})
 
@@ -1581,12 +1572,14 @@ class MSPlannerTC(BaseMSPlannerTC):
         repo._type_source_cache[999998] = ('State', 'system', None)
         self._test('INSERT Note X: X in_state S, X type "bla", X migrated_from N WHERE S eid %(s)s, N eid %(n)s, A concerne N',
                    [('InsertStep',
-                     [('RelationsStep',
-                       [('OneFetchStep', [('Any 999998,999999 WHERE A concerne 999999, A is Affaire',
-                                           [{'A': 'Affaire'}])],
-                         None, None, [self.system], {}, [])]
-                       )]
-                     )],
+                     [('InsertRelationsStep',
+                       [('OneFetchStep',
+                         [('Any A WHERE A concerne 999999, A is Affaire',
+                           [{'A': 'Affaire'}])],
+                         None, None, [self.system], {}, []),
+                        ]),
+                      ])
+                    ],
                    {'n': 999999, 's': 999998})
 
     def test_delete_relation1(self):
@@ -1667,7 +1660,7 @@ class MSPlannerTC(BaseMSPlannerTC):
         # source, states should only be searched in the system source as well
         self._test('SET X in_state S WHERE X eid %(x)s, S name "deactivated"',
                    [('UpdateStep', [
-                       ('OneFetchStep', [('DISTINCT Any 5,S WHERE S name "deactivated", S is State',
+                       ('OneFetchStep', [('DISTINCT Any S WHERE S name "deactivated", S is State',
                                           [{'S': 'State'}])],
                         None, None, [self.system], {}, []),
                        ]),
@@ -1817,7 +1810,7 @@ class MSPlannerTC(BaseMSPlannerTC):
                    [('FetchStep', [('Any Y WHERE Y multisource_rel 999998, Y is Note', [{'Y': 'Note'}])],
                      [self.cards], None, {'Y': u'table0.C0'}, []),
                     ('UpdateStep',
-                     [('OneFetchStep', [('DISTINCT Any 999999,Y WHERE Y migrated_from 999998, Y is Note',
+                     [('OneFetchStep', [('DISTINCT Any Y WHERE Y migrated_from 999998, Y is Note',
                                          [{'Y': 'Note'}])],
                        None, None, [self.system],
                        {'Y': u'table0.C0'}, [])])],
@@ -1844,14 +1837,9 @@ class MSPlannerTC(BaseMSPlannerTC):
     def test_nonregr11(self):
         repo._type_source_cache[999999] = ('Bookmark', 'system', 999999)
         self._test('SET X bookmarked_by Y WHERE X eid %(x)s, Y login "hop"',
-                   [('FetchStep',
-                     [('Any Y WHERE Y login "hop", Y is CWUser', [{'Y': 'CWUser'}])],
-                     [self.ldap, self.system],
-                     None, {'Y': 'table0.C0'}, []),
-                    ('UpdateStep',
-                     [('OneFetchStep', [('DISTINCT Any 999999,Y WHERE Y is CWUser', [{'Y': 'CWUser'}])],
-                       None, None, [self.system], {'Y': 'table0.C0'},
-                       [])]
+                   [('UpdateStep',
+                     [('OneFetchStep', [('DISTINCT Any Y WHERE Y login "hop", Y is CWUser', [{'Y': 'CWUser'}])],
+                       None, None, [self.ldap, self.system], {}, [])]
                      )],
                    {'x': 999999})
 

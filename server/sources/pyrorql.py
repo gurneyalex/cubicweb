@@ -182,6 +182,7 @@ repository (default to 5 minutes).',
         self._query_cache.clear()
         repo = self.repo
         session = repo.internal_session()
+        source = repo.system_source
         try:
             for etype, extid in modified:
                 try:
@@ -191,7 +192,7 @@ repository (default to 5 minutes).',
                         rset = session.eid_rset(eid, etype)
                         entity = rset.get_entity(0, 0)
                         entity.complete(entity.e_schema.indexable_attributes())
-                        repo.index_entity(session, entity)
+                        source.index_entity(session, entity)
                 except:
                     self.exception('while updating %s with external id %s of source %s',
                                    etype, extid, self.uri)
@@ -202,7 +203,8 @@ repository (default to 5 minutes).',
                                          insert=False)
                     # entity has been deleted from external repository but is not known here
                     if eid is not None:
-                        repo.delete_info(session, eid)
+                        entity = session.entity_from_eid(eid, etype)
+                        repo.delete_info(session, entity, self.uri, extid)
                 except:
                     self.exception('while updating %s with external id %s of source %s',
                                    etype, extid, self.uri)
@@ -349,11 +351,11 @@ repository (default to 5 minutes).',
         self._query_cache.clear()
         entity.clear_all_caches()
 
-    def delete_entity(self, session, etype, eid):
+    def delete_entity(self, session, entity):
         """delete an entity from the source"""
         cu = session.pool[self.uri]
-        cu.execute('DELETE %s X WHERE X eid %%(x)s' % etype,
-                   {'x': self.eid2extid(eid, session)}, 'x')
+        cu.execute('DELETE %s X WHERE X eid %%(x)s' % entity.__regid__,
+                   {'x': self.eid2extid(entity.eid, session)}, 'x')
         self._query_cache.clear()
 
     def add_relation(self, session, subject, rtype, object):

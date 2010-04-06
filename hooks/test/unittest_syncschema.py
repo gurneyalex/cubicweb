@@ -3,9 +3,11 @@ from logilab.common.testlib import TestCase, unittest_main
 from cubicweb import ValidationError
 from cubicweb.devtools.testlib import CubicWebTC
 from cubicweb.server.sqlutils import SQL_PREFIX
+from cubicweb.devtools.repotest import schema_eids_idx, restore_schema_eids_idx
 
+def teardown_module(*args):
+    del SchemaModificationHooksTC.schema_eids
 
-SCHEMA_EIDS = {}
 class SchemaModificationHooksTC(CubicWebTC):
     reset_schema = True
 
@@ -15,29 +17,12 @@ class SchemaModificationHooksTC(CubicWebTC):
         # we have to read schema from the database to get eid for schema entities
         config._cubes = None
         cls.repo.fill_schema()
-        # remember them so we can reread it from the fs instead of the db (too
-        # costly) between tests
-        for x in cls.repo.schema.entities():
-            SCHEMA_EIDS[x] = x.eid
-        for x in cls.repo.schema.relations():
-            SCHEMA_EIDS[x] = x.eid
-            for rdef in x.rdefs.itervalues():
-                SCHEMA_EIDS[(rdef.subject, rdef.rtype, rdef.object)] = rdef.eid
+        cls.schema_eids = schema_eids_idx(cls.repo.schema)
 
     @classmethod
     def _refresh_repo(cls):
         super(SchemaModificationHooksTC, cls)._refresh_repo()
-        # rebuild schema eid index
-        schema = cls.repo.schema
-        for x in schema.entities():
-            x.eid = SCHEMA_EIDS[x]
-            schema._eid_index[x.eid] = x
-        for x in cls.repo.schema.relations():
-            x.eid = SCHEMA_EIDS[x]
-            schema._eid_index[x.eid] = x
-            for rdef in x.rdefs.itervalues():
-                rdef.eid = SCHEMA_EIDS[(rdef.subject, rdef.rtype, rdef.object)]
-                schema._eid_index[rdef.eid] = rdef
+        restore_schema_eids_idx(cls.repo.schema, cls.schema_eids)
 
     def index_exists(self, etype, attr, unique=False):
         self.session.set_pool()
@@ -271,20 +256,57 @@ class SchemaModificationHooksTC(CubicWebTC):
         self.execute('Any X WHERE X is_instance_of BaseTransition, X messageid "hop"')
 
     def test_change_fulltextindexed(self):
-        target = self.request().create_entity(u'EmailAddress', address=u'rick.roll@dance.com')
+        req = self.request()
+        target = req.create_entity(u'Email', messageid=u'1234',
+                                   subject=u'rick.roll@dance.com')
         self.commit()
-        rset = self.execute('Any X Where X has_text "rick.roll"')
+        rset = req.execute('Any X WHERE X has_text "rick.roll"')
+        self.assertIn(target.eid, [item[0] for item in rset])
+        assert req.execute('SET A fulltextindexed FALSE '
+                            'WHERE E is CWEType, E name "Email", A is CWAttribute,'
+                            'A from_entity E, A relation_type R, R name "subject"')
+        self.commit()
+        rset = req.execute('Any X WHERE X has_text "rick.roll"')
+        self.failIf(rset)
+        assert req.execute('SET A fulltextindexed TRUE '
+                           'WHERE A from_entity E, A relation_type R, '
+                           'E name "Email", R name "subject"')
+        self.commit()
+        rset = req.execute('Any X WHERE X has_text "rick.roll"')
         self.assertIn(target.eid, [item[0] for item in rset])
 
-        assert self.execute('''SET A fulltextindexed False
-                        WHERE E is CWEType,
-                              E name "EmailAddress",
-                              A is CWAttribute,
-                              A from_entity E,
-                              A relation_type R,
-                              R name "address"
-                    ''')
+    def test_change_fulltext_container(self):
+        req = self.request()
+        target = req.create_entity(u'EmailAddress', address=u'rick.roll@dance.com')
+        target.set_relations(reverse_use_email=req.user)
         self.commit()
-        rset = self.execute('Any X Where X has_text "rick.roll"')
-        self.assertNotIn(target.eid, [item[0] for item in rset])
+        rset = req.execute('Any X WHERE X has_text "rick.roll"')
+        self.assertIn(req.user.eid, [item[0] for item in rset])
+        assert self.execute('SET R fulltext_container NULL '
+                            'WHERE R name "use_email"')
+        self.commit()
+        rset = self.execute('Any X WHERE X has_text "rick.roll"')
+        self.assertIn(target.eid, [item[0] for item in rset])
+        assert self.execute('SET R fulltext_container "subject" '
+                            'WHERE R name "use_email"')
+        self.commit()
+        rset = req.execute('Any X WHERE X has_text "rick.roll"')
+        self.assertIn(req.user.eid, [item[0] for item in rset])
 
+    def test_update_constraint(self):
+        rdef = self.schema['Transition'].rdef('type')
+        cstr = rdef.constraint_by_type('StaticVocabularyConstraint')
+        if not getattr(cstr, 'eid', None):
+            self.skip('start me alone') # bug in schema reloading, constraint's eid not restored
+        self.execute('SET X value %(v)s WHERE X eid %(x)s',
+                     {'x': cstr.eid, 'v': u"u'normal', u'auto', u'new'"}, 'x')
+        self.execute('INSERT CWConstraint X: X value %(value)s, X cstrtype CT, EDEF constrained_by X '
+                     'WHERE CT name %(ct)s, EDEF eid %(x)s',
+                     {'ct': 'SizeConstraint', 'value': u'max=10', 'x': rdef.eid}, 'x')
+        self.commit()
+        cstr = rdef.constraint_by_type('StaticVocabularyConstraint')
+        self.assertEquals(cstr.values, (u'normal', u'auto', u'new'))
+        self.execute('INSERT Transition T: T name "hop", T type "new"')
+
+if __name__ == '__main__':
+    unittest_main()

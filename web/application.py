@@ -123,7 +123,11 @@ class CookieSessionHandler(object):
         SESSION_MANAGER = self.session_manager
         if not 'last_login_time' in self.vreg.schema:
             self._update_last_login_time = lambda x: None
-        CW_EVENT_MANAGER.bind('after-registry-reload', self.reset_session_manager)
+        if self.vreg.config.mode != 'test':
+            # don't try to reset session manager during test, this leads to
+            # weird failures when running multiple tests
+            CW_EVENT_MANAGER.bind('after-registry-reload',
+                                  self.reset_session_manager)
 
     def reset_session_manager(self):
         data = self.session_manager.dump_data()
@@ -217,13 +221,13 @@ class CookieSessionHandler(object):
             path = 'view'
         raise Redirect(req.build_url(path, **args))
 
-    def logout(self, req):
+    def logout(self, req, goto_url):
         """logout from the instance by cleaning the session and raising
         `AuthenticationError`
         """
         self.session_manager.close_session(req.cnx)
         req.remove_cookie(req.get_cookie(), self.SESSION_VAR)
-        raise AuthenticationError()
+        raise AuthenticationError(url=goto_url)
 
 
 class CubicWebPublisher(object):
@@ -342,7 +346,11 @@ class CubicWebPublisher(object):
                 # redirect is raised by edit controller when everything went fine,
                 # so try to commit
                 try:
-                    req.cnx.commit()
+                    txuuid = req.cnx.commit()
+                    if txuuid is not None:
+                        msg = u'<span class="undo">[<a href="%s">%s</a>]</span>' %(
+                            req.build_url('undo', txuuid=txuuid), req._('undo'))
+                        req.append_to_redirect_message(msg)
                 except ValidationError, ex:
                     self.validation_error_handler(req, ex)
                 except Unauthorized, ex:
@@ -393,7 +401,7 @@ class CubicWebPublisher(object):
         self.exception(repr(ex))
         req.set_header('Cache-Control', 'no-cache')
         req.remove_header('Etag')
-        req.message = None
+        req.reset_message()
         req.reset_headers()
         if req.json_request:
             raise RemoteCallFailed(unicode(ex))
