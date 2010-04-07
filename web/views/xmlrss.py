@@ -50,11 +50,14 @@ class XMLItemView(EntityView):
         self.w(u'<%s>\n' % (entity.e_schema))
         for rschema, attrschema in entity.e_schema.attribute_definitions():
             attr = rschema.type
-            try:
-                value = entity[attr]
-            except KeyError:
-                # Bytes
-                continue
+            if attr == 'eid':
+                value = entity.eid
+            else:
+                try:
+                    value = entity[attr]
+                except KeyError:
+                    # Bytes
+                    continue
             if value is not None:
                 if attrschema == 'Bytes':
                     from base64 import b64encode
@@ -148,6 +151,7 @@ class RSSView(XMLView):
     content_type = 'text/xml'
     http_cache_manager = httpcache.MaxAgeHTTPCacheManager
     cache_max_age = 60*60*2 # stay in http cache for 2 hours by default
+    item_vid = 'rssitem'
 
     def _open(self):
         req = self._cw
@@ -174,7 +178,7 @@ class RSSView(XMLView):
         self._close()
 
     def cell_call(self, row, col):
-        self.wview('rssitem', self.cw_rset, row=row, col=col)
+        self.wview(self.item_vid, self.cw_rset, row=row, col=col)
 
 
 class RSSItemView(EntityView):
@@ -188,10 +192,13 @@ class RSSItemView(EntityView):
         self.w(u'<guid isPermaLink="true">%s</guid>\n'
                % xml_escape(entity.absolute_url()))
         self.render_title_link(entity)
-        self._marker('description', entity.dc_description(format='text/html'))
+        self.render_description(entity)
         self._marker('dc:date', entity.dc_date(self.date_format))
         self.render_entity_creator(entity)
         self.w(u'</item>\n')
+
+    def render_description(self, entity):
+        self._marker('description', entity.dc_description(format='text/html'))
 
     def render_title_link(self, entity):
         self._marker('title', entity.dc_long_title())

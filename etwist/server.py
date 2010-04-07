@@ -11,7 +11,6 @@ import sys
 import os
 import select
 import errno
-import hotshot
 from time import mktime
 from datetime import date, timedelta
 from urlparse import urlsplit, urlunsplit
@@ -99,15 +98,11 @@ class CubicWebRootResource(resource.PostableResource):
     def __init__(self, config, debug=None):
         self.debugmode = debug
         self.config = config
-        self.base_url = config['base-url'] or config.default_base_url()
-        if self.base_url[-1] != '/':
-            self.base_url += '/'
-        self.https_url = config['https-url']
-        if self.https_url and self.https_url[-1] != '/':
-            self.https_url += '/'
         # instantiate publisher here and not in init_publisher to get some
         # checks done before daemonization (eg versions consistency)
         self.appli = CubicWebPublisher(config, debug=self.debugmode)
+        self.base_url = config['base-url']
+        self.https_url = config['https-url']
         self.versioned_datadir = 'data%s' % config.instance_md5_version()
 
     def init_publisher(self):
@@ -117,8 +112,6 @@ class CubicWebRootResource(resource.PostableResource):
         if config.repo_method == 'inmemory':
             reactor.addSystemEventTrigger('before', 'shutdown',
                                           self.shutdown_event)
-            # monkey patch start_looping_task to get proper reactor integration
-            #self.appli.repo.__class__.start_looping_tasks = start_looping_tasks
             if config.pyro_enabled():
                 # if pyro is enabled, we have to register to the pyro name
                 # server, create a pyro daemon, and create a task to handle pyro
@@ -171,7 +164,7 @@ class CubicWebRootResource(resource.PostableResource):
                         datadir = self.config.locate_resource(segments[1])
                         if datadir is None:
                             return None, []
-                    self.info('static file %s from %s', segments[-1], datadir)
+                    self.debug('static file %s from %s', segments[-1], datadir)
                     if segments[0] == 'data':
                         return static.File(str(datadir)), segments[1:]
                     else:
@@ -250,21 +243,12 @@ class CubicWebRootResource(resource.PostableResource):
                                  headers=req.headers_out or None)
         except ExplicitLogin:  # must be before AuthenticationError
             return self.request_auth(req)
-        except AuthenticationError:
-            if self.config['auth-mode'] == 'cookie':
-                # in cookie mode redirecting to the index view is enough :
-                # either anonymous connection is allowed and the page will
-                # be displayed or we'll be redirected to the login form
-                msg = req._('you have been logged out')
-                if req.https:
-                    req._base_url =  self.base_url
-                    req.https = False
-                url = req.build_url('view', vid='index', __message=msg)
-                return self.redirect(req, url)
-            else:
-                # in http we have to request auth to flush current http auth
-                # information
-                return self.request_auth(req, loggedout=True)
+        except AuthenticationError, ex:
+            if self.config['auth-mode'] == 'cookie' and getattr(ex, 'url', None):
+                return self.redirect(req, ex.url)
+            # in http we have to request auth to flush current http auth
+            # information
+            return self.request_auth(req, loggedout=True)
         except Redirect, ex:
             return self.redirect(req, ex.location)
         # request may be referenced by "onetime callback", so clear its entity
@@ -350,32 +334,131 @@ from cubicweb import set_log_methods
 set_log_methods(CubicWebRootResource, getLogger('cubicweb.twisted'))
 
 
+listiterator = type(iter([]))
 
-def _gc_debug():
+def _gc_debug(all=True):
     import gc
     from pprint import pprint
     from cubicweb.appobject import AppObject
     gc.collect()
     count = 0
     acount = 0
+    fcount = 0
+    rcount = 0
+    ccount = 0
+    scount = 0
     ocount = {}
+    from rql.stmts import Union
+    from cubicweb.schema import CubicWebSchema
+    from cubicweb.rset import ResultSet
+    from cubicweb.dbapi import Connection, Cursor
+    from cubicweb.req import RequestSessionBase
+    from cubicweb.server.repository import Repository
+    from cubicweb.server.sources.native import NativeSQLSource
+    from cubicweb.server.session import Session
+    from cubicweb.devtools.testlib import CubicWebTC
+    from logilab.common.testlib import TestSuite
+    from optparse import Values
+    import types, weakref
     for obj in gc.get_objects():
-        if isinstance(obj, CubicWebTwistedRequestAdapter):
+        if isinstance(obj, RequestSessionBase):
             count += 1
+            if isinstance(obj, Session):
+                print '   session', obj, referrers(obj, True)
         elif isinstance(obj, AppObject):
             acount += 1
-        else:
+        elif isinstance(obj, ResultSet):
+            rcount += 1
+            #print '   rset', obj, referrers(obj)
+        elif isinstance(obj, Repository):
+            print '   REPO', obj, referrers(obj, True)
+        #elif isinstance(obj, NativeSQLSource):
+        #    print '   SOURCe', obj, referrers(obj)
+        elif isinstance(obj, CubicWebTC):
+            print '   TC', obj, referrers(obj)
+        elif isinstance(obj, TestSuite):
+            print '   SUITE', obj, referrers(obj)
+        #elif isinstance(obj, Values):
+        #    print '   values', '%#x' % id(obj), referrers(obj, True)
+        elif isinstance(obj, Connection):
+            ccount += 1
+            #print '   cnx', obj, referrers(obj)
+        #elif isinstance(obj, Cursor):
+        #    ccount += 1
+        #    print '   cursor', obj, referrers(obj)
+        elif isinstance(obj, file):
+            fcount += 1
+        #    print '   open file', file.name, file.fileno
+        elif isinstance(obj, CubicWebSchema):
+            scount += 1
+            print '   schema', obj, referrers(obj)
+        elif not isinstance(obj, (type, tuple, dict, list, set, frozenset,
+                                  weakref.ref, weakref.WeakKeyDictionary,
+                                  listiterator,
+                                  property, classmethod,
+                                  types.ModuleType, types.MemberDescriptorType,
+                                  types.FunctionType, types.MethodType)):
             try:
                 ocount[obj.__class__] += 1
             except KeyError:
                 ocount[obj.__class__] = 1
             except AttributeError:
                 pass
-    print 'IN MEM REQUESTS', count
-    print 'IN MEM APPOBJECTS', acount
-    ocount = sorted(ocount.items(), key=lambda x: x[1], reverse=True)[:20]
-    pprint(ocount)
-    print 'UNREACHABLE', gc.garbage
+    if count:
+        print ' NB REQUESTS/SESSIONS', count
+    if acount:
+        print ' NB APPOBJECTS', acount
+    if ccount:
+        print ' NB CONNECTIONS', ccount
+    if rcount:
+        print ' NB RSETS', rcount
+    if scount:
+        print ' NB SCHEMAS', scount
+    if fcount:
+        print ' NB FILES', fcount
+    if all:
+        ocount = sorted(ocount.items(), key=lambda x: x[1], reverse=True)[:20]
+        pprint(ocount)
+    if gc.garbage:
+        print 'UNREACHABLE', gc.garbage
+
+def referrers(obj, showobj=False):
+    try:
+        return sorted(set((type(x), showobj and x or getattr(x, '__name__', '%#x' % id(x)))
+                          for x in _referrers(obj)))
+    except TypeError:
+        s = set()
+        unhashable = []
+        for x in _referrers(obj):
+            try:
+                s.add(x)
+            except TypeError:
+                unhashable.append(x)
+        return sorted(s) + unhashable
+
+def _referrers(obj, seen=None, level=0):
+    import gc, types
+    from cubicweb.schema import CubicWebRelationSchema, CubicWebEntitySchema
+    interesting = []
+    if seen is None:
+        seen = set()
+    for x in gc.get_referrers(obj):
+        if id(x) in seen:
+            continue
+        seen.add(id(x))
+        if isinstance(x, types.FrameType):
+            continue
+        if isinstance(x, (CubicWebRelationSchema, CubicWebEntitySchema)):
+            continue
+        if isinstance(x, (list, tuple, set, dict, listiterator)):
+            if level >= 5:
+                pass
+                #interesting.append(x)
+            else:
+                interesting += _referrers(x, seen, level+1)
+        else:
+            interesting.append(x)
+    return interesting
 
 def run(config, debug):
     # create the site
@@ -410,7 +493,7 @@ def run(config, debug):
     root_resource.start_service()
     logger.info('instance started on %s', root_resource.base_url)
     if config['profile']:
-        prof = hotshot.Profile(config['profile'])
-        prof.runcall(reactor.run)
+        import cProfile
+        cProfile.runctx('reactor.run()', globals(), locals(), config['profile'])
     else:
         reactor.run()

@@ -21,7 +21,7 @@ from logilab.common.compat import any
 
 from yams import BadSchemaDefinition, buildobjs as ybo
 from yams.schema import Schema, ERSchema, EntitySchema, RelationSchema, \
-     RelationDefinitionSchema, PermissionMixIn
+     RelationDefinitionSchema, PermissionMixIn, role_name
 from yams.constraints import BaseConstraint, FormatConstraint
 from yams.reader import (CONSTRAINTS, PyFileReader, SchemaLoader,
                          obsolete as yobsolete, cleanup_sys_modules)
@@ -34,14 +34,15 @@ from cubicweb import ETYPE_NAME_MAP, ValidationError, Unauthorized
 PURE_VIRTUAL_RTYPES = set(('identity', 'has_text',))
 VIRTUAL_RTYPES = set(('eid', 'identity', 'has_text',))
 
-#  set of meta-relations available for every entity types
+# set of meta-relations available for every entity types
 META_RTYPES = set((
     'owned_by', 'created_by', 'is', 'is_instance_of', 'identity',
     'eid', 'creation_date', 'modification_date', 'has_text', 'cwuri',
     ))
-SYSTEM_RTYPES = set(('require_permission', 'custom_workflow', 'in_state', 'wf_info_for'))
+SYSTEM_RTYPES = set(('require_permission', 'custom_workflow', 'in_state',
+                     'wf_info_for'))
 
-#  set of entity and relation types used to build the schema
+# set of entity and relation types used to build the schema
 SCHEMA_TYPES = set((
     'CWEType', 'CWRType', 'CWAttribute', 'CWRelation',
     'CWConstraint', 'CWConstraintType', 'RQLExpression',
@@ -50,8 +51,9 @@ SCHEMA_TYPES = set((
     ))
 
 WORKFLOW_TYPES = set(('Transition', 'State', 'TrInfo', 'Workflow',
-                         'WorkflowTransition', 'BaseTransition',
-                         'SubWorkflowExitPoint'))
+                      'WorkflowTransition', 'BaseTransition',
+                      'SubWorkflowExitPoint'))
+
 INTERNAL_TYPES = set(('CWProperty', 'CWPermission', 'CWCache', 'ExternalUri'))
 
 
@@ -62,6 +64,31 @@ ybo.ETYPE_PROPERTIES += ('eid',)
 ybo.RTYPE_PROPERTIES += ('eid',)
 ybo.RDEF_PROPERTIES += ('eid',)
 
+
+PUB_SYSTEM_ENTITY_PERMS = {
+    'read':   ('managers', 'users', 'guests',),
+    'add':    ('managers',),
+    'delete': ('managers',),
+    'update': ('managers',),
+    }
+PUB_SYSTEM_REL_PERMS = {
+    'read':   ('managers', 'users', 'guests',),
+    'add':    ('managers',),
+    'delete': ('managers',),
+    }
+PUB_SYSTEM_ATTR_PERMS = {
+    'read':   ('managers', 'users', 'guests',),
+    'update':    ('managers',),
+    }
+RO_REL_PERMS = {
+    'read':   ('managers', 'users', 'guests',),
+    'add':    (),
+    'delete': (),
+    }
+RO_ATTR_PERMS = {
+    'read':   ('managers', 'users', 'guests',),
+    'update': (),
+    }
 
 # XXX same algorithm as in reorder_cubes and probably other place,
 # may probably extract a generic function
@@ -369,10 +396,13 @@ class CubicWebEntitySchema(EntitySchema):
         if need_has_text is None:
             need_has_text = may_need_has_text
         if need_has_text and not has_has_text and not deletion:
-            rdef = ybo.RelationDefinition(self.type, 'has_text', 'String')
+            rdef = ybo.RelationDefinition(self.type, 'has_text', 'String',
+                                          __permissions__=RO_ATTR_PERMS)
             self.schema.add_relation_def(rdef)
         elif not need_has_text and has_has_text:
-            self.schema.del_relation_def(self.type, 'has_text', 'String')
+            # use rschema.del_relation_def and not schema.del_relation_def to
+            # avoid deleting the relation type accidentally...
+            self.schema['has_text'].del_relation_def(self, self.schema['String'])
 
     def schema_entity(self):
         """return True if this entity type is used to build the schema"""
@@ -491,9 +521,11 @@ class CubicWebSchema(Schema):
         if not eschema.final:
             # automatically add the eid relation to non final entity types
             rdef = ybo.RelationDefinition(eschema.type, 'eid', 'Int',
-                                          cardinality='11', uid=True)
+                                          cardinality='11', uid=True,
+                                          __permissions__=RO_ATTR_PERMS)
             self.add_relation_def(rdef)
-            rdef = ybo.RelationDefinition(eschema.type, 'identity', eschema.type)
+            rdef = ybo.RelationDefinition(eschema.type, 'identity', eschema.type,
+                                          __permissions__=RO_REL_PERMS)
             self.add_relation_def(rdef)
         self._eid_index[eschema.eid] = eschema
         return eschema
@@ -652,17 +684,22 @@ class RepoEnforcedRQLConstraintMixIn(object):
             # XXX at this point if both or neither of S and O are in mainvar we
             # dunno if the validation error `occured` on eidfrom or eidto (from
             # user interface point of view)
+            #
+            # possible enhancement: check entity being created, it's probably
+            # the main eid unless this is a composite relation
             if eidto is None or 'S' in self.mainvars or not 'O' in self.mainvars:
                 maineid = eidfrom
+                qname = role_name(rtype, 'subject')
             else:
                 maineid = eidto
+                qname = role_name(rtype, 'object')
             if self.msg:
                 msg = session._(self.msg)
             else:
                 msg = '%(constraint)s %(restriction)s failed' % {
                     'constraint':  session._(self.type()),
                     'restriction': self.restriction}
-            raise ValidationError(maineid, {rtype: msg})
+            raise ValidationError(maineid, {qname: msg})
 
     def exec_query(self, session, eidfrom, eidto):
         if eidto is None:
@@ -675,7 +712,7 @@ class RepoEnforcedRQLConstraintMixIn(object):
         rql = 'Any %s WHERE %s' % (self.mainvars,  restriction)
         if self.distinct_query:
             rql = 'DISTINCT ' + rql
-        return session.unsafe_execute(rql, args, ck, build_descr=False)
+        return session.execute(rql, args, ck, build_descr=False)
 
 
 class RQLConstraint(RepoEnforcedRQLConstraintMixIn, RQLVocabularyConstraint):
@@ -801,13 +838,10 @@ class RQLExpression(object):
                 return True
             return False
         if keyarg is None:
-            # on the server side, use unsafe_execute, but this is not available
-            # on the client side (session is actually a request)
-            execute = getattr(session, 'unsafe_execute', session.execute)
             kwargs.setdefault('u', session.user.eid)
             cachekey = kwargs.keys()
             try:
-                rset = execute(rql, kwargs, cachekey, build_descr=True)
+                rset = session.execute(rql, kwargs, cachekey, build_descr=True)
             except NotImplementedError:
                 self.critical('cant check rql expression, unsupported rql %s', rql)
                 if self.eid is not None:
@@ -1054,8 +1088,16 @@ def vocabulary(self, entity=None, form=None):
         cw = entity._cw
     elif form is not None:
         cw = form._cw
-    if cw is not None and cw.user.has_permission(PERM_USE_TEMPLATE_FORMAT):
-        return self.regular_formats + tuple(NEED_PERM_FORMATS)
+    if cw is not None:
+        if hasattr(cw, 'write_security'): # test it's a session and not a request
+            # cw is a server session
+            hasperm = not cw.write_security or \
+                      not cw.is_hook_category_activated('integrity') or \
+                      cw.user.has_permission(PERM_USE_TEMPLATE_FORMAT)
+        else:
+            hasperm = cw.user.has_permission(PERM_USE_TEMPLATE_FORMAT)
+        if hasperm:
+            return self.regular_formats + tuple(NEED_PERM_FORMATS)
     return self.regular_formats
 
 # XXX monkey patch PyFileReader.import_erschema until bw_normalize_etype is

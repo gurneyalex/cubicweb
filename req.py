@@ -7,9 +7,11 @@
 """
 __docformat__ = "restructuredtext en"
 
+from warnings import warn
+from urlparse import urlsplit, urlunsplit
 from urllib import quote as urlquote, unquote as urlunquote
 from datetime import time, datetime, timedelta
-from cgi import parse_qsl
+from cgi import parse_qs, parse_qsl
 
 from logilab.common.decorators import cached
 from logilab.common.deprecation import deprecated
@@ -21,6 +23,12 @@ from cubicweb.rset import ResultSet
 ONESECOND = timedelta(0, 1, 0)
 CACHE_REGISTRY = {}
 
+
+def _check_cw_unsafe(kwargs):
+    if kwargs.pop('_cw_unsafe', False):
+        warn('[3.7] _cw_unsafe argument is deprecated, now unsafe by '
+             'default, control it using cw_[read|write]_security.',
+             DeprecationWarning, stacklevel=3)
 
 class Cache(dict):
     def __init__(self):
@@ -70,7 +78,8 @@ class RequestSessionBase(object):
         def get_entity(row, col=0, etype=etype, req=self, rset=rset):
             return req.vreg.etype_class(etype)(req, rset, row, col)
         rset.get_entity = get_entity
-        return self.decorate_rset(rset)
+        rset.req = self
+        return rset
 
     def eid_rset(self, eid, etype=None):
         """return a result set for the given eid without doing actual query
@@ -82,14 +91,17 @@ class RequestSessionBase(object):
             etype = self.describe(eid)[0]
         rset = ResultSet([(eid,)], 'Any X WHERE X eid %(x)s', {'x': eid},
                          [(etype,)])
-        return self.decorate_rset(rset)
+        rset.req = self
+        return rset
 
     def empty_rset(self):
         """return a result set for the given eid without doing actual query
         (we have the eid, we can suppose it exists and user has access to the
         entity)
         """
-        return self.decorate_rset(ResultSet([], 'Any X WHERE X eid -1'))
+        rset = ResultSet([], 'Any X WHERE X eid -1')
+        rset.req = self
+        return rset
 
     def entity_from_eid(self, eid, etype=None):
         """return an entity instance for the given eid. No query is done"""
@@ -110,19 +122,18 @@ class RequestSessionBase(object):
     # XXX move to CWEntityManager or even better as factory method (unclear
     # where yet...)
 
-    def create_entity(self, etype, _cw_unsafe=False, **kwargs):
+    def create_entity(self, etype, **kwargs):
         """add a new entity of the given type
 
         Example (in a shell session):
 
-        c = create_entity('Company', name=u'Logilab')
-        create_entity('Person', works_for=c, firstname=u'John', lastname=u'Doe')
+        >>> c = create_entity('Company', name=u'Logilab')
+        >>> create_entity('Person', firstname=u'John', lastname=u'Doe',
+        ...               works_for=c)
 
         """
-        if _cw_unsafe:
-            execute = self.unsafe_execute
-        else:
-            execute = self.execute
+        _check_cw_unsafe(kwargs)
+        execute = self.execute
         rql = 'INSERT %s X' % etype
         relations = []
         restrictions = set()
@@ -162,7 +173,7 @@ class RequestSessionBase(object):
                 restr = 'X %s Y' % attr
             execute('SET %s WHERE X eid %%(x)s, Y eid IN (%s)' % (
                 restr, ','.join(str(r.eid) for r in values)),
-                         {'x': created.eid}, 'x')
+                    {'x': created.eid}, 'x', build_descr=False)
         return created
 
     def ensure_ro_rql(self, rql):
@@ -230,7 +241,7 @@ class RequestSessionBase(object):
     def build_url_params(self, **kwargs):
         """return encoded params to incorporate them in an URL"""
         args = []
-        for param, values in kwargs.items():
+        for param, values in kwargs.iteritems():
             if not isinstance(values, (list, tuple)):
                 values = (values,)
             for value in values:
@@ -270,6 +281,25 @@ class RequestSessionBase(object):
             except UnicodeDecodeError: # might occurs on manually typed URLs
                 yield unicode(key, 'iso-8859-1'), unicode(val, 'iso-8859-1')
 
+
+    def rebuild_url(self, url, **newparams):
+        """return the given url with newparams inserted. If any new params
+        is already specified in the url, it's overriden by the new value
+
+        newparams may only be mono-valued.
+        """
+        if isinstance(url, unicode):
+            url = url.encode(self.encoding)
+        schema, netloc, path, query, fragment = urlsplit(url)
+        query = parse_qs(query)
+        # sort for testing predictability
+        for key, val in sorted(newparams.iteritems()):
+            query[key] = (self.url_quote(val),)
+        query = '&'.join(u'%s=%s' % (param, value)
+                         for param, values in query.items()
+                         for value in values)
+        return urlunsplit((schema, netloc, path, query, fragment))
+
     # bound user related methods ###############################################
 
     @cached
@@ -281,7 +311,7 @@ class RequestSessionBase(object):
             userinfo['name'] = "cubicweb"
             userinfo['email'] = ""
             return userinfo
-        user = self.actual_session().user
+        user = self.user
         userinfo['login'] = user.login
         userinfo['name'] = user.name()
         userinfo['email'] = user.get_email()
@@ -380,10 +410,6 @@ class RequestSessionBase(object):
 
     def base_url(self):
         """return the root url of the instance"""
-        raise NotImplementedError
-
-    def decorate_rset(self, rset):
-        """add vreg/req (at least) attributes to the given result set """
         raise NotImplementedError
 
     def describe(self, eid):

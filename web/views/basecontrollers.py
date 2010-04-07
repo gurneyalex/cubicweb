@@ -17,9 +17,10 @@ import simplejson
 from logilab.common.decorators import cached
 from logilab.common.date import strptime
 
-from cubicweb import NoSelectableObject, ValidationError, ObjectNotFound, typed_eid
+from cubicweb import (NoSelectableObject, ValidationError, ObjectNotFound,
+                      typed_eid)
 from cubicweb.utils import CubicWebJsonEncoder
-from cubicweb.selectors import yes, match_user_groups
+from cubicweb.selectors import authenticated_user, match_form_params
 from cubicweb.mail import format_mail
 from cubicweb.web import ExplicitLogin, Redirect, RemoteCallFailed, json_dumps
 from cubicweb.web.controller import Controller
@@ -82,8 +83,19 @@ class LogoutController(Controller):
 
     def publish(self, rset=None):
         """logout from the instance"""
-        return self.appli.session_handler.logout(self._cw)
+        return self.appli.session_handler.logout(self._cw, self.goto_url())
 
+    def goto_url(self):
+        # * in http auth mode, url will be ignored
+        # * in cookie mode redirecting to the index view is enough : either
+        #   anonymous connection is allowed and the page will be displayed or
+        #   we'll be redirected to the login form
+        msg = self._cw._('you have been logged out')
+        if self._cw.https:
+            # XXX hack to generate an url on the http version of the site
+            self._cw._base_url =  self._cw.vreg.config['base-url']
+            self._cw.https = False
+        return self._cw.build_url('view', vid='index', __message=msg)
 
 class ViewController(Controller):
     """standard entry point :
@@ -264,14 +276,16 @@ class JSonController(Controller):
         args = self._cw.form.get('arg', ())
         if not isinstance(args, (list, tuple)):
             args = (args,)
-        args = [simplejson.loads(arg) for arg in args]
+        try:
+            args = [simplejson.loads(arg) for arg in args]
+        except ValueError, exc:
+            self.exception('error while decoding json arguments for js_%s: %s', fname, args, exc)
+            raise RemoteCallFailed(repr(exc))
         try:
             result = func(*args)
         except RemoteCallFailed:
             raise
         except Exception, ex:
-            import traceback
-            traceback.print_exc()
             self.exception('an exception occured while calling js_%s(%s): %s',
                            fname, args, ex)
             raise RemoteCallFailed(repr(ex))
@@ -380,9 +394,27 @@ class JSonController(Controller):
         else: # we receive unicode keys which is not supported by the **syntax
             extraargs = dict((str(key), value)
                              for key, value in extraargs.items())
-        comp = self._cw.vreg[registry].select(compid, self._cw, rset=rset, **extraargs)
+        # XXX while it sounds good, addition of the try/except below cause pb:
+        # when filtering using facets return an empty rset, the edition box
+        # isn't anymore selectable, as expected. The pb is that with the
+        # try/except below, we see a "an error occured" message in the ui, while
+        # we don't see it without it. Proper fix would probably be to deal with
+        # this by allowing facet handling code to tell to js_component that such
+        # error is expected and should'nt be reported.
+        #try:
+        comp = self._cw.vreg[registry].select(compid, self._cw, rset=rset,
+                                              **extraargs)
+        #except NoSelectableObject:
+        #    raise RemoteCallFailed('unselectable')
         extraargs = extraargs or {}
-        return comp.render(**extraargs)
+        stream = comp.set_stream()
+        comp.render(**extraargs)
+        extresources = self._cw.html_headers.getvalue(skiphead=True)
+        if extresources:
+            stream.write(u'<div class="ajaxHtmlHead">\n')
+            stream.write(extresources)
+            stream.write(u'</div>\n')
+        return stream.getvalue()
 
     @check_pageid
     @xhtmlize
@@ -413,6 +445,7 @@ class JSonController(Controller):
         view = req.vreg['views'].select('doreledit', req, rset=rset, rtype=args['rtype'])
         stream = view.set_stream()
         view.render(**args)
+        # XXX why not _call_view ?
         extresources = req.html_headers.getvalue(skiphead=True)
         if extresources:
             stream.write(u'<div class="ajaxHtmlHead">\n')
@@ -548,7 +581,7 @@ class JSonController(Controller):
 
 class SendMailController(Controller):
     __regid__ = 'sendmail'
-    __select__ = match_user_groups('managers', 'users')
+    __select__ = authenticated_user() & match_form_params('recipient', 'mailbody', 'subject')
 
     def recipients(self):
         """returns an iterator on email's recipients as entities"""
@@ -596,11 +629,35 @@ class SendMailController(Controller):
 
 class MailBugReportController(SendMailController):
     __regid__ = 'reportbug'
-    __select__ = yes()
+    __select__ = match_form_params('description')
 
     def publish(self, rset=None):
         body = self._cw.form['description']
         self.sendmail(self._cw.config['submit-mail'], _('%s error report') % self._cw.config.appid, body)
         url = self._cw.build_url(__message=self._cw._('bug report sent'))
+        raise Redirect(url)
+
+
+class UndoController(SendMailController):
+    __regid__ = 'undo'
+    __select__ = authenticated_user() & match_form_params('txuuid')
+
+    def publish(self, rset=None):
+        txuuid = self._cw.form['txuuid']
+        errors = self._cw.cnx.undo_transaction(txuuid)
+        if errors:
+            self.w(self._cw._('some errors occured:'))
+            self.wview('pyvalist', pyvalue=errors)
+        else:
+            self.redirect()
+
+    def redirect(self):
+        req = self._cw
+        breadcrumbs = req.get_session_data('breadcrumbs', None)
+        if breadcrumbs is not None and len(breadcrumbs) > 1:
+            url = req.rebuild_url(breadcrumbs[-2],
+                                  __message=req._('transaction undoed'))
+        else:
+            url = req.build_url(__message=req._('transaction undoed'))
         raise Redirect(url)
 

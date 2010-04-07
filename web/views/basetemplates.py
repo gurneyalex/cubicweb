@@ -16,7 +16,7 @@ from cubicweb.selectors import match_kwargs
 from cubicweb.view import View, MainTemplate, NOINDEX, NOFOLLOW
 from cubicweb.utils import UStringIO, can_do_pdf_conversion
 from cubicweb.schema import display_name
-from cubicweb.web import formfields as ff, formwidgets as fw
+from cubicweb.web import component, formfields as ff, formwidgets as fw
 from cubicweb.web.views import forms
 
 # main templates ##############################################################
@@ -270,13 +270,27 @@ class SimpleMainTemplate(TheMainTemplate):
 
 if can_do_pdf_conversion():
     try:
-      from xml.etree.cElementTree import ElementTree
+        from xml.etree.cElementTree import ElementTree
     except ImportError: #python2.4
         from elementtree import ElementTree
     from subprocess import Popen as sub
     from StringIO import StringIO
     from tempfile import NamedTemporaryFile
     from cubicweb.ext.xhtml2fo import ReportTransformer
+
+
+    class PdfViewComponent(component.EntityVComponent):
+        __regid__ = 'pdfview'
+
+        context = 'ctxtoolbar'
+
+        def cell_call(self, row, col, view):
+            entity = self.cw_rset.get_entity(row, col)
+            url = entity.absolute_url(vid=view.__regid__, __template='pdf-main-template')
+            iconurl = self._cw.build_url('data/pdf_icon.gif')
+            label = self._cw._('Download page as pdf')
+            self.w(u'<a href="%s" title="%s" class="toolbarButton"><img src="%s" alt="%s"/></a>' %
+                   (xml_escape(url), label, xml_escape(iconurl), label))
 
     class PdfMainTemplate(TheMainTemplate):
         __regid__ = 'pdf-main-template'
@@ -391,8 +405,9 @@ class HTMLPageHeader(View):
         self.w(u'<td id="lastcolumn">')
         self.w(u'</td>\n')
         self.w(u'</tr></table>\n')
-        self.wview('logform', rset=self.cw_rset, id='popupLoginBox', klass='hidden',
-                   title=False, showmessage=False)
+        if self._cw.cnx.anonymous_connection:
+            self.wview('logform', rset=self.cw_rset, id='popupLoginBox',
+                       klass='hidden', title=False, showmessage=False)
 
     def state_header(self):
         state = self._cw.search_state

@@ -11,7 +11,7 @@ from urlparse import urlsplit
 
 from rql import parse
 
-from logilab.common.testlib import TestCase, unittest_main
+from logilab.common.testlib import TestCase, unittest_main, mock_object
 
 from cubicweb.devtools.testlib import CubicWebTC
 from cubicweb.rset import NotAnEntity, ResultSet, attr_desc_iterator
@@ -60,7 +60,7 @@ class ResultSetTC(CubicWebTC):
         self.rset = ResultSet([[12, 'adim'], [13, 'syt']],
                               'Any U,L where U is CWUser, U login L',
                               description=[['CWUser', 'String'], ['Bar', 'String']])
-        self.rset.vreg = self.vreg
+        self.rset.req = mock_object(vreg=self.vreg)
 
     def compare_urls(self, url1, url2):
         info1 = urlsplit(url1)
@@ -371,6 +371,18 @@ class ResultSetTC(CubicWebTC):
         rset = self.execute(u'Any X WHERE X has_text %(text)s', {'text' : 'foo'})
         self.assertEquals(rset.searched_text(), 'foo')
 
+    def test_union_limited_rql(self):
+        rset = self.execute('(Any X,N WHERE X is Bookmark, X title N)'
+                            ' UNION '
+                            '(Any X,N WHERE X is CWGroup, X name N)')
+        rset.limit(2, 10, inplace=True)
+        self.assertEquals(rset.limited_rql(),
+                          'Any A,B LIMIT 2 OFFSET 10 '
+                          'WITH A,B BEING ('
+                          '(Any X,N WHERE X is Bookmark, X title N) '
+                          'UNION '
+                          '(Any X,N WHERE X is CWGroup, X name N)'
+                          ')')
 
 if __name__ == '__main__':
     unittest_main()

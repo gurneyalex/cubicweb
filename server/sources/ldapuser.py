@@ -64,7 +64,7 @@ class LDAPUserSource(AbstractSource):
          {'type' : 'choice',
           'default': 'ldap',
           'choices': ('ldap', 'ldaps', 'ldapi'),
-          'help': 'ldap protocol',
+          'help': 'ldap protocol (allowed values: ldap, ldaps, ldapi)',
           'group': 'ldap-source', 'inputlevel': 1,
           }),
 
@@ -200,6 +200,7 @@ directory (default to once a day).',
         except KeyError:
             return # no email in ldap, we're done
         session = self.repo.internal_session()
+        execute = session.execute
         try:
             cursor = session.system_sql("SELECT eid, extid FROM entities WHERE "
                                         "source='%s'" % self.uri)
@@ -210,20 +211,29 @@ directory (default to once a day).',
                 if res:
                     ldapemailaddr = res[0].get(ldap_emailattr)
                     if ldapemailaddr:
-                        rset = session.execute('EmailAddress A WHERE '
-                                               'U use_email X, U eid %(u)s',
-                                               {'u': eid})
+                        rset = execute('Any X,A WHERE '
+                                       'X address A, U use_email X, U eid %(u)s',
+                                       {'u': eid})
                         ldapemailaddr = unicode(ldapemailaddr)
-                        for emailaddr, in rset:
+                        for emaileid, emailaddr, in rset:
                             if emailaddr == ldapemailaddr:
                                 break
                         else:
                             self.info('updating email address of user %s to %s',
                                       extid, ldapemailaddr)
-                            if rset:
-                                session.execute('SET X address %(addr)s WHERE '
-                                                'U primary_email X, U eid %(u)s',
-                                                {'addr': ldapemailaddr, 'u': eid})
+                            emailrset = execute('EmailAddress A WHERE A address %(addr)s',
+                                                {'addr': ldapemailaddr})
+                            if emailrset:
+                                execute('SET U use_email X WHERE '
+                                        'X eid %(x)s, U eid %(u)s',
+                                        {'x': emailrset[0][0], 'u': eid})
+                            elif rset:
+                                if not execute('SET X address %(addr)s WHERE '
+                                               'U primary_email X, U eid %(u)s',
+                                               {'addr': ldapemailaddr, 'u': eid}, 'u'):
+                                    execute('SET X address %(addr)s WHERE '
+                                            'X eid %(x)s',
+                                            {'addr': ldapemailaddr, 'x': rset[0][0]}, 'x')
                             else:
                                 # no email found, create it
                                 _insert_email(session, ldapemailaddr, eid)
@@ -476,7 +486,8 @@ directory (default to once a day).',
             if eid:
                 self.warning('deleting ldap user with eid %s and dn %s',
                              eid, base)
-                self.repo.delete_info(session, eid)
+                entity = session.entity_from_eid(eid, 'CWUser')
+                self.repo.delete_info(session, entity, self.uri, base)
                 self._cache.pop(base, None)
             return []
 ##         except ldap.REFERRAL, e:
@@ -554,7 +565,7 @@ directory (default to once a day).',
         """replace an entity in the source"""
         raise RepositoryError('this source is read only')
 
-    def delete_entity(self, session, etype, eid):
+    def delete_entity(self, session, entity):
         """delete an entity from the source"""
         raise RepositoryError('this source is read only')
 

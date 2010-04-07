@@ -35,6 +35,15 @@ _abaa.tag_subject_of(('BaseTransition', 'condition', 'RQLExpression'), False)
 _abaa.tag_subject_of(('State', 'allowed_transition', 'BaseTransition'), False)
 _abaa.tag_object_of(('SubWorkflowExitPoint', 'destination_state', 'State'),
                     False)
+_abaa.tag_subject_of(('*', 'wf_info_for', '*'), False)
+_abaa.tag_object_of(('*', 'wf_info_for', '*'), False)
+
+_abaa.tag_object_of(('*', 'state_of', 'CWEType'), True)
+_abaa.tag_object_of(('*', 'transition_of', 'CWEType'), True)
+_abaa.tag_subject_of(('Transition', 'destination_state', '*'), True)
+_abaa.tag_object_of(('*', 'allowed_transition', 'Transition'), True)
+_abaa.tag_object_of(('*', 'destination_state', 'State'), True)
+_abaa.tag_subject_of(('State', 'allowed_transition', '*'), True)
 _abaa.tag_object_of(('State', 'state_of', 'Workflow'), True)
 _abaa.tag_object_of(('Transition', 'transition_of', 'Workflow'), True)
 _abaa.tag_object_of(('WorkflowTransition', 'transition_of', 'Workflow'), True)
@@ -67,7 +76,7 @@ class ChangeStateFormView(form.FormViewMixIn, view.EntityView):
         form = self.get_form(entity, transition)
         self.w(u'<h4>%s %s</h4>\n' % (self._cw._(transition.name),
                                       entity.view('oneline')))
-        msg = self.req._('status will change from %(st1)s to %(st2)s') % {
+        msg = self._cw._('status will change from %(st1)s to %(st2)s') % {
             'st1': entity.printable_state,
             'st2': self._cw._(transition.destination(entity).name)}
         self.w(u'<p>%s</p>\n' % msg)

@@ -12,6 +12,7 @@ import sys
 import re
 from urllib import unquote
 from math import log
+from contextlib import contextmanager
 
 import simplejson
 
@@ -207,6 +208,7 @@ class CubicWebTC(TestCase):
     def _build_repo(cls):
         cls.repo, cls.cnx = devtools.init_test_database(config=cls.config)
         cls.init_config(cls.config)
+        cls.repo.hm.call_hooks('server_startup', repo=cls.repo)
         cls.vreg = cls.repo.vreg
         cls._orig_cnx = cls.cnx
         cls.config.repository = lambda x=None: cls.repo
@@ -228,7 +230,9 @@ class CubicWebTC(TestCase):
     @property
     def session(self):
         """return current server side session (using default manager account)"""
-        return self.repo._sessions[self.cnx.sessionid]
+        session = self.repo._sessions[self.cnx.sessionid]
+        session.set_pool()
+        return session
 
     @property
     def adminsession(self):
@@ -245,7 +249,14 @@ class CubicWebTC(TestCase):
 
     def setUp(self):
         pause_tracing()
-        self._init_repo()
+        previous_failure = self.__class__.__dict__.get('_repo_init_failed')
+        if previous_failure is not None:
+            self.skip('repository is not initialised: %r' % previous_failure)
+        try:
+            self._init_repo()
+        except Exception, ex:
+            self.__class__._repo_init_failed = ex
+            raise
         resume_tracing()
         self.setup_database()
         self.commit()
@@ -265,20 +276,20 @@ class CubicWebTC(TestCase):
             return req.user
 
     def create_user(self, login, groups=('users',), password=None, req=None,
-                    commit=True):
+                    commit=True, **kwargs):
         """create and return a new user entity"""
         if password is None:
             password = login.encode('utf8')
-        cursor = self._orig_cnx.cursor(req or self.request())
-        rset = cursor.execute('INSERT CWUser X: X login %(login)s, X upassword %(passwd)s',
-                              {'login': unicode(login), 'passwd': password})
-        user = rset.get_entity(0, 0)
-        cursor.execute('SET X in_group G WHERE X eid %%(x)s, G name IN(%s)'
-                       % ','.join(repr(g) for g in groups),
-                       {'x': user.eid}, 'x')
+        if req is None:
+            req = self._orig_cnx.request()
+        user = req.create_entity('CWUser', login=unicode(login),
+                                 upassword=password, **kwargs)
+        req.execute('SET X in_group G WHERE X eid %%(x)s, G name IN(%s)'
+                    % ','.join(repr(g) for g in groups),
+                    {'x': user.eid}, 'x')
         user.clear_related_cache('in_group', 'subject')
         if commit:
-            self._orig_cnx.commit()
+            req.cnx.commit()
         return user
 
     def login(self, login, **kwargs):
@@ -319,7 +330,10 @@ class CubicWebTC(TestCase):
 
     @nocoverage
     def commit(self):
-        self.cnx.commit()
+        try:
+            return self.cnx.commit()
+        finally:
+            self.session.set_pool() # ensure pool still set after commit
 
     @nocoverage
     def rollback(self):
@@ -327,6 +341,8 @@ class CubicWebTC(TestCase):
             self.cnx.rollback()
         except ProgrammingError:
             pass
+        finally:
+            self.session.set_pool() # ensure pool still set after commit
 
     # # server side db api #######################################################
 
@@ -338,6 +354,17 @@ class CubicWebTC(TestCase):
 
     def entity(self, rql, args=None, eidkey=None, req=None):
         return self.execute(rql, args, eidkey, req=req).get_entity(0, 0)
+
+    @contextmanager
+    def temporary_appobjects(self, *appobjects):
+        self.vreg._loadedmods.setdefault(self.__module__, {})
+        for obj in appobjects:
+            self.vreg.register(obj)
+        try:
+            yield
+        finally:
+            for obj in appobjects:
+                self.vreg.unregister(obj)
 
     # vregistry inspection utilities ###########################################
 
@@ -484,7 +511,8 @@ class CubicWebTC(TestCase):
             else:
                 cleanup = lambda p: (p[0], unquote(p[1]))
                 params = dict(cleanup(p.split('=', 1)) for p in params.split('&') if p)
-            path = path[len(req.base_url()):]
+            if path.startswith(req.base_url()): # may be relative
+                path = path[len(req.base_url()):]
             return path, params
         else:
             self.fail('expected a Redirect exception')
@@ -503,7 +531,7 @@ class CubicWebTC(TestCase):
         req.cnx = None
         sh = self.app.session_handler
         authm = sh.session_manager.authmanager
-        authm.authinforetreivers[-1].anoninfo = self.vreg.config.anonymous_user()
+        authm.anoninfo = self.vreg.config.anonymous_user()
         # not properly cleaned between tests
         self.open_sessions = sh.session_manager._sessions = {}
         return req, origcnx

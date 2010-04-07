@@ -35,8 +35,8 @@ function setPropValueWidget(varname, tabindex) {
  * this function is called when an AJAX form was generated to
  * make sure tabindex remains consistent
  */
-function reorderTabindex(start) {
-    var form = getNode('entityForm');
+function reorderTabindex(start, formid) {
+    var form = getNode(formid || 'entityForm');
     var inputTypes = ['INPUT', 'SELECT', 'TEXTAREA'];
     var tabindex = (start==null)?15:start;
     nodeWalkDepthFirst(form, function(elem) {
@@ -254,7 +254,7 @@ function addInlineCreationForm(peid, petype, ttype, rtype, role, i18nctx, insert
         form.css('display', 'none');
         form.insertBefore(insertBefore).slideDown('fast');
         updateInlinedEntitiesCounters(rtype, role);
-        reorderTabindex();
+        reorderTabindex(null, $(insertBefore).closest('form')[0]);
         jQuery(CubicWeb).trigger('inlinedform-added', form);
         // if the inlined form contains a file input, we must force
         // the form enctype to multipart/form-data
@@ -322,7 +322,7 @@ function restoreInlinedEntity(peid, rtype, eid) {
 
 function _clearPreviousErrors(formid) {
     jQuery('#' + formid + 'ErrorMessage').remove();
-    jQuery('#' + formid + ' span.error').remove();
+    jQuery('#' + formid + ' span.errorMsg').remove();
     jQuery('#' + formid + ' .error').removeClass('error');
 }
 
@@ -331,25 +331,30 @@ function _displayValidationerrors(formid, eid, errors) {
     var firsterrfield = null;
     for (fieldname in errors) {
 	var errmsg = errors[fieldname];
-	var fieldid = fieldname + ':' + eid;
-	var suffixes = ['', '-subject', '-object'];
-	var found = false;
-	for (var i=0, length=suffixes.length; i<length;i++) {
-	    var field = jqNode(fieldname + suffixes[i] + ':' + eid);
-	    if (field && getNodeAttribute(field, 'type') != 'hidden') {
-		if ( !firsterrfield ) {
-		    firsterrfield = 'err-' + fieldid;
+	if (!fieldname) {
+	    globalerrors.push(errmsg);
+	} else {
+	    var fieldid = fieldname + ':' + eid;
+	    var suffixes = ['', '-subject', '-object'];
+	    var found = false;
+	    // XXX remove suffixes at some point
+	    for (var i=0, length=suffixes.length; i<length;i++) {
+		var field = jqNode(fieldname + suffixes[i] + ':' + eid);
+		if (field && getNodeAttribute(field, 'type') != 'hidden') {
+		    if ( !firsterrfield ) {
+			firsterrfield = 'err-' + fieldid;
+		    }
+		    addElementClass(field, 'error');
+		    var span = SPAN({'id': 'err-' + fieldid, 'class': "errorMsg"}, errmsg);
+		    field.before(span);
+		    found = true;
+		    break;
 		}
-		addElementClass(field, 'error');
-		var span = SPAN({'id': 'err-' + fieldid, 'class': "error"}, errmsg);
-		field.before(span);
-		found = true;
-		break;
 	    }
-	}
-	if (!found) {
-	    firsterrfield = formid;
-	    globalerrors.push(_(fieldname) + ' : ' + errmsg);
+	    if (!found) {
+		firsterrfield = formid;
+		globalerrors.push(_(fieldname) + ' : ' + errmsg);
+	    }
 	}
     }
     if (globalerrors.length) {

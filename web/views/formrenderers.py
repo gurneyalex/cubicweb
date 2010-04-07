@@ -132,9 +132,9 @@ class FormRenderer(AppObject):
             errors = form.remaining_errors()
             if errors:
                 if len(errors) > 1:
-                    templstr = '<li>%s</li>\n'
+                    templstr = u'<li>%s</li>\n'
                 else:
-                    templstr = '&#160;%s\n'
+                    templstr = u'&#160;%s\n'
                 for field, err in errors:
                     if field is None:
                         errormsg += templstr % err
@@ -224,6 +224,8 @@ class FormRenderer(AppObject):
                     w(u' class="error"')
                 w(u'>')
                 w(field.render(form, self))
+                if error:
+                    self.render_error(w, error)
                 if self.display_help:
                     w(self.render_help(form, field))
                 w(u'</td></tr>')
@@ -241,7 +243,7 @@ class FormRenderer(AppObject):
 
     def render_error(self, w, err):
         """return validation error for widget's field, if any"""
-        w(u'<span class="error">%s</span>' % err)
+        w(u'<span class="errorMsg">%s</span>' % err)
 
 
 
@@ -259,7 +261,7 @@ class HTableFormRenderer(FormRenderer):
     +--------------+--------------+---------+
     | field1 label | field2 label |         |
     +--------------+--------------+---------+
-    | field1 input | field2 input | buttons
+    | field1 input | field2 input | buttons |
     +--------------+--------------+---------+
     """
     __regid__ = 'htable'

@@ -9,6 +9,8 @@
 __docformat__ = "restructuredtext en"
 _ = unicode
 
+from warnings import warn
+
 from simplejson import dumps
 
 from logilab.mtconverter import xml_escape
@@ -661,7 +663,7 @@ class AutomaticEntityForm(forms.EntityFieldsForm):
             return []
         # XXX we should simply put eid in the generated section, no?
         return [(rtype, role) for rtype, _, role in self._relations_by_section(
-            'attributes', 'update', strict) if rtype != 'eid']
+            'attributes', 'update', strict)]
 
     def editable_relations(self):
         """return a sorted list of (relation's label, relation'schema, role) for
