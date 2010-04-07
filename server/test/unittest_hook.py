@@ -69,6 +69,10 @@ config = TestServerConfiguration('data')
 config.bootstrap_cubes()
 schema = config.load_schema()
 
+def teardown_module(*args):
+    global config, schema
+    del config, schema
+
 class AddAnyHook(hook.Hook):
     __regid__ = 'addany'
     category = 'cat1'
@@ -77,7 +81,7 @@ class AddAnyHook(hook.Hook):
         raise HookCalled()
 
 
-class HooksManagerTC(TestCase):
+class HooksRegistryTC(TestCase):
 
     def setUp(self):
         """ called before each test from this class """
@@ -88,29 +92,34 @@ class HooksManagerTC(TestCase):
         class _Hook(hook.Hook):
             events = ('before_add_entiti',)
         ex = self.assertRaises(Exception, self.o.register, _Hook)
-        self.assertEquals(str(ex), 'bad event before_add_entiti on unittest_hook._Hook')
+        self.assertEquals(str(ex), 'bad event before_add_entiti on %s._Hook' % __name__)
 
     def test_register_bad_hook2(self):
         class _Hook(hook.Hook):
             events = None
         ex = self.assertRaises(Exception, self.o.register, _Hook)
-        self.assertEquals(str(ex), 'bad .events attribute None on unittest_hook._Hook')
+        self.assertEquals(str(ex), 'bad .events attribute None on %s._Hook' % __name__)
 
     def test_register_bad_hook3(self):
         class _Hook(hook.Hook):
             events = 'before_add_entity'
         ex = self.assertRaises(Exception, self.o.register, _Hook)
-        self.assertEquals(str(ex), 'bad event b on unittest_hook._Hook')
+        self.assertEquals(str(ex), 'bad event b on %s._Hook' % __name__)
 
     def test_call_hook(self):
         self.o.register(AddAnyHook)
-        cw = mock_object(vreg=self.vreg)
-        self.assertRaises(HookCalled, self.o.call_hooks, 'before_add_entity', cw)
-        self.o.call_hooks('before_delete_entity', cw) # nothing to call
-        config.disabled_hooks_categories.add('cat1')
+        dis = set()
+        cw = mock_object(vreg=self.vreg,
+                         set_read_security=lambda *a,**k: None,
+                         set_write_security=lambda *a,**k: None,
+                         is_hook_activated=lambda x, cls: cls.category not in dis)
+        self.assertRaises(HookCalled,
+                          self.o.call_hooks, 'before_add_entity', cw)
+        dis.add('cat1')
         self.o.call_hooks('before_add_entity', cw) # disabled hooks category, not called
-        config.disabled_hooks_categories.remove('cat1')
-        self.assertRaises(HookCalled, self.o.call_hooks, 'before_add_entity', cw)
+        dis.remove('cat1')
+        self.assertRaises(HookCalled,
+                          self.o.call_hooks, 'before_add_entity', cw)
         self.o.unregister(AddAnyHook)
         self.o.call_hooks('before_add_entity', cw) # nothing to call
 

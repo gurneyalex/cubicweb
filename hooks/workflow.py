@@ -9,6 +9,8 @@ __docformat__ = "restructuredtext en"
 
 from datetime import datetime
 
+from yams.schema import role_name
+
 from cubicweb import RepositoryError, ValidationError
 from cubicweb.interfaces import IWorkflowable
 from cubicweb.selectors import implements
@@ -19,8 +21,8 @@ def _change_state(session, x, oldstate, newstate):
     nocheck = session.transaction_data.setdefault('skip-security', set())
     nocheck.add((x, 'in_state', oldstate))
     nocheck.add((x, 'in_state', newstate))
-    # delete previous state first in case we're using a super session,
-    # unless in_state isn't stored in the system source
+    # delete previous state first unless in_state isn't stored in the system
+    # source
     fromsource = session.describe(x)[1]
     if fromsource == 'system' or \
            not session.repo.sources_by_uri[fromsource].support_relation('in_state'):
@@ -42,10 +44,8 @@ class _SetInitialStateOp(hook.Operation):
                and entity.current_workflow:
             state = entity.current_workflow.initial
             if state:
-                # use super session to by-pass security checks
-                session.super_session.add_relation(entity.eid, 'in_state',
-                                                   state.eid)
-
+                session.add_relation(entity.eid, 'in_state', state.eid)
+                _FireAutotransitionOp(session, entity=entity)
 
 class _FireAutotransitionOp(hook.Operation):
     """try to fire auto transition after state changes"""
@@ -75,8 +75,9 @@ class _WorkflowChangedOp(hook.Operation):
         if mainwf.eid == self.wfeid:
             deststate = mainwf.initial
             if not deststate:
+                qname = role_name('custom_workflow', 'subject')
                 msg = session._('workflow has no initial state')
-                raise ValidationError(entity.eid, {'custom_workflow': msg})
+                raise ValidationError(entity.eid, {qname: msg})
             if mainwf.state_by_eid(entity.current_state.eid):
                 # nothing to do
                 return
@@ -85,6 +86,7 @@ class _WorkflowChangedOp(hook.Operation):
                 if entity.current_state.eid != deststate.eid:
                     _change_state(session, entity.eid,
                                   entity.current_state.eid, deststate.eid)
+                    _FireAutotransitionOp(session, entity=entity)
                 return
             msg = session._('workflow changed to "%s"')
             msg %= session._(mainwf.name)
@@ -99,8 +101,9 @@ class _CheckTrExitPoint(hook.Operation):
         outputs = set()
         for ep in tr.subworkflow_exit:
             if ep.subwf_state.eid in outputs:
+                qname = role_name('subworkflow_exit', 'subject')
                 msg = self.session._("can't have multiple exits on the same state")
-                raise ValidationError(self.treid, {'subworkflow_exit': msg})
+                raise ValidationError(self.treid, {qname: msg})
             outputs.add(ep.subwf_state.eid)
 
 
@@ -114,6 +117,7 @@ class _SubWorkflowExitOp(hook.Operation):
         wftr = forentity.subworkflow_input_transition()
         if wftr is None:
             # inconsistency detected
+            qname = role_name('to_state', 'subject')
             msg = session._("state doesn't belong to entity's current workflow")
             raise ValidationError(self.trinfo.eid, {'to_state': msg})
         tostate = wftr.get_exit_point(forentity, trinfo['to_state'])
@@ -122,14 +126,7 @@ class _SubWorkflowExitOp(hook.Operation):
             msg = session._('exiting from subworkflow %s')
             msg %= session._(forentity.current_workflow.name)
             session.transaction_data[(forentity.eid, 'subwfentrytr')] = True
-            # XXX iirk
-            req = forentity._cw
-            forentity._cw = session.super_session
-            try:
-                trinfo = forentity.change_state(tostate, msg, u'text/plain',
-                                                tr=wftr)
-            finally:
-                forentity._cw = req
+            forentity.change_state(tostate, msg, u'text/plain', tr=wftr)
 
 
 # hooks ########################################################################
@@ -175,8 +172,9 @@ class FireTransitionHook(WorkflowHook):
         try:
             foreid = entity['wf_info_for']
         except KeyError:
+            qname = role_name('wf_info_for', 'subject')
             msg = session._('mandatory relation')
-            raise ValidationError(entity.eid, {'wf_info_for': msg})
+            raise ValidationError(entity.eid, {qname: msg})
         forentity = session.entity_from_eid(foreid)
         # then check it has a workflow set, unless we're in the process of changing
         # entity's workflow
@@ -195,7 +193,8 @@ class FireTransitionHook(WorkflowHook):
             raise ValidationError(entity.eid, {None: msg})
         # True if we are coming back from subworkflow
         swtr = session.transaction_data.pop((forentity.eid, 'subwfentrytr'), None)
-        cowpowers = session.is_super_session or 'managers' in session.user.groups
+        cowpowers = ('managers' in session.user.groups
+                     or not session.write_security)
         # no investigate the requested state change...
         try:
             treid = entity['by_transition']
@@ -203,41 +202,47 @@ class FireTransitionHook(WorkflowHook):
             # no transition set, check user is a manager and destination state
             # is specified (and valid)
             if not cowpowers:
+                qname = role_name('by_transition', 'subject')
                 msg = session._('mandatory relation')
-                raise ValidationError(entity.eid, {'by_transition': msg})
+                raise ValidationError(entity.eid, {qname: msg})
             deststateeid = entity.get('to_state')
             if not deststateeid:
+                qname = role_name('by_transition', 'subject')
                 msg = session._('mandatory relation')
-                raise ValidationError(entity.eid, {'by_transition': msg})
+                raise ValidationError(entity.eid, {qname: msg})
             deststate = wf.state_by_eid(deststateeid)
             if deststate is None:
+                qname = role_name('to_state', 'subject')
                 msg = session._("state doesn't belong to entity's workflow")
-                raise ValidationError(entity.eid, {'to_state': msg})
+                raise ValidationError(entity.eid, {qname: msg})
         else:
             # check transition is valid and allowed, unless we're coming back
             # from subworkflow
             tr = session.entity_from_eid(treid)
             if swtr is None:
+                qname = role_name('by_transition', 'subject')
                 if tr is None:
                     msg = session._("transition doesn't belong to entity's workflow")
-                    raise ValidationError(entity.eid, {'by_transition': msg})
+                    raise ValidationError(entity.eid, {qname: msg})
                 if not tr.has_input_state(fromstate):
                     msg = session._("transition %(tr)s isn't allowed from %(st)s") % {
                         'tr': session._(tr.name), 'st': session._(fromstate.name)}
-                    raise ValidationError(entity.eid, {'by_transition': msg})
+                    raise ValidationError(entity.eid, {qname: msg})
                 if not tr.may_be_fired(foreid):
                     msg = session._("transition may not be fired")
-                    raise ValidationError(entity.eid, {'by_transition': msg})
+                    raise ValidationError(entity.eid, {qname: msg})
             if entity.get('to_state'):
                 deststateeid = entity['to_state']
                 if not cowpowers and deststateeid != tr.destination(forentity).eid:
+                    qname = role_name('by_transition', 'subject')
                     msg = session._("transition isn't allowed")
-                    raise ValidationError(entity.eid, {'by_transition': msg})
+                    raise ValidationError(entity.eid, {qname: msg})
                 if swtr is None:
                     deststate = session.entity_from_eid(deststateeid)
                     if not cowpowers and deststate is None:
+                        qname = role_name('to_state', 'subject')
                         msg = session._("state doesn't belong to entity's workflow")
-                        raise ValidationError(entity.eid, {'to_state': msg})
+                        raise ValidationError(entity.eid, {qname: msg})
             else:
                 deststateeid = tr.destination(forentity).eid
         # everything is ok, add missing information on the trinfo entity
@@ -266,7 +271,7 @@ class FiredTransitionHook(WorkflowHook):
 
 
 class CheckInStateChangeAllowed(WorkflowHook):
-    """check state apply, in case of direct in_state change using unsafe_execute
+    """check state apply, in case of direct in_state change using unsafe execute
     """
     __regid__ = 'wfcheckinstate'
     __select__ = WorkflowHook.__select__ & hook.match_rtype('in_state')
@@ -287,12 +292,14 @@ class CheckInStateChangeAllowed(WorkflowHook):
             if wf.state_by_eid(self.eidto):
                 break
         else:
+            qname = role_name('in_state', 'subject')
             msg = session._("state doesn't belong to entity's workflow. You may "
                             "want to set a custom workflow for this entity first.")
-            raise ValidationError(self.eidfrom, {'in_state': msg})
+            raise ValidationError(self.eidfrom, {qname: msg})
         if entity.current_workflow and wf.eid != entity.current_workflow.eid:
+            qname = role_name('in_state', 'subject')
             msg = session._("state doesn't belong to entity's current workflow")
-            raise ValidationError(self.eidfrom, {'in_state': msg})
+            raise ValidationError(self.eidfrom, {qname: msg})
 
 
 class SetModificationDateOnStateChange(WorkflowHook):
@@ -307,8 +314,7 @@ class SetModificationDateOnStateChange(WorkflowHook):
             return
         entity = self._cw.entity_from_eid(self.eidfrom)
         try:
-            entity.set_attributes(modification_date=datetime.now(),
-                                  _cw_unsafe=True)
+            entity.set_attributes(modification_date=datetime.now())
         except RepositoryError, ex:
             # usually occurs if entity is coming from a read-only source
             # (eg ldap user)

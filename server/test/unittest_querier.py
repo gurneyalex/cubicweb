@@ -35,7 +35,7 @@ def init_sqlite_connexion(cnx):
 SQL_CONNECT_HOOKS['sqlite'].append(init_sqlite_connexion)
 
 
-from logilab.common.adbh import _GenericAdvFuncHelper
+from logilab.database import _GenericAdvFuncHelper
 TYPEMAP = _GenericAdvFuncHelper.TYPE_MAPPING
 
 class MakeSchemaTC(TestCase):
@@ -48,6 +48,11 @@ class MakeSchemaTC(TestCase):
 
 repo, cnx = init_test_database()
 
+def teardown_module(*args):
+    global repo, cnx
+    cnx.close()
+    repo.shutdown()
+    del repo, cnx
 
 
 class UtilsTC(BaseQuerierTC):
@@ -257,7 +262,7 @@ class QuerierTC(BaseQuerierTC):
         result, descr = rset.rows, rset.description
         self.assertEquals(descr[0][0], 'String')
         self.assertEquals(descr[0][1], 'Int')
-        self.assertEquals(result[0][0], 'RQLExpression') # XXX may change as schema evolve
+        self.assertEquals(result[0][0], 'CWRelation') # XXX may change as schema evolve
 
     def test_select_groupby_orderby(self):
         rset = self.execute('Any N GROUPBY N ORDERBY N WHERE X is CWGroup, X name N')
@@ -392,6 +397,18 @@ class QuerierTC(BaseQuerierTC):
         rset = self.execute('Note X WHERE NOT Y evaluee X')
         self.assertEquals(len(rset.rows), 1, rset.rows)
 
+    def test_select_date_extraction(self):
+        self.execute("INSERT Personne X: X nom 'foo', X datenaiss %(d)s",
+                     {'d': datetime(2001, 2,3, 12,13)})
+        test_data = [('YEAR', 2001), ('MONTH', 2), ('DAY', 3),
+                     ('HOUR', 12), ('MINUTE', 13)]
+        for funcname, result in test_data:
+            rset = self.execute('Any %s(D) WHERE X is Personne, X datenaiss D'
+                                % funcname)
+            self.assertEquals(len(rset.rows), 1)
+            self.assertEquals(rset.rows[0][0], result)
+            self.assertEquals(rset.description, [('Int',)])
+
     def test_select_aggregat_count(self):
         rset = self.execute('Any COUNT(X)')
         self.assertEquals(len(rset.rows), 1)
@@ -425,7 +442,7 @@ class QuerierTC(BaseQuerierTC):
         self.assertEquals(rset.description, [('Int',)])
 
     def test_select_custom_aggregat_concat_string(self):
-        rset = self.execute('Any CONCAT_STRINGS(N) WHERE X is CWGroup, X name N')
+        rset = self.execute('Any GROUP_CONCAT(N) WHERE X is CWGroup, X name N')
         self.failUnless(rset)
         self.failUnlessEqual(sorted(rset[0][0].split(', ')), ['guests', 'managers',
                                                              'owners', 'users'])
@@ -862,6 +879,14 @@ class QuerierTC(BaseQuerierTC):
         self.assert_(rset.rows)
         self.assertEquals(rset.description, [('Personne', 'Societe',)])
 
+    def test_insert_5bis(self):
+        peid = self.execute("INSERT Personne X: X nom 'bidule'")[0][0]
+        self.execute("INSERT Societe Y: Y nom 'toto', X travaille Y WHERE X eid %(x)s",
+                     {'x': peid}, 'x')
+        rset = self.execute('Any X, Y WHERE X nom "bidule", Y nom "toto", X travaille Y')
+        self.assert_(rset.rows)
+        self.assertEquals(rset.description, [('Personne', 'Societe',)])
+
     def test_insert_6(self):
         self.execute("INSERT Personne X, Societe Y: X nom 'bidule', Y nom 'toto', X travaille Y")
         rset = self.execute('Any X, Y WHERE X nom "bidule", Y nom "toto", X travaille Y')
@@ -1015,6 +1040,10 @@ class QuerierTC(BaseQuerierTC):
                       {'x': str(eid1), 'y': str(eid2)})
         rset = self.execute('Any X, Y WHERE X travaille Y')
         self.assertEqual(len(rset.rows), 1)
+        # test add of an existant relation but with NOT X rel Y protection
+        self.failIf(self.execute("SET X travaille Y WHERE X eid %(x)s, Y eid %(y)s,"
+                                 "NOT X travaille Y",
+                                 {'x': str(eid1), 'y': str(eid2)}))
 
     def test_update_2ter(self):
         rset = self.execute("INSERT Personne X, Societe Y: X nom 'bidule', Y nom 'toto'")

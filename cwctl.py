@@ -204,7 +204,7 @@ class ConfigurationProblem(object):
             # simplify constraints
             if versions:
                 for constraint in versions:
-                    op, ver = constraint.split()
+                    op, ver = constraint
                     if oper is None:
                         oper = op
                         version = ver
@@ -238,7 +238,12 @@ class ConfigurationProblem(object):
             for name, constraint in use.items():
                 self.constraints.setdefault(name,set())
                 if constraint:
-                    self.constraints[name].add(constraint)
+                    try:
+                        oper, version = constraint.split()
+                        self.constraints[name].add( (oper, version) )
+                    except:
+                        self.warnings.append('cube %s depends on %s but constraint badly formatted: %s'
+                                             % (cube, name, constraint))
                 self.reverse_constraints.setdefault(name, set()).add(cube)
 
 class ListCommand(Command):
@@ -378,7 +383,6 @@ repository and the web server.',
         cubes = splitstrip(pop_arg(args, 1))
         appid = pop_arg(args)
         # get the configuration and helper
-        cwcfg.creating = True
         config = cwcfg.config_for(appid, configname)
         config.set_language = False
         cubes = config.expand_cubes(cubes)
@@ -792,7 +796,7 @@ given, appropriate sources for migration will be automatically selected \
         # handle i18n upgrade:
         # * install new languages
         # * recompile catalogs
-        # in the first componant given
+        # XXX search available language in the first cube given
         from cubicweb import i18n
         templdir = cwcfg.cube_dir(config.cubes()[0])
         langs = [lang for lang, _ in i18n.available_catalogs(join(templdir, 'i18n'))]
@@ -807,7 +811,12 @@ given, appropriate sources for migration will be automatically selected \
         print
         print '-> instance migrated.'
         if not (CWDEV or self.config.nostartstop):
-            StartInstanceCommand().start_instance(appid)
+            # restart instance through fork to get a proper environment, avoid
+            # uicfg pb (and probably gettext catalogs, to check...)
+            forkcmd = '%s start %s' % (sys.argv[0], appid)
+            status = system(forkcmd)
+            if status:
+                print '%s exited with status %s' % (forkcmd, status)
         print
 
 
@@ -927,20 +936,11 @@ class RecompileInstanceCatalogsCommand(InstanceCommand):
     def i18ninstance_instance(appid):
         """recompile instance's messages catalogs"""
         config = cwcfg.config_for(appid)
-        try:
-            config.bootstrap_cubes()
-        except IOError, ex:
-            import errno
-            if ex.errno != errno.ENOENT:
-                raise
-            # bootstrap_cubes files doesn't exist
-            # notify this is not a regular start
-            config.repairing = True
-            # create an in-memory repository, will call config.init_cubes()
-            config.repository()
-        except AttributeError:
+        config.quick_start = True # notify this is not a regular start
+        repo = config.repository()
+        if config._cubes is None:
             # web only config
-            config.init_cubes(config.repository().get_cubes())
+            config.init_cubes(repo.get_cubes())
         errors = config.i18ncompile()
         if errors:
             print '\n'.join(errors)

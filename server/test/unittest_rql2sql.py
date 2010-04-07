@@ -13,7 +13,6 @@ import sys
 from logilab.common.testlib import TestCase, unittest_main, mock_object
 
 from rql import BadRQLQuery
-from indexer import get_indexer
 
 #from cubicweb.server.sources.native import remove_unused_solutions
 from cubicweb.server.sources.rql2sql import SQLGenerator, remove_unused_solutions
@@ -36,6 +35,10 @@ schema = config.load_schema()
 schema['in_state'].inlined = True
 schema['state_of'].inlined = False
 schema['comments'].inlined = False
+
+def teardown_module(*args):
+    global config, schema
+    del config, schema
 
 PARSER = [
     (r"Personne P WHERE P nom 'Zig\'oto';",
@@ -540,13 +543,10 @@ WHERE NOT EXISTS(SELECT 1 FROM use_email_relation AS rel_use_email0 WHERE rel_us
 ORDER BY 4 DESC'''),
 
 
-    ("Any X WHERE X eid 0, X eid 0",
-     '''SELECT 0'''),
-
-    ("Any X WHERE X eid 0, X eid 0, X test TRUE",
+    ("Any X WHERE X eid 0, X test TRUE",
      '''SELECT _X.cw_eid
 FROM cw_Personne AS _X
-WHERE _X.cw_eid=0 AND _X.cw_eid=0 AND _X.cw_test=TRUE'''),
+WHERE _X.cw_eid=0 AND _X.cw_test=TRUE'''),
 
     ("Any X,GROUP_CONCAT(TN) GROUPBY X ORDERBY XN WHERE T tags X, X name XN, T name TN, X is CWGroup",
      '''SELECT _X.cw_eid, GROUP_CONCAT(_T.cw_name)
@@ -1068,7 +1068,7 @@ FROM is_relation AS rel_is0
 WHERE rel_is0.eid_to=2'''),
 
     ]
-from logilab.common.adbh import ADV_FUNC_HELPER_DIRECTORY
+from logilab.database import get_db_helper
 
 class CWRQLTC(RQLGeneratorTC):
     schema = schema
@@ -1102,13 +1102,8 @@ class PostgresSQLGeneratorTC(RQLGeneratorTC):
     #capture = True
     def setUp(self):
         RQLGeneratorTC.setUp(self)
-        indexer = get_indexer('postgres', 'utf8')
-        dbms_helper = ADV_FUNC_HELPER_DIRECTORY['postgres']
-        dbms_helper.fti_uid_attr = indexer.uid_attr
-        dbms_helper.fti_table = indexer.table
-        dbms_helper.fti_restriction_sql = indexer.restriction_sql
-        dbms_helper.fti_need_distinct_query = indexer.need_distinct
-        self.o = SQLGenerator(schema, dbms_helper)
+        dbhelper = get_db_helper('postgres')
+        self.o = SQLGenerator(schema, dbhelper)
 
     def _norm_sql(self, sql):
         return sql.strip()
@@ -1118,8 +1113,8 @@ class PostgresSQLGeneratorTC(RQLGeneratorTC):
             args = {'text': 'hip hop momo'}
         try:
             union = self._prepare(rql)
-            r, nargs = self.o.generate(union, args,
-                                      varmap=varmap)
+            r, nargs, cbs = self.o.generate(union, args,
+                                            varmap=varmap)
             args.update(nargs)
             self.assertLinesEquals((r % args).strip(), self._norm_sql(sql), striplines=True)
         except Exception, ex:
@@ -1140,7 +1135,7 @@ class PostgresSQLGeneratorTC(RQLGeneratorTC):
     def _checkall(self, rql, sql):
         try:
             rqlst = self._prepare(rql)
-            r, args = self.o.generate(rqlst)
+            r, args, cbs = self.o.generate(rqlst)
             self.assertEqual((r.strip(), args), sql)
         except Exception, ex:
             print rql
@@ -1202,11 +1197,18 @@ WHERE rel_in_group0.eid_from=T00.x AND rel_in_group0.eid_to=_G.cw_eid''',
 
     def test_is_null_transform(self):
         union = self._prepare('Any X WHERE X login %(login)s')
-        r, args = self.o.generate(union, {'login': None})
+        r, args, cbs = self.o.generate(union, {'login': None})
         self.assertLinesEquals((r % args).strip(),
                                '''SELECT _X.cw_eid
 FROM cw_CWUser AS _X
 WHERE _X.cw_login IS NULL''')
+
+
+    def test_date_extraction(self):
+        self._check("Any MONTH(D) WHERE P is Personne, P creation_date D",
+                    '''SELECT CAST(EXTRACT(MONTH from _P.cw_creation_date) AS INTEGER)
+FROM cw_Personne AS _P''')
+
 
     def test_parser_parse(self):
         for t in self._parse(PARSER):
@@ -1384,11 +1386,11 @@ WHERE NOT EXISTS(SELECT 1 FROM created_by_relation AS rel_created_by0 WHERE rel_
                     '''SELECT COUNT(1)
 WHERE EXISTS(SELECT 1 FROM owned_by_relation AS rel_owned_by0, cw_Affaire AS _P WHERE rel_owned_by0.eid_from=_P.cw_eid AND rel_owned_by0.eid_to=1 UNION SELECT 1 FROM owned_by_relation AS rel_owned_by1, cw_Note AS _P WHERE rel_owned_by1.eid_from=_P.cw_eid AND rel_owned_by1.eid_to=1)''')
 
-    def test_attr_map(self):
+    def test_attr_map_sqlcb(self):
         def generate_ref(gen, linkedvar, rel):
             linkedvar.accept(gen)
             return 'VERSION_DATA(%s)' % linkedvar._q_sql
-        self.o.attr_map['Affaire.ref'] = generate_ref
+        self.o.attr_map['Affaire.ref'] = (generate_ref, False)
         try:
             self._check('Any R WHERE X ref R',
                         '''SELECT VERSION_DATA(_X.cw_eid)
@@ -1400,21 +1402,32 @@ WHERE VERSION_DATA(_X.cw_eid)=1''')
         finally:
             self.o.attr_map.clear()
 
+    def test_attr_map_sourcecb(self):
+        cb = lambda x,y: None
+        self.o.attr_map['Affaire.ref'] = (cb, True)
+        try:
+            union = self._prepare('Any R WHERE X ref R')
+            r, nargs, cbs = self.o.generate(union, args={})
+            self.assertLinesEquals(r.strip(), 'SELECT _X.cw_ref\nFROM cw_Affaire AS _X')
+            self.assertEquals(cbs, {0: [cb]})
+        finally:
+            self.o.attr_map.clear()
+
 
 class SqliteSQLGeneratorTC(PostgresSQLGeneratorTC):
 
     def setUp(self):
         RQLGeneratorTC.setUp(self)
-        indexer = get_indexer('sqlite', 'utf8')
-        dbms_helper = ADV_FUNC_HELPER_DIRECTORY['sqlite']
-        dbms_helper.fti_uid_attr = indexer.uid_attr
-        dbms_helper.fti_table = indexer.table
-        dbms_helper.fti_restriction_sql = indexer.restriction_sql
-        dbms_helper.fti_need_distinct_query = indexer.need_distinct
-        self.o = SQLGenerator(schema, dbms_helper)
+        dbhelper = get_db_helper('sqlite')
+        self.o = SQLGenerator(schema, dbhelper)
 
     def _norm_sql(self, sql):
         return sql.strip().replace(' ILIKE ', ' LIKE ').replace('\nINTERSECT ALL\n', '\nINTERSECT\n')
+
+    def test_date_extraction(self):
+        self._check("Any MONTH(D) WHERE P is Personne, P creation_date D",
+                    '''SELECT MONTH(_P.cw_creation_date)
+FROM cw_Personne AS _P''')
 
     def test_union(self):
         for t in self._parse((
@@ -1481,26 +1494,26 @@ HAVING COUNT(_T0.C0)>1'''),
     def test_has_text(self):
         for t in self._parse((
             ('Any X WHERE X has_text "toto tata"',
-             """SELECT appears0.uid
+             """SELECT DISTINCT appears0.uid
 FROM appears AS appears0
 WHERE appears0.word_id IN (SELECT word_id FROM word WHERE word in ('toto', 'tata'))"""),
 
             ('Any X WHERE X has_text %(text)s',
-             """SELECT appears0.uid
+             """SELECT DISTINCT appears0.uid
 FROM appears AS appears0
 WHERE appears0.word_id IN (SELECT word_id FROM word WHERE word in ('hip', 'hop', 'momo'))"""),
 
             ('Personne X WHERE X has_text "toto tata"',
-             """SELECT _X.eid
+             """SELECT DISTINCT _X.eid
 FROM appears AS appears0, entities AS _X
 WHERE appears0.word_id IN (SELECT word_id FROM word WHERE word in ('toto', 'tata')) AND appears0.uid=_X.eid AND _X.type='Personne'"""),
 
             ('Any X WHERE X has_text "toto tata", X name "tutu", X is IN (Basket,Folder)',
-             """SELECT _X.cw_eid
+             """SELECT DISTINCT _X.cw_eid
 FROM appears AS appears0, cw_Basket AS _X
 WHERE appears0.word_id IN (SELECT word_id FROM word WHERE word in ('toto', 'tata')) AND appears0.uid=_X.cw_eid AND _X.cw_name=tutu
-UNION ALL
-SELECT _X.cw_eid
+UNION
+SELECT DISTINCT _X.cw_eid
 FROM appears AS appears0, cw_Folder AS _X
 WHERE appears0.word_id IN (SELECT word_id FROM word WHERE word in ('toto', 'tata')) AND appears0.uid=_X.cw_eid AND _X.cw_name=tutu
 """),
@@ -1513,13 +1526,8 @@ class MySQLGenerator(PostgresSQLGeneratorTC):
 
     def setUp(self):
         RQLGeneratorTC.setUp(self)
-        indexer = get_indexer('mysql', 'utf8')
-        dbms_helper = ADV_FUNC_HELPER_DIRECTORY['mysql']
-        dbms_helper.fti_uid_attr = indexer.uid_attr
-        dbms_helper.fti_table = indexer.table
-        dbms_helper.fti_restriction_sql = indexer.restriction_sql
-        dbms_helper.fti_need_distinct_query = indexer.need_distinct
-        self.o = SQLGenerator(schema, dbms_helper)
+        dbhelper = get_db_helper('mysql')
+        self.o = SQLGenerator(schema, dbhelper)
 
     def _norm_sql(self, sql):
         sql = sql.strip().replace(' ILIKE ', ' LIKE ').replace('TRUE', '1').replace('FALSE', '0')
@@ -1532,6 +1540,11 @@ class MySQLGenerator(PostgresSQLGeneratorTC):
             newsql.append(line)
             latest = firstword
         return '\n'.join(newsql)
+
+    def test_date_extraction(self):
+        self._check("Any MONTH(D) WHERE P is Personne, P creation_date D",
+                    '''SELECT EXTRACT(MONTH from _P.cw_creation_date)
+FROM cw_Personne AS _P''')
 
     def test_from_clause_needed(self):
         queries = [("Any 1 WHERE EXISTS(T is CWGroup, T name 'managers')",

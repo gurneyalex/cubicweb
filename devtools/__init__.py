@@ -30,8 +30,8 @@ SYSTEM_ENTITIES = schema.SCHEMA_TYPES | set((
 
 SYSTEM_RELATIONS = schema.META_RTYPES | set((
     # workflow related
-    'workflow_of', 'state_of', 'transition_of', 'initial_state', 'allowed_transition',
-    'destination_state', 'from_state', 'to_state',
+    'workflow_of', 'state_of', 'transition_of', 'initial_state', 'default_workflow',
+    'allowed_transition', 'destination_state', 'from_state', 'to_state',
     'condition', 'subworkflow', 'subworkflow_state', 'subworkflow_exit',
     'custom_workflow', 'in_state', 'wf_info_for',
     # cwproperty
@@ -81,7 +81,6 @@ class TestServerConfiguration(ServerConfiguration):
     mode = 'test'
     set_language = False
     read_instance_schema = False
-    bootstrap_schema = False
     init_repository = True
     options = cwconfig.merge_options(ServerConfiguration.options + (
         ('anonymous-user',
@@ -106,8 +105,6 @@ class TestServerConfiguration(ServerConfiguration):
         self.init_log(log_threshold, force=True)
         # need this, usually triggered by cubicweb-ctl
         self.load_cwctl_plugins()
-        self.global_set_option('anonymous-user', 'anon')
-        self.global_set_option('anonymous-password', 'anon')
 
     anonymous_user = TwistedConfiguration.anonymous_user.im_func
 
@@ -123,6 +120,8 @@ class TestServerConfiguration(ServerConfiguration):
         super(TestServerConfiguration, self).load_configuration()
         self.global_set_option('anonymous-user', 'anon')
         self.global_set_option('anonymous-password', 'anon')
+        # no undo support in tests
+        self.global_set_option('undo-support', '')
 
     def main_config_file(self):
         """return instance's control configuration file"""
@@ -201,6 +200,8 @@ def init_test_database(config=None, configdir='data'):
         init_test_database_sqlite(config)
     elif driver == 'postgres':
         init_test_database_postgres(config)
+    elif driver == 'sqlserver2005':
+        init_test_database_sqlserver2005(config, source)
     else:
         raise ValueError('no initialization function for driver %r' % driver)
     config._cubes = None # avoid assertion error
@@ -223,10 +224,18 @@ def reset_test_database(config):
 ### postgres test database handling ############################################
 
 def init_test_database_postgres(config):
-    """initialize a fresh sqlite databse used for testing purpose"""
+    """initialize a fresh postgresql databse used for testing purpose"""
     if config.init_repository:
         from cubicweb.server import init_repository
         init_repository(config, interactive=False, drop=True)
+
+### sqlserver2005 test database handling ############################################
+
+def init_test_database_sqlserver2005(config):
+    """initialize a fresh sqlserver databse used for testing purpose"""
+    if config.init_repository:
+        from cubicweb.server import init_repository
+        init_repository(config, interactive=False, drop=True, vreg=vreg)
 
 
 ### sqlite test database handling ##############################################

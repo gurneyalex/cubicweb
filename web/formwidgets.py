@@ -263,8 +263,8 @@ class Select(FieldWidget):
     """<select>, for field having a specific vocabulary"""
     vocabulary_widget = True
 
-    def __init__(self, attrs=None, multiple=False):
-        super(Select, self).__init__(attrs)
+    def __init__(self, attrs=None, multiple=False, **kwargs):
+        super(Select, self).__init__(attrs, **kwargs)
         self._multiple = multiple
 
     def render(self, form, field, renderer):
@@ -456,16 +456,17 @@ class JQueryTimePicker(FieldWidget):
     needs_js = ('jquery.timePicker.js',)
     needs_css = ('jquery.timepicker.css',)
 
-    def __init__(self, timestr=None, timesteps=30, **kwargs):
+    def __init__(self, timestr=None, timesteps=30, separator=u':', **kwargs):
         super(JQueryTimePicker, self).__init__(**kwargs)
         self.timestr = timestr
         self.timesteps = timesteps
+        self.separator = separator
 
     def _render(self, form, field, renderer):
         req = form._cw
         domid = field.dom_id(form, self.suffix)
-        req.add_onload(u'jqNode("%s").timePicker({selectedTime: "%s", step: %s})' % (
-            domid, self.timestr, self.timesteps))
+        req.add_onload(u'jqNode("%s").timePicker({selectedTime: "%s", step: %s, separator: "%s"})' % (
+            domid, self.timestr, self.timesteps, self.separator))
         if self.timestr is None:
             value = self.values(form, field)[0]
         else:
@@ -601,6 +602,34 @@ class StaticFileAutoCompletionWidget(AutoCompletionWidget):
 class RestrictedAutoCompletionWidget(AutoCompletionWidget):
     """XXX describe me"""
     wdgtype = 'RestrictedSuggestField'
+
+
+class LazyRestrictedAutoCompletionWidget(RestrictedAutoCompletionWidget):
+    """remote autocomplete """
+    wdgtype = 'LazySuggestField'
+
+    def values_and_attributes(self, form, field):
+        self.add_media(form)
+
+        """override values_and_attributes to handle initial displayed values"""
+        values, attrs = super(LazyRestrictedAutoCompletionWidget, self).values_and_attributes(form, field)
+        assert len(values) == 1, "multiple selection is not supported yet by LazyWidget"
+        if not values[0]:
+            values = form.cw_extra_kwargs.get(field.name,'')
+            if not isinstance(values, (tuple, list)):
+                values = (values,)
+        try:
+            values = list(values)
+            values[0] = int(values[0])
+            attrs['cubicweb:initialvalue'] = values[0]
+            values = (self.display_value_for(form, values[0]),)
+        except (TypeError, ValueError):
+            pass
+        return values, attrs
+
+    def display_value_for(self, form, value):
+        entity =form._cw.entity_from_eid(value)
+        return entity.view('combobox')
 
 
 class AddComboBoxWidget(Select):
@@ -754,6 +783,7 @@ class EditableURLWidget(FieldWidget):
             attrs['id'] = field.dom_id(form, 'fqs')
         if self.settabindex:
             attrs['tabindex'] = req.next_tabindex()
+        attrs.setdefault('cols', 60)
         attrs.setdefault('onkeyup', 'autogrow(this)')
         inputs += [tags.textarea(fqs, name=fqsqname, **attrs),
                    u'</td></tr></table>']
