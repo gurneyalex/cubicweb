@@ -22,10 +22,11 @@ from cubicweb import (NoSelectableObject, ValidationError, ObjectNotFound,
 from cubicweb.utils import CubicWebJsonEncoder
 from cubicweb.selectors import authenticated_user, match_form_params
 from cubicweb.mail import format_mail
-from cubicweb.web import ExplicitLogin, Redirect, RemoteCallFailed, json_dumps
+from cubicweb.web import ExplicitLogin, Redirect, RemoteCallFailed, DirectResponse, json_dumps
 from cubicweb.web.controller import Controller
 from cubicweb.web.views import vid_from_rset
 from cubicweb.web.views.formrenderers import FormRenderer
+
 try:
     from cubicweb.web.facet import (FilterRQLBuilder, get_facet,
                                     prepare_facets_rqlst)
@@ -179,7 +180,7 @@ class ViewController(Controller):
             else:
                 rql = 'SET Y %s X WHERE X eid %%(x)s, Y eid %%(y)s' % rtype
             for teid in eids:
-                req.execute(rql, {'x': eid, 'y': typed_eid(teid)}, ('x', 'y'))
+                req.execute(rql, {'x': eid, 'y': typed_eid(teid)})
 
 
 def _validation_error(req, ex):
@@ -283,7 +284,7 @@ class JSonController(Controller):
             raise RemoteCallFailed(repr(exc))
         try:
             result = func(*args)
-        except RemoteCallFailed:
+        except (RemoteCallFailed, DirectResponse):
             raise
         except Exception, ex:
             self.exception('an exception occured while calling js_%s(%s): %s',
@@ -316,12 +317,12 @@ class JSonController(Controller):
             form['__action_%s' % action] = u'whatever'
         return form
 
-    def _exec(self, rql, args=None, eidkey=None, rocheck=True):
+    def _exec(self, rql, args=None, rocheck=True):
         """json mode: execute RQL and return resultset as json"""
         if rocheck:
             self._cw.ensure_ro_rql(rql)
         try:
-            return self._cw.execute(rql, args, eidkey)
+            return self._cw.execute(rql, args)
         except Exception, ex:
             self.exception("error in _exec(rql=%s): %s", rql, ex)
             return None

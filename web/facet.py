@@ -8,7 +8,6 @@ a search
 """
 __docformat__ = "restructuredtext en"
 
-from itertools import chain
 from copy import deepcopy
 from datetime import date, datetime, timedelta
 
@@ -199,7 +198,7 @@ def insert_attr_select_relation(rqlst, mainvar, rtype, role, attrname,
     # add attribute variable to selection
     rqlst.add_selected(attrvar)
     # add is restriction if necessary
-    if not mainvar.stinfo['typerels']:
+    if mainvar.stinfo['typerel'] is None:
         etypes = frozenset(sol[mainvar.name] for sol in rqlst.solutions)
         rqlst.add_type_restriction(mainvar, etypes)
     return var
@@ -228,10 +227,14 @@ def _cleanup_rqlst(rqlst, mainvar):
         for ovarname in linkedvars:
             vargraph[ovarname].remove(trvarname)
         # remove relation using this variable
-        for rel in chain(trvar.stinfo['relations'], trvar.stinfo['typerels']):
+        for rel in trvar.stinfo['relations']:
             if rel in removed:
                 # already removed
                 continue
+            rqlst.remove_node(rel)
+            removed.add(rel)
+        rel = trvar.stinfo['typerel']
+        if rel is not None and not rel in removed:
             rqlst.remove_node(rel)
             removed.add(rel)
         # cleanup groupby clause
@@ -329,9 +332,9 @@ class VocabularyFacet(AbstractFacet):
     def support_and(self):
         return False
 
-    def rqlexec(self, rql, args=None, cachekey=None):
+    def rqlexec(self, rql, args=None):
         try:
-            return self._cw.execute(rql, args, cachekey)
+            return self._cw.execute(rql, args)
         except Unauthorized:
             return []
 
@@ -372,7 +375,7 @@ class RelationFacet(VocabularyFacet):
             if self.target_type is not None:
                 rqlst.add_type_restriction(var, self.target_type)
             try:
-                rset = self.rqlexec(rqlst.as_string(), self.cw_rset.args, self.cw_rset.cachekey)
+                rset = self.rqlexec(rqlst.as_string(), self.cw_rset.args)
             except:
                 self.exception('error while getting vocabulary for %s, rql: %s',
                                self, rqlst.as_string())
@@ -461,7 +464,7 @@ class AttributeFacet(RelationFacet):
             newvar = _prepare_vocabulary_rqlst(rqlst, mainvar, self.rtype, self.role)
             _set_orderby(rqlst, newvar, self.sortasc, self.sortfunc)
             try:
-                rset = self.rqlexec(rqlst.as_string(), self.cw_rset.args, self.cw_rset.cachekey)
+                rset = self.rqlexec(rqlst.as_string(), self.cw_rset.args)
             except:
                 self.exception('error while getting vocabulary for %s, rql: %s',
                                self, rqlst.as_string())
