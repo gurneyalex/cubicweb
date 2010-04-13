@@ -107,7 +107,7 @@ Here is a quick example:
 	__regid__ = 'loggeduserlink'
 
 	def call(self):
-	    if self._cw.cnx.anonymous_connection:
+	    if self._cw.session.anonymous_session:
 		# display login link
 		...
 	    else:
@@ -1030,11 +1030,23 @@ class rql_condition(EntitySelector):
     def score(self, req, rset, row, col):
         try:
             return len(req.execute(self.rql, {'x': rset[row][col],
-                                              'u': req.user.eid}, 'x'))
+                                              'u': req.user.eid}))
         except Unauthorized:
             return 0
 
 # logged user selectors ########################################################
+
+@objectify_selector
+@lltrace
+def no_cnx(cls, req, rset, *args, **kwargs):
+    """Return 1 if the web session has no connection set. This occurs when
+    anonymous access is not allowed and user isn't authenticated.
+
+    May only be used on the web side, not on the data repository side.
+    """
+    if req.cnx is None:
+        return 1
+    return 0
 
 @objectify_selector
 @lltrace
@@ -1043,7 +1055,7 @@ def authenticated_user(cls, req, **kwargs):
 
     May only be used on the web side, not on the data repository side.
     """
-    if req.cnx.anonymous_connection:
+    if req.session.anonymous_session:
         return 0
     return 1
 
