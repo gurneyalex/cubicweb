@@ -22,26 +22,9 @@ class SchemaViewer(object):
         self.req = req
         if req is not None:
             self.req.add_css('cubicweb.schema.css')
-            self._possible_views = req.vreg['views'].possible_views
             if not encoding:
                 encoding = req.encoding
-        else:
-            self._possible_views = lambda x: ()
         self.encoding = encoding
-
-    def format_acls(self, schema, access_types):
-        """return a layout displaying access control lists"""
-        data = [self.req._('access type'), self.req._('groups')]
-        for access_type in access_types:
-            data.append(self.req._(access_type))
-            acls = [Link(self.req.build_url('cwgroup/%s' % group), self.req._(group))
-                    for group in schema.get_groups(access_type)]
-            acls += (Text(rqlexp.expression) for rqlexp in schema.get_rqlexprs(access_type))
-            acls = [n for _n in acls for n in (_n, Text(', '))][:-1]
-            data.append(Span(children=acls))
-        return Section(children=(Table(cols=2, cheaders=1, rheaders=1, children=data),),
-                       klass='acl')
-
 
     def visit_schema(self, schema, display_relations=0, skiptypes=()):
         """get a layout for a whole schema"""
@@ -98,11 +81,6 @@ class SchemaViewer(object):
     def rschema_link_url(self, rschema):
         return self.req.build_url('cwrtype/%s' % rschema)
 
-    def possible_views(self, etype):
-        rset = self.req.etype_rset(etype)
-        return [v for v in self._possible_views(self.req, rset)
-                if v.category != 'startupview']
-
     def stereotype(self, name):
         return Span((' <<%s>>' % name,), klass='stereotype')
 
@@ -112,10 +90,7 @@ class SchemaViewer(object):
         layout = Section(children=' ', klass='clear')
         layout.append(Link(etype,'&#160;' , id=etype)) # anchor
         title = Link(self.eschema_link_url(eschema), etype)
-        boxchild = [Section(children=(title, ' (%s)'% eschema.display_name(self.req)), klass='title')]
-        table = Table(cols=4, rheaders=1, klass='listing',
-                      children=self._entity_attributes_data(eschema))
-        boxchild.append(Section(children=(table,), klass='body'))
+        boxchild = [Section(children=(title,), klass='title')]
         data = []
         data.append(Section(children=boxchild, klass='box'))
         data.append(Section(children='', klass='vl'))
@@ -137,9 +112,8 @@ class SchemaViewer(object):
                 else:
                     cards = rschema.rproperty(oeschema, eschema, 'cardinality')
                     cards = cards[::-1]
-                label = '%s %s (%s) %s' % (CARD_MAP[cards[1]], label,
-                                           display_name(self.req, label, role),
-                                           CARD_MAP[cards[0]])
+                label = '%s %s %s' % (CARD_MAP[cards[1]], label,
+                                      CARD_MAP[cards[0]])
                 rlink = Link(rschemaurl, label)
                 elink = Link(self.eschema_link_url(oeschema), oeschema.type)
                 if first:
@@ -152,16 +126,6 @@ class SchemaViewer(object):
         data.append(Section(children=rels, klass='rels'))
         data.append(Section(children=t_vars, klass='vars'))
         layout.append(Section(children=data, klass='entityAttributes'))
-        if eschema.final: # stop here for final entities
-            return layout
-        _ = self.req._
-        if self.req.user.matching_groups('managers'):
-            # layout.append(self.format_acls(eschema, ('read', 'add', 'delete', 'update')))
-            # possible views for this entity type
-            views = [_(view.title) for view in self.possible_views(etype)]
-            layout.append(Section(children=(Table(cols=1, rheaders=1,
-                                                  children=[_('views')]+views),),
-                                  klass='views'))
         return layout
 
     def visit_relationschema(self, rschema, title=True):
@@ -208,6 +172,8 @@ class SchemaViewer(object):
                     val = getattr(rdef, prop)
                     if val is None:
                         val = ''
+                    elif prop == 'constraints':
+                        val = ', '.join([c.restriction for c in val])
                     elif isinstance(val, (list, tuple)):
                         val = ', '.join(str(v) for v in val)
                     elif val and isinstance(val, basestring):
@@ -217,8 +183,6 @@ class SchemaViewer(object):
                     data.append(Text(val))
         table = Table(cols=cols, rheaders=1, children=data, klass='listing')
         layout.append(Section(children=(table,), klass='relationDefinition'))
-        #if self.req.user.matching_groups('managers'):
-        #    layout.append(self.format_acls(rschema, ('read', 'add', 'delete')))
         layout.append(Section(children='', klass='clear'))
         return layout
 

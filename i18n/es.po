@@ -35,6 +35,9 @@ msgstr ""
 msgid "  from state %(fromstate)s to state %(tostate)s\n"
 msgstr "  del estado %(fromstate)s hacia el estado %(tostate)s\n"
 
+msgid " :"
+msgstr ""
+
 #, python-format
 msgid "%(attr)s set to %(newvalue)s"
 msgstr ""
@@ -196,14 +199,14 @@ msgstr "0..1 0..1"
 msgid "AND"
 msgstr "Y"
 
-msgid "Add permissions"
-msgstr "Añadir autorizaciónes"
-
 msgid "Any"
 msgstr "Cualquiera"
 
-msgid "Attributes"
-msgstr "Atributos"
+msgid "Attributes permissions:"
+msgstr ""
+
+msgid "Attributes with non default permissions:"
+msgstr ""
 
 # schema pot file, generated on 2009-09-16 16:46:55
 #
@@ -370,13 +373,10 @@ msgstr "Decimal"
 msgid "Decimal_plural"
 msgstr "Decimales"
 
-msgid "Delete permissions"
-msgstr "Autorización de suprimir"
-
 msgid "Do you want to delete the following element(s) ?"
 msgstr "Desea suprimir el(los) elemento(s) siguiente(s)"
 
-msgid "Download page as pdf"
+msgid "Download schema as OWL"
 msgstr ""
 
 msgctxt "inlined:CWUser.use_email.subject"
@@ -391,6 +391,9 @@ msgstr "Direcciones de Correo Electrónico"
 
 msgid "Entities"
 msgstr "Entidades"
+
+msgid "Entity types"
+msgstr ""
 
 msgid "ExternalUri"
 msgstr ""
@@ -417,6 +420,9 @@ msgid "Garbage collection information"
 msgstr ""
 
 msgid "Help"
+msgstr ""
+
+msgid "Index"
 msgstr ""
 
 msgid "Instance"
@@ -512,14 +518,26 @@ msgstr ""
 msgid "No result matching query"
 msgstr "Ningún resultado corresponde a su búsqueda"
 
+msgid "Non exhaustive list of views that may apply to entities of this type"
+msgstr ""
+
 msgid "OR"
 msgstr "O"
+
+msgid "Parent classes:"
+msgstr ""
 
 msgid "Password"
 msgstr "Contraseña"
 
 msgid "Password_plural"
 msgstr "Contraseñas"
+
+msgid "Permissions for entity types"
+msgstr ""
+
+msgid "Permissions for relations"
+msgstr ""
 
 msgid "Please note that this is only a shallow copy"
 msgstr "Recuerde que no es más que una copia superficial"
@@ -539,9 +557,6 @@ msgstr ""
 msgid "RQLVocabularyConstraint"
 msgstr ""
 
-msgid "Read permissions"
-msgstr "Autorización de leer"
-
 msgid "Recipients:"
 msgstr "Destinatarios"
 
@@ -549,6 +564,9 @@ msgid "RegexpConstraint"
 msgstr ""
 
 msgid "Registry's content"
+msgstr ""
+
+msgid "Relation types"
 msgstr ""
 
 msgid "Relations"
@@ -588,6 +606,9 @@ msgstr "Cadena de caracteres"
 msgid "String_plural"
 msgstr "Cadenas de caracteres"
 
+msgid "Sub-classes:"
+msgstr ""
+
 msgid "SubWorkflowExitPoint"
 msgstr ""
 
@@ -613,6 +634,9 @@ msgstr "La vista %s no puede ser aplicada a esta búsqueda"
 #, python-format
 msgid "The view %s could not be found"
 msgstr "La vista %s no ha podido ser encontrada"
+
+msgid "There is no default workflow"
+msgstr ""
 
 msgid "This BaseTransition"
 msgstr ""
@@ -680,6 +704,9 @@ msgstr ""
 msgid "This WorkflowTransition"
 msgstr ""
 
+msgid "This entity type permissions:"
+msgstr ""
+
 msgid "Time"
 msgstr "Hora"
 
@@ -703,9 +730,6 @@ msgstr ""
 
 msgid "Unreachable objects"
 msgstr ""
-
-msgid "Update permissions"
-msgstr "Autorización de modificar"
 
 msgid "Used by:"
 msgstr "Utilizado por :"
@@ -798,9 +822,6 @@ msgstr "Sobre este Espacio"
 
 msgid "abstract base class for transitions"
 msgstr ""
-
-msgid "access type"
-msgstr "Tipo de Acceso"
 
 msgid "action(s) on this selection"
 msgstr "acción(es) en esta selección"
@@ -1223,9 +1244,6 @@ msgstr ""
 msgid "attribute"
 msgstr "Atributo"
 
-msgid "attributes with modified permissions:"
-msgstr "atributos con autorizaciónes modificadas:"
-
 msgid "august"
 msgstr "Agosto"
 
@@ -1548,15 +1566,15 @@ msgctxt "WorkflowTransition"
 msgid "condition"
 msgstr ""
 
-msgid "condition:"
-msgstr "condición:"
-
 msgctxt "RQLExpression"
 msgid "condition_object"
 msgstr ""
 
 msgid "condition_object"
 msgstr "condición de"
+
+msgid "conditions"
+msgstr ""
 
 msgid "config mode"
 msgstr ""
@@ -1594,6 +1612,9 @@ msgstr "Restricciones"
 msgid "constraints applying on this relation"
 msgstr "Restricciones que se aplican a esta relación"
 
+msgid "content type"
+msgstr ""
+
 msgid "contentnavigation"
 msgstr "Componentes contextuales"
 
@@ -1607,12 +1628,6 @@ msgid "contentnavigation_metadata"
 msgstr ""
 
 msgid "contentnavigation_metadata_description"
-msgstr ""
-
-msgid "contentnavigation_pdfview"
-msgstr ""
-
-msgid "contentnavigation_pdfview_description"
 msgstr ""
 
 msgid "contentnavigation_prevnext"
@@ -1809,6 +1824,9 @@ msgstr ""
 msgid "creation"
 msgstr "Creación"
 
+msgid "creation date"
+msgstr ""
+
 msgid "creation time of an entity"
 msgstr "Fecha de creación de una entidad"
 
@@ -1844,17 +1862,32 @@ msgstr ""
 msgid "custom_workflow_object"
 msgstr ""
 
-msgid "cwetype-schema-image"
-msgstr "Esquema"
+msgid "cwetype-box"
+msgstr ""
 
-msgid "cwetype-schema-permissions"
-msgstr "Autorizaciónes"
+msgid "cwetype-description"
+msgstr ""
 
-msgid "cwetype-schema-text"
-msgstr "Modelo de datos"
+msgid "cwetype-permissions"
+msgstr ""
+
+msgid "cwetype-views"
+msgstr ""
 
 msgid "cwetype-workflow"
-msgstr "Workflow"
+msgstr ""
+
+msgid "cwgroup-main"
+msgstr ""
+
+msgid "cwgroup-permissions"
+msgstr ""
+
+msgid "cwrtype-description"
+msgstr ""
+
+msgid "cwrtype-permissions"
+msgstr ""
 
 msgid "cwuri"
 msgstr ""
@@ -1881,6 +1914,9 @@ msgid "default text format for rich text fields."
 msgstr "Formato de texto como opción por defecto para los campos texto"
 
 msgid "default user workflow"
+msgstr ""
+
+msgid "default value"
 msgstr ""
 
 msgid "default workflow for an entity type"
@@ -2314,6 +2350,10 @@ msgstr "faceta \"en el estado\""
 msgid "facets_in_state-facet_description"
 msgstr "faceta en el estado"
 
+#, python-format
+msgid "failed to uniquify path (%s, %s)"
+msgstr ""
+
 msgid "february"
 msgstr "Febrero"
 
@@ -2329,6 +2369,9 @@ msgstr ""
 
 msgctxt "CWRType"
 msgid "final"
+msgstr ""
+
+msgid "first name"
 msgstr ""
 
 msgid "firstname"
@@ -2444,10 +2487,6 @@ msgstr "Regresar a la página de inicio"
 msgid "granted to groups"
 msgstr "Otorgado a los grupos"
 
-#, python-format
-msgid "graphical representation of %s"
-msgstr ""
-
 msgid "graphical representation of the instance'schema"
 msgstr ""
 
@@ -2470,9 +2509,6 @@ msgstr "Los grupos otorgan las autorizaciones al usuario"
 
 msgid "groups to which the permission is granted"
 msgstr "Grupos quienes tienen otorgada esta autorización"
-
-msgid "groups:"
-msgstr "Grupos :"
 
 msgid "guests"
 msgstr "Invitados"
@@ -2518,6 +2554,18 @@ msgstr ""
 msgid "i18n_login_popup"
 msgstr "Identificarse"
 
+msgid "i18ncard_*"
+msgstr ""
+
+msgid "i18ncard_+"
+msgstr ""
+
+msgid "i18ncard_1"
+msgstr ""
+
+msgid "i18ncard_?"
+msgstr ""
+
 msgid "i18nprevnext_next"
 msgstr "Siguiente"
 
@@ -2555,12 +2603,6 @@ msgstr ""
 msgid "image"
 msgstr "Imagen"
 
-msgid "in memory entity schema"
-msgstr "Esquema de la entidad en memoria"
-
-msgid "in memory relation schema"
-msgstr "Esquema de la relación en memoria"
-
 msgid "in_group"
 msgstr "En el grupo"
 
@@ -2590,9 +2632,6 @@ msgstr ""
 #, python-format
 msgid "incorrect value (%(value)s) for type \"%(type)s\""
 msgstr "valor %(value)s incorrecto para el tipo \"%(type)s\""
-
-msgid "index"
-msgstr "Indice"
 
 msgid "index this attribute's value in the plain text index"
 msgstr "Indexar el valor de este atributo en el índice de texto simple"
@@ -2667,6 +2706,12 @@ msgstr "Acción %r invalida"
 msgid "is"
 msgstr "es"
 
+msgid "is object of:"
+msgstr "es objeto de"
+
+msgid "is subject of:"
+msgstr "es sujeto de"
+
 msgid ""
 "is the subject/object entity of the relation composed of the other ? This "
 "implies that when the composite is deleted, composants are also deleted."
@@ -2717,6 +2762,12 @@ msgstr "Idioma para la interface del usuario"
 
 msgid "last connection date"
 msgstr "Ultima fecha de conexión"
+
+msgid "last login time"
+msgstr ""
+
+msgid "last name"
+msgstr ""
 
 msgid "last usage"
 msgstr ""
@@ -2867,6 +2918,9 @@ msgstr "Lundi"
 msgid "more actions"
 msgstr "mas acciones"
 
+msgid "more info about this workflow"
+msgstr ""
+
 msgid "multiple edit"
 msgstr "Edicion multiple"
 
@@ -3014,8 +3068,8 @@ msgstr "noviembre"
 msgid "object"
 msgstr "objeto"
 
-msgid "object_plural:"
-msgstr "objetos:"
+msgid "object type"
+msgstr ""
 
 msgid "october"
 msgstr "octubre"
@@ -3039,6 +3093,9 @@ msgid "opened sessions"
 msgstr ""
 
 msgid "opened web sessions"
+msgstr ""
+
+msgid "options"
 msgstr ""
 
 msgid "order"
@@ -3095,11 +3152,8 @@ msgstr ""
 msgid "permission"
 msgstr "Permiso"
 
-msgid "permissions for entities"
-msgstr "autorizaciónes para entidades"
-
-msgid "permissions for relations"
-msgstr "autorizaciónes para relaciones"
+msgid "permissions"
+msgstr ""
 
 msgid "permissions for this entity"
 msgstr "Permisos para esta entidad"
@@ -3175,6 +3229,12 @@ msgstr "Barra de progreso de avance"
 msgid "project"
 msgstr "Proyecto"
 
+msgid "rdef-description"
+msgstr ""
+
+msgid "rdef-permissions"
+msgstr ""
+
 msgid "read"
 msgstr "Lectura"
 
@@ -3216,6 +3276,9 @@ msgstr ""
 msgid "related entity has no workflow set"
 msgstr ""
 
+msgid "relation"
+msgstr ""
+
 #, python-format
 msgid "relation %(relname)s of %(ent)s"
 msgstr "relación %(relname)s de %(ent)s"
@@ -3243,9 +3306,6 @@ msgstr ""
 
 msgid "relation_type_object"
 msgstr "Definición"
-
-msgid "relations"
-msgstr "relaciones"
 
 msgid "relations deleted"
 msgstr "Relaciones eliminadas"
@@ -3287,6 +3347,9 @@ msgstr "Requiere autorización"
 
 msgid "require_permission_object"
 msgstr "Requerido por autorización"
+
+msgid "required"
+msgstr ""
 
 msgid "required attribute"
 msgstr "Atributo requerido"
@@ -3335,11 +3398,17 @@ msgstr "entidades del esquema"
 msgid "schema's permissions definitions"
 msgstr "definiciones de permisos del esquema"
 
+msgid "schema-entity-types"
+msgstr ""
+
 msgid "schema-image"
 msgstr "esquema imagen"
 
-msgid "schema-text"
-msgstr "esquema text"
+msgid "schema-relation-types"
+msgstr ""
+
+msgid "schema-security"
+msgstr ""
 
 msgid "search"
 msgstr "buscar"
@@ -3530,11 +3599,11 @@ msgstr "estatus cambiara de %(st1)s a %(st2)s"
 msgid "subject"
 msgstr "sujeto"
 
+msgid "subject type"
+msgstr ""
+
 msgid "subject/object cardinality"
 msgstr "cardinalidad sujeto/objeto"
-
-msgid "subject_plural:"
-msgstr "sujetos:"
 
 msgid "subworkflow"
 msgstr ""
@@ -3938,6 +4007,9 @@ msgstr ""
 msgid "used to grant a permission to a group"
 msgstr "utilizado para otorgar permisos a un grupo"
 
+msgid "user"
+msgstr ""
+
 #, python-format
 msgid ""
 "user %s has made the following change(s):\n"
@@ -3996,14 +4068,17 @@ msgstr "ver detalle de esta entidad"
 msgid "view history"
 msgstr ""
 
+msgid "view identifier"
+msgstr ""
+
+msgid "view title"
+msgstr ""
+
 msgid "view workflow"
 msgstr "ver workflow"
 
 msgid "view_index"
 msgstr ""
-
-msgid "views"
-msgstr "vistas"
 
 msgid "visible"
 msgstr "visible"
@@ -4026,6 +4101,12 @@ msgstr "historial de"
 
 msgid "wf_info_for_object"
 msgstr "historial de transiciones"
+
+msgid "wf_tab_info"
+msgstr ""
+
+msgid "wfgraph"
+msgstr ""
 
 msgid ""
 "when multiple addresses are equivalent (such as python-projects@logilab.org "
@@ -4106,6 +4187,9 @@ msgstr "deberia probablamente suprimir esta propriedad"
 #~ msgid "Application"
 #~ msgstr "Aplicación"
 
+#~ msgid "Attributes"
+#~ msgstr "Atributos"
+
 #~ msgid "Debug level set to %s"
 #~ msgstr "Nivel de debug puesto a %s"
 
@@ -4136,6 +4220,9 @@ msgstr "deberia probablamente suprimir esta propriedad"
 
 #~ msgid "__msg state changed"
 #~ msgstr "El estado a cambiado"
+
+#~ msgid "access type"
+#~ msgstr "Tipo de Acceso"
 
 #~ msgid "account state"
 #~ msgstr "Estado de la Cuenta"
@@ -4227,6 +4314,9 @@ msgstr "deberia probablamente suprimir esta propriedad"
 
 #~ msgid "comment:"
 #~ msgstr "Comentario:"
+
+#~ msgid "condition:"
+#~ msgstr "condición:"
 
 #~ msgid "copy edition"
 #~ msgstr "Edición de una copia"
@@ -4323,6 +4413,9 @@ msgstr "deberia probablamente suprimir esta propriedad"
 #~ msgid "groups allowed to update entities of this type"
 #~ msgstr "Grupos autorizados a actualizar entidades de este tipo"
 
+#~ msgid "groups:"
+#~ msgstr "Grupos :"
+
 #~ msgid "home"
 #~ msgstr "Inicio"
 
@@ -4411,6 +4504,9 @@ msgstr "deberia probablamente suprimir esta propriedad"
 #~ msgid "rql expression allowing to update entities of this type"
 #~ msgstr "expresion RQL permitiendo actualizar entidades de este tipo"
 
+#~ msgid "schema-text"
+#~ msgstr "esquema text"
+
 #~ msgid "server debug information"
 #~ msgstr "server debug information"
 
@@ -4427,6 +4523,9 @@ msgstr "deberia probablamente suprimir esta propriedad"
 #~ msgstr ""
 #~ "usuario para el cual aplica esta propiedad. Si no se establece esta "
 #~ "relación, la propiedad es considerada como una propiedad global."
+
+#~ msgid "views"
+#~ msgstr "vistas"
 
 #~ msgid ""
 #~ "when multiple addresses are equivalent (such as python-projects@logilab."
