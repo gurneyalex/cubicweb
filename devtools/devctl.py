@@ -22,7 +22,8 @@ from logilab.common.clcommands import register_commands, pop_arg
 
 from cubicweb.__pkginfo__ import version as cubicwebversion
 from cubicweb import CW_SOFTWARE_ROOT as BASEDIR, BadCommandUsage
-from cubicweb.toolsutils import Command, copy_skeleton, underline_title
+from cubicweb.toolsutils import (SKEL_EXCLUDE, Command,
+                                 copy_skeleton, underline_title)
 from cubicweb.web.webconfig import WebConfiguration
 from cubicweb.server.serverconfig import ServerConfiguration
 
@@ -440,12 +441,19 @@ class NewCubeCommand(Command):
     """Create a new cube.
 
     <cubename>
-      the name of the new cube
+      the name of the new cube. It should be a valid python module name.
     """
     name = 'newcube'
     arguments = '<cubename>'
 
     options = (
+        ("layout",
+         {'short': 'L', 'type' : 'choice', 'metavar': '<cube layout>',
+          'default': 'simple', 'choices': ('simple', 'full'),
+          'help': 'cube layout. You\'ll get a minimal cube with the "simple" \
+layout, and a full featured cube with "full" layout.',
+          }
+         ),
         ("directory",
          {'short': 'd', 'type' : 'string', 'metavar': '<cubes directory>',
           'help': 'directory where the new cube should be created',
@@ -475,14 +483,28 @@ class NewCubeCommand(Command):
           'help': 'cube author\'s web site',
           }
          ),
+        ("license",
+         {'short': 'l', 'type' : 'choice', 'metavar': '<license>',
+          'default': 'LGPL', 'choices': ('GPL', 'LGPL', ''),
+          'help': 'cube license',
+          }
+         ),
         )
 
+    LICENSES = {
+        'LGPL': 'GNU Lesser General Public License, v2.1 - http://www.gnu.org/licenses',
+        'GPL': 'GNU General Public License, v2.1 - http://www.gnu.org/licenses',
+        '': 'closed source'
+        }
 
     def run(self, args):
+        import re
         from logilab.common.shellutils import ASK
         if len(args) != 1:
             raise BadCommandUsage("exactly one argument (cube name) is expected")
-        cubename, = args
+        cubename = args[0]
+        if not re.match('[_A-Za-z][_A-Za-z0-9]*$', cubename):
+            raise BadCommandUsage("cube name should be a valid python module name")
         verbose = self.get('verbose')
         cubesdir = self.get('directory')
         if not cubesdir:
@@ -501,7 +523,7 @@ class NewCubeCommand(Command):
         if exists(cubedir):
             self.fail("%s already exists !" % (cubedir))
         skeldir = join(BASEDIR, 'skeleton')
-        default_name = 'cubicweb-%s' % cubename.lower()
+        default_name = 'cubicweb-%s' % cubename.lower().replace('_', '-')
         if verbose:
             distname = raw_input('Debian name for your cube ? [%s]): ' % default_name).strip()
             if not distname:
@@ -511,7 +533,8 @@ class NewCubeCommand(Command):
                     distname = 'cubicweb-' + distname
         else:
             distname = default_name
-
+        if not re.match('[a-z][-a-z0-9]*$', distname):
+            raise BadCommandUsage("cube distname should be a valid debian package name")
         longdesc = shortdesc = raw_input('Enter a short description for your cube: ')
         if verbose:
             longdesc = raw_input('Enter a long description (leave empty to reuse the short one): ')
@@ -533,8 +556,14 @@ class NewCubeCommand(Command):
                    'author': self['author'],
                    'author-email': self['author-email'],
                    'author-web-site': self['author-web-site'],
+                   'license': self['license'],
+                   'long-license': self.LICENSES[self['license']],
                    }
-        copy_skeleton(skeldir, cubedir, context)
+        exclude = SKEL_EXCLUDE
+        if self['layout'] == 'simple':
+            exclude += ('sobjects.py*', 'precreate.py*', 'realdb_test*',
+                        'cubes.*', 'external_resources*')
+        copy_skeleton(skeldir, cubedir, context, exclude=exclude)
 
     def _ask_for_dependancies(self):
         from logilab.common.shellutils import ASK
