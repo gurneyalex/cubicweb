@@ -1,0 +1,36 @@
+CubicWeb semantic web framework
+===============================
+
+CubicWeb is a entities / relations based knowledge management system
+developped at Logilab.
+
+This package contains:
+* a repository server
+* a RQL command line client to the repository
+* an adaptative modpython interface to the server
+* a bunch of other management tools
+
+Install
+-------
+
+More details at http://www.cubicweb.org/doc/en/admin/setup
+
+Getting started
+---------------
+
+Execute:
+
+ apt-get install cubicweb cubicweb-dev cubicweb-blog
+ cubicweb-ctl create blog myblog
+ cubicweb-ctl start -D myblog
+ sensible-browser http://localhost:8080/
+
+Details at http://www.cubicweb.org/doc/en/intro/tutorial/blog-in-five-minutes
+
+Documentation
+-------------
+
+Look in the doc/ subdirectory or read http://www.cubicweb.org/doc/en/
+
+
+

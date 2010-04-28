@@ -1,0 +1,118 @@
+#filterbox fieldset{
+ margin: 0px;
+ padding: 0px;
+}
+
+div.facet {
+ margin-bottom: 8px;
+ background: #fff;
+ padding: 5px;
+ min-width: 10em;
+}
+
+div.facetTitle, div.bkSearch  {
+ font-size: 80%;
+ color: #000;
+ margin-bottom: 2px;
+ cursor: pointer;
+ font: bold 100% Georgia;
+}
+
+div.facetTitle a {
+ padding-left: 10px;
+ background: transparent url("puce.png") 0% 50% no-repeat;
+ }
+
+div.facetBody {
+}
+
+.opened{
+ color: #000 !important;
+}
+
+div.overflowed{
+  height: 12em;
+  overflow-y: auto;
+}
+
+div.facetCheckBox {
+  clear: both;
+  cursor: pointer;
+}
+
+div.facetCheckBox a {
+ text-decoration: none;
+ font-size: 85%;
+}
+
+div.facetValue{
+clear: both
+}
+
+div.facetValue img{
+ float: left;
+ background: #fff;
+}
+
+div.facetValue a {
+ margin-left: 20px;
+ display: block;
+ margin-top: -6px; /* FIXME why do we need this ? */
+}
+
+div.facetValueSelected a {
+  font-weight: bold;
+}
+
+#leftcol label {
+  color: #523015;
+}
+
+div#filter_box div.boxTitle {
+  visibility: hidden;
+  display: none;
+}
+
+div#filter_box {
+  border: none;
+}
+
+
+div.facetCheckBox{
+ line-height:0.8em;
+ }
+
+.facet input{
+ margin-top:3px;
+ border:1px solid #ccc;
+ font-size:11px;
+ }
+
+
+.facetValueDisabled {
+  font-style: italic;
+}
+
+
+div#filterboxTitle {
+  margin-top: 50px;
+  margin-bottom: 1em;
+  color: #1190A1;
+  font-size: 75%;
+  font-weight: bold;
+  padding: 0.15em;
+  text-transform: uppercase;
+}
+
+
+div#facetLoading {
+  display: none;
+  position: fixed;
+  padding-left: 20px;
+  top: 400px;
+  width: 200px;
+  height: 100px;
+  font-size:      120%;
+  font-weight:    bold;
+  text-align:     center;
+}
