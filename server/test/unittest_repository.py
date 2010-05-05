@@ -295,11 +295,19 @@ class RepositoryTC(CubicWebTC):
         cnx = connect(self.repo.config.appid, u'admin', password='gingkow',
                       initlog=False) # don't reset logging configuration
         try:
+            cnx.load_appobjects(subpath=('entities',))
             # check we can get the schema
             schema = cnx.get_schema()
+            self.failUnless(cnx.vreg)
+            self.failUnless('etypes'in cnx.vreg)
             self.assertEquals(schema.__hashmode__, None)
             cu = cnx.cursor()
             rset = cu.execute('Any U,G WHERE U in_group G')
+            user = iter(rset.entities()).next()
+            self.failUnless(user._cw)
+            self.failUnless(user._cw.vreg)
+            from cubicweb.entities import authobjs
+            self.assertIsInstance(user._cw.user, authobjs.CWUser)
             cnx.close()
             done.append(True)
         finally:
@@ -491,7 +499,7 @@ class FTITC(CubicWebTC):
         # our sqlite datetime adapter is ignore seconds fraction, so we have to
         # ensure update is done the next seconds
         time.sleep(1 - (ts.second - int(ts.second)))
-        self.execute('SET X nom "tata" WHERE X eid %(x)s', {'x': eidp}, 'x')
+        self.execute('SET X nom "tata" WHERE X eid %(x)s', {'x': eidp})
         self.commit()
         self.assertEquals(len(self.execute('Personne X WHERE X has_text "tutu"')), 1)
         self.session.set_pool()
