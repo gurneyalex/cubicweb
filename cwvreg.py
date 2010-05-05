@@ -442,14 +442,13 @@ class CubicWebVRegistry(VRegistry):
     * contentnavigation XXX to merge with components? to kill?
     """
 
-    def __init__(self, config, debug=None, initlog=True):
+    def __init__(self, config, initlog=True):
         if initlog:
             # first init log service
-            config.init_log(debug=debug)
+            config.init_log()
         super(CubicWebVRegistry, self).__init__(config)
         self.schema = None
         self.initialized = False
-        self.reset()
         # XXX give force_reload (or refactor [re]loading...)
         if self.config.mode != 'test':
             # don't clear rtags during test, this may cause breakage with
@@ -519,7 +518,6 @@ class CubicWebVRegistry(VRegistry):
                 if not cube in cubes:
                     cpath = cfg.build_vregistry_cube_path([cfg.cube_dir(cube)])
                     cleanup_sys_modules(cpath)
-        self.reset()
         self.register_objects(path, force_reload)
         CW_EVENT_MANAGER.emit('after-registry-reload')
 

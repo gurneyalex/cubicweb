@@ -477,14 +477,13 @@ running.'}),
 
     def start_instance(self, appid):
         """start the instance's server"""
-        debug = self['debug']
         force = self['force']
         loglevel = self['loglevel']
-        config = cwcfg.config_for(appid)
+        config = cwcfg.config_for(appid, debugmode=self['debug'])
         if loglevel is not None:
             loglevel = 'LOG_%s' % loglevel.upper()
             config.global_set_option('log-threshold', loglevel)
-            config.init_log(loglevel, debug=debug, force=True)
+            config.init_log(loglevel, force=True)
         if self['profile']:
             config.global_set_option('profile', self.config.profile)
         helper = self.config_helper(config, cmdname='start')
@@ -493,7 +492,7 @@ running.'}),
             msg = "%s seems to be running. Remove %s by hand if necessary or use \
 the --force option."
             raise ExecutionError(msg % (appid, pidf))
-        helper.start_server(config, debug)
+        helper.start_server(config)
 
 
 class StopInstanceCommand(InstanceCommand):
@@ -781,11 +780,15 @@ class ShellCommand(Command):
     repository internals (session, etc...) so most migration commands won't be
     available.
 
+    Arguments after bare "--" string will not be processed by the shell command
+    You can use it to pass extra arguments to your script and expect for
+    them in '__args__' afterwards.
+
     <instance>
       the identifier of the instance to connect.
     """
     name = 'shell'
-    arguments = '<instance> [batch command file]'
+    arguments = '<instance> [batch command file(s)] [-- <script arguments>]'
     options = (
         ('system-only',
          {'short': 'S', 'action' : 'store_true',
@@ -861,8 +864,11 @@ sources for migration will be automatically selected.",
             mih = config.migration_handler()
         try:
             if args:
-                for arg in args:
-                    mih.cmd_process_script(arg)
+                # use cmdline parser to access left/right attributes only
+                # remember that usage requires instance appid as first argument
+                scripts, args = self.cmdline_parser.largs[1:], self.cmdline_parser.rargs
+                for script in scripts:
+                    mih.cmd_process_script(script, scriptargs=args)
             else:
                 mih.interactive_shell()
         finally:
