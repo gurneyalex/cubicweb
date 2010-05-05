@@ -60,13 +60,14 @@ class DevConfiguration(ServerConfiguration, WebConfiguration):
                 self.expand_cubes(cubes, with_recommends=True))
         else:
             self._cubes = ()
+        self.uiprops = {'FCKEDITOR_PATH': ''}
 
     @property
     def apphome(self):
         return None
     def main_config_file(self):
         return None
-    def init_log(self, debug=None):
+    def init_log(self):
         pass
     def load_configuration(self):
         pass
@@ -596,7 +597,7 @@ layout, and a full featured cube with "full" layout.',
         exclude = SKEL_EXCLUDE
         if self['layout'] == 'simple':
             exclude += ('sobjects.py*', 'precreate.py*', 'realdb_test*',
-                        'cubes.*', 'external_resources*')
+                        'cubes.*', 'uiprops.py*')
         copy_skeleton(skeldir, cubedir, context, exclude=exclude)
 
     def _ask_for_dependencies(self):

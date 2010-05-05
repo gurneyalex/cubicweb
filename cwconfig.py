@@ -293,8 +293,6 @@ class CubicWebNoAppConfiguration(ConfigurationMixIn):
     log_format = '%(asctime)s - (%(name)s) %(levelname)s: %(message)s'
     # nor remove appobjects based on unused interface
     cleanup_interface_sobjects = True
-    # debug mode
-    debugmode = False
 
 
     if (CWDEV and _forced_mode != 'system'):
@@ -660,12 +658,14 @@ this option is set to yes",
                     vregpath.append(path + '.py')
         return vregpath
 
-    def __init__(self):
+    def __init__(self, debugmode=False):
         register_stored_procedures()
         ConfigurationMixIn.__init__(self)
+        self.debugmode = debugmode
         self.adjust_sys_path()
         self.load_defaults()
-        self.translations = {}
+        # will be properly initialized later by _gettext_init
+        self.translations = {'en': (unicode, lambda ctx, msgid: unicode(msgid) )}
         # don't register ReStructured Text directives by simple import, avoid pb
         # with eg sphinx.
         # XXX should be done properly with a function from cw.uicfg
@@ -680,16 +680,14 @@ this option is set to yes",
         # overriden in CubicWebConfiguration
         self.cls_adjust_sys_path()
 
-    def init_log(self, logthreshold=None, debug=False,
-                 logfile=None, syslog=False):
+    def init_log(self, logthreshold=None, logfile=None, syslog=False):
         """init the log service"""
         if logthreshold is None:
-            if debug:
+            if self.debugmode:
                 logthreshold = 'DEBUG'
             else:
                 logthreshold = self['log-threshold']
-        self.debugmode = debug
-        init_log(debug, syslog, logthreshold, logfile, self.log_format)
+        init_log(self.debugmode, syslog, logthreshold, logfile, self.log_format)
         # configure simpleTal logger
         logging.getLogger('simpleTAL').setLevel(logging.ERROR)
 
@@ -803,12 +801,12 @@ the repository',
         return mdir
 
     @classmethod
-    def config_for(cls, appid, config=None):
+    def config_for(cls, appid, config=None, debugmode=False):
         """return a configuration instance for the given instance identifier
         """
         config = config or guess_configuration(cls.instance_home(appid))
         configcls = configuration_cls(config)
-        return configcls(appid)
+        return configcls(appid, debugmode)
 
     @classmethod
     def possible_configurations(cls, appid):
@@ -876,9 +874,9 @@ the repository',
 
     # instance methods used to get instance specific resources #############
 
-    def __init__(self, appid):
+    def __init__(self, appid, debugmode=False):
         self.appid = appid
-        CubicWebNoAppConfiguration.__init__(self)
+        CubicWebNoAppConfiguration.__init__(self, debugmode)
         self._cubes = None
         self._site_loaded = set()
         self.load_file_configuration(self.main_config_file())
@@ -988,14 +986,14 @@ the repository',
         super(CubicWebConfiguration, self).load_configuration()
         if self.apphome and self.set_language:
             # init gettext
-            self._set_language()
+            self._gettext_init()
 
-    def init_log(self, logthreshold=None, debug=False, force=False):
+    def init_log(self, logthreshold=None, force=False):
         """init the log service"""
         if not force and hasattr(self, '_logging_initialized'):
             return
         self._logging_initialized = True
-        CubicWebNoAppConfiguration.init_log(self, logthreshold, debug,
+        CubicWebNoAppConfiguration.init_log(self, logthreshold,
                                             logfile=self.get('log-file'))
         # read a config file if it exists
         logconfig = join(self.apphome, 'logging.conf')
@@ -1016,7 +1014,7 @@ the repository',
             if lang != 'en':
                 yield lang
 
-    def _set_language(self):
+    def _gettext_init(self):
         """set language for gettext"""
         from gettext import translation
         path = join(self.apphome, 'i18n')
