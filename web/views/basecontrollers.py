@@ -340,12 +340,11 @@ class JSonController(Controller):
             return None
         return None
 
-    def _call_view(self, view, **kwargs):
-        req = self._cw
-        divid = req.form.get('divid', 'pageContent')
+    def _call_view(self, view, paginate=False, **kwargs):
+        divid = self._cw.form.get('divid', 'pageContent')
         # we need to call pagination before with the stream set
         stream = view.set_stream()
-        if req.form.get('paginate'):
+        if paginate:
             if divid == 'pageContent':
                 # mimick main template behaviour
                 stream.write(u'<div id="pageContent">')
@@ -356,12 +355,12 @@ class JSonController(Controller):
             if divid == 'pageContent':
                 stream.write(u'<div id="contentmain">')
         view.render(**kwargs)
-        extresources = req.html_headers.getvalue(skiphead=True)
+        extresources = self._cw.html_headers.getvalue(skiphead=True)
         if extresources:
             stream.write(u'<div class="ajaxHtmlHead">\n') # XXX use a widget ?
             stream.write(extresources)
             stream.write(u'</div>\n')
-        if req.form.get('paginate') and divid == 'pageContent':
+        if paginate and divid == 'pageContent':
             stream.write(u'</div></div>')
         return stream.getvalue()
 
@@ -381,7 +380,7 @@ class JSonController(Controller):
             vid = req.form.get('fallbackvid', 'noresult')
             view = self._cw.vreg['views'].select(vid, req, rset=rset)
         self.validate_cache(view)
-        return self._call_view(view)
+        return self._call_view(view, paginate=req.form.get('paginate'))
 
     @xhtmlize
     def js_prop_widget(self, propkey, varname, tabindex=None):
@@ -419,16 +418,7 @@ class JSonController(Controller):
                                               **extraargs)
         #except NoSelectableObject:
         #    raise RemoteCallFailed('unselectable')
-        extraargs = extraargs or {}
-        stream = comp.set_stream()
-        comp.render(**extraargs)
-        # XXX why not _call_view ?
-        extresources = self._cw.html_headers.getvalue(skiphead=True)
-        if extresources:
-            stream.write(u'<div class="ajaxHtmlHead">\n')
-            stream.write(extresources)
-            stream.write(u'</div>\n')
-        return stream.getvalue()
+        return self._call_view(comp, **extraargs)
 
     @check_pageid
     @xhtmlize
@@ -457,15 +447,7 @@ class JSonController(Controller):
         args['reload'] = json.loads(args['reload'])
         rset = req.eid_rset(int(self._cw.form['eid']))
         view = req.vreg['views'].select('doreledit', req, rset=rset, rtype=args['rtype'])
-        stream = view.set_stream()
-        view.render(**args)
-        # XXX why not _call_view ?
-        extresources = req.html_headers.getvalue(skiphead=True)
-        if extresources:
-            stream.write(u'<div class="ajaxHtmlHead">\n')
-            stream.write(extresources)
-            stream.write(u'</div>\n')
-        return stream.getvalue()
+        return self._call_view(view, **args)
 
     @jsonize
     def js_i18n(self, msgids):
@@ -481,7 +463,7 @@ class JSonController(Controller):
     @jsonize
     def js_external_resource(self, resource):
         """returns the URL of the external resource named `resource`"""
-        return self._cw.external_resource(resource)
+        return self._cw.uiprops[resource]
 
     @check_pageid
     @jsonize
@@ -581,14 +563,6 @@ class JSonController(Controller):
     def js_add_pending_delete(self, (eidfrom, rel, eidto)):
         self._add_pending(eidfrom, rel, eidto, 'delete')
 
-    # XXX specific code. Kill me and my AddComboBox friend
-    @jsonize
-    def js_add_and_link_new_entity(self, etype_to, rel, eid_to, etype_from, value_from):
-        # create a new entity
-        eid_from = self._cw.execute('INSERT %s T : T name "%s"' % ( etype_from, value_from ))[0][0]
-        # link the new entity to the main entity
-        rql = 'SET F %(rel)s T WHERE F eid %(eid_to)s, T eid %(eid_from)s' % {'rel' : rel, 'eid_to' : eid_to, 'eid_from' : eid_from}
-        return eid_from
 
 # XXX move to massmailing
 class SendMailController(Controller):
