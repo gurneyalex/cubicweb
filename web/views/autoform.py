@@ -16,16 +16,13 @@
 # You should have received a copy of the GNU Lesser General Public License along
 # with CubicWeb.  If not, see <http://www.gnu.org/licenses/>.
 """
-The automatic entity form
--------------------------
-
 .. autodocstring:: cubicweb.web.views.autoform::AutomaticEntityForm
 
 Configuration through uicfg
 ```````````````````````````
 
 It is possible to manage which and how an entity's attributes and relations
-will be edited in the various context where the automatic entity form is used
+will be edited in the various contexts where the automatic entity form is used
 by using proper uicfg tags.
 
 The details of the uicfg syntax can be found in the :ref:`uicfg` chapter.
@@ -53,7 +50,7 @@ additionally to the relation key: a `formtype` and a `section`.
 
 section may be one of:
 
-* 'hidden', don't display (not even in an hidden input, right?)
+* 'hidden', don't display (not even in a hidden input)
 
 * 'attributes', display in the attributes section
 
@@ -104,7 +101,11 @@ class. For instance:
    autoform_field_kwargs.tag_attribute(('RQLExpression', 'expression'),
                                        {'widget': fw.TextInput})
 
+.. note::
 
+   the widget argument can be either a class or an instance (the later
+   case being convenient to pass the Widget specific initialisation
+   options)
 
 Overriding permissions
 ^^^^^^^^^^^^^^^^^^^^^^
@@ -365,7 +366,7 @@ def get_pending_inserts(req, eid=None):
     This is where are stored relations being added while editing
     an entity. This used to be stored in a temporary cookie.
     """
-    pending = req.get_session_data('pending_insert') or ()
+    pending = req.session.data.get('pending_insert', ())
     return ['%s:%s:%s' % (subj, rel, obj) for subj, rel, obj in pending
             if eid is None or eid in (subj, obj)]
 
@@ -375,7 +376,7 @@ def get_pending_deletes(req, eid=None):
     This is where are stored relations being removed while editing
     an entity. This used to be stored in a temporary cookie.
     """
-    pending = req.get_session_data('pending_delete') or ()
+    pending = req.session.data.get('pending_delete', ())
     return ['%s:%s:%s' % (subj, rel, obj) for subj, rel, obj in pending
             if eid is None or eid in (subj, obj)]
 
@@ -398,7 +399,7 @@ def delete_relations(req, rdefs):
     execute = req.execute
     for subj, rtype, obj in parse_relations_descr(rdefs):
         rql = 'DELETE X %s Y where X eid %%(x)s, Y eid %%(y)s' % rtype
-        execute(rql, {'x': subj, 'y': obj}, ('x', 'y'))
+        execute(rql, {'x': subj, 'y': obj})
     req.set_message(req._('relations deleted'))
 
 def insert_relations(req, rdefs):
@@ -406,7 +407,7 @@ def insert_relations(req, rdefs):
     execute = req.execute
     for subj, rtype, obj in parse_relations_descr(rdefs):
         rql = 'SET X %s Y where X eid %%(x)s, Y eid %%(y)s' % rtype
-        execute(rql, {'x': subj, 'y': obj}, ('x', 'y'))
+        execute(rql, {'x': subj, 'y': obj})
 
 
 class GenericRelationsWidget(fw.FieldWidget):
@@ -621,13 +622,13 @@ class UnrelatedDivs(EntityView):
 # The automatic entity form ####################################################
 
 class AutomaticEntityForm(forms.EntityFieldsForm):
-    """AutomaticEntityForm is an automagic form to edit any entity. It is
-    designed to be fully generated from schema but highly configurable through
-    :ref:`uicfg`.
+    """AutomaticEntityForm is an automagic form to edit any entity. It
+    is designed to be fully generated from schema but highly
+    configurable through uicfg.
 
     Of course, as for other forms, you can also customise it by specifying
     various standard form parameters on selection, overriding, or
-    adding/removing fields in a selected instances.
+    adding/removing fields in selected instances.
     """
     __regid__ = 'edition'
 

@@ -90,7 +90,7 @@ class _CheckRequiredRelationOperation(hook.LateOperation):
                 continue
             if rtype in pendingrtypes:
                 continue
-            if not session.execute(self.base_rql % rtype, {'x': eid}, 'x'):
+            if not session.execute(self.base_rql % rtype, {'x': eid}):
                 etype = session.describe(eid)[0]
                 _ = session._
                 msg = _('at least one relation %(rtype)s is required on '
@@ -160,28 +160,30 @@ class CheckCardinalityHook(IntegrityHook):
 
 
 class _CheckConstraintsOp(hook.LateOperation):
-    """check a new relation satisfy its constraints
-    """
+    """ check a new relation satisfy its constraints """
+
     def precommit_event(self):
-        eidfrom, rtype, eidto = self.rdef
-        # first check related entities have not been deleted in the same
-        # transaction
-        if self.session.deleted_in_transaction(eidfrom):
-            return
-        if self.session.deleted_in_transaction(eidto):
-            return
-        for constraint in self.constraints:
-            # XXX
-            # * lock RQLConstraint as well?
-            # * use a constraint id to use per constraint lock and avoid
-            #   unnecessary commit serialization ?
-            if isinstance(constraint, RQLUniqueConstraint):
-                _acquire_unique_cstr_lock(self.session)
-            try:
-                constraint.repo_check(self.session, eidfrom, rtype, eidto)
-            except NotImplementedError:
-                self.critical('can\'t check constraint %s, not supported',
-                              constraint)
+        session = self.session
+        for values in session.transaction_data.pop('check_constraints_op'):
+            eidfrom, rtype, eidto, constraints = values
+            # first check related entities have not been deleted in the same
+            # transaction
+            if session.deleted_in_transaction(eidfrom):
+                return
+            if session.deleted_in_transaction(eidto):
+                return
+            for constraint in constraints:
+                # XXX
+                # * lock RQLConstraint as well?
+                # * use a constraint id to use per constraint lock and avoid
+                #   unnecessary commit serialization ?
+                if isinstance(constraint, RQLUniqueConstraint):
+                    _acquire_unique_cstr_lock(session)
+                try:
+                    constraint.repo_check(session, eidfrom, rtype, eidto)
+                except NotImplementedError:
+                    self.critical('can\'t check constraint %s, not supported',
+                                  constraint)
 
     def commit_event(self):
         pass
@@ -201,8 +203,9 @@ class CheckConstraintHook(IntegrityHook):
         constraints = self._cw.schema_rproperty(self.rtype, self.eidfrom, self.eidto,
                                                 'constraints')
         if constraints:
-            _CheckConstraintsOp(self._cw, constraints=constraints,
-                               rdef=(self.eidfrom, self.rtype, self.eidto))
+            hook.set_operation(self._cw, 'check_constraints_op',
+                               (self.eidfrom, self.rtype, self.eidto, tuple(constraints)),
+                               _CheckConstraintsOp)
 
 
 class CheckAttributeConstraintHook(IntegrityHook):
@@ -221,8 +224,9 @@ class CheckAttributeConstraintHook(IntegrityHook):
                 constraints = [c for c in eschema.rdef(attr).constraints
                                if isinstance(c, (RQLUniqueConstraint, RQLConstraint))]
                 if constraints:
-                    _CheckConstraintsOp(self._cw, constraints=constraints,
-                                        rdef=(self.entity.eid, attr, None))
+                    hook.set_operation(self._cw, 'check_constraints_op',
+                                       (self.entity.eid, attr, None, tuple(constraints)),
+                                       _CheckConstraintsOp)
 
 
 class CheckUniqueHook(IntegrityHook):
@@ -317,7 +321,7 @@ class _DelayedDeleteOp(hook.Operation):
             # don't do anything if the entity is being created or deleted
             if not (eid in pendingeids or eid in neweids):
                 etype = session.describe(eid)[0]
-                session.execute(self.base_rql % (etype, rtype), {'x': eid}, 'x')
+                session.execute(self.base_rql % (etype, rtype), {'x': eid})
 
 class _DelayedDeleteSEntityOp(_DelayedDeleteOp):
     """delete orphan subject entity of a composite relation"""
