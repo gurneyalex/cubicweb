@@ -594,7 +594,7 @@ def one_line_rset(cls, req, rset=None, row=None, **kwargs):
 
 
 class multi_lines_rset(Selector):
-    """If `nb`is specified, return 1 if the result set has exactly `nb` row of
+    """If `nb` is specified, return 1 if the result set has exactly `nb` row of
     result. Else (`nb` is None), return 1 if the result set contains *at least*
     two rows.
     """
@@ -612,7 +612,7 @@ class multi_lines_rset(Selector):
 
 
 class multi_columns_rset(multi_lines_rset):
-    """If `nb`is specified, return 1 if the result set has exactly `nb` column
+    """If `nb` is specified, return 1 if the result set has exactly `nb` column
     per row. Else (`nb` is None), return 1 if the result set contains *at least*
     two columns per row. Return 0 for empty result set.
     """
@@ -1298,6 +1298,10 @@ class is_in_state(score_entity):
                 return None
         super(is_in_state, self).__init__(score)
 
+@objectify_selector
+def debug_mode(cls, req, rset=None, **kwargs):
+    """Return 1 if running in debug mode"""
+    return req.vreg.config.debugmode and 1 or 0
 
 ## deprecated stuff ############################################################
 

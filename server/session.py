@@ -302,16 +302,15 @@ class Session(RequestSessionBase):
 
     def set_language(self, language):
         """i18n configuration for translation"""
-        vreg = self.vreg
         language = language or self.user.property_value('ui.language')
         try:
-            gettext, pgettext = vreg.config.translations[language]
+            gettext, pgettext = self.vreg.config.translations[language]
             self._ = self.__ = gettext
             self.pgettext = pgettext
         except KeyError:
-            language = vreg.property_value('ui.language')
+            language = self.vreg.property_value('ui.language')
             try:
-                gettext, pgettext = vreg.config.translations[language]
+                gettext, pgettext = self.vreg.config.translations[language]
                 self._ = self.__ = gettext
                 self.pgettext = pgettext
             except KeyError:
@@ -625,16 +624,6 @@ class Session(RequestSessionBase):
             self.transaction_data.pop('ecache', None)
         else:
             del self.transaction_data['ecache'][eid]
-
-    def base_url(self):
-        url = self.repo.config['base-url']
-        if not url:
-            try:
-                url = self.repo.config.default_base_url()
-            except AttributeError: # default_base_url() might not be available
-                self.warning('missing base-url definition in server config')
-                url = u''
-        return url
 
     def from_controller(self):
         """return the id (string) of the controller issuing the request (no
