@@ -99,12 +99,11 @@ class LongTimeExpiringFile(File):
 
 
 class CubicWebRootResource(resource.Resource):
-    def __init__(self, config, debug=None):
-        self.debugmode = debug
+    def __init__(self, config):
         self.config = config
         # instantiate publisher here and not in init_publisher to get some
         # checks done before daemonization (eg versions consistency)
-        self.appli = CubicWebPublisher(config, debug=self.debugmode)
+        self.appli = CubicWebPublisher(config)
         self.base_url = config['base-url']
         self.https_url = config['https-url']
         self.children = {}
@@ -156,6 +155,9 @@ class CubicWebRootResource(resource.Resource):
         pre_path = request.path.split('/')[1:]
         if pre_path[0] == 'https':
             pre_path.pop(0)
+            uiprops = self.config.https_uiprops
+        else:
+            uiprops = self.config.uiprops
         directory = pre_path[0]
         # Anything in data/, static/, fckeditor/ and the generated versioned
         # data directory is treated as static files
@@ -165,7 +167,7 @@ class CubicWebRootResource(resource.Resource):
             if directory == 'static':
                 return File(self.config.static_directory)
             if directory == 'fckeditor':
-                return File(self.config.ext_resources['FCKEDITOR_PATH'])
+                return File(uiprops['FCKEDITOR_PATH'])
             if directory != 'data':
                 # versioned directory, use specific file with http cache
                 # headers so their are cached for a very long time
@@ -173,7 +175,7 @@ class CubicWebRootResource(resource.Resource):
             else:
                 cls = File
             if path == 'fckeditor':
-                return cls(self.config.ext_resources['FCKEDITOR_PATH'])
+                return cls(uiprops['FCKEDITOR_PATH'])
             if path == directory: # recurse
                 return self
             datadir = self.config.locate_resource(path)
@@ -187,7 +189,10 @@ class CubicWebRootResource(resource.Resource):
     def render(self, request):
         """Render a page from the root resource"""
         # reload modified files in debug mode
-        if self.debugmode:
+        if self.config.debugmode:
+            self.config.uiprops.reload_if_needed()
+            if self.https_url:
+                self.config.https_uiprops.reload_if_needed()
             self.appli.vreg.reload_if_needed()
         if self.config['profile']: # default profiler don't trace threads
             return self.render_request(request)
@@ -382,15 +387,15 @@ from cubicweb import set_log_methods
 LOGGER = getLogger('cubicweb.twisted')
 set_log_methods(CubicWebRootResource, LOGGER)
 
-def run(config, debug):
+def run(config):
     # create the site
-    root_resource = CubicWebRootResource(config, debug)
+    root_resource = CubicWebRootResource(config)
     website = server.Site(root_resource)
     # serve it via standard HTTP on port set in the configuration
     port = config['port'] or 8080
     reactor.listenTCP(port, website)
     logger = getLogger('cubicweb.twisted')
-    if not debug:
+    if not config.debugmode:
         if sys.platform == 'win32':
             raise ConfigurationError("Under windows, you must use the service management "
                                      "commands (e.g : 'net start my_instance)'")
