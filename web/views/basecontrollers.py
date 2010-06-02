@@ -18,9 +18,8 @@
 # with CubicWeb.  If not, see <http://www.gnu.org/licenses/>.
 """Set of base controllers, which are directly plugged into the application
 object to handle publication.
-
-
 """
+
 __docformat__ = "restructuredtext en"
 
 from smtplib import SMTP
@@ -31,7 +30,7 @@ from logilab.common.date import strptime
 from cubicweb import (NoSelectableObject, ObjectNotFound, ValidationError,
                       AuthenticationError, typed_eid)
 from cubicweb.utils import CubicWebJsonEncoder
-from cubicweb.selectors import authenticated_user, match_form_params
+from cubicweb.selectors import authenticated_user, anonymous_user, match_form_params
 from cubicweb.mail import format_mail
 from cubicweb.web import Redirect, RemoteCallFailed, DirectResponse, json_dumps, json
 from cubicweb.web.controller import Controller
@@ -78,6 +77,7 @@ def check_pageid(func):
 
 class LoginController(Controller):
     __regid__ = 'login'
+    __select__ = anonymous_user()
 
     def publish(self, rset=None):
         """log in the instance"""
@@ -314,6 +314,9 @@ class JSonController(Controller):
         for name, value in zip(names, values):
             # remove possible __action_xxx inputs
             if name.startswith('__action'):
+                if action is None:
+                    # strip '__action_' to get the actual action name
+                    action = name[9:]
                 continue
             # form.setdefault(name, []).append(value)
             if name in form:

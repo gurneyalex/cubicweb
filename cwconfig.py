@@ -969,7 +969,10 @@ the repository',
 
     def load_site_cubicweb(self):
         """load instance's specific site_cubicweb file"""
-        for path in reversed([self.apphome] + self.cubes_path()):
+        paths = self.cubes_path()
+        if self.apphome is not None:
+            paths = [self.apphome] + paths
+        for path in reversed(paths):
             sitefile = join(path, 'site_cubicweb.py')
             if exists(sitefile) and not sitefile in self._site_loaded:
                 self._load_site_cubicweb(sitefile)
@@ -1165,7 +1168,7 @@ def register_stored_procedures():
         def as_sql(self, backend, args):
             raise NotImplementedError('source only callback')
 
-        def source_execute(self, source, value):
+        def source_execute(self, source, session, value):
             fpath = source.binary_to_str(value)
             try:
                 return Binary(fpath)

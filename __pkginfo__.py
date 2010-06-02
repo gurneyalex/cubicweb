@@ -22,7 +22,7 @@ software
 
 modname = distname = "cubicweb"
 
-numversion = (3, 8, 1)
+numversion = (3, 8, 3)
 version = '.'.join(str(num) for num in numversion)
 
 description = "a repository of entities / relations for knowledge management"
@@ -40,7 +40,7 @@ classifiers = [
 ]
 
 __depends__ = {
-    'logilab-common': '>= 0.50.0',
+    'logilab-common': '>= 0.50.2',
     'logilab-mtconverter': '>= 0.6.0',
     'rql': '>= 0.26.0',
     'yams': '>= 0.28.1',
