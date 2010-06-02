@@ -43,7 +43,7 @@ def source_cnx(source, dbname=None, special_privs=False, verbose=True):
     given server.serverconfig
     """
     from getpass import getpass
-    from logilab.common.db import get_connection
+    from logilab.database import get_connection
     dbhost = source.get('db-host')
     if dbname is None:
         dbname = source['db-name']
@@ -317,8 +317,9 @@ class CreateInstanceDBCommand(Command):
         create_db = self.config.create_db
         helper = get_db_helper(driver)
         if driver == 'sqlite':
-            if os.path.exists(dbname) and automatic or \
-                   ASK.confirm('Database %s already exists -- do you want to drop it ?' % dbname):
+            if os.path.exists(dbname) and (
+                automatic or
+                ASK.confirm('Database %s already exists. Drop it?' % dbname)):
                 os.unlink(dbname)
         elif create_db:
             print '\n'+underline_title('Creating the system database')
@@ -392,7 +393,7 @@ tables, indexes... (no by default)'}),
     def run(self, args):
         print '\n'+underline_title('Initializing the system database')
         from cubicweb.server import init_repository
-        from logilab.common.db import get_connection
+        from logilab.database import get_connection
         appid = pop_arg(args, msg='No instance specified !')
         config = ServerConfiguration.config_for(appid)
         try:
@@ -525,6 +526,7 @@ class StartRepositoryCommand(Command):
         )
 
     def run(self, args):
+        from logilab.common.daemon import daemonize
         from cubicweb.server.server import RepositoryServer
         appid = pop_arg(args, msg='No instance specified !')
         config = ServerConfiguration.config_for(appid)
@@ -544,7 +546,7 @@ class StartRepositoryCommand(Command):
         piddir = os.path.dirname(pidfile)
         if not os.path.exists(piddir):
             os.makedirs(piddir)
-        if not debug and server.daemonize(pidfile) == -1:
+        if not debug and daemonize(pidfile) == -1:
             return
         uid = config['uid']
         if uid is not None:

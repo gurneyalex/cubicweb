@@ -15,9 +15,7 @@
 #
 # You should have received a copy of the GNU Lesser General Public License along
 # with CubicWeb.  If not, see <http://www.gnu.org/licenses/>.
-"""abstract form classes for CubicWeb web client
-
-"""
+"""abstract form classes for CubicWeb web client"""
 __docformat__ = "restructuredtext en"
 
 from warnings import warn
@@ -79,8 +77,6 @@ class FieldNotFound(Exception):
 class Form(AppObject):
     __metaclass__ = metafieldsform
     __registry__ = 'forms'
-
-    internal_fields = ('__errorurl',) + controller.NAV_FORM_PARAMETERS
 
     parent_form = None
     force_session_key = None
