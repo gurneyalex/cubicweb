@@ -251,7 +251,7 @@ class EntityTC(CubicWebTC):
         email = self.execute('Any X WHERE X eid %(x)s', {'x': email.eid}).get_entity(0, 0)
         rql = email.unrelated_rql('use_email', 'CWUser', 'object')[0]
         self.assertEquals(rql, 'Any S,AA,AB,AC,AD ORDERBY AA '
-                          'WHERE NOT S use_email O, O eid %(x)s, S is CWUser, S login AA, S firstname AB, S surname AC, S modification_date AD, '
+                          'WHERE NOT EXISTS(S use_email O), O eid %(x)s, S is CWUser, S login AA, S firstname AB, S surname AC, S modification_date AD, '
                           'A eid %(B)s, EXISTS(S identity A, NOT A in_group C, C name "guests", C is CWGroup)')
         #rql = email.unrelated_rql('use_email', 'Person', 'object')[0]
         #self.assertEquals(rql, '')
@@ -356,8 +356,15 @@ du :eid:`1:*ReST*`'''
                             data_encoding=u'ascii', data_name=u'toto.py')
         from cubicweb import mttransforms
         if mttransforms.HAS_PYGMENTS_TRANSFORMS:
-            self.assertEquals(e.printable_value('data'),
-                              '''<div class="highlight"><pre><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="mi">1</span>
+            import pygments
+            if tuple(int(i) for i in pygments.__version__.split('.')[:2]) >= (1, 3):
+                self.assertEquals(e.printable_value('data'),
+                                  '''<div class="highlight"><pre><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="mi">1</span>
+</pre></div>
+''')
+            else:
+                self.assertEquals(e.printable_value('data'),
+                                  '''<div class="highlight"><pre><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="mf">1</span>
 </pre></div>
 ''')
         else:

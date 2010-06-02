@@ -194,6 +194,12 @@ class FieldsForm(form.Form):
             for field in field.actual_fields(self):
                 field.form_init(self)
 
+    _default_form_action_path = 'edit'
+    def form_action(self):
+        if self.action is None:
+            return self._cw.build_url(self._default_form_action_path)
+        return self.action
+
     @deprecated('[3.6] use .add_hidden(name, value, **kwargs)')
     def form_add_hidden(self, name, value=None, **kwargs):
         return self.add_hidden(name, value, **kwargs)
@@ -222,8 +228,6 @@ class EntityFieldsForm(FieldsForm):
     __regid__ = 'base'
     __select__ = (match_kwargs('entity')
                   | (one_line_rset() & non_final_entity()))
-
-    internal_fields = FieldsForm.internal_fields + ('__type', 'eid', '__maineid')
     domid = 'entityForm'
 
     @iclassmethod

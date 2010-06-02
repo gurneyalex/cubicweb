@@ -15,10 +15,7 @@
 #
 # You should have received a copy of the GNU Lesser General Public License along
 # with CubicWeb.  If not, see <http://www.gnu.org/licenses/>.
-"""generic table view, including filtering abilities
-
-
-"""
+"""generic table view, including filtering abilities"""
 __docformat__ = "restructuredtext en"
 
 try:
@@ -79,7 +76,7 @@ class TableView(AnyRsetView):
         # drop False / None values from vidargs
         vidargs = dict((k, v) for k, v in vidargs.iteritems() if v)
         w(u'<form method="post" cubicweb:facetargs="%s" action="">' %
-          xml_escape(dumps([divid, 'table', False, vidargs])))
+          xml_escape(dumps([divid, self.__regid__, False, vidargs])))
         w(u'<fieldset id="%sForm" class="%s">' % (divid, hidden and 'hidden' or ''))
         w(u'<input type="hidden" name="divid" value="%s" />' % divid)
         w(u'<input type="hidden" name="fromformfilter" value="1" />')
@@ -121,7 +118,8 @@ class TableView(AnyRsetView):
 
     def call(self, title=None, subvid=None, displayfilter=None, headers=None,
              displaycols=None, displayactions=None, actions=(), divid=None,
-             cellvids=None, cellattrs=None, mainindex=None):
+             cellvids=None, cellattrs=None, mainindex=None,
+             paginate=False, page_size=None):
         """Produces a table displaying a composite query
 
         :param title: title added before table
@@ -181,6 +179,9 @@ class TableView(AnyRsetView):
         if actions:
             self.render_actions(divid, actions)
         # render table
+        if paginate:
+            self.divid = divid # XXX iirk (see usage in page_navigation_url)
+            self.paginate(page_size=page_size, show_all_option=False)
         table = TableWidget(self)
         for column in self.get_columns(computed_labels, displaycols, headers,
                                        subvid, cellvids, cellattrs, mainindex):
@@ -189,6 +190,16 @@ class TableView(AnyRsetView):
         self.w(u'</div>\n')
         if not fromformfilter:
             self.w(u'</div>\n')
+
+    def page_navigation_url(self, navcomp, path, params):
+        if hasattr(self, 'divid'):
+            divid = self.divid
+        else:
+            divid = params.get('divid', 'pageContent'),
+        rql = params.pop('rql', self.cw_rset.printable_rql())
+        # latest 'true' used for 'swap' mode
+        return 'javascript: replacePageChunk(%s, %s, %s, %s, true)' % (
+            dumps(divid), dumps(rql), dumps(self.__regid__), dumps(params))
 
     def show_hide_actions(self, divid, currentlydisplayed=False):
         showhide = u';'.join(toggle_action('%s%s' % (divid, what))[11:]
@@ -310,7 +321,7 @@ class InitialTableView(TableView):
       displayed with default restrictions set
     """
     __regid__ = 'initialtable'
-    __select__ = nonempty_rset() & match_form_params('actualrql')
+    __select__ = nonempty_rset()
     # should not be displayed in possible view since it expects some specific
     # parameters
     title = None
@@ -318,8 +329,12 @@ class InitialTableView(TableView):
     def call(self, title=None, subvid=None, headers=None, divid=None,
              displaycols=None, displayactions=None, mainindex=None):
         """Dumps a table displaying a composite query"""
-        actrql = self._cw.form['actualrql']
-        self._cw.ensure_ro_rql(actrql)
+        try:
+            actrql = self._cw.form['actualrql']
+        except KeyError:
+            actrql = self.cw_rset.printable_rql()
+        else:
+            self._cw.ensure_ro_rql(actrql)
         displaycols = self.displaycols(displaycols, headers)
         if displayactions is None and 'displayactions' in self._cw.form:
             displayactions = True
