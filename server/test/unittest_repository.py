@@ -205,7 +205,7 @@ class RepositoryTC(CubicWebTC):
         session = repo._get_session(cnxid)
         session.set_pool()
         user = session.user
-        user.fire_transition('deactivate')
+        user.cw_adapt_to('IWorkflowable').fire_transition('deactivate')
         rset = repo.execute(cnxid, 'TrInfo T WHERE T wf_info_for X, X eid %(x)s', {'x': user.eid})
         self.assertEquals(len(rset), 1)
         repo.rollback(cnxid)
@@ -246,7 +246,8 @@ class RepositoryTC(CubicWebTC):
                                'constrained_by',
                                'cardinality', 'ordernum',
                                'indexed', 'fulltextindexed', 'internationalizable',
-                               'defaultval', 'description', 'description_format'])
+                               'defaultval', 'description', 'description_format',
+                               'in_basket'])
 
         self.assertEquals(schema.eschema('CWEType').main_attribute(), 'name')
         self.assertEquals(schema.eschema('State').main_attribute(), 'name')

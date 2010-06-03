@@ -78,8 +78,8 @@ class ApplLogo(component.Component):
     site_wide = True
 
     def call(self):
-        self.w(u'<a href="%s"><img class="logo" src="%s" alt="logo"/></a>'
-               % (self._cw.base_url(), self._cw.external_resource('LOGO')))
+        self.w(u'<a href="%s"><img id="logo" src="%s" alt="logo"/></a>'
+               % (self._cw.base_url(), self._cw.uiprops['LOGO']))
 
 
 class ApplHelp(component.Component):

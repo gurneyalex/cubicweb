@@ -35,7 +35,7 @@ from cubicweb.view import EntityView, StartupView
 from cubicweb import tags, uilib
 from cubicweb.web import action, facet, uicfg, schemaviewer
 from cubicweb.web.views import TmpFileViewMixin
-from cubicweb.web.views import primary, baseviews, tabs, tableview, iprogress
+from cubicweb.web.views import primary, baseviews, tabs, tableview, ibreadcrumbs
 
 ALWAYS_SKIP_TYPES = BASE_TYPES | SCHEMA_TYPES
 SKIP_TYPES  = (ALWAYS_SKIP_TYPES | META_RTYPES | SYSTEM_RTYPES | WORKFLOW_TYPES
@@ -248,7 +248,7 @@ class SchemaPermissionsTab(SecurityViewMixIn, StartupView):
                 eschema.type, self._cw.build_url('cwetype/%s' % eschema.type),
                 eschema.type, _(eschema.type)))
             self.w(u'<a href="%s#schema_security"><img src="%s" alt="%s"/></a>' % (
-                url,  self._cw.external_resource('UP_ICON'), _('up')))
+                url,  self._cw.uiprops['UP_ICON'], _('up')))
             self.w(u'</h3>')
             self.w(u'<div style="margin: 0px 1.5em">')
             self.permissions_table(eschema)
@@ -277,7 +277,7 @@ class SchemaPermissionsTab(SecurityViewMixIn, StartupView):
                 rschema.type, self._cw.build_url('cwrtype/%s' % rschema.type),
                 rschema.type, _(rschema.type)))
             self.w(u'<a href="%s#schema_security"><img src="%s" alt="%s"/></a>' % (
-                url,  self._cw.external_resource('UP_ICON'), _('up')))
+                url,  self._cw.uiprops['UP_ICON'], _('up')))
             self.w(u'</h3>')
             self.grouped_permissions_table(rschema)
 
@@ -679,6 +679,37 @@ class CWRTypeSchemaImageView(CWETypeSchemaImageView):
         rschema = self._cw.vreg.schema.rschema(entity.name)
         visitor = OneHopRSchemaVisitor(self._cw, rschema)
         s2d.schema2dot(outputfile=tmpfile, visitor=visitor)
+
+# breadcrumbs ##################################################################
+
+class CWRelationIBreadCrumbsAdapter(ibreadcrumbs.IBreadCrumbsAdapter):
+    __select__ = implements('CWRelation')
+    def parent_entity(self):
+        return self.entity.rtype
+
+class CWAttributeIBreadCrumbsAdapter(ibreadcrumbs.IBreadCrumbsAdapter):
+    __select__ = implements('CWAttribute')
+    def parent_entity(self):
+        return self.entity.stype
+
+class CWConstraintIBreadCrumbsAdapter(ibreadcrumbs.IBreadCrumbsAdapter):
+    __select__ = implements('CWConstraint')
+    def parent_entity(self):
+        if self.entity.reverse_constrained_by:
+            return self.entity.reverse_constrained_by[0]
+
+class RQLExpressionIBreadCrumbsAdapter(ibreadcrumbs.IBreadCrumbsAdapter):
+    __select__ = implements('RQLExpression')
+    def parent_entity(self):
+        return self.entity.expression_of
+
+class CWPermissionIBreadCrumbsAdapter(ibreadcrumbs.IBreadCrumbsAdapter):
+    __select__ = implements('CWPermission')
+    def parent_entity(self):
+        # XXX useless with permission propagation
+        permissionof = getattr(self.entity, 'reverse_require_permission', ())
+        if len(permissionof) == 1:
+            return permissionof[0]
 
 
 # misc: facets, actions ########################################################
