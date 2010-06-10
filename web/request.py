@@ -83,6 +83,12 @@ class CubicWebRequestBase(DBAPIRequest):
         super(CubicWebRequestBase, self).__init__(vreg)
         self.authmode = vreg.config['auth-mode']
         self.https = https
+        if https:
+            self.uiprops = vreg.config.https_uiprops
+            self.datadir_url = vreg.config.https_datadir_url
+        else:
+            self.uiprops = vreg.config.uiprops
+            self.datadir_url = vreg.config.datadir_url
         # raw html headers that can be added from any view
         self.html_headers = HTMLHead()
         # form parameters
@@ -99,7 +105,6 @@ class CubicWebRequestBase(DBAPIRequest):
         self.next_tabindex = self.tabindexgen.next
         # page id, set by htmlheader template
         self.pageid = None
-        self.datadir_url = self._datadir_url()
         self._set_pageid()
         # prepare output header
         self.headers_out = Headers()
@@ -589,10 +594,6 @@ class CubicWebRequestBase(DBAPIRequest):
         """return currently accessed url"""
         return self.base_url() + self.relative_path(includeparams)
 
-    def _datadir_url(self):
-        """return url of the instance's data directory"""
-        return self.base_url() + 'data%s/' % self.vreg.config.instance_md5_version()
-
     def selected(self, url):
         """return True if the url is equivalent to currently accessed url"""
         reqpath = self.relative_path().lower()
@@ -617,25 +618,6 @@ class CubicWebRequestBase(DBAPIRequest):
         if controller in registered_controllers:
             return controller
         return 'view'
-
-    def external_resource(self, rid, default=_MARKER):
-        """return a path to an external resource, using its identifier
-
-        raise KeyError  if the resource is not defined
-        """
-        try:
-            value = self.vreg.config.ext_resources[rid]
-        except KeyError:
-            if default is _MARKER:
-                raise
-            return default
-        if value is None:
-            return None
-        baseurl = self.datadir_url[:-1] # remove trailing /
-        if isinstance(value, list):
-            return [v.replace('DATADIR', baseurl) for v in value]
-        return value.replace('DATADIR', baseurl)
-    external_resource = cached(external_resource, keyarg=1)
 
     def validate_cache(self):
         """raise a `DirectResponse` exception if a cached page along the way
@@ -711,12 +693,6 @@ class CubicWebRequestBase(DBAPIRequest):
                 self.debug('bad authorization %s (%s: %s)',
                            auth, ex.__class__.__name__, ex)
         return None, None
-
-    @deprecated("[3.4] use parse_accept_header('Accept-Language')")
-    def header_accept_language(self):
-        """returns an ordered list of preferred languages"""
-        return [value.split('-')[0] for value in
-                self.parse_accept_header('Accept-Language')]
 
     def parse_accept_header(self, header):
         """returns an ordered list of preferred languages"""
@@ -822,6 +798,26 @@ class CubicWebRequestBase(DBAPIRequest):
             return (u'<?xml version="1.0"?>\n' + STRICT_DOCTYPE + # XXX encoding ?
                     u'<div xmlns="http://www.w3.org/1999/xhtml" xmlns:cubicweb="http://www.logilab.org/2008/cubicweb">')
         return u'<div>'
+
+    @deprecated('[3.9] use req.uiprops[rid]')
+    def external_resource(self, rid, default=_MARKER):
+        """return a path to an external resource, using its identifier
+
+        raise `KeyError` if the resource is not defined
+        """
+        try:
+            return self.uiprops[rid]
+        except KeyError:
+            if default is _MARKER:
+                raise
+            return default
+
+    @deprecated("[3.4] use parse_accept_header('Accept-Language')")
+    def header_accept_language(self):
+        """returns an ordered list of preferred languages"""
+        return [value.split('-')[0] for value in
+                self.parse_accept_header('Accept-Language')]
+
 
 from cubicweb import set_log_methods
 set_log_methods(CubicWebRequestBase, LOGGER)
