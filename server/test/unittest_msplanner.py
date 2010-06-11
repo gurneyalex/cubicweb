@@ -60,7 +60,7 @@ X_ALL_SOLS = sorted([{'X': 'Affaire'}, {'X': 'BaseTransition'}, {'X': 'Basket'},
                      {'X': 'Card'}, {'X': 'Comment'}, {'X': 'Division'},
                      {'X': 'Email'}, {'X': 'EmailAddress'}, {'X': 'EmailPart'},
                      {'X': 'EmailThread'}, {'X': 'ExternalUri'}, {'X': 'File'},
-                     {'X': 'Folder'}, {'X': 'Image'}, {'X': 'Note'},
+                     {'X': 'Folder'}, {'X': 'Note'},
                      {'X': 'Personne'}, {'X': 'RQLExpression'}, {'X': 'Societe'},
                      {'X': 'State'}, {'X': 'SubDivision'}, {'X': 'SubWorkflowExitPoint'},
                      {'X': 'Tag'}, {'X': 'TrInfo'}, {'X': 'Transition'},
@@ -784,10 +784,10 @@ class MSPlannerTC(BaseMSPlannerTC):
                          [{'X': 'Basket'}]),
                         ('Any X WHERE X has_text "bla", EXISTS(X owned_by 5), X is CWUser',
                          [{'X': 'CWUser'}]),
-                        ('Any X WHERE X has_text "bla", X is IN(Card, Comment, Division, Email, EmailThread, File, Folder, Image, Note, Personne, Societe, SubDivision, Tag)',
+                        ('Any X WHERE X has_text "bla", X is IN(Card, Comment, Division, Email, EmailThread, File, Folder, Note, Personne, Societe, SubDivision, Tag)',
                          [{'X': 'Card'}, {'X': 'Comment'},
                           {'X': 'Division'}, {'X': 'Email'}, {'X': 'EmailThread'},
-                          {'X': 'File'}, {'X': 'Folder'}, {'X': 'Image'},
+                          {'X': 'File'}, {'X': 'Folder'},
                           {'X': 'Note'}, {'X': 'Personne'}, {'X': 'Societe'},
                           {'X': 'SubDivision'}, {'X': 'Tag'}]),],
                        None, None, [self.system], {}, []),
@@ -810,10 +810,10 @@ class MSPlannerTC(BaseMSPlannerTC):
                             [{'X': 'Basket'}]),
                            ('Any X WHERE X has_text "bla", EXISTS(X owned_by 5), X is CWUser',
                             [{'X': 'CWUser'}]),
-                           ('Any X WHERE X has_text "bla", X is IN(Card, Comment, Division, Email, EmailThread, File, Folder, Image, Note, Personne, Societe, SubDivision, Tag)',
+                           ('Any X WHERE X has_text "bla", X is IN(Card, Comment, Division, Email, EmailThread, File, Folder, Note, Personne, Societe, SubDivision, Tag)',
                             [{'X': 'Card'}, {'X': 'Comment'},
                              {'X': 'Division'}, {'X': 'Email'}, {'X': 'EmailThread'},
-                             {'X': 'File'}, {'X': 'Folder'}, {'X': 'Image'},
+                             {'X': 'File'}, {'X': 'Folder'},
                              {'X': 'Note'}, {'X': 'Personne'}, {'X': 'Societe'},
                              {'X': 'SubDivision'}, {'X': 'Tag'}])],
                           [self.system], {}, {'X': 'table0.C0'}, []),
@@ -823,7 +823,7 @@ class MSPlannerTC(BaseMSPlannerTC):
                        [{'X': 'Affaire'}, {'X': 'Basket'},
                         {'X': 'CWUser'}, {'X': 'Card'}, {'X': 'Comment'},
                         {'X': 'Division'}, {'X': 'Email'}, {'X': 'EmailThread'},
-                        {'X': 'File'}, {'X': 'Folder'}, {'X': 'Image'},
+                        {'X': 'File'}, {'X': 'Folder'},
                         {'X': 'Note'}, {'X': 'Personne'}, {'X': 'Societe'},
                         {'X': 'SubDivision'}, {'X': 'Tag'}])],
                      10, 10, [self.system], {'X': 'table0.C0'}, [])
@@ -888,7 +888,7 @@ class MSPlannerTC(BaseMSPlannerTC):
                                           [{'X': 'Card'}, {'X': 'Note'}, {'X': 'State'}])],
                            [self.cards, self.system], {}, {'X': 'table0.C0'}, []),
                           ('FetchStep',
-                           [('Any X WHERE X is IN(BaseTransition, Bookmark, CWAttribute, CWCache, CWConstraint, CWConstraintType, CWEType, CWGroup, CWPermission, CWProperty, CWRType, CWRelation, Comment, Division, Email, EmailAddress, EmailPart, EmailThread, ExternalUri, File, Folder, Image, Personne, RQLExpression, Societe, SubDivision, SubWorkflowExitPoint, Tag, TrInfo, Transition, Workflow, WorkflowTransition)',
+                           [('Any X WHERE X is IN(BaseTransition, Bookmark, CWAttribute, CWCache, CWConstraint, CWConstraintType, CWEType, CWGroup, CWPermission, CWProperty, CWRType, CWRelation, Comment, Division, Email, EmailAddress, EmailPart, EmailThread, ExternalUri, File, Folder, Personne, RQLExpression, Societe, SubDivision, SubWorkflowExitPoint, Tag, TrInfo, Transition, Workflow, WorkflowTransition)',
                              [{'X': 'BaseTransition'}, {'X': 'Bookmark'},
                               {'X': 'CWAttribute'}, {'X': 'CWCache'},
                               {'X': 'CWConstraint'}, {'X': 'CWConstraintType'},
@@ -899,7 +899,7 @@ class MSPlannerTC(BaseMSPlannerTC):
                               {'X': 'Email'}, {'X': 'EmailAddress'},
                               {'X': 'EmailPart'}, {'X': 'EmailThread'},
                               {'X': 'ExternalUri'}, {'X': 'File'},
-                              {'X': 'Folder'}, {'X': 'Image'},
+                              {'X': 'Folder'},
                               {'X': 'Personne'}, {'X': 'RQLExpression'},
                               {'X': 'Societe'}, {'X': 'SubDivision'},
                               {'X': 'SubWorkflowExitPoint'}, {'X': 'Tag'},
@@ -949,7 +949,7 @@ class MSPlannerTC(BaseMSPlannerTC):
                        [self.system], {'X': 'table3.C0'}, {'ET': 'table0.C0', 'X': 'table0.C1'}, []),
                       # extra UnionFetchStep could be avoided but has no cost, so don't care
                       ('UnionFetchStep',
-                       [('FetchStep', [('Any ET,X WHERE X is ET, ET is CWEType, X is IN(BaseTransition, Bookmark, CWAttribute, CWCache, CWConstraint, CWConstraintType, CWEType, CWGroup, CWPermission, CWProperty, CWRType, CWRelation, Comment, Division, Email, EmailAddress, EmailPart, EmailThread, ExternalUri, File, Folder, Image, Personne, RQLExpression, Societe, SubDivision, SubWorkflowExitPoint, Tag, TrInfo, Transition, Workflow, WorkflowTransition)',
+                       [('FetchStep', [('Any ET,X WHERE X is ET, ET is CWEType, X is IN(BaseTransition, Bookmark, CWAttribute, CWCache, CWConstraint, CWConstraintType, CWEType, CWGroup, CWPermission, CWProperty, CWRType, CWRelation, Comment, Division, Email, EmailAddress, EmailPart, EmailThread, ExternalUri, File, Folder, Personne, RQLExpression, Societe, SubDivision, SubWorkflowExitPoint, Tag, TrInfo, Transition, Workflow, WorkflowTransition)',
                                         [{'X': 'BaseTransition', 'ET': 'CWEType'},
                                          {'X': 'Bookmark', 'ET': 'CWEType'}, {'X': 'CWAttribute', 'ET': 'CWEType'},
                                          {'X': 'CWCache', 'ET': 'CWEType'}, {'X': 'CWConstraint', 'ET': 'CWEType'},
@@ -961,7 +961,7 @@ class MSPlannerTC(BaseMSPlannerTC):
                                          {'X': 'EmailAddress', 'ET': 'CWEType'}, {'X': 'EmailPart', 'ET': 'CWEType'},
                                          {'X': 'EmailThread', 'ET': 'CWEType'}, {'X': 'ExternalUri', 'ET': 'CWEType'},
                                          {'X': 'File', 'ET': 'CWEType'}, {'X': 'Folder', 'ET': 'CWEType'},
-                                         {'X': 'Image', 'ET': 'CWEType'}, {'X': 'Personne', 'ET': 'CWEType'},
+                                         {'X': 'Personne', 'ET': 'CWEType'},
                                          {'X': 'RQLExpression', 'ET': 'CWEType'}, {'X': 'Societe', 'ET': 'CWEType'},
                                          {'X': 'SubDivision', 'ET': 'CWEType'}, {'X': 'SubWorkflowExitPoint', 'ET': 'CWEType'},
                                          {'X': 'Tag', 'ET': 'CWEType'}, {'X': 'TrInfo', 'ET': 'CWEType'},
@@ -1718,8 +1718,9 @@ class MSPlannerTC(BaseMSPlannerTC):
                     ])
 
     def test_nonregr2(self):
-        self.session.user.fire_transition('deactivate')
-        treid = self.session.user.latest_trinfo().eid
+        iworkflowable = self.session.user.cw_adapt_to('IWorkflowable')
+        iworkflowable.fire_transition('deactivate')
+        treid = iworkflowable.latest_trinfo().eid
         self._test('Any X ORDERBY D DESC WHERE E eid %(x)s, E wf_info_for X, X modification_date D',
                    [('FetchStep', [('Any X,D WHERE X modification_date D, X is Note',
                                     [{'X': 'Note', 'D': 'Datetime'}])],
