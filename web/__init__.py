@@ -17,9 +17,8 @@
 # with CubicWeb.  If not, see <http://www.gnu.org/licenses/>.
 """CubicWeb web client core. You'll need a apache-modpython or twisted
 publisher to get a full CubicWeb web application
-
-
 """
+
 __docformat__ = "restructuredtext en"
 _ = unicode
 
@@ -77,7 +76,7 @@ def jsonize(function):
             return json_dumps(repr(value))
     return newfunc
 
-@deprecated('[3.4] use req.build_ajax_replace_url() instead')
+@deprecated('[3.4] use req.ajax_replace_url() instead')
 def ajax_replace_url(nodeid, rql, vid=None, swap=False, **extraparams):
     """builds a replacePageChunk-like url
     >>> ajax_replace_url('foo', 'Person P')
