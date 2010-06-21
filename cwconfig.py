@@ -295,8 +295,6 @@ class CubicWebNoAppConfiguration(ConfigurationMixIn):
     # log_format = '%(asctime)s - [%(threadName)s] (%(name)s) %(levelname)s: %(message)s'
     # nor remove appobjects based on unused interface [???]
     cleanup_interface_sobjects = True
-    # debug mode
-    debugmode = False
 
 
     if (CWDEV and _forced_mode != 'system'):
@@ -662,12 +660,14 @@ this option is set to yes",
                     vregpath.append(path + '.py')
         return vregpath
 
-    def __init__(self):
+    def __init__(self, debugmode=False):
         register_stored_procedures()
         ConfigurationMixIn.__init__(self)
+        self.debugmode = debugmode
         self.adjust_sys_path()
         self.load_defaults()
-        self.translations = {}
+        # will be properly initialized later by _gettext_init
+        self.translations = {'en': (unicode, lambda ctx, msgid: unicode(msgid) )}
         self._site_loaded = set()
         # don't register ReStructured Text directives by simple import, avoid pb
         # with eg sphinx.
@@ -683,25 +683,23 @@ this option is set to yes",
         # overriden in CubicWebConfiguration
         self.cls_adjust_sys_path()
 
-    def init_log(self, logthreshold=None, debug=False,
-                 logfile=None, syslog=False):
+    def init_log(self, logthreshold=None, logfile=None, syslog=False):
         """init the log service"""
         if logthreshold is None:
-            if debug:
+            if self.debugmode:
                 logthreshold = 'DEBUG'
             else:
                 logthreshold = self['log-threshold']
-        self.debugmode = debug
         if sys.platform == 'win32':
             # no logrotate on win32, so use logging rotation facilities
             # for now, hard code weekly rotation every sunday, and 52 weeks kept
             # idea: make this configurable?
-            init_log(debug, syslog, logthreshold, logfile, self.log_format,
+            init_log(self.debugmode, syslog, logthreshold, logfile, self.log_format,
                      rotation_parameters={'when': 'W6', # every sunday
                                           'interval': 1,
                                           'backupCount': 52})
         else:
-            init_log(debug, syslog, logthreshold, logfile, self.log_format)
+            init_log(self.debugmode, syslog, logthreshold, logfile, self.log_format)
         # configure simpleTal logger
         logging.getLogger('simpleTAL').setLevel(logging.ERROR)
 
@@ -843,12 +841,12 @@ the repository',
         return mdir
 
     @classmethod
-    def config_for(cls, appid, config=None):
+    def config_for(cls, appid, config=None, debugmode=False):
         """return a configuration instance for the given instance identifier
         """
         config = config or guess_configuration(cls.instance_home(appid))
         configcls = configuration_cls(config)
-        return configcls(appid)
+        return configcls(appid, debugmode)
 
     @classmethod
     def possible_configurations(cls, appid):
@@ -916,9 +914,9 @@ the repository',
 
     # instance methods used to get instance specific resources #############
 
-    def __init__(self, appid):
+    def __init__(self, appid, debugmode=False):
         self.appid = appid
-        CubicWebNoAppConfiguration.__init__(self)
+        CubicWebNoAppConfiguration.__init__(self, debugmode)
         self._cubes = None
         self.load_file_configuration(self.main_config_file())
 
@@ -999,7 +997,7 @@ the repository',
         super(CubicWebConfiguration, self).load_configuration()
         if self.apphome and self.set_language:
             # init gettext
-            self._set_language()
+            self._gettext_init()
 
     def _load_site_cubicweb(self, sitefile):
         # overriden to register cube specific options
@@ -1008,12 +1006,12 @@ the repository',
             self.register_options(mod.options)
             self.load_defaults()
 
-    def init_log(self, logthreshold=None, debug=False, force=False):
+    def init_log(self, logthreshold=None, force=False):
         """init the log service"""
         if not force and hasattr(self, '_logging_initialized'):
             return
         self._logging_initialized = True
-        CubicWebNoAppConfiguration.init_log(self, logthreshold, debug,
+        CubicWebNoAppConfiguration.init_log(self, logthreshold,
                                             logfile=self.get('log-file'))
         # read a config file if it exists
         logconfig = join(self.apphome, 'logging.conf')
@@ -1034,7 +1032,7 @@ the repository',
             if lang != 'en':
                 yield lang
 
-    def _set_language(self):
+    def _gettext_init(self):
         """set language for gettext"""
         from gettext import translation
         path = join(self.apphome, 'i18n')
@@ -1114,6 +1112,7 @@ _EXT_REGISTERED = False
 def register_stored_procedures():
     from logilab.database import FunctionDescr
     from rql.utils import register_function, iter_funcnode_variables
+    from rql.nodes import SortTerm, Constant, VariableRef
 
     global _EXT_REGISTERED
     if _EXT_REGISTERED:
@@ -1157,6 +1156,34 @@ def register_stored_procedures():
         supported_backends = ('mysql', 'postgres', 'sqlite',)
 
     register_function(TEXT_LIMIT_SIZE)
+
+
+    class FTIRANK(FunctionDescr):
+        """return ranking of a variable that must be used as some has_text
+        relation subject in the query's restriction. Usually used to sort result
+        of full-text search by ranking.
+        """
+        supported_backends = ('postgres',)
+        rtype = 'Float'
+
+        def st_check_backend(self, backend, funcnode):
+            """overriden so that on backend not supporting fti ranking, the
+            function is removed when in an orderby clause, or replaced by a 1.0
+            constant.
+            """
+            if not self.supports(backend):
+                parent = funcnode.parent
+                while parent is not None and not isinstance(parent, SortTerm):
+                    parent = parent.parent
+                if isinstance(parent, SortTerm):
+                    parent.parent.remove(parent)
+                else:
+                    funcnode.parent.replace(funcnode, Constant(1.0, 'Float'))
+                    parent = funcnode
+                for vref in parent.iget_nodes(VariableRef):
+                    vref.unregister_reference()
+
+    register_function(FTIRANK)
 
 
     class FSPATH(FunctionDescr):
