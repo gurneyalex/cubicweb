@@ -169,7 +169,7 @@ Also, think to use the :func:`lltrace` decorator on your selector class' :meth:`
 or below the :func:`objectify_selector` decorator of your selector function so it gets
 traceable when :class:`traced_selection` is activated (see :ref:`DebuggingSelectors`).
 
-.. autofunction:: cubicweb.selectors.lltrace
+.. autofunction:: cubicweb.appobject.lltrace
 
 .. note::
   Selectors __call__ should *always* return a positive integer, and shall never
@@ -183,10 +183,10 @@ Debugging selection
 
 Once in a while, one needs to understand why a view (or any application object)
 is, or is not selected appropriately. Looking at which selectors fired (or did
-not) is the way. The :class:`cubicweb.selectors.traced_selection` context
+not) is the way. The :class:`cubicweb.appobject.traced_selection` context
 manager to help with that, *if you're running your instance in debug mode*.
 
-.. autoclass:: cubicweb.selectors.traced_selection
+.. autoclass:: cubicweb.appobject.traced_selection
 
 
 .. |cubicweb| replace:: *CubicWeb*
@@ -204,87 +204,10 @@ from yams import BASE_TYPES
 
 from cubicweb import Unauthorized, NoSelectableObject, NotAnEntity, role
 # even if not used, let yes here so it's importable through this module
-from cubicweb.appobject import Selector, objectify_selector, yes
-from cubicweb.vregistry import class_regid
-from cubicweb.cwconfig import CubicWebConfiguration
+from cubicweb.appobject import Selector, objectify_selector, lltrace, yes
 from cubicweb.schema import split_expression
 
-# helpers for debugging selectors
-SELECTOR_LOGGER = logging.getLogger('cubicweb.selectors')
-TRACED_OIDS = None
-
-def _trace_selector(cls, selector, args, ret):
-    # /!\ lltrace decorates pure function or __call__ method, this
-    #     means argument order may be different
-    if isinstance(cls, Selector):
-        selname = str(cls)
-        vobj = args[0]
-    else:
-        selname = selector.__name__
-        vobj = cls
-    if TRACED_OIDS == 'all' or class_regid(vobj) in TRACED_OIDS:
-        #SELECTOR_LOGGER.warning('selector %s returned %s for %s', selname, ret, cls)
-        print '%s -> %s for %s(%s)' % (selname, ret, vobj, vobj.__regid__)
-
-def lltrace(selector):
-    """use this decorator on your selectors so the becomes traceable with
-    :class:`traced_selection`
-    """
-    # don't wrap selectors if not in development mode
-    if CubicWebConfiguration.mode == 'system': # XXX config.debug
-        return selector
-    def traced(cls, *args, **kwargs):
-        ret = selector(cls, *args, **kwargs)
-        if TRACED_OIDS is not None:
-            _trace_selector(cls, selector, args, ret)
-        return ret
-    traced.__name__ = selector.__name__
-    traced.__doc__ = selector.__doc__
-    return traced
-
-class traced_selection(object):
-    """
-    Typical usage is :
-
-    .. sourcecode:: python
-
-        >>> from cubicweb.selectors import traced_selection
-        >>> with traced_selection():
-        ...     # some code in which you want to debug selectors
-        ...     # for all objects
-
-    Don't forget the 'from __future__ import with_statement' at the module top-level
-    if you're using python prior to 2.6.
-
-    This will yield lines like this in the logs::
-
-        selector one_line_rset returned 0 for <class 'cubicweb.web.views.basecomponents.WFHistoryVComponent'>
-
-    You can also give to :class:`traced_selection` the identifiers of objects on
-    which you want to debug selection ('oid1' and 'oid2' in the example above).
-
-    .. sourcecode:: python
-
-        >>> with traced_selection( ('regid1', 'regid2') ):
-        ...     # some code in which you want to debug selectors
-        ...     # for objects with __regid__ 'regid1' and 'regid2'
-
-    A potentially usefull point to set up such a tracing function is
-    the `cubicweb.vregistry.Registry.select` method body.
-    """
-
-    def __init__(self, traced='all'):
-        self.traced = traced
-
-    def __enter__(self):
-        global TRACED_OIDS
-        TRACED_OIDS = self.traced
-
-    def __exit__(self, exctype, exc, traceback):
-        global TRACED_OIDS
-        TRACED_OIDS = None
-        return traceback is None
-
+from cubicweb.appobject import traced_selection # XXX for bw compat
 
 def score_interface(etypesreg, cls_or_inst, cls, iface):
     """Return XXX if the give object (maybe an instance or class) implements
@@ -301,6 +224,7 @@ def score_interface(etypesreg, cls_or_inst, cls, iface):
             if iface is basecls:
                 return index + 3
         return 0
+    # XXX iface in implements deprecated in 3.9
     if implements_iface(cls_or_inst, iface):
         # implenting an interface takes precedence other special Any interface
         return 2
@@ -374,14 +298,17 @@ class EClassSelector(Selector):
         self.accept_none = accept_none
 
     @lltrace
-    def __call__(self, cls, req, rset=None, row=None, col=0, **kwargs):
+    def __call__(self, cls, req, rset=None, row=None, col=0, accept_none=None,
+                 **kwargs):
         if kwargs.get('entity'):
             return self.score_class(kwargs['entity'].__class__, req)
         if not rset:
             return 0
         score = 0
         if row is None:
-            if not self.accept_none:
+            if accept_none is None:
+                accept_none = self.accept_none
+            if not accept_none:
                 if any(rset[i][col] is None for i in xrange(len(rset))):
                     return 0
             for etype in rset.column_types(col):
@@ -441,7 +368,8 @@ class EntitySelector(EClassSelector):
     """
 
     @lltrace
-    def __call__(self, cls, req, rset=None, row=None, col=0, **kwargs):
+    def __call__(self, cls, req, rset=None, row=None, col=0, accept_none=None,
+                 **kwargs):
         if not rset and not kwargs.get('entity'):
             return 0
         score = 0
@@ -449,9 +377,11 @@ class EntitySelector(EClassSelector):
             score = self.score_entity(kwargs['entity'])
         elif row is None:
             col = col or 0
+            if accept_none is None:
+                accept_none = self.accept_none
             for row, rowvalue in enumerate(rset.rows):
                 if rowvalue[col] is None: # outer join
-                    if not self.accept_none:
+                    if not accept_none:
                         return 0
                     continue
                 escore = self.score(req, rset, row, col)
@@ -527,19 +457,42 @@ class appobject_selectable(Selector):
 
     * `registry`, a registry name
 
-    * `regid`, an object identifier in this registry
+    * `regids`, object identifiers in this registry, one of them should be
+      selectable.
     """
-    def __init__(self, registry, regid):
+    selectable_score = 1
+    def __init__(self, registry, *regids):
         self.registry = registry
-        self.regid = regid
+        self.regids = regids
+
+    @lltrace
+    def __call__(self, cls, req, **kwargs):
+        for regid in self.regids:
+            try:
+                req.vreg[self.registry].select(regid, req, **kwargs)
+                return self.selectable_score
+            except NoSelectableObject:
+                return 0
+
+
+class adaptable(appobject_selectable):
+    """Return 1 if another appobject is selectable using the same input context.
+
+    Initializer arguments:
+
+    * `regids`, adapter identifiers (e.g. interface names) to which the context
+      (usually entities) should be adaptable. One of them should be selectable
+      when multiple identifiers are given.
+    """
+    # implementing an interface takes precedence other special Any interface,
+    # hence return 2 (implements('Any') score is 1)
+    selectable_score = 2
+    def __init__(self, *regids):
+        super(adaptable, self).__init__('adapters', *regids)
 
     def __call__(self, cls, req, **kwargs):
-        try:
-            req.vreg[self.registry].select(self.regid, req, **kwargs)
-            return 1
-        except NoSelectableObject:
-            return 0
-
+        kwargs.setdefault('accept_none', False)
+        return super(adaptable, self).__call__(cls, req, **kwargs)
 
 # rset selectors ##############################################################
 
@@ -585,8 +538,8 @@ def empty_rset(cls, req, rset=None, **kwargs):
 @objectify_selector
 @lltrace
 def one_line_rset(cls, req, rset=None, row=None, **kwargs):
-    """Return 1 if the result set is of size 1 or if a specific row in the
-    result set is specified ('row' argument).
+    """Return 1 if the result set is of size 1, or greater but a specific row in
+      the result set is specified ('row' argument).
     """
     if rset is not None and (row is not None or rset.rowcount == 1):
         return 1
@@ -594,7 +547,7 @@ def one_line_rset(cls, req, rset=None, row=None, **kwargs):
 
 
 class multi_lines_rset(Selector):
-    """If `nb`is specified, return 1 if the result set has exactly `nb` row of
+    """If `nb` is specified, return 1 if the result set has exactly `nb` row of
     result. Else (`nb` is None), return 1 if the result set contains *at least*
     two rows.
     """
@@ -608,11 +561,11 @@ class multi_lines_rset(Selector):
 
     @lltrace
     def __call__(self, cls, req, rset=None, **kwargs):
-        return rset is not None and self.match_expected(rset.rowcount)
+        return int(rset is not None and self.match_expected(rset.rowcount))
 
 
 class multi_columns_rset(multi_lines_rset):
-    """If `nb`is specified, return 1 if the result set has exactly `nb` column
+    """If `nb` is specified, return 1 if the result set has exactly `nb` column
     per row. Else (`nb` is None), return 1 if the result set contains *at least*
     two columns per row. Return 0 for empty result set.
     """
@@ -738,7 +691,12 @@ class implements(ImplementsMixIn, EClassSelector):
 
     .. note:: when interface is an entity class, the score will reflect class
               proximity so the most specific object will be selected.
+
+    .. note:: with cubicweb >= 3.9, you should use adapters instead of
+              interface, so no interface should be given to this selector. Use
+              :class:`adaptable` instead.
     """
+
     def score_class(self, eclass, req):
         return self.score_interfaces(req, eclass, eclass)
 
@@ -763,6 +721,26 @@ class score_entity(EntitySelector):
                 return score
             return 1
         self.score_entity = intscore
+
+
+class has_mimetype(EntitySelector):
+    """Return 1 if the entity adapt to IDownloadable and has the given MIME type.
+
+    You can give 'image/' to match any image for instance, or 'image/png' to match
+    only PNG images.
+    """
+    def __init__(self, mimetype, once_is_enough=False):
+        super(has_mimetype, self).__init__(once_is_enough)
+        self.mimetype = mimetype
+
+    def score_entity(self, entity):
+        idownloadable =  entity.cw_adapt_to('IDownloadable')
+        if idownloadable is None:
+            return 0
+        mt = idownloadable.download_content_type()
+        if not (mt and mt.startswith(self.mimetype)):
+            return 0
+        return 1
 
 
 class relation_possible(EntitySelector):
@@ -1000,7 +978,7 @@ class has_permission(EntitySelector):
         return self.score(req, rset, row, col)
 
     def score_entity(self, entity):
-        if entity.has_perm(self.action):
+        if entity.cw_has_perm(self.action):
             return 1
         return 0
 
@@ -1291,21 +1269,26 @@ class match_transition(ExpectedValueSelector):
 class is_in_state(score_entity):
     """return 1 if entity is in one of the states given as argument list
 
-    you should use this instead of your own score_entity x: x.state == 'bla'
-    selector to avoid some gotchas:
+    you should use this instead of your own :class:`score_entity` selector to
+    avoid some gotchas:
 
     * possible views gives a fake entity with no state
-    * you must use the latest tr info, not entity.state for repository side
+    * you must use the latest tr info, not entity.in_state for repository side
       checking of the current state
     """
     def __init__(self, *states):
         def score(entity, states=set(states)):
+            trinfo = entity.cw_adapt_to('IWorkflowable').latest_trinfo()
             try:
-                return entity.latest_trinfo().new_state.name in states
+                return trinfo.new_state.name in states
             except AttributeError:
                 return None
         super(is_in_state, self).__init__(score)
 
+@objectify_selector
+def debug_mode(cls, req, rset=None, **kwargs):
+    """Return 1 if running in debug mode"""
+    return req.vreg.config.debugmode and 1 or 0
 
 ## deprecated stuff ############################################################
 
