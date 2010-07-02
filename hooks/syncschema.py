@@ -34,7 +34,8 @@ from logilab.common.testlib import mock_object
 
 from cubicweb import ValidationError
 from cubicweb.selectors import implements
-from cubicweb.schema import META_RTYPES, VIRTUAL_RTYPES, CONSTRAINTS, display_name
+from cubicweb.schema import (META_RTYPES, VIRTUAL_RTYPES, CONSTRAINTS,
+                             ETYPE_NAME_MAP, display_name)
 from cubicweb.server import hook, schemaserial as ss
 from cubicweb.server.sqlutils import SQL_PREFIX
 
@@ -817,9 +818,10 @@ class DelCWETypeHook(SyncSchemaHook):
         if name in CORE_ETYPES:
             raise ValidationError(self.entity.eid, {None: self._cw._('can\'t be deleted')})
         # delete every entities of this type
-        self._cw.execute('DELETE %s X' % name)
+        if not name in ETYPE_NAME_MAP:
+            self._cw.execute('DELETE %s X' % name)
+            MemSchemaCWETypeDel(self._cw, name)
         DropTable(self._cw, table=SQL_PREFIX + name)
-        MemSchemaCWETypeDel(self._cw, name)
 
 
 class AfterDelCWETypeHook(DelCWETypeHook):
@@ -984,7 +986,11 @@ class AfterDelRelationTypeHook(SyncSchemaHook):
 
     def __call__(self):
         session = self._cw
-        rdef = session.vreg.schema.schema_by_eid(self.eidfrom)
+        try:
+            rdef = session.vreg.schema.schema_by_eid(self.eidfrom)
+        except KeyError:
+            self.critical('cant get schema rdef associated to %s', self.eidfrom)
+            return
         subjschema, rschema, objschema = rdef.as_triple()
         pendings = session.transaction_data.get('pendingeids', ())
         pendingrdefs = session.transaction_data.setdefault('pendingrdefs', set())
@@ -1005,7 +1011,6 @@ class AfterDelRelationTypeHook(SyncSchemaHook):
         # we have to update physical schema systematically for final and inlined
         # relations, but only if it's the last instance for this relation type
         # for other relations
-
         if (rschema.final or rschema.inlined):
             rset = execute('Any COUNT(X) WHERE X is %s, X relation_type R, '
                            'R eid %%(x)s, X from_entity E, E name %%(name)s'
@@ -1176,7 +1181,7 @@ class UpdateFTIndexOp(hook.SingleLastOperation):
             still_fti = list(schema[etype].indexable_attributes())
             for entity in rset.entities():
                 source.fti_unindex_entity(session, entity.eid)
-                for container in entity.fti_containers():
+                for container in entity.cw_adapt_to('IFTIndexable').fti_containers():
                     if still_fti or container is not entity:
                         source.fti_unindex_entity(session, container.eid)
                         source.fti_index_entity(session, container)
