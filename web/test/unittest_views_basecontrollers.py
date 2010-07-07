@@ -128,7 +128,7 @@ class EditControllerTC(CubicWebTC):
         self.assertEquals(e.firstname, u'Th\xe9nault')
         self.assertEquals(e.surname, u'Sylvain')
         self.assertEquals([g.eid for g in e.in_group], groupeids)
-        self.assertEquals(e.state, 'activated')
+        self.assertEquals(e.cw_adapt_to('IWorkflowable').state, 'activated')
 
 
     def test_create_multiple_linked(self):
@@ -643,7 +643,7 @@ class JSONControllerTC(CubicWebTC):
     # silly tests
     def test_external_resource(self):
         self.assertEquals(self.remote_call('external_resource', 'RSS_LOGO')[0],
-                          json.dumps(self.request().external_resource('RSS_LOGO')))
+                          json.dumps(self.config.uiprops['RSS_LOGO']))
     def test_i18n(self):
         self.assertEquals(self.remote_call('i18n', ['bimboom'])[0],
                           json.dumps(['bimboom']))
