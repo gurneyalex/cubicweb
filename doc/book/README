@@ -1,0 +1,54 @@
+====
+Book
+====
+
+----
+Part
+----
+
+Chapter
+=======
+
+.. _Level1AnchorForLaterReference:
+
+Level 1 section
+---------------
+
+Level 2 section
+~~~~~~~~~~~~~~~
+
+Level 3 section
+```````````````
+
+
+
+*CubicWeb*
+
+
+inline directives:
+  :file:`directory/file`
+  :envvar:`AN_ENV_VARIABLE`
+  :command:`command --option arguments`
+
+  :ref:, :mod:
+
+
+.. sourcecode:: python
+
+   class SomePythonCode:
+     ...
+
+.. XXX a comment, wont be rendered
+
+
+a [foot note]_
+
+.. [foot note] the foot note content
+
+
+
+XXX
+* lien vers cw.cwconfig.CW_CUBES_PATH par ex.
+
+
+automodule, autofunction, automethod, autofunction
