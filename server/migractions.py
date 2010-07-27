@@ -50,7 +50,8 @@ from yams.constraints import SizeConstraint
 from yams.schema2sql import eschema2sql, rschema2sql
 
 from cubicweb import AuthenticationError
-from cubicweb.schema import (META_RTYPES, VIRTUAL_RTYPES,
+from cubicweb.schema import (ETYPE_NAME_MAP, META_RTYPES, VIRTUAL_RTYPES,
+                             PURE_VIRTUAL_RTYPES,
                              CubicWebRelationSchema, order_eschemas)
 from cubicweb.dbapi import get_repository, repo_connect
 from cubicweb.migration import MigrationHelper, yes
@@ -855,9 +856,46 @@ class ServerMigrationHelper(MigrationHelper):
         `oldname` is a string giving the name of the existing entity type
         `newname` is a string giving the name of the renamed entity type
         """
-        self.rqlexec('SET ET name %(newname)s WHERE ET is CWEType, ET name %(oldname)s',
-                     {'newname' : unicode(newname), 'oldname' : oldname},
-                     ask_confirm=False)
+        schema = self.repo.schema
+        if newname in schema:
+            assert oldname in ETYPE_NAME_MAP, \
+                   '%s should be mappend to %s in ETYPE_NAME_MAP' % (oldname, newname)
+            attrs = ','.join([SQL_PREFIX + rschema.type
+                              for rschema in schema[newname].subject_relations()
+                              if (rschema.final or rschema.inlined)
+                              and not rschema in PURE_VIRTUAL_RTYPES])
+            self.sqlexec('INSERT INTO %s%s(%s) SELECT %s FROM %s%s' % (
+                SQL_PREFIX, newname, attrs, attrs, SQL_PREFIX, oldname),
+                         ask_confirm=False)
+            # old entity type has not been added to the schema, can't gather it
+            new = schema.eschema(newname)
+            oldeid = self.rqlexec('CWEType ET WHERE ET name %(on)s', {'on': oldname},
+                                  ask_confirm=False)[0][0]
+            # backport old type relations to new type
+            # XXX workflows, other relations?
+            for r1, rr1 in [('from_entity', 'to_entity'),
+                            ('to_entity', 'from_entity')]:
+                self.rqlexec('SET X %(r1)s NET WHERE X %(r1)s OET, '
+                             'NOT EXISTS(X2 %(r1)s NET, X relation_type XRT, '
+                             'X2 relation_type XRT, X %(rr1)s XTE, X2 %(rr1)s XTE), '
+                             'OET eid %%(o)s, NET eid %%(n)s' % locals(),
+                             {'o': oldeid, 'n': new.eid}, ask_confirm=False)
+            # backport is / is_instance_of relation to new type
+            for rtype in ('is', 'is_instance_of'):
+                self.sqlexec('UPDATE %s_relation SET eid_to=%s WHERE eid_to=%s'
+                             % (rtype, new.eid, oldeid), ask_confirm=False)
+            # delete relations using SQL to avoid relations content removal
+            # triggered by schema synchronization hooks
+            self.sqlexec('DELETE FROM cw_CWRelation '
+                         'WHERE cw_from_entity=%(eid)s OR cw_to_entity=%(eid)s',
+                         {'eid': oldeid}, ask_confirm=False)
+            # remove the old type: use rql to propagate deletion
+            self.rqlexec('DELETE CWEType ET WHERE ET name %(on)s', {'on': oldname},
+                         ask_confirm=False)
+        else:
+            self.rqlexec('SET ET name %(newname)s WHERE ET is CWEType, ET name %(on)s',
+                         {'newname' : unicode(newname), 'on' : oldname},
+                         ask_confirm=False)
         if commit:
             self.commit()
 
@@ -1152,10 +1190,10 @@ class ServerMigrationHelper(MigrationHelper):
         if commit:
             self.commit()
 
-    @deprecated('[3.5] use entity.fire_transition("transition") or entity.change_state("state")',
-                stacklevel=3)
+    @deprecated('[3.5] use iworkflowable.fire_transition("transition") or '
+                'iworkflowable.change_state("state")', stacklevel=3)
     def cmd_set_state(self, eid, statename, commit=False):
-        self._cw.entity_from_eid(eid).change_state(statename)
+        self._cw.entity_from_eid(eid).cw_adapt_to('IWorkflowable').change_state(statename)
         if commit:
             self.commit()
 
@@ -1214,6 +1252,13 @@ class ServerMigrationHelper(MigrationHelper):
         if commit:
             self.commit()
         return entity
+
+    def cmd_update_etype_fti_weight(self, etype, weight):
+        if self.repo.system_source.dbdriver == 'postgres':
+            self.sqlexec('UPDATE appears SET weight=%(weight)s '
+                         'FROM entities as X '
+                         'WHERE X.eid=appears.uid AND X.type=%(type)s',
+                         {'type': etype, 'weight': weight}, ask_confirm=False)
 
     def cmd_reindex_entities(self, etypes=None):
         """force reindexaction of entities of the given types or of all
