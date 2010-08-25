@@ -270,7 +270,10 @@ class Repository(object):
             # call instance level initialisation hooks
             self.hm.call_hooks('server_startup', repo=self)
             # register a task to cleanup expired session
-            self.looping_task(self.config['session-time']/3., self.clean_sessions)
+            self.cleanup_session_time = self.config['cleanup-session-time'] or 60 * 60 * 24
+            assert self.cleanup_session_time > 0
+            cleanup_session_interval = min(60*60, self.cleanup_session_time / 3)
+            self.looping_task(cleanup_session_interval, self.clean_sessions)
         assert isinstance(self._looping_tasks, list), 'already started'
         for i, (interval, func, args) in enumerate(self._looping_tasks):
             self._looping_tasks[i] = task = utils.LoopTask(interval, func, args)
@@ -625,24 +628,32 @@ class Repository(object):
             session.reset_pool()
 
     def check_session(self, sessionid):
-        """raise `BadConnectionId` if the connection is no more valid"""
-        self._get_session(sessionid, setpool=False)
+        """raise `BadConnectionId` if the connection is no more valid, else
+        return its latest activity timestamp.
+        """
+        return self._get_session(sessionid, setpool=False).timestamp
 
-    def get_shared_data(self, sessionid, key, default=None, pop=False):
-        """return the session's data dictionary"""
-        session = self._get_session(sessionid, setpool=False)
-        return session.get_shared_data(key, default, pop)
+    def get_shared_data(self, sessionid, key, default=None, pop=False, txdata=False):
+        """return value associated to key in the session's data dictionary or
+        session's transaction's data if `txdata` is true.
 
-    def set_shared_data(self, sessionid, key, value, querydata=False):
-        """set value associated to `key` in shared data
+        If pop is True, value will be removed from the dictionnary.
 
-        if `querydata` is true, the value will be added to the repository
-        session's query data which are cleared on commit/rollback of the current
-        transaction, and won't be available through the connexion, only on the
-        repository side.
+        If key isn't defined in the dictionnary, value specified by the
+        `default` argument will be returned.
         """
         session = self._get_session(sessionid, setpool=False)
-        session.set_shared_data(key, value, querydata)
+        return session.get_shared_data(key, default, pop, txdata)
+
+    def set_shared_data(self, sessionid, key, value, txdata=False):
+        """set value associated to `key` in shared data
+
+        if `txdata` is true, the value will be added to the repository session's
+        transaction's data which are cleared on commit/rollback of the current
+        transaction.
+        """
+        session = self._get_session(sessionid, setpool=False)
+        session.set_shared_data(key, value, txdata)
 
     def commit(self, sessionid, txid=None):
         """commit transaction for the session with the given id"""
@@ -774,7 +785,7 @@ class Repository(object):
         """close sessions not used since an amount of time specified in the
         configuration
         """
-        mintime = time() - self.config['session-time']
+        mintime = time() - self.cleanup_session_time
         self.debug('cleaning session unused since %s',
                    strftime('%T', localtime(mintime)))
         nbclosed = 0
