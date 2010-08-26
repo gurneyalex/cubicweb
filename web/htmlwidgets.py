@@ -19,11 +19,10 @@
 
 those are in cubicweb since we need to know available widgets at schema
 serialization time
-
 """
 
-from math import floor
 import random
+from math import floor
 
 from logilab.mtconverter import xml_escape
 
@@ -182,7 +181,10 @@ class BoxMenu(RawBoxItem):
             toggle_action(ident), self.link_class, self.label))
         self._begin_menu(ident)
         for item in self.items:
-            item.render(self.w)
+            if hasattr(item, 'render'):
+                item.render(self.w)
+            else:
+                self.w(u'<li>%s</li>' % item)
         self._end_menu()
         if self.isitem:
             self.w(u'</li>')
