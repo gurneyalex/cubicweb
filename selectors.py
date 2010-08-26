@@ -60,9 +60,9 @@ In web/views/boxes.py lies the RSSIconBox class. Look at its selector:
 
 .. sourcecode:: python
 
-  class RSSIconBox(ExtResourcesBoxTemplate):
+  class RSSIconBox(box.Box):
     ''' just display the RSS icon on uniform result set '''
-    __select__ = ExtResourcesBoxTemplate.__select__ & non_final_entity()
+    __select__ = box.Box.__select__ & non_final_entity()
 
 It takes into account:
 
@@ -1203,6 +1203,7 @@ class match_user_groups(ExpectedValueSelector):
 
 # Web request selectors ########################################################
 
+# XXX deprecate
 @objectify_selector
 @lltrace
 def primary_view(cls, req, view=None, **kwargs):
@@ -1220,6 +1221,15 @@ def primary_view(cls, req, view=None, **kwargs):
     return 1
 
 
+@objectify_selector
+@lltrace
+def contextual(cls, req, view=None, **kwargs):
+    """Return 1 if view's contextual property is true"""
+    if view is not None and view.contextual:
+        return 1
+    return 0
+
+
 class match_view(ExpectedValueSelector):
     """Return 1 if a view is specified an as its registry id is in one of the
     expected view id given to the initializer.
@@ -1231,6 +1241,19 @@ class match_view(ExpectedValueSelector):
         return 1
 
 
+class match_context(ExpectedValueSelector):
+
+    @lltrace
+    def __call__(self, cls, req, context=None, **kwargs):
+        try:
+            if not context in self.expected:
+                return 0
+        except AttributeError:
+            return 1 # class doesn't care about search state, accept it
+        return 1
+
+
+# XXX deprecate
 @objectify_selector
 @lltrace
 def match_context_prop(cls, req, context=None, **kwargs):
@@ -1251,8 +1274,6 @@ def match_context_prop(cls, req, context=None, **kwargs):
         return 1
     propval = req.property_value('%s.%s.context' % (cls.__registry__,
                                                     cls.__regid__))
-    if not propval:
-        propval = cls.context
     if propval and context != propval:
         return 0
     return 1
