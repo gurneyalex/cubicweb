@@ -25,6 +25,7 @@ from warnings import warn
 from logilab.mtconverter import xml_escape
 
 from cubicweb import Unauthorized
+from cubicweb.utils import support_args
 from cubicweb.selectors import match_kwargs
 from cubicweb.view import EntityView
 from cubicweb.schema import VIRTUAL_RTYPES, display_name
@@ -89,7 +90,7 @@ class PrimaryView(EntityView):
 
     def content_navigation_components(self, context):
         self.w(u'<div class="%s">' % context)
-        for comp in self._cw.vreg['contentnavigation'].poss_visible_objects(
+        for comp in self._cw.vreg['ctxcomponents'].poss_visible_objects(
             self._cw, rset=self.cw_rset, row=self.cw_row, view=self, context=context):
             try:
                 comp.render(w=self.w, row=self.cw_row, view=self)
@@ -143,10 +144,15 @@ class PrimaryView(EntityView):
         if display_attributes:
             self.w(u'<table>')
             for rschema, role, dispctrl, value in display_attributes:
-                try:
-                    self._render_attribute(dispctrl, rschema, value,
-                                           role=role, table=True)
-                except TypeError:
+                if support_args(self._render_attribute, 'label'):
+                    label = self._rel_label(entity, rschema, role, dispctrl)
+                    self._render_attribute(label, value, table=True)
+                elif support_args(self._render_attribute, 'dispctrl'):
+                    warn('[3.10] _render_attribute prototype has changed, please'
+                         ' update %s' % self.__class___, DeprecationWarning)
+                    self._render_attribute(dispctrl, rschema, value, role=role,
+                                           table=True)
+                else:
                     warn('[3.6] _render_attribute prototype has changed, please'
                          ' update %s' % self.__class___, DeprecationWarning)
                     self._render_attribute(rschema, value, role=role, table=True)
@@ -166,9 +172,14 @@ class PrimaryView(EntityView):
                 continue
             rset = self._relation_rset(entity, rschema, role, dispctrl)
             if rset:
-                try:
+                if support_args(self._render_relation, 'label'):
+                    label = self._rel_label(entity, rschema, role, dispctrl)
+                    self._render_relation(label, dispctrl, rset, 'autolimited')
+                elif not support_args(self._render_relation, 'showlabel'):
+                    warn('[3.10] _render_relation prototype has changed, '
+                         'please update %s' % self.__class__, DeprecationWarning)
                     self._render_relation(dispctrl, rset, 'autolimited')
-                except TypeError:
+                else:
                     warn('[3.6] _render_relation prototype has changed, '
                          'please update %s' % self.__class__, DeprecationWarning)
                     self._render_relation(rset, dispctrl, 'autolimited',
@@ -183,42 +194,45 @@ class PrimaryView(EntityView):
                 try:
                     label, rset, vid, dispctrl  = box
                 except ValueError:
-                    warn('[3.5] box views should now be defined as a 4-uple (label, rset, vid, dispctrl), '
-                         'please update %s' % self.__class__.__name__,
-                         DeprecationWarning)
                     label, rset, vid = box
                     dispctrl = {}
+                warn('[3.10] box views should now be a RsetBox instance, '
+                     'please update %s' % self.__class__.__name__,
+                     DeprecationWarning)
                 self.w(u'<div class="sideBox">')
                 self.wview(vid, rset, title=label, initargs={'dispctrl': dispctrl})
                 self.w(u'</div>')
             else:
-                try:
-                    box.render(w=self.w, row=self.cw_row)
-                except NotImplementedError:
-                    # much probably a context insensitive box, which only implements
-                    # .call() and not cell_call()
+                 try:
+                     box.render(w=self.w, row=self.cw_row)
+                 except NotImplementedError:
+                    # much probably a context insensitive box, which only
+                    # implements .call() and not cell_call()
+                    # XXX shouldn't occurs with the new box system
                     box.render(w=self.w)
 
     def _prepare_side_boxes(self, entity):
         sideboxes = []
+        boxesreg = self._cw.vreg['ctxcomponents']
         for rschema, tschemas, role, dispctrl in self._section_def(entity, 'sideboxes'):
             rset = self._relation_rset(entity, rschema, role, dispctrl)
             if not rset:
                 continue
-            label = display_name(self._cw, rschema.type, role)
-            vid = dispctrl.get('vid', 'sidebox')
-            sideboxes.append( (label, rset, vid, dispctrl) )
-        sideboxes += self._cw.vreg['boxes'].poss_visible_objects(
-            self._cw, rset=self.cw_rset, row=self.cw_row, view=self,
-            context='incontext')
+            label = self._rel_label(entity, rschema, role, dispctrl)
+            vid = dispctrl.get('vid', 'autolimited')
+            box = boxesreg.select('rsetbox', self._cw, rset=rset,
+                                  vid=vid, title=label, dispctrl=dispctrl,
+                                  context='incontext')
+            sideboxes.append(box)
+        sideboxes += boxesreg.poss_visible_objects(
+             self._cw, rset=self.cw_rset, row=self.cw_row, view=self,
+             context='incontext')
         # XXX since we've two sorted list, it may be worth using bisect
         def get_order(x):
-            if isinstance(x, tuple):
-                # x is a view box (label, rset, vid, dispctrl)
-                # default to 1000 so view boxes occurs after component boxes
-                return x[-1].get('order', 1000)
-            # x is a component box
-            return x.cw_propval('order')
+            if 'order' in x.cw_property_defs:
+                return x.cw_propval('order')
+            # default to 9999 so view boxes occurs after component boxes
+            return x.cw_extra_kwargs.get('dispctrl', {}).get('order', 9999)
         return sorted(sideboxes, key=get_order)
 
     def _section_def(self, entity, where):
@@ -251,25 +265,16 @@ class PrimaryView(EntityView):
             rset = dispctrl['filter'](rset)
         return rset
 
-    def _render_relation(self, dispctrl, rset, defaultvid):
+    def _render_relation(self, label, dispctrl, rset, defaultvid):
         self.w(u'<div class="section">')
-        if dispctrl.get('showlabel', self.show_rel_label):
-            self.w(u'<h4>%s</h4>' % self._cw._(dispctrl['label']))
+        if label:
+            self.w(u'<h4>%s</h4>' % label)
         self.wview(dispctrl.get('vid', defaultvid), rset,
                    initargs={'dispctrl': dispctrl})
         self.w(u'</div>')
 
-    def _render_attribute(self, dispctrl, rschema, value,
-                          role='subject', table=False):
-        if rschema.final:
-            showlabel = dispctrl.get('showlabel', self.show_attr_label)
-        else:
-            showlabel = dispctrl.get('showlabel', self.show_rel_label)
-        if dispctrl.get('label'):
-            label = self._cw._(dispctrl.get('label'))
-        else:
-            label = display_name(self._cw, rschema.type, role)
-        self.field(label, value, show_label=showlabel, tr=False, table=table)
+    def _render_attribute(self, label, value, table=False):
+        self.field(label, value, tr=False, table=table)
 
     def _rel_label(self, entity, rschema, role, dispctrl):
         if rschema.final:
@@ -339,6 +344,6 @@ class URLAttributeView(EntityView):
 _pvs = uicfg.primaryview_section
 for rtype in ('eid', 'creation_date', 'modification_date', 'cwuri',
               'is', 'is_instance_of', 'identity', 'owned_by', 'created_by',
-              'require_permission', 'see_also'):
+              'require_permission'):
     _pvs.tag_subject_of(('*', rtype, '*'), 'hidden')
     _pvs.tag_object_of(('*', rtype, '*'), 'hidden')

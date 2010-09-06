@@ -55,6 +55,7 @@ from cubicweb import cwvreg, schema, server
 from cubicweb.server import utils, hook, pool, querier, sources
 from cubicweb.server.session import Session, InternalSession, InternalManager, \
      security_enabled
+from cubicweb.server.ssplanner import EditedEntity
 
 
 def del_existing_rel_if_needed(session, eidfrom, rtype, eidto):
@@ -270,7 +271,10 @@ class Repository(object):
             # call instance level initialisation hooks
             self.hm.call_hooks('server_startup', repo=self)
             # register a task to cleanup expired session
-            self.looping_task(self.config['session-time']/3., self.clean_sessions)
+            self.cleanup_session_time = self.config['cleanup-session-time'] or 60 * 60 * 24
+            assert self.cleanup_session_time > 0
+            cleanup_session_interval = min(60*60, self.cleanup_session_time / 3)
+            self.looping_task(cleanup_session_interval, self.clean_sessions)
         assert isinstance(self._looping_tasks, list), 'already started'
         for i, (interval, func, args) in enumerate(self._looping_tasks):
             self._looping_tasks[i] = task = utils.LoopTask(interval, func, args)
@@ -533,8 +537,7 @@ class Repository(object):
                 password = password.encode('UTF8')
             kwargs['login'] = login
             kwargs['upassword'] = password
-            user.update(kwargs)
-            self.glob_add_entity(session, user)
+            self.glob_add_entity(session, EditedEntity(user, **kwargs))
             session.execute('SET X in_group G WHERE X eid %(x)s, G name "users"',
                             {'x': user.eid})
             if email or '@' in login:
@@ -625,24 +628,32 @@ class Repository(object):
             session.reset_pool()
 
     def check_session(self, sessionid):
-        """raise `BadConnectionId` if the connection is no more valid"""
-        self._get_session(sessionid, setpool=False)
+        """raise `BadConnectionId` if the connection is no more valid, else
+        return its latest activity timestamp.
+        """
+        return self._get_session(sessionid, setpool=False).timestamp
 
-    def get_shared_data(self, sessionid, key, default=None, pop=False):
-        """return the session's data dictionary"""
-        session = self._get_session(sessionid, setpool=False)
-        return session.get_shared_data(key, default, pop)
+    def get_shared_data(self, sessionid, key, default=None, pop=False, txdata=False):
+        """return value associated to key in the session's data dictionary or
+        session's transaction's data if `txdata` is true.
 
-    def set_shared_data(self, sessionid, key, value, querydata=False):
-        """set value associated to `key` in shared data
+        If pop is True, value will be removed from the dictionnary.
 
-        if `querydata` is true, the value will be added to the repository
-        session's query data which are cleared on commit/rollback of the current
-        transaction, and won't be available through the connexion, only on the
-        repository side.
+        If key isn't defined in the dictionnary, value specified by the
+        `default` argument will be returned.
         """
         session = self._get_session(sessionid, setpool=False)
-        session.set_shared_data(key, value, querydata)
+        return session.get_shared_data(key, default, pop, txdata)
+
+    def set_shared_data(self, sessionid, key, value, txdata=False):
+        """set value associated to `key` in shared data
+
+        if `txdata` is true, the value will be added to the repository session's
+        transaction's data which are cleared on commit/rollback of the current
+        transaction.
+        """
+        session = self._get_session(sessionid, setpool=False)
+        session.set_shared_data(key, value, txdata)
 
     def commit(self, sessionid, txid=None):
         """commit transaction for the session with the given id"""
@@ -774,7 +785,7 @@ class Repository(object):
         """close sessions not used since an amount of time specified in the
         configuration
         """
-        mintime = time() - self.config['session-time']
+        mintime = time() - self.cleanup_session_time
         self.debug('cleaning session unused since %s',
                    strftime('%T', localtime(mintime)))
         nbclosed = 0
@@ -929,7 +940,6 @@ class Repository(object):
             self._extid_cache[cachekey] = eid
             self._type_source_cache[eid] = (etype, source.uri, extid)
             entity = source.before_entity_insertion(session, extid, etype, eid)
-            entity.edited_attributes = set(entity.cw_attr_cache)
             if source.should_call_hooks:
                 self.hm.call_hooks('before_add_entity', session, entity=entity)
             # XXX call add_info with complete=False ?
@@ -1032,15 +1042,16 @@ class Repository(object):
         self._type_source_cache[entity.eid] = (entity.__regid__, suri, extid)
         return extid
 
-    def glob_add_entity(self, session, entity):
+    def glob_add_entity(self, session, edited):
         """add an entity to the repository
 
         the entity eid should originaly be None and a unique eid is assigned to
         the entity instance
         """
-        # init edited_attributes before calling before_add_entity hooks
+        entity = edited.entity
         entity._cw_is_saved = False # entity has an eid but is not yet saved
-        entity.edited_attributes = set(entity.cw_attr_cache) # XXX cw_edited_attributes
+        # init edited_attributes before calling before_add_entity hooks
+        entity.cw_edited = edited
         eschema = entity.e_schema
         source = self.locate_etype_source(entity.__regid__)
         # allocate an eid to the entity before calling hooks
@@ -1052,17 +1063,15 @@ class Repository(object):
         relations = []
         if source.should_call_hooks:
             self.hm.call_hooks('before_add_entity', session, entity=entity)
-        # XXX use entity.keys here since edited_attributes is not updated for
-        # inline relations XXX not true, right? (see edited_attributes
-        # affectation above)
-        for attr in entity.cw_attr_cache.iterkeys():
+        for attr in edited.iterkeys():
             rschema = eschema.subjrels[attr]
             if not rschema.final: # inlined relation
-                relations.append((attr, entity[attr]))
-        entity._cw_set_defaults()
+                relations.append((attr, edited[attr]))
+        edited.set_defaults()
         if session.is_hook_category_activated('integrity'):
-            entity._cw_check(creation=True)
+            edited.check(creation=True)
         source.add_entity(session, entity)
+        edited.saved = True
         self.add_info(session, entity, source, extid, complete=False)
         entity._cw_is_saved = True # entity has an eid and is saved
         # prefill entity relation caches
@@ -1071,7 +1080,7 @@ class Repository(object):
             if rtype in schema.VIRTUAL_RTYPES:
                 continue
             if rschema.final:
-                entity.setdefault(rtype, None)
+                entity.cw_attr_cache.setdefault(rtype, None)
             else:
                 entity.cw_set_relation_cache(rtype, 'subject',
                                              session.empty_rset())
@@ -1094,23 +1103,24 @@ class Repository(object):
                                     eidfrom=entity.eid, rtype=attr, eidto=value)
         return entity.eid
 
-    def glob_update_entity(self, session, entity, edited_attributes):
+    def glob_update_entity(self, session, edited):
         """replace an entity in the repository
         the type and the eid of an entity must not be changed
         """
+        entity = edited.entity
         if server.DEBUG & server.DBG_REPO:
             print 'UPDATE entity', entity.__regid__, entity.eid, \
-                  entity.cw_attr_cache, edited_attributes
+                  entity.cw_attr_cache, edited
         hm = self.hm
         eschema = entity.e_schema
         session.set_entity_cache(entity)
-        orig_edited_attributes = getattr(entity, 'edited_attributes', None)
-        entity.edited_attributes = edited_attributes
+        orig_edited = getattr(entity, 'cw_edited', None)
+        entity.cw_edited = edited
         try:
             only_inline_rels, need_fti_update = True, False
             relations = []
             source = self.source_from_eid(entity.eid, session)
-            for attr in list(edited_attributes):
+            for attr in list(edited):
                 if attr == 'eid':
                     continue
                 rschema = eschema.subjrels[attr]
@@ -1123,13 +1133,13 @@ class Repository(object):
                     previous_value = entity.related(attr) or None
                     if previous_value is not None:
                         previous_value = previous_value[0][0] # got a result set
-                        if previous_value == entity[attr]:
+                        if previous_value == entity.cw_attr_cache[attr]:
                             previous_value = None
                         elif source.should_call_hooks:
                             hm.call_hooks('before_delete_relation', session,
                                           eidfrom=entity.eid, rtype=attr,
                                           eidto=previous_value)
-                    relations.append((attr, entity[attr], previous_value))
+                    relations.append((attr, edited[attr], previous_value))
             if source.should_call_hooks:
                 # call hooks for inlined relations
                 for attr, value, _ in relations:
@@ -1138,8 +1148,9 @@ class Repository(object):
                 if not only_inline_rels:
                     hm.call_hooks('before_update_entity', session, entity=entity)
             if session.is_hook_category_activated('integrity'):
-                entity._cw_check()
+                edited.check()
             source.update_entity(session, entity)
+            edited.saved = True
             self.system_source.update_info(session, entity, need_fti_update)
             if source.should_call_hooks:
                 if not only_inline_rels:
@@ -1161,8 +1172,8 @@ class Repository(object):
                     hm.call_hooks('after_add_relation', session,
                                   eidfrom=entity.eid, rtype=attr, eidto=value)
         finally:
-            if orig_edited_attributes is not None:
-                entity.edited_attributes = orig_edited_attributes
+            if orig_edited is not None:
+                entity.cw_edited = orig_edited
 
     def glob_delete_entity(self, session, eid):
         """delete an entity and all related entities from the repository"""
