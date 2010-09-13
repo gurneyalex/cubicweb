@@ -499,7 +499,7 @@ class CubicWebTC(TestCase):
     def list_boxes_for(self, rset):
         """returns the list of boxes that can be applied on `rset`"""
         req = rset.req
-        for box in self.vreg['boxes'].possible_objects(req, rset=rset):
+        for box in self.vreg['ctxcomponents'].possible_objects(req, rset=rset):
             yield box
 
     def list_startup_views(self):
@@ -951,7 +951,8 @@ class AutoPopulateTest(CubicWebTC):
         for action in self.list_actions_for(rset):
             yield InnerTest(self._testname(rset, action.__regid__, 'action'), self._test_action, action)
         for box in self.list_boxes_for(rset):
-            yield InnerTest(self._testname(rset, box.__regid__, 'box'), box.render)
+            w = [].append
+            yield InnerTest(self._testname(rset, box.__regid__, 'box'), box.render, w)
 
     @staticmethod
     def _testname(rset, objid, objtype):
