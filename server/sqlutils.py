@@ -260,8 +260,7 @@ class SQLAdapterMixIn(object):
         """
         attrs = {}
         eschema = entity.e_schema
-        for attr in entity.edited_attributes:
-            value = entity[attr]
+        for attr, value in entity.cw_edited.iteritems():
             if value is not None and eschema.subjrels[attr].final:
                 atype = str(entity.e_schema.destination(attr))
                 if atype == 'Boolean':
