@@ -174,7 +174,7 @@ class Registry(dict):
         assert len(objects) == 1, objects
         return objects[0](*args, **kwargs)
 
-    def select(self, oid, *args, **kwargs):
+    def select(self, __oid, *args, **kwargs):
         """return the most specific object among those with the given oid
         according to the given context.
 
@@ -182,18 +182,30 @@ class Registry(dict):
 
         raise :exc:`NoSelectableObject` if not object apply
         """
-        return self._select_best(self[oid], *args, **kwargs)
+        return self._select_best(self[__oid], *args, **kwargs)
 
-    def select_or_none(self, oid, *args, **kwargs):
+    def select_or_none(self, __oid, *args, **kwargs):
         """return the most specific object among those with the given oid
         according to the given context, or None if no object applies.
         """
         try:
-            return self.select(oid, *args, **kwargs)
+            return self.select(__oid, *args, **kwargs)
         except (NoSelectableObject, ObjectNotFound):
             return None
     select_object = deprecated('[3.6] use select_or_none instead of select_object'
                                )(select_or_none)
+
+    def selectable(self, oid, *args, **kwargs):
+        """return all appobjects having the given oid that are
+        selectable against the given context, in score order
+        """
+        objects = []
+        for appobject in self[oid]:
+            score = appobject.__select__(appobject, *args, **kwargs)
+            if score > 0:
+                objects.append((score, appobject))
+        return [obj(*args, **kwargs)
+                for _score, obj in sorted(objects)]
 
     def possible_objects(self, *args, **kwargs):
         """return an iterator on possible objects in this registry for the given
@@ -465,7 +477,7 @@ class VRegistry(dict):
         self.load_module(module)
 
     def load_module(self, module):
-        self.info('loading %s', module)
+        self.info('loading %s from %s', module.__name__, module.__file__)
         if hasattr(module, 'registration_callback'):
             module.registration_callback(self)
         else:
