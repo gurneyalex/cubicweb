@@ -545,6 +545,26 @@ class QuerierTC(BaseQuerierTC):
         self.assertEqual(rset.rows[0][0], 'ADMIN')
         self.assertEqual(rset.description, [('String',)])
 
+    def test_select_float_abs(self):
+        # test positive number
+        eid = self.execute('INSERT Affaire A: A invoiced %(i)s', {'i': 1.2})[0][0]
+        rset = self.execute('Any ABS(I) WHERE X eid %(x)s, X invoiced I', {'x': eid})
+        self.assertEqual(rset.rows[0][0], 1.2)
+        # test negative number
+        eid = self.execute('INSERT Affaire A: A invoiced %(i)s', {'i': -1.2})[0][0]
+        rset = self.execute('Any ABS(I) WHERE X eid %(x)s, X invoiced I', {'x': eid})
+        self.assertEqual(rset.rows[0][0], 1.2)
+
+    def test_select_int_abs(self):
+        # test positive number
+        eid = self.execute('INSERT Affaire A: A duration %(d)s', {'d': 12})[0][0]
+        rset = self.execute('Any ABS(D) WHERE X eid %(x)s, X duration D', {'x': eid})
+        self.assertEqual(rset.rows[0][0], 12)
+        # test negative number
+        eid = self.execute('INSERT Affaire A: A duration %(d)s', {'d': -12})[0][0]
+        rset = self.execute('Any ABS(D) WHERE X eid %(x)s, X duration D', {'x': eid})
+        self.assertEqual(rset.rows[0][0], 12)
+
 ##     def test_select_simplified(self):
 ##         ueid = self.session.user.eid
 ##         rset = self.execute('Any L WHERE %s login L'%ueid)
