@@ -295,12 +295,15 @@ class CubicWebTC(TestCase):
     def set_debug(self, debugmode):
         server.set_debug(debugmode)
 
+    def debugged(self, debugmode):
+        return server.debugged(debugmode)
+
     # default test setup and teardown #########################################
 
     def setUp(self):
         # monkey patch send mail operation so emails are sent synchronously
-        self._old_mail_commit_event = SendMailOp.commit_event
-        SendMailOp.commit_event = SendMailOp.sendmails
+        self._old_mail_postcommit_event = SendMailOp.postcommit_event
+        SendMailOp.postcommit_event = SendMailOp.sendmails
         pause_tracing()
         previous_failure = self.__class__.__dict__.get('_repo_init_failed')
         if previous_failure is not None:
@@ -322,7 +325,7 @@ class CubicWebTC(TestCase):
         for cnx in self._cnxs:
             if not cnx._closed:
                 cnx.close()
-        SendMailOp.commit_event = self._old_mail_commit_event
+        SendMailOp.postcommit_event = self._old_mail_postcommit_event
 
     def setup_database(self):
         """add your database setup code by overriding this method"""
@@ -514,7 +517,7 @@ class CubicWebTC(TestCase):
     def list_boxes_for(self, rset):
         """returns the list of boxes that can be applied on `rset`"""
         req = rset.req
-        for box in self.vreg['boxes'].possible_objects(req, rset=rset):
+        for box in self.vreg['ctxcomponents'].possible_objects(req, rset=rset):
             yield box
 
     def list_startup_views(self):
@@ -968,7 +971,8 @@ class AutoPopulateTest(CubicWebTC):
         for action in self.list_actions_for(rset):
             yield InnerTest(self._testname(rset, action.__regid__, 'action'), self._test_action, action)
         for box in self.list_boxes_for(rset):
-            yield InnerTest(self._testname(rset, box.__regid__, 'box'), box.render)
+            w = [].append
+            yield InnerTest(self._testname(rset, box.__regid__, 'box'), box.render, w)
 
     @staticmethod
     def _testname(rset, objid, objtype):
