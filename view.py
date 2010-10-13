@@ -170,7 +170,6 @@ class View(AppObject):
         else:
             view_func = self.call
         stream = self.set_stream(w)
-        # stream = self.set_stream(context)
         view_func(**context)
         # return stream content if we have created it
         if stream is not None:
@@ -319,21 +318,11 @@ class View(AppObject):
             clabel = vtitle
         return u'%s (%s)' % (clabel, self._cw.property_value('ui.site-title'))
 
-    def output_url_builder( self, name, url, args ):
-        self.w(u'<script language="JavaScript"><!--\n' \
-               u'function %s( %s ) {\n' % (name, ','.join(args) ) )
-        url_parts = url.split("%s")
-        self.w(u' url="%s"' % url_parts[0] )
-        for arg, part in zip(args, url_parts[1:]):
-            self.w(u'+str(%s)' % arg )
-            if part:
-                self.w(u'+"%s"' % part)
-        self.w('\n document.window.href=url;\n')
-        self.w('}\n-->\n</script>\n')
-
+    @deprecated('[3.10] use vreg["etypes"].etype_class(etype).cw_create_url(req)')
     def create_url(self, etype, **kwargs):
         """ return the url of the entity creation form for a given entity type"""
-        return self._cw.build_url('add/%s' % etype, **kwargs)
+        return self._cw.vreg["etypes"].etype_class(etype).cw_create_url(
+            self._cw, **kwargs)
 
     def field(self, label, value, row=True, show_label=True, w=None, tr=True,
               table=False):
@@ -514,8 +503,13 @@ class ReloadableMixIn(object):
 
     build_js = build_update_js_call # expect updatable component by default
 
+    @property
+    def domid(self):
+        return domid(self.__regid__)
+
+    @deprecated('[3.10] use .domid property')
     def div_id(self):
-        return ''
+        return self.domid
 
 
 class Component(ReloadableMixIn, View):
@@ -523,14 +517,20 @@ class Component(ReloadableMixIn, View):
     __registry__ = 'components'
     __select__ = yes()
 
-    # XXX huummm, much probably useless
+    # XXX huummm, much probably useless (should be...)
     htmlclass = 'mainRelated'
-    def div_class(self):
-        return '%s %s' % (self.htmlclass, self.__regid__)
+    @property
+    def cssclass(self):
+        return '%s %s' % (self.htmlclass, domid(self.__regid__))
 
-    # XXX a generic '%s%s' % (self.__regid__, self.__registry__.capitalize()) would probably be nicer
-    def div_id(self):
-        return '%sComponent' % self.__regid__
+    # XXX should rely on ReloadableMixIn.domid
+    @property
+    def domid(self):
+        return '%sComponent' % domid(self.__regid__)
+
+    @deprecated('[3.10] use .cssclass property')
+    def div_class(self):
+        return self.cssclass
 
 
 class Adapter(AppObject):
