@@ -25,7 +25,7 @@ from cubicweb.appobject import objectify_selector
 from cubicweb.selectors import (non_final_entity, multi_lines_rset,
                                 match_context_prop, yes, relation_possible)
 from cubicweb.utils import json_dumps
-from cubicweb.web.box import BoxTemplate
+from cubicweb.web import component
 from cubicweb.web.facet import (AbstractFacet, FacetStringWidget, RelationFacet,
                                 prepare_facets_rqlst, filter_hiddens, _cleanup_rqlst,
                                 _prepare_vocabulary_rqlst)
@@ -38,14 +38,13 @@ def contextview_selector(cls, req, rset=None, row=None, col=None, view=None,
     return 0
 
 
-class FilterBox(BoxTemplate):
+class FilterBox(component.CtxComponent):
     """filter results of a query"""
-    __regid__ = 'filter_box'
-    __select__ = (((non_final_entity() & multi_lines_rset())
-                   | contextview_selector()
-                   ) & match_context_prop())
-    context = 'left'
-    title = _('boxes_filter_box')
+    __regid__ = 'facet.filters'
+    __select__ = ((non_final_entity() & multi_lines_rset())
+                  | contextview_selector())
+    context = 'left' # XXX doesn't support 'incontext', only 'left' or 'right'
+    title = _('facet.filters')
     visible = True # functionality provided by the search box by default
     order = 1
     roundcorners = True
@@ -61,7 +60,8 @@ class FilterBox(BoxTemplate):
         """
         return {}
 
-    def _get_context(self, view):
+    def _get_context(self):
+        view = self.cw_extra_kwargs.get('view')
         context = getattr(view, 'filter_box_context_info', lambda: None)()
         if context:
             rset, vid, divid, paginate = context
@@ -71,14 +71,15 @@ class FilterBox(BoxTemplate):
             paginate = view and view.paginable
         return rset, vid, divid, paginate
 
-    def call(self, view=None):
+    def render(self, w, **kwargs):
         req = self._cw
         req.add_js( self.needs_js )
         req.add_css( self.needs_css)
         if self.roundcorners:
             req.html_headers.add_onload('jQuery(".facet").corner("tl br 10px");')
-        rset, vid, divid, paginate = self._get_context(view)
-        if rset.rowcount < 2: # XXX done by selectors, though maybe necessary when rset has been hijacked
+        rset, vid, divid, paginate = self._get_context()
+        # XXX done by selectors, though maybe necessary when rset has been hijacked
+        if rset.rowcount < 2:
             return
         rqlst = rset.syntax_tree()
         # union not yet supported
@@ -97,9 +98,8 @@ class FilterBox(BoxTemplate):
             return
         if vid is None:
             vid = req.form.get('vid')
-        if self.bk_linkbox_template:
-            self.display_bookmark_link(rset)
-        w = self.w
+        if self.bk_linkbox_template and req.vreg.schema['Bookmark'].has_perm(req, 'add'):
+            w(self.bookmark_link(rset))
         w(u'<form method="post" id="%sForm" cubicweb:facetargs="%s" action="">'  % (
             divid, xml_escape(json_dumps([divid, vid, paginate, self.facetargs()]))))
         w(u'<fieldset>')
@@ -110,25 +110,25 @@ class FilterBox(BoxTemplate):
                 hiddens[param] = req.form[param]
         filter_hiddens(w, **hiddens)
         for wdg in widgets:
-            wdg.render(w=self.w)
+            wdg.render(w=w)
         w(u'</fieldset>\n</form>\n')
 
-    def display_bookmark_link(self, rset):
-        eschema = self._cw.vreg.schema.eschema('Bookmark')
-        if eschema.has_perm(self._cw, 'add'):
-            bk_path = 'rql=%s' % self._cw.url_quote(rset.printable_rql())
-            if self._cw.form.get('vid'):
-                bk_path += '&vid=%s' % self._cw.url_quote(self._cw.form['vid'])
-            bk_path = 'view?' + bk_path
-            bk_title = self._cw._('my custom search')
-            linkto = 'bookmarked_by:%s:subject' % self._cw.user.eid
-            bk_add_url = self._cw.build_url('add/Bookmark', path=bk_path, title=bk_title, __linkto=linkto)
-            bk_base_url = self._cw.build_url('add/Bookmark', title=bk_title, __linkto=linkto)
-            bk_link = u'<a cubicweb:target="%s" id="facetBkLink" href="%s">%s</a>' % (
-                    xml_escape(bk_base_url),
-                    xml_escape(bk_add_url),
-                    self._cw._('bookmark this search'))
-            self.w(self.bk_linkbox_template % bk_link)
+    def bookmark_link(self, rset):
+        req = self._cw
+        bk_path = u'rql=%s' % req.url_quote(rset.printable_rql())
+        if req.form.get('vid'):
+            bk_path += u'&vid=%s' % req.url_quote(req.form['vid'])
+        bk_path = u'view?' + bk_path
+        bk_title = req._('my custom search')
+        linkto = u'bookmarked_by:%s:subject' % req.user.eid
+        bkcls = req.vreg['etypes'].etype_class('Bookmark')
+        bk_add_url = bkcls.cw_create_url(req, path=bk_path, title=bk_title,
+                                         __linkto=linkto)
+        bk_base_url = bkcls.cw_create_url(req, title=bk_title, __linkto=linkto)
+        bk_link = u'<a cubicweb:target="%s" id="facetBkLink" href="%s">%s</a>' % (
+                xml_escape(bk_base_url), xml_escape(bk_add_url),
+                req._('bookmark this search'))
+        return self.bk_linkbox_template % bk_link
 
     def get_facets(self, rset, rqlst, mainvar):
         return self._cw.vreg['facets'].poss_visible_objects(
@@ -136,6 +136,11 @@ class FilterBox(BoxTemplate):
             context='facetbox', filtered_variable=mainvar)
 
 # facets ######################################################################
+
+class CWSourceFacet(RelationFacet):
+    __regid__ = 'cw_source-facet'
+    rtype = 'cw_source'
+    target_attr = 'name'
 
 class CreatedByFacet(RelationFacet):
     __regid__ = 'created_by-facet'

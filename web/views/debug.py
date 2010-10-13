@@ -119,10 +119,15 @@ class ProcessInformationView(StartupView):
             if sessions:
                 w(u'<ul>')
                 for session in sessions:
+                    try:
+                        last_usage_time = session.cnx.check()
+                    except BadConnectionId:
+                        w(u'<li>%s (INVALID)</li>' % session.sessionid)
+                        continue
                     w(u'<li>%s (%s: %s)<br/>' % (
                         session.sessionid,
                         _('last usage'),
-                        strftime(dtformat, localtime(session.last_usage_time))))
+                        strftime(dtformat, localtime(last_usage_time))))
                     dict_to_html(w, session.data)
                     w(u'</li>')
                 w(u'</ul>')
@@ -145,6 +150,8 @@ class RegistryView(StartupView):
         self.w(u'<p>%s</p>\n' % ' - '.join('<a href="%s#%s">%s</a>'
                                            % (url, key, key) for key in keys))
         for key in keys:
+            if key in ('boxes', 'contentnavigation'): # those are bw compat registries
+                continue
             self.w(u'<h2 id="%s">%s</h2>' % (key, key))
             if self._cw.vreg[key]:
                 values = sorted(self._cw.vreg[key].iteritems())

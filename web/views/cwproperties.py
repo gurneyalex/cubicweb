@@ -45,7 +45,7 @@ _('navigation')
 _('ui')
 _('boxes')
 _('components')
-_('contentnavigation')
+_('ctxcomponents')
 _('navigation.combobox-limit')
 _('navigation.page-size')
 _('navigation.related-limit')
@@ -200,8 +200,8 @@ class SystemCWPropertiesForm(FormViewMixIn, StartupView):
         else:
             entity = self._cw.vreg['etypes'].etype_class('CWProperty')(self._cw)
             entity.eid = self._cw.varmaker.next()
-            entity['pkey'] = key
-            entity['value'] = self._cw.vreg.property_value(key)
+            entity.cw_attr_cache['pkey'] = key
+            entity.cw_attr_cache['value'] = self._cw.vreg.property_value(key)
         return entity
 
     def form(self, formid, keys, splitlabel=False):
@@ -219,7 +219,9 @@ class SystemCWPropertiesForm(FormViewMixIn, StartupView):
             self.form_row(form, key, splitlabel)
         renderer = self._cw.vreg['formrenderers'].select('cwproperties', self._cw,
                                                      display_progress_div=False)
-        return form.render(renderer=renderer)
+        data = []
+        form.render(w=data.append, renderer=renderer)
+        return u'\n'.join(data)
 
     def form_row(self, form, key, splitlabel):
         entity = self.entity_for_key(key)
@@ -329,7 +331,7 @@ class PropertyValueField(StringField):
 
     def form_init(self, form):
         entity = form.edited_entity
-        if not (entity.has_eid() or 'pkey' in entity):
+        if not (entity.has_eid() or 'pkey' in entity.cw_attr_cache):
             # no key set yet, just include an empty div which will be filled
             # on key selection
             return
@@ -353,7 +355,7 @@ class PropertyValueField(StringField):
         if vocab is not None:
             if callable(vocab):
                 # list() just in case its a generator function
-                self.choices = list(vocab(form._cw))
+                self.choices = list(vocab())
             else:
                 self.choices = vocab
             wdg = Select()
