@@ -826,40 +826,30 @@ class AutomaticEntityForm(forms.EntityFieldsForm):
                              'dunno what to do', rschema)
                 continue
             ttype = ttypes[0].type
-            if self.should_inline_relation_form(rschema, ttype, role):
-                formviews = list(self.inline_edition_form_view(rschema, ttype, role))
-                card = rschema.role_rdef(entity.e_schema, ttype, role).role_cardinality(role)
-                # there is no related entity and we need at least one: we need to
-                # display one explicit inline-creation view
-                if self.should_display_inline_creation_form(rschema, formviews, card):
-                    formviews += self.inline_creation_form_view(rschema, ttype, role)
-                # we can create more than one related entity, we thus display a link
-                # to add new related entities
-                if self.should_display_add_new_relation_link(rschema, formviews, card):
-                    addnewlink = self._cw.vreg['views'].select(
-                        'inline-addnew-link', self._cw,
-                        etype=ttype, rtype=rschema, role=role, card=card,
-                        peid=self.edited_entity.eid,
-                        petype=self.edited_entity.e_schema, pform=self)
-                    formviews.append(addnewlink)
-                allformviews += formviews
+            formviews = list(self.inline_edition_form_view(rschema, ttype, role))
+            card = rschema.role_rdef(entity.e_schema, ttype, role).role_cardinality(role)
+            # there is no related entity and we need at least one: we need to
+            # display one explicit inline-creation view
+            if self.should_display_inline_creation_form(rschema, formviews, card):
+                formviews += self.inline_creation_form_view(rschema, ttype, role)
+            # we can create more than one related entity, we thus display a link
+            # to add new related entities
+            if self.should_display_add_new_relation_link(rschema, formviews, card):
+                addnewlink = self._cw.vreg['views'].select(
+                    'inline-addnew-link', self._cw,
+                    etype=ttype, rtype=rschema, role=role, card=card,
+                    peid=self.edited_entity.eid,
+                    petype=self.edited_entity.e_schema, pform=self)
+                formviews.append(addnewlink)
+            allformviews += formviews
         return allformviews
-
-    def should_inline_relation_form(self, rschema, targettype, role):
-        """return true if the given relation with entity has role and a
-        targettype target should be inlined
-
-        At this point we now relation has inlined_attributes tag (eg is returned
-        by `inlined_relations()`. Overrides this for more finer control.
-        """
-        return True
 
     def should_display_inline_creation_form(self, rschema, existant, card):
         """return true if a creation form should be inlined
 
         by default true if there is no related entity and we need at least one
         """
-        return not existant and card in '1+' or self._cw.form.has_key('force_%s_display' % rschema)
+        return not existant and card in '1+'
 
     def should_display_add_new_relation_link(self, rschema, existant, card):
         """return true if we should add a link to add a new creation form
@@ -911,13 +901,12 @@ class AutomaticEntityForm(forms.EntityFieldsForm):
 _AFS.tag_attribute(('*', 'eid'), 'main', 'attributes')
 _AFS.tag_attribute(('*', 'eid'), 'muledit', 'attributes')
 _AFS.tag_attribute(('*', 'description'), 'main', 'attributes')
-_AFS.tag_attribute(('*', 'creation_date'), 'main', 'metadata')
-_AFS.tag_attribute(('*', 'modification_date'), 'main', 'metadata')
-_AFS.tag_attribute(('*', 'cwuri'), 'main', 'metadata')
 _AFS.tag_attribute(('*', 'has_text'), 'main', 'hidden')
 _AFS.tag_subject_of(('*', 'in_state', '*'), 'main', 'hidden')
-_AFS.tag_subject_of(('*', 'owned_by', '*'), 'main', 'metadata')
-_AFS.tag_subject_of(('*', 'created_by', '*'), 'main', 'metadata')
+for rtype in ('creation_date', 'modification_date', 'cwuri',
+              'owned_by', 'created_by', 'cw_source'):
+    _AFS.tag_subject_of(('*', rtype, '*'), 'main', 'metadata')
+
 _AFS.tag_subject_of(('*', 'require_permission', '*'), 'main', 'hidden')
 _AFS.tag_subject_of(('*', 'by_transition', '*'), 'main', 'attributes')
 _AFS.tag_subject_of(('*', 'by_transition', '*'), 'muledit', 'attributes')

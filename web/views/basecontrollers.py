@@ -26,7 +26,7 @@ from logilab.common.date import strptime
 
 from cubicweb import (NoSelectableObject, ObjectNotFound, ValidationError,
                       AuthenticationError, typed_eid)
-from cubicweb.utils import json, json_dumps
+from cubicweb.utils import UStringIO, json, json_dumps
 from cubicweb.selectors import authenticated_user, anonymous_user, match_form_params
 from cubicweb.mail import format_mail
 from cubicweb.web import Redirect, RemoteCallFailed, DirectResponse
@@ -130,16 +130,6 @@ class ViewController(Controller):
                 rset = self.process_rql()
             else:
                 rset = None
-        if rset and rset.rowcount == 1 and '__method' in req.form:
-            entity = rset.get_entity(0, 0)
-            try:
-                method = getattr(entity, req.form.pop('__method'))
-                method()
-            except Redirect: # propagate redirect that might occur in method()
-                raise
-            except Exception, ex:
-                self.exception('while handling __method')
-                req.set_message(req._("error while handling __method: %s") % req._(ex))
         vid = req.form.get('vid') or vid_from_rset(req, rset, self._cw.vreg.schema)
         try:
             view = self._cw.vreg['views'].select(vid, req, rset=rset)
@@ -345,9 +335,14 @@ class JSonController(Controller):
         return None
 
     def _call_view(self, view, paginate=False, **kwargs):
-        # set stream first, in case we need to call pagination
-        stream = view.set_stream()
         divid = self._cw.form.get('divid')
+        # we need to call pagination before with the stream set
+        try:
+            stream = view.set_stream()
+        except AttributeError:
+            stream = UStringIO()
+            kwargs['w'] = stream.write
+            assert not paginate
         if divid == 'pageContent':
             # ensure divid isn't reused by the view (e.g. table view)
             del self._cw.form['divid']

@@ -25,10 +25,11 @@ from warnings import warn
 from logilab.mtconverter import xml_escape
 
 from cubicweb import Unauthorized, NoSelectableObject
-from cubicweb.selectors import match_kwargs
+from cubicweb.utils import support_args
+from cubicweb.selectors import match_kwargs, match_context
 from cubicweb.view import EntityView
-from cubicweb.schema import VIRTUAL_RTYPES, display_name
-from cubicweb.web import uicfg
+from cubicweb.schema import META_RTYPES, VIRTUAL_RTYPES, display_name
+from cubicweb.web import uicfg, component
 
 
 class PrimaryView(EntityView):
@@ -88,7 +89,7 @@ class PrimaryView(EntityView):
 
     def content_navigation_components(self, context):
         self.w(u'<div class="%s">' % context)
-        for comp in self._cw.vreg['contentnavigation'].poss_visible_objects(
+        for comp in self._cw.vreg['ctxcomponents'].poss_visible_objects(
             self._cw, rset=self.cw_rset, row=self.cw_row, view=self, context=context):
             try:
                 comp.render(w=self.w, row=self.cw_row, view=self)
@@ -142,20 +143,20 @@ class PrimaryView(EntityView):
         if display_attributes:
             self.w(u'<table>')
             for rschema, role, dispctrl, value in display_attributes:
-                try:
-                    self._render_attribute(dispctrl, rschema, value,
-                                           role=role, table=True)
+                if not hasattr(self, '_render_attribute'):
+                    label = self._rel_label(entity, rschema, role, dispctrl)
+                    self.render_attribute(label, value, table=True)
+                elif support_args(self._render_attribute, 'dispctrl'):
                     warn('[3.9] _render_attribute prototype has changed and '
                          'renamed to render_attribute, please update %s'
                          % self.__class___, DeprecationWarning)
-                except TypeError:
+                    self._render_attribute(dispctrl, rschema, value, role=role,
+                                           table=True)
+                else:
                     self._render_attribute(rschema, value, role=role, table=True)
                     warn('[3.6] _render_attribute prototype has changed and '
                          'renamed to render_attribute, please update %s'
                          % self.__class___, DeprecationWarning)
-                except AttributeError:
-                    label = self._rel_label(entity, rschema, role, dispctrl)
-                    self.render_attribute(label, value, table=True)
             self.w(u'</table>')
 
     def render_attribute(self, label, value, table=False):
@@ -179,12 +180,12 @@ class PrimaryView(EntityView):
                 if not rset:
                     continue
                 if hasattr(self, '_render_relation'):
-                    try:
+                    if not support_args(self._render_relation, 'showlabel'):
                         self._render_relation(dispctrl, rset, 'autolimited')
                         warn('[3.9] _render_relation prototype has changed and has '
                              'been renamed to render_relation, please update %s'
                              % self.__class__, DeprecationWarning)
-                    except TypeError:
+                    else:
                         self._render_relation(rset, dispctrl, 'autolimited',
                                               self.show_rel_label)
                         warn('[3.6] _render_relation prototype has changed and has '
@@ -217,42 +218,45 @@ class PrimaryView(EntityView):
                 try:
                     label, rset, vid, dispctrl  = box
                 except ValueError:
-                    warn('[3.5] box views should now be defined as a 4-uple (label, rset, vid, dispctrl), '
-                         'please update %s' % self.__class__.__name__,
-                         DeprecationWarning)
                     label, rset, vid = box
                     dispctrl = {}
+                warn('[3.10] box views should now be a RsetBox instance, '
+                     'please update %s' % self.__class__.__name__,
+                     DeprecationWarning)
                 self.w(u'<div class="sideBox">')
                 self.wview(vid, rset, title=label, initargs={'dispctrl': dispctrl})
                 self.w(u'</div>')
             else:
-                try:
-                    box.render(w=self.w, row=self.cw_row)
-                except NotImplementedError:
-                    # much probably a context insensitive box, which only implements
-                    # .call() and not cell_call()
+                 try:
+                     box.render(w=self.w, row=self.cw_row)
+                 except NotImplementedError:
+                    # much probably a context insensitive box, which only
+                    # implements .call() and not cell_call()
+                    # XXX shouldn't occurs with the new box system
                     box.render(w=self.w)
 
     def _prepare_side_boxes(self, entity):
         sideboxes = []
+        boxesreg = self._cw.vreg['ctxcomponents']
         for rschema, tschemas, role, dispctrl in self._section_def(entity, 'sideboxes'):
             rset = self._relation_rset(entity, rschema, role, dispctrl)
             if not rset:
                 continue
-            label = display_name(self._cw, rschema.type, role)
-            vid = dispctrl.get('vid', 'sidebox')
-            sideboxes.append( (label, rset, vid, dispctrl) )
-        sideboxes += self._cw.vreg['boxes'].poss_visible_objects(
-            self._cw, rset=self.cw_rset, row=self.cw_row, view=self,
-            context='incontext')
+            label = self._rel_label(entity, rschema, role, dispctrl)
+            vid = dispctrl.get('vid', 'autolimited')
+            box = boxesreg.select('rsetbox', self._cw, rset=rset,
+                                  vid=vid, title=label, dispctrl=dispctrl,
+                                  context='incontext')
+            sideboxes.append(box)
+        sideboxes += boxesreg.poss_visible_objects(
+             self._cw, rset=self.cw_rset, row=self.cw_row, view=self,
+             context='incontext')
         # XXX since we've two sorted list, it may be worth using bisect
         def get_order(x):
-            if isinstance(x, tuple):
-                # x is a view box (label, rset, vid, dispctrl)
-                # default to 1000 so view boxes occurs after component boxes
-                return x[-1].get('order', 1000)
-            # x is a component box
-            return x.cw_propval('order')
+            if 'order' in x.cw_property_defs:
+                return x.cw_propval('order')
+            # default to 9999 so view boxes occurs after component boxes
+            return x.cw_extra_kwargs.get('dispctrl', {}).get('order', 9999)
         return sorted(sideboxes, key=get_order)
 
     def _section_def(self, entity, where):
@@ -379,11 +383,19 @@ class AttributeView(EntityView):
                 self.wview('autolimited', rset, initargs={'dispctrl': dispctrl})
 
 
+
+class ToolbarLayout(component.Layout):
+    __select__ = match_context('ctxtoolbar')
+
+    def render(self, w):
+        if self.init_rendering():
+            self.cw_extra_kwargs['view'].render_body(w)
+
 ## default primary ui configuration ###########################################
 
 _pvs = uicfg.primaryview_section
-for rtype in ('eid', 'creation_date', 'modification_date', 'cwuri',
-              'is', 'is_instance_of', 'identity', 'owned_by', 'created_by',
-              'require_permission', 'see_also'):
+for rtype in META_RTYPES:
     _pvs.tag_subject_of(('*', rtype, '*'), 'hidden')
     _pvs.tag_object_of(('*', rtype, '*'), 'hidden')
+_pvs.tag_subject_of(('*', 'require_permission', '*'), 'hidden')
+_pvs.tag_object_of(('*', 'require_permission', '*'), 'hidden')
