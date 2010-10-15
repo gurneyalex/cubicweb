@@ -18,13 +18,17 @@
 """unit tests for module cubicweb.server.migractions
 """
 
+from __future__ import with_statement
+
 from copy import deepcopy
 from datetime import date
 from os.path import join
 
 from logilab.common.testlib import TestCase, unittest_main
 
-from cubicweb import ConfigurationError
+from yams.constraints import UniqueConstraint
+
+from cubicweb import ConfigurationError, ValidationError
 from cubicweb.devtools.testlib import CubicWebTC
 from cubicweb.schema import CubicWebSchemaLoader
 from cubicweb.server.sqlutils import SQL_PREFIX
@@ -130,6 +134,29 @@ class MigrationCommandsTC(CubicWebTC):
         self.assertEqual(d2, testdate)
         self.mh.rollback()
 
+    def test_drop_chosen_constraints_ctxmanager(self):
+        with self.mh.cmd_dropped_constraints('Note', 'unique_id', UniqueConstraint):
+            self.mh.cmd_add_attribute('Note', 'unique_id')
+            # make sure the maxsize constraint is not dropped
+            self.assertRaises(ValidationError,
+                              self.mh.rqlexec,
+                              'INSERT Note N: N unique_id "xyz"')
+            self.mh.rollback()
+            # make sure the unique constraint is dropped
+            self.mh.rqlexec('INSERT Note N: N unique_id "x"')
+            self.mh.rqlexec('INSERT Note N: N unique_id "x"')
+            self.mh.rqlexec('DELETE Note N')
+        self.mh.rollback()
+
+    def test_drop_required_ctxmanager(self):
+        with self.mh.cmd_dropped_constraints('Note', 'unique_id', cstrtype=None,
+                                             droprequired=True):
+            self.mh.cmd_add_attribute('Note', 'unique_id')
+            self.mh.rqlexec('INSERT Note N')
+        # make sure the required=True was restored
+        self.assertRaises(ValidationError, self.mh.rqlexec, 'INSERT Note N')
+        self.mh.rollback()
+
     def test_rename_attribute(self):
         self.failIf('civility' in self.schema)
         eid1 = self.mh.rqlexec('INSERT Personne X: X nom "lui", X sexe "M"')[0][0]
@@ -164,7 +191,7 @@ class MigrationCommandsTC(CubicWebTC):
         self.failUnless(self.execute('CWRType X WHERE X name "filed_under2"'))
         self.schema.rebuild_infered_relations()
         self.assertEqual(sorted(str(rs) for rs in self.schema['Folder2'].subject_relations()),
-                          ['created_by', 'creation_date', 'cwuri',
+                          ['created_by', 'creation_date', 'cw_source', 'cwuri',
                            'description', 'description_format',
                            'eid',
                            'filed_under2', 'has_text',
@@ -309,7 +336,7 @@ class MigrationCommandsTC(CubicWebTC):
         migrschema['titre'].rdefs[('Personne', 'String')].description = 'title for this person'
         delete_concerne_rqlexpr = self._rrqlexpr_rset('delete', 'concerne')
         add_concerne_rqlexpr = self._rrqlexpr_rset('add', 'concerne')
-        
+
         self.mh.cmd_sync_schema_props_perms(commit=False)
 
         self.assertEqual(cursor.execute('Any D WHERE X name "Personne", X description D')[0][0],
@@ -524,7 +551,7 @@ class MigrationCommandsTC(CubicWebTC):
         self.assertEqual(self.schema['Text'].specializes().type, 'Para')
         # test columns have been actually added
         text = self.execute('INSERT Text X: X para "hip", X summary "hop", X newattr "momo"').get_entity(0, 0)
-        note = self.execute('INSERT Note X: X para "hip", X shortpara "hop", X newattr "momo"').get_entity(0, 0)
+        note = self.execute('INSERT Note X: X para "hip", X shortpara "hop", X newattr "momo", X unique_id "x"').get_entity(0, 0)
         aff = self.execute('INSERT Affaire X').get_entity(0, 0)
         self.failUnless(self.execute('SET X newnotinlined Y WHERE X eid %(x)s, Y eid %(y)s',
                                      {'x': text.eid, 'y': aff.eid}))

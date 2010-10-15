@@ -81,10 +81,11 @@ from logilab.common.decorators import cached
 from logilab.common.deprecation import deprecated
 
 from cubicweb.server.utils import eschema_eid
+from cubicweb.server.ssplanner import EditedEntity
 
 def count_lines(stream_or_filename):
     if isinstance(stream_or_filename, basestring):
-        f = open(filename)
+        f = open(stream_or_filename)
     else:
         f = stream_or_filename
         f.seek(0)
@@ -97,8 +98,8 @@ def ucsvreader_pb(stream_or_path, encoding='utf-8', separator=',', quote='"',
                   skipfirst=False, withpb=True):
     """same as ucsvreader but a progress bar is displayed as we iter on rows"""
     if isinstance(stream_or_path, basestring):
-        if not osp.exists(filepath):
-            raise Exception("file doesn't exists: %s" % filepath)
+        if not osp.exists(stream_or_path):
+            raise Exception("file doesn't exists: %s" % stream_or_path)
         stream = open(stream_or_path)
     else:
         stream = stream_or_path
@@ -420,7 +421,6 @@ class RQLObjectStore(ObjectStore):
         ObjectStore.__init__(self)
         if session is None:
             sys.exit('please provide a session of run this script with cubicweb-ctl shell and pass cnx as session')
-            session = cnx
         if not hasattr(session, 'set_pool'):
             # connection
             cnx = session
@@ -612,8 +612,7 @@ class NoHookRQLObjectStore(RQLObjectStore):
         entity = copy(entity)
         entity.cw_clear_relation_cache()
         self.metagen.init_entity(entity)
-        entity.update(kwargs)
-        entity.edited_attributes = set(entity)
+        entity.cw_edited.update(kwargs, skipsec=False)
         session = self.session
         self.source.add_entity(session, entity)
         self.source.add_info(session, entity, self.source, None, complete=False)
@@ -651,6 +650,11 @@ class NoHookRQLObjectStore(RQLObjectStore):
 
 
 class MetaGenerator(object):
+    META_RELATIONS = (META_RTYPES
+                      - VIRTUAL_RTYPES
+                      - set(('eid', 'cwuri',
+                             'is', 'is_instance_of', 'cw_source')))
+
     def __init__(self, session, baseurl=None):
         self.session = session
         self.source = session.repo.system_source
@@ -669,25 +673,20 @@ class MetaGenerator(object):
         #self.entity_rels = [] XXX not handled (YAGNI?)
         schema = session.vreg.schema
         rschema = schema.rschema
-        for rtype in META_RTYPES:
-            if rtype in ('eid', 'cwuri') or rtype in VIRTUAL_RTYPES:
-                continue
+        for rtype in self.META_RELATIONS:
             if rschema(rtype).final:
                 self.etype_attrs.append(rtype)
             else:
                 self.etype_rels.append(rtype)
-        if not schema._eid_index:
-            # test schema loaded from the fs
-            self.gen_is = self.test_gen_is
-            self.gen_is_instance_of = self.test_gen_is_instanceof
 
     @cached
     def base_etype_dicts(self, etype):
         entity = self.session.vreg['etypes'].etype_class(etype)(self.session)
         # entity are "surface" copied, avoid shared dict between copies
         del entity.cw_extra_kwargs
+        entity.cw_edited = EditedEntity(entity)
         for attr in self.etype_attrs:
-            entity[attr] = self.generate(entity, attr)
+            entity.cw_edited.attribute_edited(attr, self.generate(entity, attr))
         rels = {}
         for rel in self.etype_rels:
             rels[rel] = self.generate(entity, rel)
@@ -696,7 +695,7 @@ class MetaGenerator(object):
     def init_entity(self, entity):
         entity.eid = self.source.create_eid(self.session)
         for attr in self.entity_attrs:
-            entity[attr] = self.generate(entity, attr)
+            entity.cw_edited.attribute_edited(attr, self.generate(entity, attr))
 
     def generate(self, entity, rtype):
         return getattr(self, 'gen_%s' % rtype)(entity)
@@ -709,26 +708,7 @@ class MetaGenerator(object):
     def gen_modification_date(self, entity):
         return self.time
 
-    def gen_is(self, entity):
-        return entity.e_schema.eid
-    def gen_is_instance_of(self, entity):
-        eids = []
-        for etype in entity.e_schema.ancestors() + [entity.e_schema]:
-            eids.append(entity.e_schema.eid)
-        return eids
-
     def gen_created_by(self, entity):
         return self.session.user.eid
     def gen_owned_by(self, entity):
         return self.session.user.eid
-
-    # implementations of gen_is / gen_is_instance_of to use during test where
-    # schema has been loaded from the fs (hence entity type schema eids are not
-    # known)
-    def test_gen_is(self, entity):
-        return eschema_eid(self.session, entity.e_schema)
-    def test_gen_is_instanceof(self, entity):
-        eids = []
-        for eschema in entity.e_schema.ancestors() + [entity.e_schema]:
-            eids.append(eschema_eid(self.session, eschema))
-        return eids
