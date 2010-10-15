@@ -26,12 +26,7 @@ A resource *mode* is a predifined set of settings for various resources
 directories, such as cubes, instances, etc. to ease development with the
 framework. There are two running modes with *CubicWeb*:
 
-* 'user', resources are searched / created in the user home directory:
-
-  - instances are stored in :file:`~/etc/cubicweb.d`
-  - temporary files (such as pid file) in :file:`/tmp`
-
-* 'system', resources are searched / created in the system directories (eg
+* **system**: resources are searched / created in the system directories (eg
   usually requiring root access):
 
   - instances are stored in :file:`<INSTALL_PREFIX>/etc/cubicweb.d`
@@ -40,28 +35,34 @@ framework. There are two running modes with *CubicWeb*:
   where `<INSTALL_PREFIX>` is the detected installation prefix ('/usr/local' for
   instance).
 
+* **user**: resources are searched / created in the user home directory:
+
+  - instances are stored in :file:`~/etc/cubicweb.d`
+  - temporary files (such as pid file) in :file:`/tmp`
+
+
 
 Notice that each resource path may be explicitly set using an environment
 variable if the default doesn't suit your needs. Here are the default resource
 directories that are affected according to mode:
 
-* 'system': ::
+* **system**: ::
 
         CW_INSTANCES_DIR = <INSTALL_PREFIX>/etc/cubicweb.d/
         CW_INSTANCES_DATA_DIR = /var/lib/cubicweb/instances/
         CW_RUNTIME_DIR = /var/run/cubicweb/
 
-* 'user': ::
+* **user**: ::
 
         CW_INSTANCES_DIR = ~/etc/cubicweb.d/
         CW_INSTANCES_DATA_DIR = ~/etc/cubicweb.d/
         CW_RUNTIME_DIR = /tmp
 
-Cubes search path is also affected, see the :ref:Cube section.
+Cubes search path is also affected, see the :ref:`Cube` section.
 
-By default, the mode automatically set to 'user' if a :file:`.hg` directory is found
-in the cubicweb package, else it's set to 'system'. You can force this by setting
-the :envvar:`CW_MODE` environment variable to either 'user' or 'system' so you can
+By default, the mode automatically set to `user` if a :file:`.hg` directory is found
+in the cubicweb package, else it's set to `system`. You can force this by setting
+the :envvar:`CW_MODE` environment variable to either `user` or `system` so you can
 easily:
 
 * use system wide installation but user specific instances and all, without root
@@ -672,6 +673,7 @@ this option is set to yes",
     def __init__(self, debugmode=False):
         register_stored_procedures()
         ConfigurationMixIn.__init__(self)
+        self._cubes = None
         self.debugmode = debugmode
         self.adjust_sys_path()
         self.load_defaults()
@@ -773,6 +775,31 @@ this option is set to yes",
         as default value
         """
         return None
+
+    _cubes = None
+
+    def init_cubes(self, cubes):
+        assert self._cubes is None, self._cubes
+        self._cubes = self.reorder_cubes(cubes)
+        # load cubes'__init__.py file first
+        for cube in cubes:
+            __import__('cubes.%s' % cube)
+        self.load_site_cubicweb()
+
+    def cubes(self):
+        """return the list of cubes used by this instance
+
+        result is ordered from the top level cubes to inner dependencies
+        cubes
+        """
+        assert self._cubes is not None, 'cubes not initialized'
+        return self._cubes
+
+    def cubes_path(self):
+        """return the list of path to cubes used by this instance, from outer
+        most to inner most cubes
+        """
+        return [self.cube_dir(p) for p in self.cubes()]
 
 
 class CubicWebConfiguration(CubicWebNoAppConfiguration):
@@ -937,7 +964,6 @@ the repository',
     def __init__(self, appid, debugmode=False):
         self.appid = appid
         CubicWebNoAppConfiguration.__init__(self, debugmode)
-        self._cubes = None
         self.load_file_configuration(self.main_config_file())
 
     def adjust_sys_path(self):
@@ -964,32 +990,12 @@ the repository',
         return join(iddir, self.appid)
 
     def init_cubes(self, cubes):
-        assert self._cubes is None, self._cubes
-        self._cubes = self.reorder_cubes(cubes)
-        # load cubes'__init__.py file first
-        for cube in cubes:
-            __import__('cubes.%s' % cube)
-        self.load_site_cubicweb()
+        super(CubicWebConfiguration, self).init_cubes(cubes)
         # reload config file in cases options are defined in cubes __init__
         # or site_cubicweb files
         self.load_file_configuration(self.main_config_file())
         # configuration initialization hook
         self.load_configuration()
-
-    def cubes(self):
-        """return the list of cubes used by this instance
-
-        result is ordered from the top level cubes to inner dependencies
-        cubes
-        """
-        assert self._cubes is not None
-        return self._cubes
-
-    def cubes_path(self):
-        """return the list of path to cubes used by this instance, from outer
-        most to inner most cubes
-        """
-        return [self.cube_dir(p) for p in self.cubes()]
 
     def add_cubes(self, cubes):
         """add given cubes to the list of used cubes"""

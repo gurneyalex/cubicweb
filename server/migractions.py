@@ -41,6 +41,7 @@ from datetime import datetime
 from glob import glob
 from copy import copy
 from warnings import warn
+from contextlib import contextmanager
 
 from logilab.common.deprecation import deprecated
 from logilab.common.decorators import cached, clear_cache
@@ -48,6 +49,7 @@ from logilab.common.testlib import mock_object
 
 from yams.constraints import SizeConstraint
 from yams.schema2sql import eschema2sql, rschema2sql
+from yams.schema import RelationDefinitionSchema
 
 from cubicweb import AuthenticationError, ExecutionError
 from cubicweb.selectors import is_instance
@@ -61,7 +63,7 @@ from cubicweb.server.session import hooks_control
 from cubicweb.server import hook
 try:
     from cubicweb.server import SOURCE_TYPES, schemaserial as ss
-    from cubicweb.server.utils import manager_userpasswd, ask_source_config
+    from cubicweb.server.utils import manager_userpasswd
     from cubicweb.server.sqlutils import sqlexec, SQL_PREFIX
 except ImportError: # LAX
     pass
@@ -640,13 +642,6 @@ class ServerMigrationHelper(MigrationHelper):
         for cube in newcubes:
             self.cmd_set_property('system.version.'+cube,
                                   self.config.cube_version(cube))
-            if cube in SOURCE_TYPES:
-                # don't use config.sources() in case some sources have been
-                # disabled for migration
-                sourcescfg = self.config.read_sources_file()
-                sourcescfg[cube] = ask_source_config(cube)
-                self.config.write_sources_file(sourcescfg)
-                clear_cache(self.config, 'read_sources_file')
             # ensure added cube is in config cubes
             # XXX worth restoring on error?
             if not cube in self.config._cubes:
@@ -958,8 +953,7 @@ class ServerMigrationHelper(MigrationHelper):
                     # get some validation error on commit since integrity hooks
                     # may think some required relation is missing... This also ensure
                     # repository caches are properly cleanup
-                    hook.set_operation(session, 'pendingeids', eid,
-                                       hook.CleanupDeletedEidsCacheOp)
+                    CleanupDeletedEidsCacheOp.get_instance(session).add_data(eid)
                     # and don't forget to remove record from system tables
                     self.repo.system_source.delete_info(
                         session, session.entity_from_eid(eid, rdeftype),
@@ -1116,11 +1110,20 @@ class ServerMigrationHelper(MigrationHelper):
         """synchronize the persistent schema against the current definition
         schema.
 
+        `ertype` can be :
+        - None, in that case everything will be synced ;
+        - a string, it should be an entity type or
+          a relation type. In that case, only the corresponding
+          entities / relations will be synced ;
+        - an rdef object to synchronize only this specific relation definition
+
         It will synch common stuff between the definition schema and the
         actual persistent schema, it won't add/remove any entity or relation.
         """
         assert syncperms or syncprops, 'nothing to do'
         if ertype is not None:
+            if isinstance(ertype, RelationDefinitionSchema):
+                ertype = ertype.as_triple()
             if isinstance(ertype, (tuple, list)):
                 assert len(ertype) == 3, 'not a relation definition'
                 self._synchronize_rdef_schema(ertype[0], ertype[1], ertype[2],
@@ -1376,6 +1379,40 @@ class ServerMigrationHelper(MigrationHelper):
     def cmd_add_entity(self, etype, *args, **kwargs):
         """add a new entity of the given type"""
         return self.cmd_create_entity(etype, *args, **kwargs).eid
+
+    @contextmanager
+    def cmd_dropped_constraints(self, etype, attrname, cstrtype,
+                                droprequired=False):
+        """context manager to drop constraints temporarily on fs_schema
+
+        `cstrtype` should be a constraint class (or a tuple of classes)
+        and will be passed to isinstance directly
+
+        For instance::
+
+            >>> with dropped_constraints('MyType', 'myattr',
+            ...                          UniqueConstraint, droprequired=True):
+            ...     add_attribute('MyType', 'myattr')
+            ...     # + instructions to fill MyType.myattr column
+            ...
+            >>>
+
+        """
+        rdef = self.fs_schema.eschema(etype).rdef(attrname)
+        original_constraints = rdef.constraints
+        # remove constraints
+        rdef.constraints = [cstr for cstr in original_constraints
+                            if not (cstrtype and isinstance(cstr, cstrtype))]
+        if droprequired:
+            original_cardinality = rdef.cardinality
+            rdef.cardinality = '?' + rdef.cardinality[1]
+        yield
+        # restore original constraints
+        rdef.constraints = original_constraints
+        if droprequired:
+            rdef.cardinality = original_cardinality
+        # update repository schema
+        self.cmd_sync_schema_props_perms(rdef, syncperms=False)
 
     def sqlexec(self, sql, args=None, ask_confirm=True):
         """execute the given sql if confirmed
