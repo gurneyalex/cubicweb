@@ -25,6 +25,7 @@ __docformat__ = "restructuredtext en"
 _ = unicode
 
 import os
+from warnings import warn
 
 from logilab.mtconverter import xml_escape
 from logilab.common.graph import escape
@@ -133,7 +134,7 @@ class WFHistoryView(EntityView):
 
     title = _('Workflow history')
 
-    def cell_call(self, row, col, view=None):
+    def cell_call(self, row, col, view=None, title=title):
         _ = self._cw._
         eid = self.cw_rset[row][col]
         sel = 'Any FS,TS,WF,D'
@@ -156,19 +157,27 @@ class WFHistoryView(EntityView):
         except Unauthorized:
             return
         if rset:
-            self.wview('table', rset, title=_(self.title), displayactions=False,
+            if title:
+                title = _(title)
+            self.wview('table', rset, title=title, displayactions=False,
                        displaycols=displaycols, headers=headers)
 
 
-class WFHistoryVComponent(component.EntityVComponent):
+class WFHistoryVComponent(component.EntityCtxComponent):
     """display the workflow history for entities supporting it"""
     __regid__ = 'wfhistory'
-    __select__ = component.EntityVComponent.__select__ & WFHistoryView.__select__
+    __select__ = component.EntityCtxComponent.__select__ & WFHistoryView.__select__
     context = 'navcontentbottom'
     title = _('Workflow history')
 
-    def cell_call(self, row, col, view=None):
-        self.wview('wfhistory', self.cw_rset, row=row, col=col, view=view)
+    def render_body(self, w):
+        if hasattr(self, 'cell_call'):
+            warn('[3.10] %s should now implement render_body instead of cell_call'
+                 % self.__class__, DeprecationWarning)
+            self.w = w
+            self.cell_call(self.entity.cw_row, self.entity.cw_col)
+        else:
+            self.entity.view('wfhistory', w=w, title=None)
 
 
 # workflow actions #############################################################

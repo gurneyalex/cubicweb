@@ -313,19 +313,17 @@ class DBAPIRequest(RequestSessionBase):
 
     # low level session data management #######################################
 
-    def get_shared_data(self, key, default=None, pop=False):
-        """return value associated to `key` in shared data"""
-        return self.cnx.get_shared_data(key, default, pop)
+    def get_shared_data(self, key, default=None, pop=False, txdata=False):
+        """see :meth:`Connection.get_shared_data`"""
+        return self.cnx.get_shared_data(key, default, pop, txdata)
 
-    def set_shared_data(self, key, value, querydata=False):
-        """set value associated to `key` in shared data
-
-        if `querydata` is true, the value will be added to the repository
-        session's query data which are cleared on commit/rollback of the current
-        transaction, and won't be available through the connexion, only on the
-        repository side.
-        """
-        return self.cnx.set_shared_data(key, value, querydata)
+    def set_shared_data(self, key, value, txdata=False, querydata=None):
+        """see :meth:`Connection.set_shared_data`"""
+        if querydata is not None:
+            txdata = querydata
+            warn('[3.10] querydata argument has been renamed to txdata',
+                 DeprecationWarning, stacklevel=2)
+        return self.cnx.set_shared_data(key, value, txdata)
 
     # server session compat layer #############################################
 
@@ -534,9 +532,8 @@ class Connection(object):
             esubpath = list(subpath)
             esubpath.remove('views')
             esubpath.append(join('web', 'views'))
-        cubespath = [config.cube_dir(p) for p in cubes]
-        config.load_site_cubicweb(cubespath)
-        vpath = config.build_vregistry_path(reversed(cubespath),
+        config.init_cubes(cubes)
+        vpath = config.build_vregistry_path(reversed(config.cubes_path()),
                                             evobjpath=esubpath,
                                             tvobjpath=subpath)
         self.vreg.register_objects(vpath)
@@ -593,13 +590,15 @@ class Connection(object):
         else:
             from cubicweb.entity import Entity
             user = Entity(req, rset, row=0)
-        user['login'] = login # cache login
+        user.cw_attr_cache['login'] = login # cache login
         return user
 
     @check_not_closed
     def check(self):
-        """raise `BadConnectionId` if the connection is no more valid"""
-        self._repo.check_session(self.sessionid)
+        """raise `BadConnectionId` if the connection is no more valid, else
+        return its latest activity timestamp.
+        """
+        return self._repo.check_session(self.sessionid)
 
     def _txid(self, cursor=None): # XXX could now handle various isolation level!
         # return a dict as bw compat trick
@@ -616,20 +615,26 @@ class Connection(object):
         self._repo.set_session_props(self.sessionid, props)
 
     @check_not_closed
-    def get_shared_data(self, key, default=None, pop=False):
-        """return value associated to `key` in shared data"""
-        return self._repo.get_shared_data(self.sessionid, key, default, pop)
+    def get_shared_data(self, key, default=None, pop=False, txdata=False):
+        """return value associated to key in the session's data dictionary or
+        session's transaction's data if `txdata` is true.
+
+        If pop is True, value will be removed from the dictionnary.
+
+        If key isn't defined in the dictionnary, value specified by the
+        `default` argument will be returned.
+        """
+        return self._repo.get_shared_data(self.sessionid, key, default, pop, txdata)
 
     @check_not_closed
-    def set_shared_data(self, key, value, querydata=False):
+    def set_shared_data(self, key, value, txdata=False):
         """set value associated to `key` in shared data
 
-        if `querydata` is true, the value will be added to the repository
+        if `txdata` is true, the value will be added to the repository
         session's query data which are cleared on commit/rollback of the current
-        transaction, and won't be available through the connexion, only on the
-        repository side.
+        transaction.
         """
-        return self._repo.set_shared_data(self.sessionid, key, value, querydata)
+        return self._repo.set_shared_data(self.sessionid, key, value, txdata)
 
     # meta-data accessors ######################################################
 

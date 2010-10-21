@@ -184,7 +184,7 @@ function _postAjaxLoad(node) {
     _loadDynamicFragments(node);
     // XXX [3.7] jQuery.one is now used instead jQuery.bind,
     // jquery.treeview.js can be unpatched accordingly.
-    jQuery(CubicWeb).trigger('server-response', [true, node]);
+    jQuery(cw).trigger('server-response', [true, node]);
     jQuery(node).trigger('server-response', [true, node]);
 }
 
@@ -292,6 +292,7 @@ function loadRemote(url, form, reqtype, sync) {
             url: url,
             type: (reqtype || 'GET').toUpperCase(),
             data: form,
+            traditional: true,
             async: true,
 
             beforeSend: function(xhr) {
@@ -299,9 +300,6 @@ function loadRemote(url, form, reqtype, sync) {
             },
 
             success: function(data, status) {
-                if (deferred._req.getResponseHeader("content-type") == 'application/json') {
-                    data = cw.evalJSON(data);
-                }
                 deferred.success(data);
             },
 
@@ -320,18 +318,22 @@ function loadRemote(url, form, reqtype, sync) {
         });
         return deferred;
     } else {
-        var result = jQuery.ajax({
+        var result;
+        // jQuery.ajax returns the XHR object, even for synchronous requests,
+        // but in that case, the success callback will be called before
+        // jQuery.ajax returns. The first argument of the callback will be
+        // the server result, interpreted by jQuery according to the reponse's
+        // content-type (i.e. json or xml)
+        jQuery.ajax({
             url: url,
             type: (reqtype || 'GET').toUpperCase(),
             data: form,
-            async: false
+            traditional: true,
+            async: false,
+            success: function(res) {
+                result = res;
+            }
         });
-        // check result.responseText instead of result to avoid error encountered with IE
-        if (result.responseText) {
-            // XXX no good reason to force json here,
-            // it should depends on request content-type
-            result = cw.evalJSON(result.responseText);
-        }
         return result;
     }
 }
@@ -635,14 +637,15 @@ remoteExec = cw.utils.deprecatedFunction(
     function(fname /* ... */) {
         setProgressCursor();
         var props = {
-            'fname': fname,
-            'pageid': pageid,
-            'arg': $.map(cw.utils.sliceList(arguments, 1), jQuery.toJSON)
+            fname: fname,
+            pageid: pageid,
+            arg: $.map(cw.utils.sliceList(arguments, 1), jQuery.toJSON)
         };
         var result = jQuery.ajax({
             url: JSON_BASE_URL,
             data: props,
-            async: false
+            async: false,
+            traditional: true
         }).responseText;
         if (result) {
             result = cw.evalJSON(result);
@@ -657,9 +660,9 @@ asyncRemoteExec = cw.utils.deprecatedFunction(
     function(fname /* ... */) {
         setProgressCursor();
         var props = {
-            'fname': fname,
-            'pageid': pageid,
-            'arg': $.map(cw.utils.sliceList(arguments, 1), jQuery.toJSON)
+            fname: fname,
+            pageid: pageid,
+            arg: $.map(cw.utils.sliceList(arguments, 1), jQuery.toJSON)
         };
         // XXX we should inline the content of loadRemote here
         var deferred = loadRemote(JSON_BASE_URL, props, 'POST');

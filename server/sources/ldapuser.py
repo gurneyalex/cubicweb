@@ -162,9 +162,8 @@ directory (default to once a day).',
 
     )
 
-    def __init__(self, repo, appschema, source_config, *args, **kwargs):
-        AbstractSource.__init__(self, repo, appschema, source_config,
-                                *args, **kwargs)
+    def __init__(self, repo, source_config, *args, **kwargs):
+        AbstractSource.__init__(self, repo, source_config, *args, **kwargs)
         self.host = source_config['host']
         self.protocol = source_config.get('protocol', 'ldap')
         self.authmode = source_config.get('auth-mode', 'simple')
@@ -574,7 +573,7 @@ directory (default to once a day).',
         entity = super(LDAPUserSource, self).before_entity_insertion(session, lid, etype, eid)
         res = self._search(session, lid, BASE)[0]
         for attr in entity.e_schema.indexable_attributes():
-            entity[attr] = res[self.user_rev_attrs[attr]]
+            entity.cw_edited[attr] = res[self.user_rev_attrs[attr]]
         return entity
 
     def after_entity_insertion(self, session, dn, entity):
