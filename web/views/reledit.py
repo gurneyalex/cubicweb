@@ -15,8 +15,10 @@
 #
 # You should have received a copy of the GNU Lesser General Public License along
 # with CubicWeb.  If not, see <http://www.gnu.org/licenses/>.
-"""the 'reedit' feature (eg edit attribute/relation from primary view)
-"""
+"""the 'reedit' feature (eg edit attribute/relation from primary view"""
+
+__docformat__ = "restructuredtext en"
+_ = unicode
 
 import copy
 from warnings import warn
@@ -209,7 +211,7 @@ class ClickAndEditFormView(EntityView):
         return rschema.has_perm(self._cw, 'delete', **kwargs)
 
     def _build_edit_zone(self):
-        return self._editzone % {'msg' : xml_escape(_(self._cw._(self._editzonemsg)))}
+        return self._editzone % {'msg' : xml_escape(self._cw._(self._editzonemsg))}
 
     def _build_delete_zone(self):
         return self._deletezone % {'msg': xml_escape(self._cw._(self._deletemsg))}
@@ -322,7 +324,7 @@ class ClickAndEditFormView(EntityView):
         w(u'<div id="%s-value" class="editableFieldValue">' % divid)
         w(value)
         w(u'</div>')
-        w(form.render(renderer=renderer))
+        form.render(w=w, renderer=renderer)
         w(u'<div id="%s" class="editableField hidden">' % divid)
 
     def _edit_action(self, divid, args, edit_related, add_related, _delete_related):

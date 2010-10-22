@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 # copyright 2003-2010 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
@@ -21,12 +20,13 @@ object to handle publication.
 """
 
 __docformat__ = "restructuredtext en"
+_ = unicode
 
 from logilab.common.date import strptime
 
 from cubicweb import (NoSelectableObject, ObjectNotFound, ValidationError,
                       AuthenticationError, typed_eid)
-from cubicweb.utils import json, json_dumps
+from cubicweb.utils import UStringIO, json, json_dumps
 from cubicweb.selectors import authenticated_user, anonymous_user, match_form_params
 from cubicweb.mail import format_mail
 from cubicweb.web import Redirect, RemoteCallFailed, DirectResponse
@@ -120,7 +120,7 @@ class ViewController(Controller):
         self.validate_cache(view)
         template = self.appli.main_template_id(self._cw)
         return self._cw.vreg['views'].main_template(self._cw, template,
-                                                rset=rset, view=view)
+                                                    rset=rset, view=view)
 
     def _select_view_and_rset(self, rset):
         req = self._cw
@@ -130,16 +130,6 @@ class ViewController(Controller):
                 rset = self.process_rql()
             else:
                 rset = None
-        if rset and rset.rowcount == 1 and '__method' in req.form:
-            entity = rset.get_entity(0, 0)
-            try:
-                method = getattr(entity, req.form.pop('__method'))
-                method()
-            except Redirect: # propagate redirect that might occur in method()
-                raise
-            except Exception, ex:
-                self.exception('while handling __method')
-                req.set_message(req._("error while handling __method: %s") % req._(ex))
         vid = req.form.get('vid') or vid_from_rset(req, rset, self._cw.vreg.schema)
         try:
             view = self._cw.vreg['views'].select(vid, req, rset=rset)
@@ -345,9 +335,14 @@ class JSonController(Controller):
         return None
 
     def _call_view(self, view, paginate=False, **kwargs):
-        # set stream first, in case we need to call pagination
-        stream = view.set_stream()
         divid = self._cw.form.get('divid')
+        # we need to call pagination before with the stream set
+        try:
+            stream = view.set_stream()
+        except AttributeError:
+            stream = UStringIO()
+            kwargs['w'] = stream.write
+            assert not paginate
         if divid == 'pageContent':
             # ensure divid isn't reused by the view (e.g. table view)
             del self._cw.form['divid']
@@ -469,6 +464,7 @@ class JSonController(Controller):
     @jsonize
     def js_i18n(self, msgids):
         """returns the translation of `msgid`"""
+        print 'translate', msgids, [self._cw._(msgid) for msgid in msgids]
         return [self._cw._(msgid) for msgid in msgids]
 
     @jsonize
@@ -589,7 +585,9 @@ class MailBugReportController(Controller):
 
     def publish(self, rset=None):
         body = self._cw.form['description']
-        self.sendmail(self._cw.config['submit-mail'], _('%s error report') % self._cw.config.appid, body)
+        self.sendmail(self._cw.config['submit-mail'],
+                      self._cw._('%s error report') % self._cw.config.appid,
+                      body)
         url = self._cw.build_url(__message=self._cw._('bug report sent'))
         raise Redirect(url)
 
@@ -601,11 +599,10 @@ class UndoController(Controller):
     def publish(self, rset=None):
         txuuid = self._cw.form['txuuid']
         errors = self._cw.cnx.undo_transaction(txuuid)
-        if errors:
-            self.w(self._cw._('some errors occurred:'))
-            self.wview('pyvalist', pyvalue=errors)
-        else:
+        if not errors:
             self.redirect()
+        return self._cw._('some errors occurred:') + self.view('pyvalist',
+                                                               pyvalue=errors)
 
     def redirect(self):
         req = self._cw
