@@ -50,6 +50,7 @@ from logilab.common.compat import any
 from logilab.common.deprecation import deprecated
 
 from cubicweb import typed_eid
+from cubicweb.utils import support_args
 from cubicweb.selectors import non_final_entity, match_kwargs, one_line_rset
 from cubicweb.web import uicfg, form, formwidgets as fwdgs
 from cubicweb.web.formfields import relvoc_unrelated, guess_field
@@ -168,10 +169,25 @@ class FieldsForm(form.Form):
             warn('[3.6] rendervalues argument is deprecated, all named arguments will be given instead',
                  DeprecationWarning, stacklevel=2)
             kwargs = rendervalues
+        w = kwargs.pop('w', None)
+        if w is None:
+            warn('[3.10] you should specify "w" to form.render() named arguments',
+                 DeprecationWarning, stacklevel=2)
+            data = []
+            w = data.append
+        else:
+            data = None
         self.build_context(formvalues)
         if renderer is None:
             renderer = self.default_renderer()
-        return renderer.render(self, kwargs)
+        if support_args(renderer.render, 'w'):
+            renderer.render(w, self, kwargs)
+        else:
+            warn('[3.10] you should add "w" as first argument o %s.render()'
+                 % renderer.__class__, DeprecationWarning)
+            w(renderer.render(self, kwargs))
+        if data is not None:
+            return '\n'.join(data)
 
     def default_renderer(self):
         return self._cw.vreg['formrenderers'].select(

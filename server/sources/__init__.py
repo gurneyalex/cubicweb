@@ -26,6 +26,7 @@ from logging import getLogger
 from cubicweb import set_log_methods, server
 from cubicweb.schema import VIRTUAL_RTYPES
 from cubicweb.server.sqlutils import SQL_PREFIX
+from cubicweb.server.ssplanner import EditedEntity
 
 
 def dbg_st_search(uri, union, varmap, args, cachekey=None, prefix='rql for'):
@@ -54,7 +55,7 @@ class TimedCache(dict):
     def __init__(self, ttl):
         # time to live in seconds
         if ttl <= 0:
-            raise ValueError('TimedCache initialized with a ttl of %ss' % self.ttl.seconds)
+            raise ValueError('TimedCache initialized with a ttl of %ss' % ttl.seconds)
         self.ttl = timedelta(seconds=ttl)
 
     def __setitem__(self, key, value):
@@ -98,13 +99,18 @@ class AbstractSource(object):
     dont_cross_relations = ()
     cross_relations = ()
 
+    # force deactivation (configuration error for instance)
+    disabled = False
 
-    def __init__(self, repo, appschema, source_config, *args, **kwargs):
+    def __init__(self, repo, source_config, *args, **kwargs):
         self.repo = repo
         self.uri = source_config['uri']
         set_log_methods(self, getLogger('cubicweb.sources.'+self.uri))
-        self.set_schema(appschema)
+        self.set_schema(repo.schema)
         self.support_relations['identity'] = False
+        self.eid = None
+        self.cfg = source_config.copy()
+        self.remove_sensitive_information(self.cfg)
 
     def init_creating(self):
         """method called by the repository once ready to create a new instance"""
@@ -218,7 +224,7 @@ class AbstractSource(object):
     def extid2eid(self, value, etype, session=None, **kwargs):
         return self.repo.extid2eid(self, value, etype, session, **kwargs)
 
-    PUBLIC_KEYS = ('adapter', 'uri')
+    PUBLIC_KEYS = ('type', 'uri')
     def remove_sensitive_information(self, sourcedef):
         """remove sensitive information such as login / password from source
         definition
@@ -343,6 +349,7 @@ class AbstractSource(object):
         """
         entity = self.repo.vreg['etypes'].etype_class(etype)(session)
         entity.eid = eid
+        entity.cw_edited = EditedEntity(entity)
         return entity
 
     def after_entity_insertion(self, session, lid, entity):
@@ -506,17 +513,17 @@ class ConnectionWrapper(object):
     def cursor(self):
         return None # no actual cursor support
 
+
 from cubicweb.server import SOURCE_TYPES
 
-def source_adapter(source_config):
-    adapter_type = source_config['adapter'].lower()
+def source_adapter(source_type):
     try:
-        return SOURCE_TYPES[adapter_type]
+        return SOURCE_TYPES[source_type]
     except KeyError:
-        raise RuntimeError('Unknown adapter %r' % adapter_type)
+        raise RuntimeError('Unknown source type %r' % source_type)
 
-def get_source(source_config, global_schema, repo):
+def get_source(type, source_config, repo):
     """return a source adapter according to the adapter field in the
     source's configuration
     """
-    return source_adapter(source_config)(repo, global_schema, source_config)
+    return source_adapter(type)(repo, source_config)

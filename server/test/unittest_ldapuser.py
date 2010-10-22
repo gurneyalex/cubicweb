@@ -20,7 +20,6 @@
 import socket
 
 from logilab.common.testlib import TestCase, unittest_main, mock_object
-from cubicweb.devtools import TestServerConfiguration
 from cubicweb.devtools.testlib import CubicWebTC
 from cubicweb.devtools.repotest import RQLGeneratorTC
 
@@ -30,12 +29,26 @@ if '17.1' in socket.gethostbyname('ldap1'):
     SYT = 'syt'
     SYT_EMAIL = 'Sylvain Thenault'
     ADIM = 'adim'
-    SOURCESFILE = 'data/sources_ldap1'
+    CONFIG = u'''host=ldap1
+user-base-dn=ou=People,dc=logilab,dc=fr
+user-scope=ONELEVEL
+user-classes=top,posixAccount
+user-login-attr=uid
+user-default-group=users
+user-attrs-map=gecos:email,uid:login
+'''
 else:
     SYT = 'sthenault'
     SYT_EMAIL = 'sylvain.thenault@logilab.fr'
     ADIM = 'adimascio'
-    SOURCESFILE = 'data/sources_ldap2'
+    CONFIG = u'''host=ldap1
+user-base-dn=ou=People,dc=logilab,dc=net
+user-scope=ONELEVEL
+user-classes=top,OpenLDAPperson
+user-login-attr=uid
+user-default-group=users
+user-attrs-map=mail:email,uid:login
+'''
 
 
 def nopwd_authenticate(self, session, login, password):
@@ -57,24 +70,35 @@ def nopwd_authenticate(self, session, login, password):
     # don't check upassword !
     return self.extid2eid(user['dn'], 'CWUser', session)
 
+def setup_module(*args):
+    global repo
+    LDAPUserSourceTC._init_repo()
+    repo = LDAPUserSourceTC.repo
+    add_ldap_source(LDAPUserSourceTC.cnx)
+
+def teardown_module(*args):
+    global repo
+    repo.shutdown()
+    del repo
+
+def add_ldap_source(cnx):
+    cnx.request().create_entity('CWSource', name=u'ldapuser', type=u'ldapuser',
+                                config=CONFIG)
+    cnx.commit()
+    # XXX: need this first query else we get 'database is locked' from
+    # sqlite since it doesn't support multiple connections on the same
+    # database
+    # so doing, ldap inserted users don't get removed between each test
+    rset = cnx.cursor().execute('CWUser X')
+    # check we get some users from ldap
+    assert len(rset) > 1
 
 
 class LDAPUserSourceTC(CubicWebTC):
-    config = TestServerConfiguration('data')
-    config.sources_file = lambda: SOURCESFILE
 
     def patch_authenticate(self):
         self._orig_authenticate = LDAPUserSource.authenticate
         LDAPUserSource.authenticate = nopwd_authenticate
-
-    def setup_database(self):
-        # XXX: need this first query else we get 'database is locked' from
-        # sqlite since it doesn't support multiple connections on the same
-        # database
-        # so doing, ldap inserted users don't get removed between each test
-        rset = self.sexecute('CWUser X')
-        # check we get some users from ldap
-        self.assert_(len(rset) > 1)
 
     def tearDown(self):
         if hasattr(self, '_orig_authenticate'):
@@ -382,19 +406,10 @@ class GlobTrFuncTC(TestCase):
         res = trfunc.apply([[1, 2], [2, 4], [3, 6], [1, 5]])
         self.assertEqual(res, [[1, 5], [2, 4], [3, 6]])
 
-# XXX
-LDAPUserSourceTC._init_repo()
-repo = LDAPUserSourceTC.repo
-
-def teardown_module(*args):
-    global repo
-    del repo
-    del RQL2LDAPFilterTC.schema
-
 class RQL2LDAPFilterTC(RQLGeneratorTC):
-    schema = repo.schema
 
     def setUp(self):
+        self.schema = repo.schema
         RQLGeneratorTC.setUp(self)
         ldapsource = repo.sources[-1]
         self.pool = repo._get_pool()
