@@ -1,0 +1,51 @@
+/* styles for access control forms)
+ *
+ *  :organization: Logilab
+ *  :copyright: 2003-2010 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+ *  :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
+ */
+
+/******************************************************************************/
+/* security edition form (views/management.py)   web/views/schema.py          */
+/******************************************************************************/
+
+h2.schema{
+ color: %(aColor)s;
+}
+
+table.schemaInfo td a.users{
+ color : #00CC33;
+ font-weight: bold;
+}
+
+table.schemaInfo td a.guests{
+ color:  #ff7700;
+ font-weight: bold;
+}
+
+table.schemaInfo td a.owners{
+ color: #8b0000;
+ font-weight: bold;
+}
+
+table.schemaInfo td a.managers{
+ color: #000000;
+ font-weight: bold;
+}
+
+.discret,
+table.schemaInfo td a.grey{
+ color:#666;
+}
+
+a.grey:hover{
+ color:#000;
+}
+
+.red{
+ color:  #ff7700;
+ }
+
+div#schema_security{
+ width:100%;
+ }
