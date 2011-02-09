@@ -1,4 +1,4 @@
-# copyright 2003-2010 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2011 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -260,13 +260,20 @@ class CWSource(EntityType):
                         })
 
 
+ENTITY_MANAGERS_PERMISSIONS = {
+    'read':   ('managers',),
+    'add':    ('managers',),
+    'update': ('managers',),
+    'delete': ('managers',),
+    }
+RELATION_MANAGERS_PERMISSIONS = {
+    'read':   ('managers',),
+    'add':    ('managers',),
+    'delete': ('managers',),
+    }
+
 class CWSourceHostConfig(EntityType):
-    __permissions__ = {
-        'read':   ('managers',),
-        'add':    ('managers',),
-        'update': ('managers',),
-        'delete': ('managers',),
-        }
+    __permissions__ = ENTITY_MANAGERS_PERMISSIONS
     __unique_together__ = [('match_host', 'cw_host_config_of')]
     match_host = String(required=True, maxsize=128,
                         description=_('regexp matching host(s) to which this config applies'))
@@ -282,6 +289,7 @@ class CWSourceHostConfig(EntityType):
 
 
 class cw_host_config_of(RelationDefinition):
+    __permissions__ = RELATION_MANAGERS_PERMISSIONS
     subject = 'CWSourceHostConfig'
     object = 'CWSource'
     cardinality = '1*'
@@ -297,18 +305,20 @@ class cw_source(RelationDefinition):
     subject = '*'
     object = 'CWSource'
     cardinality = '1*'
+    composite = 'object'
 
-class cw_support(RelationDefinition):
-    subject = 'CWSource'
-    object = ('CWEType', 'CWRType')
+class CWSourceSchemaConfig(EntityType):
+    __permissions__ = ENTITY_MANAGERS_PERMISSIONS
+    __unique_together__ = [('cw_for_source', 'cw_schema')]
+    cw_for_source = SubjectRelation(
+        'CWSource', inlined=True, cardinality='1*', composite='object',
+        __permissions__=RELATION_MANAGERS_PERMISSIONS)
+    cw_schema = SubjectRelation(
+        ('CWEType', 'CWRType', 'CWAttribute', 'CWRelation'),
+        inlined=True, cardinality='1*', composite='object',
+        __permissions__=RELATION_MANAGERS_PERMISSIONS)
+    options = String(description=_('allowed options depends on the source type'))
 
-class cw_dont_cross(RelationDefinition):
-    subject = 'CWSource'
-    object = 'CWRType'
-
-class cw_may_cross(RelationDefinition):
-    subject = 'CWSource'
-    object = 'CWRType'
 
 # "abtract" relation types, no definition in cubicweb itself ###################
 
