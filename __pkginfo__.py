@@ -1,5 +1,5 @@
 # pylint: disable=W0622,C0103
-# copyright 2003-2010 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2011 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -22,7 +22,7 @@ software
 
 modname = distname = "cubicweb"
 
-numversion = (3, 10, 8)
+numversion = (3, 11, 0)
 version = '.'.join(str(num) for num in numversion)
 
 description = "a repository of entities / relations for knowledge management"
@@ -40,10 +40,10 @@ classifiers = [
 ]
 
 __depends__ = {
-    'logilab-common': '>= 0.54.0',
+    'logilab-common': '>= 0.55.0',
     'logilab-mtconverter': '>= 0.8.0',
     'rql': '>= 0.28.0',
-    'yams': '>= 0.30.1',
+    'yams': '>= 0.30.4',
     'docutils': '>= 0.6',
     #gettext                    # for xgettext, msgcat, etc...
     # web dependancies
@@ -62,6 +62,7 @@ __recommends__ = {
     'pycrypto': '',             # for crypto extensions
     'fyzz': '>= 0.1.0',         # for sparql
     'vobject': '>= 0.6.0',      # for ical view
+    'rdflib': None,             #
     #'Products.FCKeditor':'',
     #'SimpleTAL':'>= 4.1.6',
     }
