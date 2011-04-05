@@ -53,7 +53,7 @@ from datetime import date, datetime, timedelta
 from logilab.mtconverter import xml_escape
 from logilab.common.graph import has_path
 from logilab.common.decorators import cached
-from logilab.common.date import datetime2ticks
+from logilab.common.date import datetime2ticks, ustrftime, ticks2datetime
 from logilab.common.compat import all
 
 from rql import parse, nodes, utils
@@ -981,7 +981,11 @@ class DateRangeFacet(RangeFacet):
 
     def formatvalue(self, value):
         """format `value` before in order to insert it in the RQL query"""
-        return '"%s"' % date.fromtimestamp(float(value) / 1000).strftime('%Y/%m/%d')
+        try:
+            date_value = ticks2datetime(float(value))
+        except (ValueError, OverflowError):
+            return u'"date out-of-range"'
+        return '"%s"' % ustrftime(date_value, '%Y/%m/%d')
 
 
 class HasRelationFacet(AbstractFacet):
@@ -1169,11 +1173,11 @@ class FacetItem(HTMLWidget):
     def _render(self):
         if self.selected:
             cssclass = ' facetValueSelected'
-            imgsrc = self._cw.datadir_url + self.selected_img
+            imgsrc = self._cw.data_url(self.selected_img)
             imgalt = self._cw._('selected')
         else:
             cssclass = ''
-            imgsrc = self._cw.datadir_url + self.unselected_img
+            imgsrc = self._cw.data_url(self.unselected_img)
             imgalt = self._cw._('not selected')
         self.w(u'<div class="facetValue facetCheckBox%s" cubicweb:value="%s">\n'
                % (cssclass, xml_escape(unicode(self.value))))
@@ -1198,11 +1202,11 @@ class CheckBoxFacetWidget(HTMLWidget):
         self.w(u'<div id="%s" class="facet">\n' % facetid)
         if self.selected:
             cssclass = ' facetValueSelected'
-            imgsrc = self._cw.datadir_url + self.selected_img
+            imgsrc = self._cw.data_url(self.selected_img)
             imgalt = self._cw._('selected')
         else:
             cssclass = ''
-            imgsrc = self._cw.datadir_url + self.unselected_img
+            imgsrc = self._cw.data_url(self.unselected_img)
             imgalt = self._cw._('not selected')
         self.w(u'<div class="facetValue facetCheckBox%s" cubicweb:value="%s">\n'
                % (cssclass, xml_escape(unicode(self.value))))
