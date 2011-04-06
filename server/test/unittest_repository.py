@@ -69,11 +69,12 @@ class RepositoryTC(CubicWebTC):
             cu = self.session.system_sql('SELECT %s FROM %s WHERE %s=%%(final)s ORDER BY %s'
                                          % (namecol, table, finalcol, namecol), {'final': 'TRUE'})
             self.assertEqual(cu.fetchall(), [(u'Boolean',), (u'Bytes',),
-                                              (u'Date',), (u'Datetime',),
-                                              (u'Decimal',),(u'Float',),
-                                              (u'Int',),
-                                              (u'Interval',), (u'Password',),
-                                              (u'String',), (u'Time',)])
+                                             (u'Date',), (u'Datetime',),
+                                             (u'Decimal',),(u'Float',),
+                                             (u'Int',),
+                                             (u'Interval',), (u'Password',),
+                                             (u'String',),
+                                             (u'TZDatetime',), (u'TZTime',), (u'Time',)])
             sql = ("SELECT etype.cw_eid, etype.cw_name, cstr.cw_eid, rel.eid_to "
                    "FROM cw_CWUniqueTogetherConstraint as cstr, "
                    "     relations_relation as rel, "
@@ -327,7 +328,7 @@ class RepositoryTC(CubicWebTC):
         self.assertEqual(len(constraints), 1)
         cstr = constraints[0]
         self.assert_(isinstance(cstr, RQLConstraint))
-        self.assertEqual(cstr.restriction, 'O final TRUE')
+        self.assertEqual(cstr.expression, 'O final TRUE')
 
         ownedby = schema.rschema('owned_by')
         self.assertEqual(ownedby.objects('CWEType'), ('CWUser',))
