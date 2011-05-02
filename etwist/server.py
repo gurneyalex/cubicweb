@@ -17,14 +17,19 @@
 # with CubicWeb.  If not, see <http://www.gnu.org/licenses/>.
 """twisted server for CubicWeb web instances"""
 
+from __future__ import with_statement
+
 __docformat__ = "restructuredtext en"
 
 import sys
 import os
+import os.path as osp
 import select
 import errno
 import traceback
 import threading
+import re
+import hashlib
 from os.path import join
 from time import mktime
 from datetime import date, timedelta
@@ -41,7 +46,8 @@ from twisted.web.server import NOT_DONE_YET
 
 from logilab.common.decorators import monkeypatch
 
-from cubicweb import AuthenticationError, ConfigurationError, CW_EVENT_MANAGER
+from cubicweb import (AuthenticationError, ConfigurationError,
+                      CW_EVENT_MANAGER, CubicWebException)
 from cubicweb.utils import json_dumps
 from cubicweb.web import Redirect, DirectResponse, StatusResponse, LogOut
 from cubicweb.web.application import CubicWebPublisher
@@ -70,13 +76,70 @@ class ForbiddenDirectoryLister(resource.Resource):
                             code=http.FORBIDDEN,
                             stream='Access forbidden')
 
-class File(static.File):
-    """Prevent from listing directories"""
+
+class NoListingFile(static.File):
     def directoryListing(self):
         return ForbiddenDirectoryLister()
 
 
-class LongTimeExpiringFile(File):
+class DataLookupDirectory(NoListingFile):
+    def __init__(self, config, path):
+        self.md5_version = config.instance_md5_version()
+        NoListingFile.__init__(self, path)
+        self.config = config
+        self.here = path
+        self._defineChildResources()
+        if self.config.debugmode:
+            self.data_modconcat_basepath = '/data/??'
+        else:
+            self.data_modconcat_basepath = '/data/%s/??' % self.md5_version
+
+    def _defineChildResources(self):
+        self.putChild(self.md5_version, self)
+
+    def getChild(self, path, request):
+        if not path:
+            if request.uri.startswith(self.data_modconcat_basepath):
+                resource_relpath = request.uri[len(self.data_modconcat_basepath):]
+                if resource_relpath:
+                    paths = resource_relpath.split(',')
+                    try:
+                        return ConcatFiles(self.config, paths)
+                    except ConcatFileNotFoundError:
+                        return self.childNotFound
+            return self.directoryListing()
+        childpath = join(self.here, path)
+        dirpath, rid = self.config.locate_resource(childpath)
+        if dirpath is None:
+            # resource not found
+            return self.childNotFound
+        filepath = os.path.join(dirpath, rid)
+        if os.path.isdir(filepath):
+            resource = DataLookupDirectory(self.config, childpath)
+            # cache resource for this segment path to avoid recomputing
+            # directory lookup
+            self.putChild(path, resource)
+            return resource
+        else:
+            return NoListingFile(filepath)
+
+
+class FCKEditorResource(NoListingFile):
+    def __init__(self, config, path):
+        NoListingFile.__init__(self, path)
+        self.config = config
+
+    def getChild(self, path, request):
+        pre_path = request.path.split('/')[1:]
+        if pre_path[0] == 'https':
+            pre_path.pop(0)
+            uiprops = self.config.https_uiprops
+        else:
+            uiprops = self.config.uiprops
+        return static.File(osp.join(uiprops['FCKEDITOR_PATH'], path))
+
+
+class LongTimeExpiringFile(DataLookupDirectory):
     """overrides static.File and sets a far future ``Expires`` date
     on the resouce.
 
@@ -88,28 +151,77 @@ class LongTimeExpiringFile(File):
       etc.
 
     """
+    def _defineChildResources(self):
+        pass
+
     def render(self, request):
         # XXX: Don't provide additional resource information to error responses
         #
         # the HTTP RFC recommands not going further than 1 year ahead
         expires = date.today() + timedelta(days=6*30)
         request.setHeader('Expires', generateDateTime(mktime(expires.timetuple())))
-        return File.render(self, request)
+        return DataLookupDirectory.render(self, request)
 
+
+class ConcatFileNotFoundError(CubicWebException):
+    pass
+
+
+class ConcatFiles(LongTimeExpiringFile):
+    def __init__(self, config, paths):
+        _, ext = osp.splitext(paths[0])
+        # create a unique / predictable filename
+        fname = hashlib.md5(';'.join(paths)).hexdigest() + ext
+        filepath = osp.join(config.appdatahome, 'uicache', fname)
+        LongTimeExpiringFile.__init__(self, config, filepath)
+        self._concat_cached_filepath(filepath, paths)
+
+    def _concat_cached_filepath(self, filepath, paths):
+        if not self._up_to_date(filepath, paths):
+            concat_data = []
+            for path in paths:
+                # FIXME locate_resource is called twice() in debug-mode, but
+                # it's a @cached method
+                dirpath, rid = self.config.locate_resource(path)
+                if rid is None:
+                    raise ConcatFileNotFoundError(path)
+                concat_data.append(open(osp.join(dirpath, rid)).read())
+            with open(filepath, 'wb') as f:
+                f.write('\n'.join(concat_data))
+
+    def _up_to_date(self, filepath, paths):
+        """
+        The concat-file is considered up-to-date if it exists.
+        In debug mode, an additional check is performed to make sure that
+        concat-file is more recent than all concatenated files
+        """
+        if not osp.isfile(filepath):
+            return False
+        if self.config.debugmode:
+            concat_lastmod = os.stat(filepath).st_mtime
+            for path in paths:
+                dirpath, rid = self.config.locate_resource(path)
+                if rid is None:
+                    raise ConcatFileNotFoundError(path)
+                path = osp.join(dirpath, rid)
+                if os.stat(path).st_mtime > concat_lastmod:
+                    return False
+        return True
 
 class CubicWebRootResource(resource.Resource):
     def __init__(self, config, vreg=None):
+        resource.Resource.__init__(self)
         self.config = config
         # instantiate publisher here and not in init_publisher to get some
         # checks done before daemonization (eg versions consistency)
         self.appli = CubicWebPublisher(config, vreg=vreg)
         self.base_url = config['base-url']
         self.https_url = config['https-url']
-        self.children = {}
-        self.static_directories = set(('data%s' % config.instance_md5_version(),
-                                       'data', 'static', 'fckeditor'))
         global MAX_POST_LENGTH
         MAX_POST_LENGTH = config['max-post-length']
+        self.putChild('static', NoListingFile(config.static_directory))
+        self.putChild('fckeditor', FCKEditorResource(self.config, ''))
+        self.putChild('data', DataLookupDirectory(self.config, ''))
 
     def init_publisher(self):
         config = self.config
@@ -152,38 +264,6 @@ class CubicWebRootResource(resource.Resource):
 
     def getChild(self, path, request):
         """Indicate which resource to use to process down the URL's path"""
-        pre_path = request.path.split('/')[1:]
-        if pre_path[0] == 'https':
-            pre_path.pop(0)
-            uiprops = self.config.https_uiprops
-        else:
-            uiprops = self.config.uiprops
-        directory = pre_path[0]
-        # Anything in data/, static/, fckeditor/ and the generated versioned
-        # data directory is treated as static files
-        if directory in self.static_directories:
-            # take care fckeditor may appears as root directory or as a data
-            # subdirectory
-            if directory == 'static':
-                return File(self.config.static_directory)
-            if directory == 'fckeditor':
-                return File(uiprops['FCKEDITOR_PATH'])
-            if directory != 'data':
-                # versioned directory, use specific file with http cache
-                # headers so their are cached for a very long time
-                cls = LongTimeExpiringFile
-            else:
-                cls = File
-            if path == 'fckeditor':
-                return cls(uiprops['FCKEDITOR_PATH'])
-            if path == directory: # recurse
-                return self
-            datadir, path = self.config.locate_resource(path)
-            if datadir is None:
-                return self # recurse
-            self.debug('static file %s from %s', path, datadir)
-            return cls(join(datadir, path))
-        # Otherwise we use this single resource
         return self
 
     def render(self, request):
