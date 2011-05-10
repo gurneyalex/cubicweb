@@ -2386,6 +2386,9 @@ msgstr "Typ des Ausdrucks"
 msgid "external page"
 msgstr "externe Seite"
 
+msgid "facet-loading-msg"
+msgstr ""
+
 msgid "facet.filters"
 msgstr ""
 
@@ -3182,6 +3185,12 @@ msgstr "Nein"
 msgid "no associated permissions"
 msgstr "keine entsprechende Berechtigung"
 
+msgid "no content next link"
+msgstr ""
+
+msgid "no content prev link"
+msgstr ""
+
 #, python-format
 msgid "no edited fields specified for entity %s"
 msgstr "kein Eingabefeld spezifiziert Für Entität %s"
@@ -3929,6 +3938,12 @@ msgstr ""
 msgid "the value \"%s\" is already used, use another one"
 msgstr ""
 "Der Wert \"%s\" wird bereits benutzt, bitte verwenden Sie einen anderen Wert"
+
+msgid "there is no next page"
+msgstr ""
+
+msgid "there is no previous page"
+msgstr ""
 
 msgid "this action is not reversible!"
 msgstr "Achtung! Diese Aktion ist unumkehrbar."
