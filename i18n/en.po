@@ -154,7 +154,7 @@ msgid "'%s' action doesn't take any options"
 msgstr ""
 
 #, python-format
-msgid "'%s' action require 'linkattr' option"
+msgid "'%s' action requires 'linkattr' option"
 msgstr ""
 
 msgid "(UNEXISTANT EID)"
@@ -711,6 +711,18 @@ msgstr ""
 msgid "Submit bug report by mail"
 msgstr ""
 
+msgid "TZDatetime"
+msgstr "International date and time"
+
+msgid "TZDatetime_plural"
+msgstr "International dates and times"
+
+msgid "TZTime"
+msgstr "International time"
+
+msgid "TZTime_plural"
+msgstr "International times"
+
 #, python-format
 msgid "The view %s can not be applied to this query"
 msgstr ""
@@ -1008,10 +1020,6 @@ msgstr "subworkflow exit-point"
 
 msgid "add WorkflowTransition transition_of Workflow object"
 msgstr "workflow-transition"
-
-#, python-format
-msgid "add a %s"
-msgstr ""
 
 msgctxt "inlined:CWRelation.from_entity.subject"
 msgid "add a CWEType"
@@ -2668,6 +2676,9 @@ msgid ""
 "is created"
 msgstr ""
 
+msgid "indifferent"
+msgstr "indifferent"
+
 msgid "info"
 msgstr ""
 
@@ -3305,7 +3316,7 @@ msgid "read"
 msgstr ""
 
 msgid "read_permission"
-msgstr "can be read by"
+msgstr "read permission"
 
 msgctxt "CWAttribute"
 msgid "read_permission"
@@ -3324,11 +3335,11 @@ msgstr "has permission to read"
 
 msgctxt "CWGroup"
 msgid "read_permission_object"
-msgstr "can be read by"
+msgstr "has permission to read"
 
 msgctxt "RQLExpression"
 msgid "read_permission_object"
-msgstr "can be read by"
+msgstr "has permission to read"
 
 msgid "regexp matching host(s) to which this config applies"
 msgstr ""

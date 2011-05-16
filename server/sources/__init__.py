@@ -139,11 +139,11 @@ class AbstractSource(object):
             return -1
         return cmp(self.uri, other.uri)
 
-    def backup(self, backupfile, confirm):
+    def backup(self, backupfile, confirm, format='native'):
         """method called to create a backup of source's data"""
         pass
 
-    def restore(self, backupfile, confirm, drop):
+    def restore(self, backupfile, confirm, drop, format='native'):
         """method called to restore a backup of source's data"""
         pass
 
@@ -433,6 +433,13 @@ class AbstractSource(object):
     def add_relation(self, session, subject, rtype, object):
         """add a relation to the source"""
         raise NotImplementedError()
+
+    def add_relations(self, session,  rtype, subj_obj_list):
+        """add a relations to the source"""
+        # override in derived classes if you feel you can
+        # optimize
+        for subject, object in subj_obj_list:
+            self.add_relation(session, subject, rtype, object)
 
     def delete_relation(self, session, subject, rtype, object):
         """delete a relation from the source"""

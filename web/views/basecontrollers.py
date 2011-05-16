@@ -1,4 +1,4 @@
-# copyright 2003-2010 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2011 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -455,13 +455,13 @@ class JSonController(Controller):
     def js_reledit_form(self):
         req = self._cw
         args = dict((x, req.form[x])
-                    for x in ('formid', 'rtype', 'role', 'reload'))
+                    for x in ('formid', 'rtype', 'role', 'reload', 'action'))
         rset = req.eid_rset(typed_eid(self._cw.form['eid']))
         try:
             args['reload'] = json.loads(args['reload'])
         except ValueError: # not true/false, an absolute url
             assert args['reload'].startswith('http')
-        view = req.vreg['views'].select('doreledit', req, rset=rset, rtype=args['rtype'])
+        view = req.vreg['views'].select('reledit', req, rset=rset, rtype=args['rtype'])
         return self._call_view(view, **args)
 
     @jsonize

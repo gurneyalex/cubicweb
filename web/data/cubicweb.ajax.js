@@ -1,4 +1,4 @@
-/* copyright 2003-2010 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+/* copyright 2003-2011 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
  * contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
  *
  * This file is part of CubicWeb.
@@ -605,7 +605,7 @@ function reload(domid, compid, registry, formparams  /* ... */) {
     var ajaxArgs = ['render', formparams, registry, compid];
     ajaxArgs = ajaxArgs.concat(cw.utils.sliceList(arguments, 4));
     var params = ajaxFuncArgs.apply(null, ajaxArgs);
-    $('#'+domid).loadxhtml('json', params, null, 'swap');
+    return $('#'+domid).loadxhtml('json', params, null, 'swap');
 }
 
 /* ajax tabs ******************************************************************/

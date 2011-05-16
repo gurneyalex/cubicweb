@@ -50,7 +50,9 @@ and Informix.
 __docformat__ = "restructuredtext en"
 
 import threading
+from datetime import datetime, time
 
+from logilab.common.date import utcdatetime, utctime
 from logilab.database import FunctionDescr, SQL_FUNCTIONS_REGISTRY
 
 from rql import BadRQLQuery, CoercionError
@@ -82,6 +84,7 @@ def _new_var(select, varname):
         newvar.prepare_annotation()
         newvar.stinfo['scope'] = select
         newvar._q_invariant = False
+        select.selection.append(VariableRef(newvar))
     return newvar
 
 def _fill_to_wrap_rel(var, newselect, towrap, schema):
@@ -91,10 +94,12 @@ def _fill_to_wrap_rel(var, newselect, towrap, schema):
             towrap.add( (var, rel) )
             for vref in rel.children[1].iget_nodes(VariableRef):
                 newivar = _new_var(newselect, vref.name)
-                newselect.selection.append(VariableRef(newivar))
                 _fill_to_wrap_rel(vref.variable, newselect, towrap, schema)
         elif rschema.final:
             towrap.add( (var, rel) )
+            for vref in rel.children[1].iget_nodes(VariableRef):
+                newivar = _new_var(newselect, vref.name)
+                newivar.stinfo['attrvar'] = (var, rel.r_type)
 
 def rewrite_unstable_outer_join(select, solutions, unstable, schema):
     """if some optional variables are unstable, they should be selected in a
@@ -114,11 +119,6 @@ def rewrite_unstable_outer_join(select, solutions, unstable, schema):
         # extract aliases / selection
         newvar = _new_var(newselect, var.name)
         newselect.selection = [VariableRef(newvar)]
-        for avar in select.defined_vars.itervalues():
-            if avar.stinfo['attrvar'] is var:
-                newavar = _new_var(newselect, avar.name)
-                newavar.stinfo['attrvar'] = newvar
-                newselect.selection.append(VariableRef(newavar))
         towrap_rels = set()
         _fill_to_wrap_rel(var, newselect, towrap_rels, schema)
         # extract relations
@@ -588,16 +588,16 @@ class StateInfo(object):
                 rconditions.append(condition)
             else:
                 lconditions.append(condition)
-        else:
-            if louter is not None:
-                raise BadRQLQuery()
+        elif louter is None:
             # merge chains
             self.outer_chains.remove(lchain)
-            self.mark_as_used_in_outer_join(leftalias)
             rchain += lchain
+            self.mark_as_used_in_outer_join(leftalias)
             for alias, (aouter, aconditions, achain) in outer_tables.iteritems():
                 if achain is lchain:
                     outer_tables[alias] = (aouter, aconditions, rchain)
+        else:
+            raise BadRQLQuery()
 
     # sql generation helpers ###################################################
 
@@ -1424,6 +1424,14 @@ class SQLGenerator(object):
                 _id = value
                 if isinstance(_id, unicode):
                     _id = _id.encode()
+                # convert timestamp to utc.
+                # expect SET TiME ZONE to UTC at connection opening time.
+                # This shouldn't change anything for datetime without TZ.
+                value = self._args[_id]
+                if isinstance(value, datetime) and value.tzinfo is not None:
+                    self._query_attrs[_id] = utcdatetime(value)
+                elif isinstance(value, time) and value.tzinfo is not None:
+                    self._query_attrs[_id] = utctime(value)
         else:
             _id = str(id(constant)).replace('-', '', 1)
             self._query_attrs[_id] = value

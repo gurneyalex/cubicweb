@@ -33,11 +33,13 @@ from rql.nodes import ETYPE_PYOBJ_MAP, etype_from_pyobj
 from yams import BASE_TYPES
 
 from cubicweb import Binary, UnknownEid, QueryError, schema
+from cubicweb.selectors import objectify_selector
 from cubicweb.req import RequestSessionBase
 from cubicweb.dbapi import ConnectionProperties
 from cubicweb.utils import make_uid, RepeatList
 from cubicweb.rqlrewrite import RQLRewriter
 from cubicweb.server.edition import EditedEntity
+
 
 ETYPE_PYOBJ_MAP[Binary] = 'Bytes'
 
@@ -57,6 +59,20 @@ def _make_description(selected, args, solution):
     for term in selected:
         description.append(term.get_type(solution, args))
     return description
+
+@objectify_selector
+def is_user_session(cls, req, **kwargs):
+    """repository side only selector returning 1 if the session is a regular
+    user session and not an internal session
+    """
+    return not req.is_internal_session
+
+@objectify_selector
+def is_internal_session(cls, req, **kwargs):
+    """repository side only selector returning 1 if the session is not a regular
+    user session but an internal session
+    """
+    return req.is_internal_session
 
 
 class hooks_control(object):
@@ -166,6 +182,7 @@ class Session(RequestSessionBase):
         self.__threaddata = threading.local()
         self._threads_in_transaction = set()
         self._closed = False
+        self._closed_lock = threading.Lock()
 
     def __unicode__(self):
         return '<%ssession %s (%s 0x%x)>' % (
@@ -213,14 +230,34 @@ class Session(RequestSessionBase):
         You may use this in hooks when you know both eids of the relation you
         want to add.
         """
+        self.add_relations([(rtype, [(fromeid,  toeid)])])
+
+    def add_relations(self, relations):
+        '''set many relation using a shortcut similar to the one in add_relation
+        
+        relations is a list of 2-uples, the first element of each
+        2-uple is the rtype, and the second is a list of (fromeid,
+        toeid) tuples
+        '''
+        edited_entities = {}
+        relations_dict = {}
         with security_enabled(self, False, False):
-            if self.vreg.schema[rtype].inlined:
-                entity = self.entity_from_eid(fromeid)
-                edited = EditedEntity(entity)
-                edited.edited_attribute(rtype, toeid)
+            for rtype, eids in relations:
+                if self.vreg.schema[rtype].inlined:
+                    for fromeid, toeid in eids:
+                        if fromeid not in edited_entities:
+                            entity = self.entity_from_eid(fromeid)
+                            edited = EditedEntity(entity)
+                            edited_entities[fromeid] = edited
+                        else:
+                            edited = edited_entities[fromeid]
+                        edited.edited_attribute(rtype, toeid)
+                else:
+                    relations_dict[rtype] = eids
+            self.repo.glob_add_relations(self, relations_dict)
+            for edited in edited_entities.itervalues():
                 self.repo.glob_update_entity(self, edited)
-            else:
-                self.repo.glob_add_relation(self, fromeid, rtype, toeid)
+
 
     def delete_relation(self, fromeid, rtype, toeid):
         """provide direct access to the repository method to delete a relation.
@@ -582,21 +619,22 @@ class Session(RequestSessionBase):
 
     def set_pool(self):
         """the session need a pool to execute some queries"""
-        if self._closed:
-            self.reset_pool(True)
-            raise Exception('try to set pool on a closed session')
-        if self.pool is None:
-            # get pool first to avoid race-condition
-            self._threaddata.pool = pool = self.repo._get_pool()
-            try:
-                pool.pool_set()
-            except:
-                self._threaddata.pool = None
-                self.repo._free_pool(pool)
-                raise
-            self._threads_in_transaction.add(
-                (threading.currentThread(), pool) )
-        return self._threaddata.pool
+        with self._closed_lock:
+            if self._closed:
+                self.reset_pool(True)
+                raise Exception('try to set pool on a closed session')
+            if self.pool is None:
+                # get pool first to avoid race-condition
+                self._threaddata.pool = pool = self.repo._get_pool()
+                try:
+                    pool.pool_set()
+                except:
+                    self._threaddata.pool = None
+                    self.repo._free_pool(pool)
+                    raise
+                self._threads_in_transaction.add(
+                    (threading.currentThread(), pool) )
+            return self._threaddata.pool
 
     def _free_thread_pool(self, thread, pool, force_close=False):
         try:
@@ -834,7 +872,8 @@ class Session(RequestSessionBase):
 
     def close(self):
         """do not close pool on session close, since they are shared now"""
-        self._closed = True
+        with self._closed_lock:
+            self._closed = True
         # copy since _threads_in_transaction maybe modified while waiting
         for thread, pool in self._threads_in_transaction.copy():
             if thread is threading.currentThread():
