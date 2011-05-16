@@ -162,7 +162,7 @@ class ServerMigrationHelper(MigrationHelper):
 
     # server specific migration methods ########################################
 
-    def backup_database(self, backupfile=None, askconfirm=True):
+    def backup_database(self, backupfile=None, askconfirm=True, format='native'):
         config = self.config
         repo = self.repo_connect()
         # paths
@@ -185,16 +185,24 @@ class ServerMigrationHelper(MigrationHelper):
         # backup
         tmpdir = tempfile.mkdtemp()
         try:
+            failed = False
             for source in repo.sources:
                 try:
-                    source.backup(osp.join(tmpdir, source.uri), self.confirm)
+                    source.backup(osp.join(tmpdir, source.uri), self.confirm, format=format)
                 except Exception, ex:
                     print '-> error trying to backup %s [%s]' % (source.uri, ex)
                     if not self.confirm('Continue anyway?', default='n'):
                         raise SystemExit(1)
                     else:
-                        break
-            else:
+                        failed = True
+            with open(osp.join(tmpdir, 'format.txt'), 'w') as format_file:
+                format_file.write('%s\n' % format)
+            with open(osp.join(tmpdir, 'versions.txt'), 'w') as version_file:
+                versions = repo.get_versions()
+                for cube, version in versions.iteritems():
+                    version_file.write('%s %s\n' % (cube, version))
+                    
+            if not failed:
                 bkup = tarfile.open(backupfile, 'w|gz')
                 for filename in os.listdir(tmpdir):
                     bkup.add(osp.join(tmpdir, filename), filename)
@@ -207,7 +215,7 @@ class ServerMigrationHelper(MigrationHelper):
             shutil.rmtree(tmpdir)
 
     def restore_database(self, backupfile, drop=True, systemonly=True,
-                         askconfirm=True):
+                         askconfirm=True, format='native'):
         # check
         if not osp.exists(backupfile):
             raise ExecutionError("Backup file %s doesn't exist" % backupfile)
@@ -229,13 +237,18 @@ class ServerMigrationHelper(MigrationHelper):
             bkup = tarfile.open(backupfile, 'r|gz')
             bkup.extractall(path=tmpdir)
             bkup.close()
+        if osp.isfile(osp.join(tmpdir, 'format.txt')):
+            with open(osp.join(tmpdir, 'format.txt')) as format_file:
+                written_format = format_file.readline().strip()
+                if written_format in ('portable', 'native'):
+                    format = written_format
         self.config.open_connections_pools = False
         repo = self.repo_connect()
         for source in repo.sources:
             if systemonly and source.uri != 'system':
                 continue
             try:
-                source.restore(osp.join(tmpdir, source.uri), self.confirm, drop)
+                source.restore(osp.join(tmpdir, source.uri), self.confirm, drop, format)
             except Exception, exc:
                 print '-> error trying to restore %s [%s]' % (source.uri, exc)
                 if not self.confirm('Continue anyway?', default='n'):
@@ -438,7 +451,8 @@ class ServerMigrationHelper(MigrationHelper):
                                  'X expression %%(expr)s, X mainvars %%(vars)s, T %s X '
                                  'WHERE T eid %%(x)s' % perm,
                                  {'expr': expr, 'exprtype': exprtype,
-                                  'vars': expression.mainvars, 'x': teid},
+                                  'vars': u','.join(sorted(expression.mainvars)),
+                                  'x': teid},
                                  ask_confirm=False)
 
     def _synchronize_rschema(self, rtype, syncrdefs=True,
@@ -757,9 +771,9 @@ class ServerMigrationHelper(MigrationHelper):
         targeted type is known
         """
         instschema = self.repo.schema
-        assert not etype in instschema, \
-               '%s already defined in the instance schema' % etype
         eschema = self.fs_schema.eschema(etype)
+        assert eschema.final or not etype in instschema, \
+               '%s already defined in the instance schema' % etype
         confirm = self.verbosity >= 2
         groupmap = self.group_mapping()
         cstrtypemap = self.cstrtype_mapping()
@@ -1247,6 +1261,12 @@ class ServerMigrationHelper(MigrationHelper):
         if commit:
             self.commit()
         return wf
+
+    def cmd_get_workflow_for(self, etype):
+        """return default workflow for the given entity type"""
+        rset = self.rqlexec('Workflow X WHERE ET default_workflow X, ET name %(et)s',
+                            {'et': etype})
+        return rset.get_entity(0, 0)
 
     # XXX remove once cmd_add_[state|transition] are removed
     def _get_or_create_wf(self, etypes):
