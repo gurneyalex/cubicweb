@@ -138,12 +138,14 @@ class FakeUser(object):
 
 
 class FakeSession(RequestSessionBase):
-    read_security = write_security = True
-    set_read_security = set_write_security = lambda *args, **kwargs: None
 
-    def __init__(self, repo=None, user=None):
+    def __init__(self, repo=None, user=None, vreg=None):
         self.repo = repo
-        self.vreg = getattr(self.repo, 'vreg', CubicWebVRegistry(FakeConfig(), initlog=False))
+        if vreg is None:
+            vreg = getattr(self.repo, 'vreg', None)
+        if vreg is None:
+            vreg = CubicWebVRegistry(FakeConfig(), initlog=False)
+        self.vreg = vreg
         self.pool = FakePool()
         self.user = user or FakeUser()
         self.is_internal_session = False
@@ -161,6 +163,13 @@ class FakeSession(RequestSessionBase):
 
     def set_entity_cache(self, entity):
         pass
+
+    # for use with enabled_security context manager
+    read_security = write_security = True
+    def init_security(self, *args):
+        return None, None
+    def reset_security(self, *args):
+        return
 
 class FakeRepo(object):
     querier = None
