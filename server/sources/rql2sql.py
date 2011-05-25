@@ -1361,6 +1361,8 @@ class SQLGenerator(object):
                 operator = ' LIKE '
             else:
                 operator = ' %s ' % operator
+        elif operator == 'REGEXP':
+            return ' %s' % self.dbhelper.sql_regexp_match_expression(rhs.accept(self))
         elif (operator == '=' and isinstance(rhs, Constant)
               and rhs.eval(self._args) is None):
             if lhs is None:
@@ -1411,6 +1413,8 @@ class SQLGenerator(object):
         if constant.type is None:
             return 'NULL'
         value = constant.value
+        if constant.type == 'etype':
+            return value
         if constant.type == 'Int' and  isinstance(constant.parent, SortTerm):
             return value
         if constant.type in ('Date', 'Datetime'):

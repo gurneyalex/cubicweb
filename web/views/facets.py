@@ -1,4 +1,4 @@
-# copyright 2003-2010 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2011 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -73,6 +73,7 @@ class FilterBox(component.CtxComponent):
         req = self._cw
         req.add_js( self.needs_js )
         req.add_css( self.needs_css)
+        req.html_headers.define_var('facetLoadingMsg', req._('facet-loading-msg'))
         if self.roundcorners:
             req.html_headers.add_onload('jQuery(".facet").corner("tl br 10px");')
         rset, vid, divid, paginate = self._get_context()
@@ -202,6 +203,11 @@ class HasTextFacet(facet.AbstractFacet):
     rtype = 'has_text'
     role = 'subject'
     order = 0
+
+    @property
+    def wdgclass(self):
+        return facet.FacetStringWidget
+
     @property
     def title(self):
         return self._cw._('has_text')
@@ -212,7 +218,7 @@ class HasTextFacet(facet.AbstractFacet):
         default implentation expects a .vocabulary method on the facet and
         return a combobox displaying this vocabulary
         """
-        return facet.FacetStringWidget(self)
+        return self.wdgclass(self)
 
     def add_rql_restrictions(self):
         """add restriction for this facet into the rql syntax tree"""

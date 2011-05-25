@@ -5,7 +5,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: 2.0\n"
 "POT-Creation-Date: 2006-01-12 17:35+CET\n"
-"PO-Revision-Date: 2010-09-15 14:55+0200\n"
+"PO-Revision-Date: 2011-04-29 12:57+0200\n"
 "Last-Translator: Sylvain Thenault <sylvain.thenault@logilab.fr>\n"
 "Language-Team: English <devel@logilab.fr.org>\n"
 "Language: en\n"
@@ -2324,6 +2324,9 @@ msgstr "expression type"
 msgid "external page"
 msgstr ""
 
+msgid "facet-loading-msg"
+msgstr "processing, please wait"
+
 msgid "facet.filters"
 msgstr "filter"
 
@@ -3089,6 +3092,12 @@ msgstr ""
 msgid "no associated permissions"
 msgstr ""
 
+msgid "no content next link"
+msgstr ""
+
+msgid "no content prev link"
+msgstr ""
+
 #, python-format
 msgid "no edited fields specified for entity %s"
 msgstr ""
@@ -3819,6 +3828,12 @@ msgstr ""
 
 #, python-format
 msgid "the value \"%s\" is already used, use another one"
+msgstr ""
+
+msgid "there is no next page"
+msgstr ""
+
+msgid "there is no previous page"
 msgstr ""
 
 msgid "this action is not reversible!"

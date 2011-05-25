@@ -2425,6 +2425,9 @@ msgstr "Tipo"
 msgid "external page"
 msgstr "Página externa"
 
+msgid "facet-loading-msg"
+msgstr ""
+
 msgid "facet.filters"
 msgstr "Filtros"
 
@@ -3146,11 +3149,11 @@ msgstr "Nombre"
 
 msgctxt "CWSource"
 msgid "name"
-msgstr "nombre"
+msgstr ""
 
 msgctxt "State"
 msgid "name"
-msgstr "Nombre"
+msgstr "nombre"
 
 msgctxt "Transition"
 msgid "name"
@@ -3218,6 +3221,12 @@ msgstr "No"
 
 msgid "no associated permissions"
 msgstr "No existe permiso asociado"
+
+msgid "no content next link"
+msgstr ""
+
+msgid "no content prev link"
+msgstr ""
 
 #, python-format
 msgid "no edited fields specified for entity %s"
@@ -3975,6 +3984,12 @@ msgstr ""
 #, python-format
 msgid "the value \"%s\" is already used, use another one"
 msgstr "El valor \"%s\" ya esta en uso, favor de utilizar otro"
+
+msgid "there is no next page"
+msgstr ""
+
+msgid "there is no previous page"
+msgstr ""
 
 msgid "this action is not reversible!"
 msgstr "Esta acción es irreversible!."
