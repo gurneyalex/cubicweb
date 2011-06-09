@@ -156,14 +156,55 @@ class CWEntityXMLParserTC(CubicWebTC):
         self.assertEqual(tag.cwuri, 'http://testing.fr/cubicweb/%s' % tag.eid)
         self.assertEqual(tag.cw_source[0].name, 'system')
 
+        session.set_cnxset()
         stats = dfsource.pull_data(session, force=True, raise_on_error=True)
         self.assertEqual(stats['created'], set())
         self.assertEqual(len(stats['updated']), 2)
         self.repo._type_source_cache.clear()
         self.repo._extid_cache.clear()
+        session.set_cnxset()
         stats = dfsource.pull_data(session, force=True, raise_on_error=True)
         self.assertEqual(stats['created'], set())
         self.assertEqual(len(stats['updated']), 2)
+        session.commit()
+
+        # test move to system source
+        self.sexecute('SET X cw_source S WHERE X eid %(x)s, S name "system"', {'x': email.eid})
+        self.commit()
+        rset = self.sexecute('EmailAddress X WHERE X address "syt@logilab.fr"')
+        self.assertEqual(len(rset), 1)
+        e = rset.get_entity(0, 0)
+        self.assertEqual(e.eid, email.eid)
+        self.assertEqual(e.cw_metainformation(), {'source': {'type': u'native', 'uri': u'system'},
+                                                  'type': 'EmailAddress',
+                                                  'extid': None})
+        self.assertEqual(e.cw_source[0].name, 'system')
+        self.assertEqual(e.reverse_use_email[0].login, 'sthenault')
+        self.commit()
+        # test everything is still fine after source synchronization
+        session.set_cnxset()
+        stats = dfsource.pull_data(session, force=True, raise_on_error=True)
+        rset = self.sexecute('EmailAddress X WHERE X address "syt@logilab.fr"')
+        self.assertEqual(len(rset), 1)
+        e = rset.get_entity(0, 0)
+        self.assertEqual(e.eid, email.eid)
+        self.assertEqual(e.cw_metainformation(), {'source': {'type': u'native', 'uri': u'system'},
+                                                  'type': 'EmailAddress',
+                                                  'extid': None})
+        self.assertEqual(e.cw_source[0].name, 'system')
+        self.assertEqual(e.reverse_use_email[0].login, 'sthenault')
+        session.commit()
+
+        # test delete entity
+        e.cw_delete()
+        self.commit()
+        # test everything is still fine after source synchronization
+        session.set_cnxset()
+        stats = dfsource.pull_data(session, force=True, raise_on_error=True)
+        rset = self.sexecute('EmailAddress X WHERE X address "syt@logilab.fr"')
+        self.assertEqual(len(rset), 0)
+        rset = self.sexecute('Any X WHERE X use_email E, X login "sthenault"')
+        self.assertEqual(len(rset), 0)
 
 if __name__ == '__main__':
     from logilab.common.testlib import unittest_main
