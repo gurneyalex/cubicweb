@@ -1,4 +1,4 @@
-# copyright 2003-2010 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2011 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -22,7 +22,7 @@ _ = unicode
 
 from logilab.mtconverter import xml_escape
 
-from cubicweb.selectors import nonempty_rset, match_form_params
+from cubicweb.selectors import nonempty_rset
 from cubicweb.utils import make_uid, json_dumps
 from cubicweb.view import EntityView, AnyRsetView
 from cubicweb import tags
@@ -31,6 +31,7 @@ from cubicweb.web import jsonize
 from cubicweb.web.component import Link
 from cubicweb.web.htmlwidgets import (TableWidget, TableColumn, MenuWidget,
                                       PopupBoxMenu)
+from cubicweb.web import facet
 from cubicweb.web.facet import prepare_facets_rqlst, filter_hiddens
 
 class TableView(AnyRsetView):
@@ -42,6 +43,7 @@ class TableView(AnyRsetView):
     __regid__ = 'table'
     title = _('table')
     finalview = 'final'
+    wdg_stack_size = 8
 
     def form_filter(self, divid, displaycols, displayactions, displayfilter,
                     paginate, hidden=True):
@@ -72,6 +74,8 @@ class TableView(AnyRsetView):
         w = self.w
         self._cw.add_css('cubicweb.facets.css')
         self._cw.add_js( ('cubicweb.ajax.js', 'cubicweb.facets.js'))
+        self._cw.html_headers.define_var('facetLoadingMsg',
+                                         self._cw._('facet-loading-msg'))
         # drop False / None values from vidargs
         vidargs = dict((k, v) for k, v in vidargs.iteritems() if v)
         w(u'<form method="post" cubicweb:facetargs="%s" action="">' %
@@ -81,12 +85,36 @@ class TableView(AnyRsetView):
         w(u'<input type="hidden" name="fromformfilter" value="1" />')
         filter_hiddens(w, facets=','.join(wdg.facet.__regid__ for wdg in fwidgets),
                        baserql=baserql)
+        self._build_form_table(fwidgets)
+
+    def _facet_widget_sort(self, fwidgets):
+        fwidgets.sort(key=lambda x: x.height())
+
+    def _build_form_table(self, fwidgets):
+        # sort by widget height
+        w = self.w
+        self._facet_widget_sort(fwidgets)
         w(u'<table class="filter">\n')
+        widget_queue = []
+        queue_size = 0
         w(u'<tr>\n')
         for wdg in fwidgets:
+            height = wdg.height()
+            if queue_size + height <= self.wdg_stack_size:
+                widget_queue.append(wdg)
+                queue_size += height
+                continue
             w(u'<td>')
-            wdg.render(w=w)
-            w(u'</td>\n')
+            for queued in widget_queue:
+                queued.render(w=w)
+            w(u'</td>')
+            widget_queue = [wdg]
+            queue_size = height
+        if widget_queue:
+            w(u'<td>')
+            for queued in widget_queue:
+                queued.render(w=w)
+            w(u'</td>')
         w(u'</tr>\n')
         w(u'</table>\n')
         w(u'</fieldset>\n')

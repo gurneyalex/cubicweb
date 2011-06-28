@@ -257,6 +257,12 @@ msgstr "Transición (abstracta)"
 msgid "BaseTransition_plural"
 msgstr "Transiciones (abstractas)"
 
+msgid "BigInt"
+msgstr ""
+
+msgid "BigInt_plural"
+msgstr ""
+
 msgid "Bookmark"
 msgstr "Favorito"
 
@@ -1878,6 +1884,9 @@ msgstr ""
 msgid "ctxtoolbar"
 msgstr "Barra de herramientas"
 
+msgid "currently in synchronization"
+msgstr ""
+
 msgid "custom_workflow"
 msgstr "Workflow específico"
 
@@ -2425,6 +2434,9 @@ msgstr "Tipo"
 msgid "external page"
 msgstr "Página externa"
 
+msgid "facet-loading-msg"
+msgstr ""
+
 msgid "facet.filters"
 msgstr "Filtros"
 
@@ -2608,9 +2620,6 @@ msgid ""
 msgstr ""
 "Relación genérica que indicar que una entidad es idéntica a otro recurso web "
 "(ver http://www.w3.org/TR/owl-ref/#sameAs-def)."
-
-msgid "go back to the index page"
-msgstr "Regresar a la página de inicio"
 
 msgid "granted to groups"
 msgstr "Otorgado a los grupos"
@@ -3146,11 +3155,11 @@ msgstr "Nombre"
 
 msgctxt "CWSource"
 msgid "name"
-msgstr "nombre"
+msgstr ""
 
 msgctxt "State"
 msgid "name"
-msgstr "Nombre"
+msgstr "nombre"
 
 msgctxt "Transition"
 msgid "name"
@@ -3218,6 +3227,12 @@ msgstr "No"
 
 msgid "no associated permissions"
 msgstr "No existe permiso asociado"
+
+msgid "no content next link"
+msgstr ""
+
+msgid "no content prev link"
+msgstr ""
 
 #, python-format
 msgid "no edited fields specified for entity %s"
@@ -3938,6 +3953,13 @@ msgstr "Simétrico"
 msgid "synchronization-interval must be greater than 1 minute"
 msgstr "synchronization-interval debe ser mayor a 1 minuto"
 
+msgid "synchronizing"
+msgstr ""
+
+msgctxt "CWSource"
+msgid "synchronizing"
+msgstr ""
+
 msgid "table"
 msgstr "Tabla"
 
@@ -3975,6 +3997,12 @@ msgstr ""
 #, python-format
 msgid "the value \"%s\" is already used, use another one"
 msgstr "El valor \"%s\" ya esta en uso, favor de utilizar otro"
+
+msgid "there is no next page"
+msgstr ""
+
+msgid "there is no previous page"
+msgstr ""
 
 msgid "this action is not reversible!"
 msgstr "Esta acción es irreversible!."
@@ -4075,8 +4103,8 @@ msgctxt "TrInfo"
 msgid "tr_count"
 msgstr "n° de transición"
 
-msgid "transaction undone"
-msgstr "Transacciones Anuladas"
+msgid "transaction undoed"
+msgstr ""
 
 #, python-format
 msgid "transition %(tr)s isn't allowed from %(st)s"
@@ -4360,28 +4388,28 @@ msgctxt "CWProperty"
 msgid "value"
 msgstr "Vampr"
 
+#, python-format
+msgid "value %(value)s must be %(op)s %(boundary)s"
+msgstr ""
+
+#, python-format
+msgid "value %(value)s must be <= %(boundary)s"
+msgstr ""
+
+#, python-format
+msgid "value %(value)s must be >= %(boundary)s"
+msgstr ""
+
 msgid "value associated to this key is not editable manually"
 msgstr "El valor asociado a este elemento no es editable manualmente"
 
 #, python-format
-msgid "value must be %(op)s %(boundary)s"
-msgstr "El valor debe ser %(op)s %(boundary)s"
+msgid "value should have maximum size of %s but found %s"
+msgstr ""
 
 #, python-format
-msgid "value must be <= %(boundary)s"
-msgstr "El valor debe ser <= %(boundary)s"
-
-#, python-format
-msgid "value must be >= %(boundary)s"
-msgstr "El valor debe ser >= %(boundary)s"
-
-#, python-format
-msgid "value should have maximum size of %s"
-msgstr "El valor no debe exceder de %s"
-
-#, python-format
-msgid "value should have minimum size of %s"
-msgstr "El valor no puede ser menor a %s"
+msgid "value should have minimum size of %s but found %s"
+msgstr ""
 
 msgid "vcard"
 msgstr "vcard"
@@ -4530,6 +4558,3 @@ msgid "you should un-inline relation %s which is supported and may be crossed "
 msgstr ""
 "usted debe  quitar la puesta en línea de la relación %s que es aceptada y "
 "puede ser cruzada"
-
-#~ msgid "add a %s"
-#~ msgstr "agregar un %s"
