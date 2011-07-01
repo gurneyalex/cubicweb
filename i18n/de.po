@@ -256,6 +256,12 @@ msgstr "Übergang (abstrakt)"
 msgid "BaseTransition_plural"
 msgstr "Übergänge (abstrakt)"
 
+msgid "BigInt"
+msgstr ""
+
+msgid "BigInt_plural"
+msgstr ""
+
 msgid "Bookmark"
 msgstr "Lesezeichen"
 
@@ -1849,6 +1855,9 @@ msgstr "Zeite die Workflow-Chronik."
 msgid "ctxtoolbar"
 msgstr "Werkzeugleiste"
 
+msgid "currently in synchronization"
+msgstr ""
+
 msgid "custom_workflow"
 msgstr "angepasster Workflow"
 
@@ -2382,6 +2391,9 @@ msgstr "Typ des Ausdrucks"
 msgid "external page"
 msgstr "externe Seite"
 
+msgid "facet-loading-msg"
+msgstr ""
+
 msgid "facet.filters"
 msgstr ""
 
@@ -2565,9 +2577,6 @@ msgid ""
 msgstr ""
 "generische Relation, die anzeigt, dass eine Entität mit einer anderen Web-"
 "Ressource identisch ist (siehe http://www.w3.org/TR/owl-ref/#sameAs-def)."
-
-msgid "go back to the index page"
-msgstr "Zurück zur Index-Seite"
 
 msgid "granted to groups"
 msgstr "an Gruppen gewährt"
@@ -3177,6 +3186,12 @@ msgstr "Nein"
 
 msgid "no associated permissions"
 msgstr "keine entsprechende Berechtigung"
+
+msgid "no content next link"
+msgstr ""
+
+msgid "no content prev link"
+msgstr ""
 
 #, python-format
 msgid "no edited fields specified for entity %s"
@@ -3888,6 +3903,13 @@ msgstr "symmetrisch"
 msgid "synchronization-interval must be greater than 1 minute"
 msgstr ""
 
+msgid "synchronizing"
+msgstr ""
+
+msgctxt "CWSource"
+msgid "synchronizing"
+msgstr ""
+
 msgid "table"
 msgstr "Tabelle"
 
@@ -3925,6 +3947,12 @@ msgstr ""
 msgid "the value \"%s\" is already used, use another one"
 msgstr ""
 "Der Wert \"%s\" wird bereits benutzt, bitte verwenden Sie einen anderen Wert"
+
+msgid "there is no next page"
+msgstr ""
+
+msgid "there is no previous page"
+msgstr ""
 
 msgid "this action is not reversible!"
 msgstr "Achtung! Diese Aktion ist unumkehrbar."
@@ -4025,8 +4053,8 @@ msgctxt "TrInfo"
 msgid "tr_count"
 msgstr ""
 
-msgid "transaction undone"
-msgstr "Transaktion rückgängig gemacht"
+msgid "transaction undoed"
+msgstr ""
 
 #, python-format
 msgid "transition %(tr)s isn't allowed from %(st)s"
@@ -4310,30 +4338,30 @@ msgctxt "CWProperty"
 msgid "value"
 msgstr "Wert"
 
+#, python-format
+msgid "value %(value)s must be %(op)s %(boundary)s"
+msgstr ""
+
+#, python-format
+msgid "value %(value)s must be <= %(boundary)s"
+msgstr ""
+
+#, python-format
+msgid "value %(value)s must be >= %(boundary)s"
+msgstr ""
+
 msgid "value associated to this key is not editable manually"
 msgstr ""
 "Der mit diesem Schlüssele verbundene Wert kann n icht manuell geändert "
 "werden."
 
 #, python-format
-msgid "value must be %(op)s %(boundary)s"
-msgstr "Der Wert muss %(op)s %(boundary)s sein."
+msgid "value should have maximum size of %s but found %s"
+msgstr ""
 
 #, python-format
-msgid "value must be <= %(boundary)s"
-msgstr "Der Wert muss <= %(boundary)s sein."
-
-#, python-format
-msgid "value must be >= %(boundary)s"
-msgstr "Der Wert muss >= %(boundary)s sein."
-
-#, python-format
-msgid "value should have maximum size of %s"
-msgstr "Der Wert darf höchstens %s betragen."
-
-#, python-format
-msgid "value should have minimum size of %s"
-msgstr "Der Wert muss mindestens %s betragen."
+msgid "value should have minimum size of %s but found %s"
+msgstr ""
 
 msgid "vcard"
 msgstr "VCard"
@@ -4479,76 +4507,3 @@ msgstr "Sie sollten diese Eigenschaft wahrscheinlich löschen."
 #, python-format
 msgid "you should un-inline relation %s which is supported and may be crossed "
 msgstr ""
-
-#~ msgid "Attributes with non default permissions:"
-#~ msgstr "Attribute mit nicht-standard-Berechtigungen"
-
-#~ msgid "Entity types"
-#~ msgstr "Entitätstypen"
-
-#~ msgid "Index"
-#~ msgstr "Index"
-
-#~ msgid "Permissions for entity types"
-#~ msgstr "Berechtigungen für Entitätstypen"
-
-#~ msgid "Permissions for relations"
-#~ msgstr "Berechtigungen für Relationen"
-
-#~ msgid "Relation types"
-#~ msgstr "Relationstypen"
-
-#~ msgid "am/pm calendar (month)"
-#~ msgstr "am/pm Kalender (Monat)"
-
-#~ msgid "am/pm calendar (semester)"
-#~ msgstr "am/pm Kalender (Halbjahr)"
-
-#~ msgid "am/pm calendar (week)"
-#~ msgstr "am/pm Kalender (Woche)"
-
-#~ msgid "am/pm calendar (year)"
-#~ msgstr "am/pm Kalender (Jahr)"
-
-#~ msgid "application entities"
-#~ msgstr "Anwendungs-Entitäten"
-
-#~ msgid "calendar (month)"
-#~ msgstr "Kalender (monatlich)"
-
-#~ msgid "calendar (semester)"
-#~ msgstr "Kalender (halbjährlich)"
-
-#~ msgid "calendar (week)"
-#~ msgstr "Kalender (wöchentlich)"
-
-#~ msgid "calendar (year)"
-#~ msgstr "Kalender (jährlich)"
-
-#~ msgid ""
-#~ "can't set inlined=%(inlined)s, %(stype)s %(rtype)s %(otype)s has "
-#~ "cardinality=%(card)s"
-#~ msgstr ""
-#~ "Kann 'inlined' = %(inlined)s nicht zuweisen, %(stype)s %(rtype)s %(otype)"
-#~ "s hat die Kardinalität %(card)s"
-
-#~ msgid "create an index page"
-#~ msgstr "Eine Index-Seite anlegen"
-
-#~ msgid "edit the index page"
-#~ msgstr "Index-Seite bearbeiten"
-
-#~ msgid "schema entities"
-#~ msgstr "Entitäten, die das Schema definieren"
-
-#~ msgid "schema-security"
-#~ msgstr "Rechte"
-
-#~ msgid "system entities"
-#~ msgstr "System-Entitäten"
-
-#~ msgid "timestamp of the latest source synchronization."
-#~ msgstr "Zeitstempel der letzten Synchronisierung mit der Quelle."
-
-#~ msgid "up"
-#~ msgstr "nach oben"
