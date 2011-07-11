@@ -1372,6 +1372,8 @@ class SQLGenerator(object):
                 operator = ' LIKE '
             else:
                 operator = ' %s ' % operator
+        elif operator == 'REGEXP':
+            return ' %s' % self.dbhelper.sql_regexp_match_expression(rhs.accept(self))
         elif (operator == '=' and isinstance(rhs, Constant)
               and rhs.eval(self._args) is None):
             if lhs is None:
@@ -1422,6 +1424,8 @@ class SQLGenerator(object):
         if constant.type is None:
             return 'NULL'
         value = constant.value
+        if constant.type == 'etype':
+            return value
         if constant.type == 'Int' and  isinstance(constant.parent, SortTerm):
             return value
         if constant.type in ('Date', 'Datetime'):
@@ -1584,8 +1588,14 @@ class SQLGenerator(object):
             scope = self._state.scopes[var.scope]
             self._state.add_table(sql.split('.', 1)[0], scope=scope)
         except KeyError:
-            sql = '%s.%s%s' % (self._var_table(var), SQL_PREFIX, rtype)
-            #self._state.done.add(var.name)
+            # rtype may be an attribute relation when called from
+            # _visit_var_attr_relation.  take care about 'eid' rtype, since in
+            # some case we may use the `entities` table, so in that case we've
+            # to properly use variable'sql
+            if rtype == 'eid':
+                sql = var.accept(self)
+            else:
+                sql = '%s.%s%s' % (self._var_table(var), SQL_PREFIX, rtype)
         return sql
 
     def _linked_var_sql(self, variable):

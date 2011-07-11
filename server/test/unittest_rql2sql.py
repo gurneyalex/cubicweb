@@ -550,6 +550,10 @@ WHERE rel_todo_by0.eid_from=_H.cw_eid
 GROUP BY rel_todo_by0.eid_to
 ORDER BY 2 DESC'''),
 
+    ('Any R2 WHERE R2 concerne R, R eid RE, R2 eid > RE',
+     '''SELECT _R2.eid
+FROM concerne_relation AS rel_concerne0, entities AS _R2
+WHERE _R2.eid=rel_concerne0.eid_from AND _R2.eid>rel_concerne0.eid_to'''),
     ]
 
 ADVANCED_WITH_GROUP_CONCAT = [
@@ -1360,6 +1364,18 @@ FROM cw_Personne AS _P''')
                     '''SELECT SUBSTR(_P.cw_nom, 1, 1)
 FROM cw_Personne AS _P''')
 
+    def test_cast(self):
+        self._check("Any CAST(String, P) WHERE P is Personne",
+                    '''SELECT CAST(_P.cw_eid AS text)
+FROM cw_Personne AS _P''')
+
+    def test_regexp(self):
+        self._check("Any X WHERE X login REGEXP '[0-9].*'",
+                    '''SELECT _X.cw_eid
+FROM cw_CWUser AS _X
+WHERE _X.cw_login ~ [0-9].*
+''')
+
     def test_parser_parse(self):
         for t in self._parse(PARSER):
             yield t
@@ -1675,6 +1691,9 @@ class SqlServer2005SQLGeneratorTC(PostgresSQLGeneratorTC):
         for t in self._parse(HAS_TEXT_LG_INDEXER):
             yield t
 
+    def test_regexp(self):
+        self.skipTest('regexp-based pattern matching not implemented in sqlserver')
+
     def test_or_having_fake_terms(self):
         self._check('Any X WHERE X is CWUser, X creation_date D HAVING YEAR(D) = "2010" OR D = NULL',
                     '''SELECT _X.cw_eid
@@ -1813,6 +1832,11 @@ __RowNumber <= 1
         for t in self._parse(WITH_LIMIT):# + ADVANCED_WITH_LIMIT_OR_ORDERBY):
             yield t
 
+    def test_cast(self):
+        self._check("Any CAST(String, P) WHERE P is Personne",
+                    '''SELECT CAST(_P.cw_eid AS nvarchar(max))
+FROM cw_Personne AS _P''')
+
     def test_groupby_orderby_insertion_dont_modify_intention(self):
         self._check('Any YEAR(XECT)*100+MONTH(XECT), COUNT(X),SUM(XCE),AVG(XSCT-XECT) '
                     'GROUPBY YEAR(XECT),MONTH(XECT) ORDERBY 1 '
@@ -1834,6 +1858,14 @@ class SqliteSQLGeneratorTC(PostgresSQLGeneratorTC):
         self._check("Any MONTH(D) WHERE P is Personne, P creation_date D",
                     '''SELECT MONTH(_P.cw_creation_date)
 FROM cw_Personne AS _P''')
+
+    def test_regexp(self):
+        self._check("Any X WHERE X login REGEXP '[0-9].*'",
+                    '''SELECT _X.cw_eid
+FROM cw_CWUser AS _X
+WHERE _X.cw_login REGEXP [0-9].*
+''')
+
 
     def test_union(self):
         for t in self._parse((
@@ -1984,6 +2016,18 @@ class MySQLGenerator(PostgresSQLGeneratorTC):
         self._check("Any MONTH(D) WHERE P is Personne, P creation_date D",
                     '''SELECT EXTRACT(MONTH from _P.cw_creation_date)
 FROM cw_Personne AS _P''')
+
+    def test_cast(self):
+        self._check("Any CAST(String, P) WHERE P is Personne",
+                    '''SELECT CAST(_P.cw_eid AS mediumtext)
+FROM cw_Personne AS _P''')
+
+    def test_regexp(self):
+        self._check("Any X WHERE X login REGEXP '[0-9].*'",
+                    '''SELECT _X.cw_eid
+FROM cw_CWUser AS _X
+WHERE _X.cw_login REGEXP [0-9].*
+''')
 
     def test_from_clause_needed(self):
         queries = [("Any 1 WHERE EXISTS(T is CWGroup, T name 'managers')",
