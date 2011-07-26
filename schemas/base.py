@@ -21,7 +21,8 @@ __docformat__ = "restructuredtext en"
 _ = unicode
 
 from yams.buildobjs import (EntityType, RelationType, RelationDefinition,
-                            SubjectRelation, String, Datetime, Password, Interval)
+                            SubjectRelation,
+                            String, Datetime, Password, Interval, Boolean)
 from cubicweb.schema import (
     RQLConstraint, WorkflowableEntityType, ERQLExpression, RRQLExpression,
     PUB_SYSTEM_ENTITY_PERMS, PUB_SYSTEM_REL_PERMS, PUB_SYSTEM_ATTR_PERMS)
@@ -265,7 +266,8 @@ class CWSource(EntityType):
     url = String(description=_('URLs from which content will be imported. You can put one url per line'))
     parser = String(description=_('parser to use to extract entities from content retrieved at given URLs.'))
     latest_retrieval = Datetime(description=_('latest synchronization time'))
-
+    synchronizing = Boolean(description=_('currently in synchronization'),
+                            default=False)
 
 ENTITY_MANAGERS_PERMISSIONS = {
     'read':   ('managers',),
@@ -307,8 +309,8 @@ class cw_host_config_of(RelationDefinition):
 class cw_source(RelationDefinition):
     __permissions__ = {
         'read':   ('managers', 'users', 'guests'),
-        'add':    (),
-        'delete': (),
+        'add':    ('managers',),
+        'delete': ('managers',),
         }
     subject = '*'
     object = 'CWSource'
@@ -321,12 +323,27 @@ class CWSourceSchemaConfig(EntityType):
     cw_for_source = SubjectRelation(
         'CWSource', inlined=True, cardinality='1*', composite='object',
         __permissions__=RELATION_MANAGERS_PERMISSIONS)
-    cw_schema = SubjectRelation(
-        ('CWEType', 'CWRType', 'CWAttribute', 'CWRelation'),
-        inlined=True, cardinality='1*', composite='object',
-        __permissions__=RELATION_MANAGERS_PERMISSIONS)
     options = String(description=_('allowed options depends on the source type'))
 
+
+class rtype_cw_schema(RelationDefinition):
+    __permissions__ = RELATION_MANAGERS_PERMISSIONS
+    name = 'cw_schema'
+    subject = 'CWSourceSchemaConfig'
+    object = ('CWEType', 'CWRType')
+    inlined = True
+    cardinality = '1*'
+    composite = 'object'
+    constraints = [RQLConstraint('NOT O final TRUE')]
+
+class rdef_cw_schema(RelationDefinition):
+    __permissions__ = RELATION_MANAGERS_PERMISSIONS
+    name = 'cw_schema'
+    subject = 'CWSourceSchemaConfig'
+    object = 'CWRelation'
+    inlined = True
+    cardinality = '1*'
+    composite = 'object'
 
 # "abtract" relation types, no definition in cubicweb itself ###################
 
