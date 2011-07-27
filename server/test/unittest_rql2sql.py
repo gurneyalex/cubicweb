@@ -550,6 +550,15 @@ WHERE rel_todo_by0.eid_from=_H.cw_eid
 GROUP BY rel_todo_by0.eid_to
 ORDER BY 2 DESC'''),
 
+    ('Any R2 WHERE R2 concerne R, R eid RE, R2 eid > RE',
+     '''SELECT _R2.eid
+FROM concerne_relation AS rel_concerne0, entities AS _R2
+WHERE _R2.eid=rel_concerne0.eid_from AND _R2.eid>rel_concerne0.eid_to'''),
+
+    ('Note X WHERE X eid IN (999998, 999999), NOT X cw_source Y',
+     '''SELECT _X.cw_eid
+FROM cw_Note AS _X
+WHERE _X.cw_eid IN(999998, 999999) AND NOT (EXISTS(SELECT 1 FROM cw_source_relation AS rel_cw_source0 WHERE rel_cw_source0.eid_from=_X.cw_eid))'''),
     ]
 
 ADVANCED_WITH_GROUP_CONCAT = [
@@ -798,6 +807,11 @@ WHERE appears0.word_id IN (SELECT word_id FROM word WHERE word in ('toto', 'tata
 
 
 OUTER_JOIN = [
+
+    ('Any U,G WHERE U login L, G name L?, G is CWGroup',
+     '''SELECT _U.cw_eid, _G.cw_eid
+FROM cw_CWUser AS _U LEFT OUTER JOIN cw_CWGroup AS _G ON (_G.cw_name=_U.cw_login)'''),
+
     ('Any X,S WHERE X travaille S?',
      '''SELECT _X.cw_eid, rel_travaille0.eid_to
 FROM cw_Personne AS _X LEFT OUTER JOIN travaille_relation AS rel_travaille0 ON (rel_travaille0.eid_from=_X.cw_eid)'''
@@ -960,6 +974,18 @@ WHERE rel_tags0.eid_from=123'''),
      '''SELECT _CFG.cw_ecrit_par, _CALIBCFG.cw_eid, _CFG.cw_eid
 FROM cw_Note AS _CFG LEFT OUTER JOIN cw_Note AS _CALIBCFG ON (_CALIBCFG.cw_ecrit_par=_CFG.cw_ecrit_par)
 WHERE _CFG.cw_ecrit_par=1'''),
+
+    ('Any U,G WHERE U login UL, G name GL, G is CWGroup HAVING UPPER(UL)=UPPER(GL)?',
+     '''SELECT _U.cw_eid, _G.cw_eid
+FROM cw_CWUser AS _U LEFT OUTER JOIN cw_CWGroup AS _G ON (UPPER(_U.cw_login)=UPPER(_G.cw_name))'''),
+
+    ('Any U,G WHERE U login UL, G name GL, G is CWGroup HAVING UPPER(UL)?=UPPER(GL)',
+     '''SELECT _U.cw_eid, _G.cw_eid
+FROM cw_CWGroup AS _G LEFT OUTER JOIN cw_CWUser AS _U ON (UPPER(_U.cw_login)=UPPER(_G.cw_name))'''),
+
+    ('Any U,G WHERE U login UL, G name GL, G is CWGroup HAVING UPPER(UL)?=UPPER(GL)?',
+     '''SELECT _U.cw_eid, _G.cw_eid
+FROM cw_CWUser AS _U FULL OUTER JOIN cw_CWGroup AS _G ON (UPPER(_U.cw_login)=UPPER(_G.cw_name))'''),
     ]
 
 VIRTUAL_VARS = [
@@ -1360,6 +1386,18 @@ FROM cw_Personne AS _P''')
                     '''SELECT SUBSTR(_P.cw_nom, 1, 1)
 FROM cw_Personne AS _P''')
 
+    def test_cast(self):
+        self._check("Any CAST(String, P) WHERE P is Personne",
+                    '''SELECT CAST(_P.cw_eid AS text)
+FROM cw_Personne AS _P''')
+
+    def test_regexp(self):
+        self._check("Any X WHERE X login REGEXP '[0-9].*'",
+                    '''SELECT _X.cw_eid
+FROM cw_CWUser AS _X
+WHERE _X.cw_login ~ [0-9].*
+''')
+
     def test_parser_parse(self):
         for t in self._parse(PARSER):
             yield t
@@ -1622,11 +1660,25 @@ WHERE VERSION_DATA(_X.cw_eid)=1''')
                     '''SELECT (A || _X.cw_ref)
 FROM cw_Affaire AS _X''')
 
-    def test_or_having_fake_terms(self):
+    def test_or_having_fake_terms_base(self):
         self._check('Any X WHERE X is CWUser, X creation_date D HAVING YEAR(D) = "2010" OR D = NULL',
                     '''SELECT _X.cw_eid
 FROM cw_CWUser AS _X
 WHERE ((CAST(EXTRACT(YEAR from _X.cw_creation_date) AS INTEGER)=2010) OR (_X.cw_creation_date IS NULL))''')
+
+    def test_or_having_fake_terms_exists(self):
+        # crash with rql <= 0.29.0
+        self._check('Any X WHERE X is CWUser, EXISTS(B bookmarked_by X, B creation_date D) HAVING D=2010 OR D=NULL, D=1 OR D=NULL',
+                    '''SELECT _X.cw_eid
+FROM cw_CWUser AS _X
+WHERE EXISTS(SELECT 1 FROM bookmarked_by_relation AS rel_bookmarked_by0, cw_Bookmark AS _B WHERE rel_bookmarked_by0.eid_from=_B.cw_eid AND rel_bookmarked_by0.eid_to=_X.cw_eid AND ((_B.cw_creation_date=1) OR (_B.cw_creation_date IS NULL)) AND ((_B.cw_creation_date=2010) OR (_B.cw_creation_date IS NULL)))''')
+
+    def test_or_having_fake_terms_nocrash(self):
+        # crash with rql <= 0.29.0
+        self._check('Any X WHERE X is CWUser, X creation_date D HAVING D=2010 OR D=NULL, D=1 OR D=NULL',
+                    '''SELECT _X.cw_eid
+FROM cw_CWUser AS _X
+WHERE ((_X.cw_creation_date=1) OR (_X.cw_creation_date IS NULL)) AND ((_X.cw_creation_date=2010) OR (_X.cw_creation_date IS NULL))''')
 
     def test_not_no_where(self):
         # XXX will check if some in_group relation exists, that's it.
@@ -1675,7 +1727,10 @@ class SqlServer2005SQLGeneratorTC(PostgresSQLGeneratorTC):
         for t in self._parse(HAS_TEXT_LG_INDEXER):
             yield t
 
-    def test_or_having_fake_terms(self):
+    def test_regexp(self):
+        self.skipTest('regexp-based pattern matching not implemented in sqlserver')
+
+    def test_or_having_fake_terms_base(self):
         self._check('Any X WHERE X is CWUser, X creation_date D HAVING YEAR(D) = "2010" OR D = NULL',
                     '''SELECT _X.cw_eid
 FROM cw_CWUser AS _X
@@ -1813,6 +1868,11 @@ __RowNumber <= 1
         for t in self._parse(WITH_LIMIT):# + ADVANCED_WITH_LIMIT_OR_ORDERBY):
             yield t
 
+    def test_cast(self):
+        self._check("Any CAST(String, P) WHERE P is Personne",
+                    '''SELECT CAST(_P.cw_eid AS nvarchar(max))
+FROM cw_Personne AS _P''')
+
     def test_groupby_orderby_insertion_dont_modify_intention(self):
         self._check('Any YEAR(XECT)*100+MONTH(XECT), COUNT(X),SUM(XCE),AVG(XSCT-XECT) '
                     'GROUPBY YEAR(XECT),MONTH(XECT) ORDERBY 1 '
@@ -1828,12 +1888,20 @@ class SqliteSQLGeneratorTC(PostgresSQLGeneratorTC):
     backend = 'sqlite'
 
     def _norm_sql(self, sql):
-        return sql.strip().replace(' ILIKE ', ' LIKE ')
+        return sql.strip().replace(' ILIKE ', ' LIKE ').replace('TRUE', '1').replace('FALSE', '0')
 
     def test_date_extraction(self):
         self._check("Any MONTH(D) WHERE P is Personne, P creation_date D",
                     '''SELECT MONTH(_P.cw_creation_date)
 FROM cw_Personne AS _P''')
+
+    def test_regexp(self):
+        self._check("Any X WHERE X login REGEXP '[0-9].*'",
+                    '''SELECT _X.cw_eid
+FROM cw_CWUser AS _X
+WHERE _X.cw_login REGEXP [0-9].*
+''')
+
 
     def test_union(self):
         for t in self._parse((
@@ -1947,7 +2015,7 @@ WHERE appears0.word_id IN (SELECT word_id FROM word WHERE word in ('toto', 'tata
             yield t
 
 
-    def test_or_having_fake_terms(self):
+    def test_or_having_fake_terms_base(self):
         self._check('Any X WHERE X is CWUser, X creation_date D HAVING YEAR(D) = "2010" OR D = NULL',
                     '''SELECT _X.cw_eid
 FROM cw_CWUser AS _X
@@ -1984,6 +2052,18 @@ class MySQLGenerator(PostgresSQLGeneratorTC):
         self._check("Any MONTH(D) WHERE P is Personne, P creation_date D",
                     '''SELECT EXTRACT(MONTH from _P.cw_creation_date)
 FROM cw_Personne AS _P''')
+
+    def test_cast(self):
+        self._check("Any CAST(String, P) WHERE P is Personne",
+                    '''SELECT CAST(_P.cw_eid AS mediumtext)
+FROM cw_Personne AS _P''')
+
+    def test_regexp(self):
+        self._check("Any X WHERE X login REGEXP '[0-9].*'",
+                    '''SELECT _X.cw_eid
+FROM cw_CWUser AS _X
+WHERE _X.cw_login REGEXP [0-9].*
+''')
 
     def test_from_clause_needed(self):
         queries = [("Any 1 WHERE EXISTS(T is CWGroup, T name 'managers')",
@@ -2046,7 +2126,7 @@ GROUP BY _A.cw_eid,rel_todo_by1.eid_to,rel_todo_by3.eid_to''')
 FROM cw_Personne AS _P''')
 
 
-    def test_or_having_fake_terms(self):
+    def test_or_having_fake_terms_base(self):
         self._check('Any X WHERE X is CWUser, X creation_date D HAVING YEAR(D) = "2010" OR D = NULL',
                     '''SELECT _X.cw_eid
 FROM cw_CWUser AS _X
