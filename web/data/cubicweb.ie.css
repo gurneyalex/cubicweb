@@ -1,0 +1,33 @@
+/* specific workarounds for Internet Explorer */
+div.calpopup {
+  margin-left: 0px;
+  margin-top: 0px;
+}
+
+table#header td#header-right  div.popupWrapper {
+  position: relative;
+  z-index: 400;
+}
+
+table#header td#header-right{
+  text-align:right;
+}
+
+/* quick and dirty solution for pop to be
+   correctly displayed on right edge of window */
+div.popupWrapper{
+  direction:rtl;
+  text-align:right;
+}
+
+div#rqlinput input.rqlsubmit{
+  height: 24px;
+  width: 24px;
+}
+
+
+table#mainLayout #navColumnLeft,
+table#mainLayout #navColumnRight {
+  width: auto;
+}
+
