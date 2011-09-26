@@ -102,8 +102,7 @@ class SystemCWPropertiesForm(FormViewMixIn, StartupView):
         cookiename = self._cookie_name(group)
         cookie = cookies.get(cookiename)
         if cookie is None:
-            cookies[cookiename] = default
-            self._cw.set_cookie(cookies, cookiename, maxage=None)
+            self._cw.set_cookie(cookiename, default, maxage=None)
             status = default
         else:
             status = cookie.value
@@ -248,7 +247,7 @@ class CWPropertiesForm(SystemCWPropertiesForm):
         | (one_line_rset() & match_user_groups('managers') & is_instance('CWUser'))
         )
 
-    title = _('preferences')
+    title = _('user preferences')
 
     @property
     def user(self):

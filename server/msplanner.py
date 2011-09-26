@@ -370,7 +370,7 @@ class PartPlanInformation(object):
                     eid = const.eval(self.plan.args)
                     source = self._session.source_from_eid(eid)
                     if (source is self.system_source
-                        or (hasrel and
+                        or (hasrel and varobj._q_invariant and
                             not any(source.support_relation(r.r_type)
                                     for r in varobj.stinfo['relations']
                                     if not r is rel))):
@@ -1623,17 +1623,7 @@ class TermsFiltererVisitor(object):
     def visit_relation(self, node, newroot, terms):
         if not node.is_types_restriction():
             if not node in terms and node in self.skip and self.solindices.issubset(self.skip[node]):
-                if not self.schema.rschema(node.r_type).final:
-                    # can't really skip the relation if one variable is selected
-                    # and only referenced by this relation
-                    for vref in node.iget_nodes(VariableRef):
-                        stinfo = vref.variable.stinfo
-                        if stinfo['selected'] and len(stinfo['relations']) == 1:
-                            break
-                    else:
-                        return None, node
-                else:
-                    return None, node
+                return None, node
             if not self._relation_supported(node):
                 raise UnsupportedBranch()
         # don't copy type restriction unless this is the only supported relation
@@ -1650,7 +1640,7 @@ class TermsFiltererVisitor(object):
         self._pending_vrefs = []
         try:
             res = self.visit_default(node, newroot, terms)[0]
-        except:
+        except Exception:
             # when a relation isn't supported, we should dereference potentially
             # introduced variable refs
             for vref in self._pending_vrefs:
