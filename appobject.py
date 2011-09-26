@@ -1,4 +1,4 @@
-# copyright 2003-2010 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2011 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -180,12 +180,13 @@ class Selector(object):
         return self.__class__.__name__
 
     def search_selector(self, selector):
-        """search for the given selector or selector instance in the selectors
-        tree. Return it of None if not found
+        """search for the given selector, selector instance or tuple of
+        selectors in the selectors tree. Return None if not found.
         """
         if self is selector:
             return self
-        if isinstance(selector, type) and isinstance(self, selector):
+        if (isinstance(selector, type) or isinstance(selector, tuple)) and \
+               isinstance(self, selector):
             return self
         return None
 
@@ -240,7 +241,7 @@ class MultiSelector(Selector):
         for selector in selectors:
             try:
                 selector = _instantiate_selector(selector)
-            except:
+            except Exception:
                 pass
             #assert isinstance(selector, Selector), selector
             if isinstance(selector, cls):
@@ -250,8 +251,8 @@ class MultiSelector(Selector):
         return merged_selectors
 
     def search_selector(self, selector):
-        """search for the given selector or selector instance in the selectors
-        tree. Return it of None if not found
+        """search for the given selector or selector instance (or tuple of
+        selectors) in the selectors tree. Return None if not found
         """
         for childselector in self.selectors:
             if childselector is selector:
@@ -259,7 +260,8 @@ class MultiSelector(Selector):
             found = childselector.search_selector(selector)
             if found is not None:
                 return found
-        return None
+        # if not found in children, maybe we are looking for self?
+        return super(MultiSelector, self).search_selector(selector)
 
 
 class AndSelector(MultiSelector):

@@ -66,7 +66,7 @@ class RequestSessionBase(object):
         self.vreg = vreg
         try:
             encoding = vreg.property_value('ui.encoding')
-        except: # no vreg or property not registered
+        except Exception: # no vreg or property not registered
             encoding = 'utf-8'
         self.encoding = encoding
         # cache result of execution for (rql expr / eids),
@@ -409,7 +409,7 @@ class RequestSessionBase(object):
 
     # abstract methods to override according to the web front-end #############
 
-    def describe(self, eid):
+    def describe(self, eid, asdict=False):
         """return a tuple (type, sourceuri, extid) for the entity with id <eid>"""
         raise NotImplementedError
 
