@@ -106,9 +106,9 @@ class CubicWebSchemaTC(TestCase):
         # isinstance(cstr, RQLConstraint)
         # -> expected to return RQLConstraint instances but not
         #    RRQLVocabularyConstraint and QLUniqueConstraint
-        self.failIf(issubclass(RQLUniqueConstraint, RQLVocabularyConstraint))
-        self.failIf(issubclass(RQLUniqueConstraint, RQLConstraint))
-        self.failUnless(issubclass(RQLConstraint, RQLVocabularyConstraint))
+        self.assertFalse(issubclass(RQLUniqueConstraint, RQLVocabularyConstraint))
+        self.assertFalse(issubclass(RQLUniqueConstraint, RQLConstraint))
+        self.assertTrue(issubclass(RQLConstraint, RQLVocabularyConstraint))
 
     def test_entity_perms(self):
         self.assertEqual(eperson.get_groups('read'), set(('managers', 'users', 'guests')))
@@ -193,7 +193,7 @@ class SchemaReaderClassTest(TestCase):
                               'fabrique_par', 'final', 'firstname', 'for_user', 'fournit',
                               'from_entity', 'from_state', 'fulltext_container', 'fulltextindexed',
 
-                              'has_text',
+                              'has_group_permission', 'has_text',
                               'identity', 'in_group', 'in_state', 'indexed',
                               'initial_state', 'inlined', 'internationalizable', 'is', 'is_instance_of',
 
@@ -225,12 +225,13 @@ class SchemaReaderClassTest(TestCase):
         rels = sorted(str(r) for r in eschema.subject_relations())
         self.assertListEqual(rels, ['created_by', 'creation_date', 'custom_workflow',
                                     'cw_source', 'cwuri', 'eid',
-                                     'evaluee', 'firstname', 'has_text', 'identity',
-                                     'in_group', 'in_state', 'is',
-                                     'is_instance_of', 'last_login_time',
-                                     'login', 'modification_date', 'owned_by',
-                                     'primary_email', 'surname', 'upassword',
-                                     'use_email'])
+                                    'evaluee', 'firstname', 'has_group_permission',
+                                    'has_text', 'identity',
+                                    'in_group', 'in_state', 'is',
+                                    'is_instance_of', 'last_login_time',
+                                    'login', 'modification_date', 'owned_by',
+                                    'primary_email', 'surname', 'upassword',
+                                    'use_email'])
         rels = sorted(r.type for r in eschema.object_relations())
         self.assertListEqual(rels, ['bookmarked_by', 'created_by', 'for_user',
                                      'identity', 'owned_by', 'wf_info_for'])
@@ -238,15 +239,15 @@ class SchemaReaderClassTest(TestCase):
         properties = rschema.rdef('CWAttribute', 'CWRType')
         self.assertEqual(properties.cardinality, '1*')
         constraints = properties.constraints
-        self.failUnlessEqual(len(constraints), 1, constraints)
+        self.assertEqual(len(constraints), 1, constraints)
         constraint = constraints[0]
-        self.failUnless(isinstance(constraint, RQLConstraint))
-        self.failUnlessEqual(constraint.expression, 'O final TRUE')
+        self.assertTrue(isinstance(constraint, RQLConstraint))
+        self.assertEqual(constraint.expression, 'O final TRUE')
 
     def test_fulltext_container(self):
         schema = loader.load(config)
-        self.failUnless('has_text' in schema['CWUser'].subject_relations())
-        self.failIf('has_text' in schema['EmailAddress'].subject_relations())
+        self.assertTrue('has_text' in schema['CWUser'].subject_relations())
+        self.assertFalse('has_text' in schema['EmailAddress'].subject_relations())
 
     def test_permission_settings(self):
         schema = loader.load(config)
