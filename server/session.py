@@ -28,6 +28,7 @@ from uuid import uuid4
 from warnings import warn
 
 from logilab.common.deprecation import deprecated
+from logilab.common.textutils import unormalize
 from rql import CoercionError
 from rql.nodes import ETYPE_PYOBJ_MAP, etype_from_pyobj
 from yams import BASE_TYPES
@@ -232,7 +233,7 @@ class Session(RequestSessionBase):
 
     def __init__(self, user, repo, cnxprops=None, _id=None):
         super(Session, self).__init__(repo.vreg)
-        self.id = _id or make_uid(user.login.encode('UTF8'))
+        self.id = _id or make_uid(unormalize(user.login).encode('UTF8'))
         cnxprops = cnxprops or ConnectionProperties('inmemory')
         self.user = user
         self.repo = repo
@@ -1317,9 +1318,6 @@ class InternalManager(object):
         return True
 
     def owns(self, eid):
-        return True
-
-    def has_permission(self, pname, contexteid=None):
         return True
 
     def property_value(self, key):
