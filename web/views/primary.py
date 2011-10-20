@@ -494,5 +494,3 @@ _pvs = uicfg.primaryview_section
 for rtype in META_RTYPES:
     _pvs.tag_subject_of(('*', rtype, '*'), 'hidden')
     _pvs.tag_object_of(('*', rtype, '*'), 'hidden')
-_pvs.tag_subject_of(('*', 'require_permission', '*'), 'hidden')
-_pvs.tag_object_of(('*', 'require_permission', '*'), 'hidden')

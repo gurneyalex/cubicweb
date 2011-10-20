@@ -59,12 +59,11 @@ WORKFLOW_DEF_RTYPES = set(('workflow_of', 'state_of', 'transition_of',
                            'from_state', 'to_state', 'condition',
                            'subworkflow', 'subworkflow_state', 'subworkflow_exit',
                            ))
-SYSTEM_RTYPES = set(('in_group', 'require_group', 'require_permission',
+SYSTEM_RTYPES = set(('in_group', 'require_group',
                      # cwproperty
                      'for_user',
                      )) | WORKFLOW_RTYPES
 NO_I18NCONTEXT = META_RTYPES | WORKFLOW_RTYPES
-NO_I18NCONTEXT.add('require_permission')
 
 SKIP_COMPOSITE_RELS = [('cw_source', 'subject')]
 
@@ -85,7 +84,7 @@ WORKFLOW_TYPES = set(('Transition', 'State', 'TrInfo', 'Workflow',
                       'WorkflowTransition', 'BaseTransition',
                       'SubWorkflowExitPoint'))
 
-INTERNAL_TYPES = set(('CWProperty', 'CWPermission', 'CWCache', 'ExternalUri',
+INTERNAL_TYPES = set(('CWProperty', 'CWCache', 'ExternalUri',
                       'CWSource', 'CWSourceHostConfig', 'CWSourceSchemaConfig'))
 
 
@@ -171,11 +170,10 @@ def display_name(req, key, form='', context=None):
     if form:
         key = key + '_' + form
     # ensure unicode
-    # .lower() in case no translation are available XXX done whatever a translation is there or not!
     if context is not None:
-        return unicode(req.pgettext(context, key)).lower()
+        return unicode(req.pgettext(context, key))
     else:
-        return unicode(req._(key)).lower()
+        return unicode(req._(key))
 
 __builtins__['display_name'] = deprecated('[3.4] display_name should be imported from cubicweb.schema')(display_name)
 
@@ -1176,7 +1174,7 @@ set_log_methods(RQLExpression, getLogger('cubicweb.schema'))
 
 # _() is just there to add messages to the catalog, don't care about actual
 # translation
-PERM_USE_TEMPLATE_FORMAT = _('use_template_format')
+MAY_USE_TEMPLATE_FORMAT = set(('managers',))
 NEED_PERM_FORMATS = [_('text/cubicweb-page-template')]
 
 @monkeypatch(FormatConstraint)
@@ -1191,9 +1189,9 @@ def vocabulary(self, entity=None, form=None):
             # cw is a server session
             hasperm = not cw.write_security or \
                       not cw.is_hook_category_activated('integrity') or \
-                      cw.user.has_permission(PERM_USE_TEMPLATE_FORMAT)
+                      cw.user.matching_groups(MAY_USE_TEMPLATE_FORMAT)
         else:
-            hasperm = cw.user.has_permission(PERM_USE_TEMPLATE_FORMAT)
+            hasperm = cw.user.matching_groups(MAY_USE_TEMPLATE_FORMAT)
         if hasperm:
             return self.regular_formats + tuple(NEED_PERM_FORMATS)
     return self.regular_formats

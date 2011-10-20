@@ -91,9 +91,11 @@ class DataFeedSource(AbstractSource):
         source_entity.complete()
         self.parser_id = source_entity.parser
         self.latest_retrieval = source_entity.latest_retrieval
-        self.urls = [url.strip() for url in source_entity.url.splitlines()
-                     if url.strip()]
-
+        if source_entity.url:
+            self.urls = [url.strip() for url in source_entity.url.splitlines()
+                         if url.strip()]
+        else:
+            self.urls = []
     def update_config(self, source_entity, typedconfig):
         """update configuration from source entity. `typedconfig` is config
         properly typed with defaults set
@@ -295,7 +297,9 @@ class DataFeedParser(AppObject):
                                          complete=False, commit=False,
                                          sourceparams=sourceparams)
         except ValidationError, ex:
-            self.source.error('error while creating %s: %s', etype, ex)
+            # XXX use critical so they are seen during tests. Should consider
+            # raise_on_error instead?
+            self.source.critical('error while creating %s: %s', etype, ex)
             return None
         if eid < 0:
             # entity has been moved away from its original source

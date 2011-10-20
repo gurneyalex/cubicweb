@@ -46,7 +46,8 @@ class TableView(AnyRsetView):
     table_column_class = TableColumn
 
     tablesorter_settings = {
-        'textExtraction': JSString('cubicwebSortValueExtraction'),
+        'textExtraction': JSString('cw.sortValueExtraction'),
+        'selectorHeaders': 'thead tr:first th', # only plug on the first row
         }
 
     def form_filter(self, divid, displaycols, displayactions, displayfilter,
@@ -209,7 +210,9 @@ class TableView(AnyRsetView):
                 continue
             # compute column header
             if headers is not None:
-                label = headers[displaycols.index(colindex)]
+                _label = headers[displaycols.index(colindex)]
+                if _label is not None:
+                    label = _label
             if colindex == mainindex and label is not None:
                 label += ' (%s)' % self.cw_rset.rowcount
             column = self.table_column_class(label, colindex)
