@@ -60,8 +60,7 @@ from cubicweb.server.session import Session, InternalSession, InternalManager, \
      security_enabled
 from cubicweb.server.ssplanner import EditedEntity
 
-NO_CACHE_RELATIONS = set( [('require_permission', 'object'),
-                           ('owned_by', 'object'),
+NO_CACHE_RELATIONS = set( [('owned_by', 'object'),
                            ('created_by', 'object'),
                            ('cw_source', 'object'),
                            ])
@@ -460,8 +459,9 @@ class Repository(object):
     def _build_user(self, session, eid):
         """return a CWUser entity for user with the given eid"""
         cls = self.vreg['etypes'].etype_class('CWUser')
-        rql = cls.fetch_rql(session.user, ['X eid %(x)s'])
-        rset = session.execute(rql, {'x': eid})
+        st = cls.fetch_rqlst(session.user, ordermethod=None)
+        st.add_eid_restriction(st.get_variable('X'), 'x', 'Substitute')
+        rset = session.execute(st.as_string(), {'x': eid})
         assert len(rset) == 1, rset
         cwuser = rset.get_entity(0, 0)
         # pylint: disable=W0104
@@ -1085,6 +1085,9 @@ class Repository(object):
             entity = source.before_entity_insertion(
                 session, extid, etype, eid, sourceparams)
             if source.should_call_hooks:
+                # get back a copy of operation for later restore if necessary,
+                # see below
+                pending_operations = session.pending_operations[:]
                 self.hm.call_hooks('before_add_entity', session, entity=entity)
             self.add_info(session, entity, source, extid, complete=complete)
             source.after_entity_insertion(session, extid, entity, sourceparams)
@@ -1096,6 +1099,16 @@ class Repository(object):
         except Exception:
             if commit or free_cnxset:
                 session.rollback(free_cnxset)
+            else:
+                # XXX do some cleanup manually so that the transaction has a
+                # chance to be commited, with simply this entity discarded
+                self._extid_cache.pop(cachekey, None)
+                self._type_source_cache.pop(eid, None)
+                if 'entity' in locals():
+                    hook.CleanupDeletedEidsCacheOp.get_instance(session).add_data(entity.eid)
+                    self.system_source.delete_info_multi(session, [entity], uri)
+                    if source.should_call_hooks:
+                        session._threaddata.pending_operations = pending_operations
             raise
 
     def add_info(self, session, entity, source, extid=None, complete=True):
