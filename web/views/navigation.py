@@ -20,6 +20,8 @@
 __docformat__ = "restructuredtext en"
 _ = unicode
 
+from datetime import datetime
+
 from rql.nodes import VariableRef, Constant
 
 from logilab.mtconverter import xml_escape
@@ -151,6 +153,10 @@ class SortedNavigation(NavigationComponent):
                 col = var.selected_index()
                 attrname = None
             if col is not None:
+                # if column type is date[time], set proper 'nb_chars'
+                if var.stinfo['possibletypes'] & frozenset(('TZDatetime', 'Datetime',
+                                                            'Date')):
+                    self.nb_chars = len(self._cw.format_date(datetime.today()))
                 index_display = self.display_func(rset, col, attrname)
                 break
         else:
@@ -306,15 +312,4 @@ def paginate(view, show_all_option=True, w=None, page_size=None, rset=None):
 from cubicweb.view import View
 View.do_paginate = do_paginate
 View.paginate = paginate
-
-
-#@deprecated (see below)
-def limit_rset_using_paged_nav(self, req, rset, w, forcedisplay=False,
-                               show_all_option=True, page_size=None):
-    if not (forcedisplay or req.form.get('__force_display') is not None):
-        do_paginate(self, rset, w, show_all_option, page_size)
-
-View.pagination = deprecated('[3.2] .pagination is deprecated, use paginate')(
-    limit_rset_using_paged_nav)
-limit_rset_using_paged_nav = deprecated('[3.6] limit_rset_using_paged_nav is deprecated, use do_paginate')(
-    limit_rset_using_paged_nav)
+View.handle_pagination = False
