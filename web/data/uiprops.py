@@ -167,7 +167,8 @@ errorMsgBgImg = 'url("error.png") 100% 50% no-repeat'
 errorMsgColor = '#ed0d0d'
 
 # facets
-facet_titleFont = 'bold 100% Georgia'
-facet_overflowedHeight = '12em'
-
-
+facet_titleFont = 'bold SansSerif'
+facet_Height = '15em'
+facet_Padding = '.4em'
+facet_MarginBottom = '.4em'
+facet_vocabMaxHeight = '12em' # ensure << facet_Height
