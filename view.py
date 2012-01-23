@@ -115,19 +115,7 @@ class View(AppObject):
     binary = False
     add_to_breadcrumbs = True
     category = 'view'
-
-    @property
-    @deprecated('[3.6] need_navigation is deprecated, use .paginable')
-    def need_navigation(self):
-        return True
-
-    @property
-    def paginable(self):
-        if not isinstance(self.__class__.need_navigation, property):
-            warn('[3.6] %s.need_navigation is deprecated, use .paginable'
-                 % self.__class__, DeprecationWarning)
-            return self.need_navigation
-        return True
+    paginable = True
 
     def __init__(self, req=None, rset=None, **kwargs):
         super(View, self).__init__(req, rset=rset, **kwargs)
@@ -194,8 +182,6 @@ class View(AppObject):
         output = UStringIO()
         template.expand(context, output)
         return output.getvalue()
-
-    dispatch = deprecated('[3.4] .dispatch is deprecated, use .render')(render)
 
     # should default .call() method add a <div classs="section"> around each
     # rset item
@@ -283,9 +269,6 @@ class View(AppObject):
         """shortcut to self.view method automatically passing self.w as argument
         """
         self._cw.view(__vid, rset, __fallback_vid, w=self.w, **kwargs)
-
-    # XXX Template bw compat
-    template = deprecated('[3.4] .template is deprecated, use .view')(wview)
 
     def whead(self, data):
         self._cw.html_headers.write(data)
@@ -434,6 +417,10 @@ class EntityStartupView(EntityView):
         """return some rql to be executed if the result set is None"""
         return self.default_rql
 
+    def no_entities(self, **kwargs):
+        """override to display something when no entities were found"""
+        pass
+
     def call(self, **kwargs):
         """override call to execute rql returned by the .startup_rql method if
         necessary
@@ -441,8 +428,11 @@ class EntityStartupView(EntityView):
         rset = self.cw_rset
         if rset is None:
             rset = self.cw_rset = self._cw.execute(self.startup_rql())
-        for i in xrange(len(rset)):
-            self.wview(self.__regid__, rset, row=i, **kwargs)
+        if rset:
+            for i in xrange(len(rset)):
+                self.wview(self.__regid__, rset, row=i, **kwargs)
+        else:
+            self.no_entities(**kwargs)
 
 
 class AnyRsetView(View):
