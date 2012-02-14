@@ -276,7 +276,7 @@ class CubicWebPublisher(object):
                  vreg=None):
         self.info('starting web instance from %s', config.apphome)
         if vreg is None:
-            vreg = cwvreg.CubicWebVRegistry(config)
+            vreg = cwvreg.CWRegistryStore(config)
         self.vreg = vreg
         # connect to the repository and get instance's schema
         self.repo = config.repository(vreg)
@@ -450,7 +450,7 @@ class CubicWebPublisher(object):
         req.remove_header('Etag')
         req.reset_message()
         req.reset_headers()
-        if req.json_request:
+        if req.ajax_request:
             raise RemoteCallFailed(unicode(ex))
         try:
             req.data['ex'] = ex

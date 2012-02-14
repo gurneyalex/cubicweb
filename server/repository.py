@@ -120,6 +120,20 @@ def del_existing_rel_if_needed(session, eidfrom, rtype, eidto):
                             {'x': eidfrom, 'y': eidto})
 
 
+class NullEventBus(object):
+    def publish(self, msg):
+        pass
+
+    def add_subscription(self, topic, callback):
+        pass
+
+    def start(self):
+        pass
+
+    def stop(self):
+        pass
+
+
 class Repository(object):
     """a repository provides access to a set of persistent storages for
     entities and relations
@@ -130,10 +144,11 @@ class Repository(object):
     def __init__(self, config, vreg=None):
         self.config = config
         if vreg is None:
-            vreg = cwvreg.CubicWebVRegistry(config)
+            vreg = cwvreg.CWRegistryStore(config)
         self.vreg = vreg
         self.pyro_registered = False
         self.pyro_uri = None
+        self.app_instances_bus = NullEventBus()
         self.info('starting repository from %s', self.config.apphome)
         # dictionary of opened sessions
         self._sessions = {}
@@ -436,8 +451,10 @@ class Repository(object):
         """validate authentication, raise AuthenticationError on failure, return
         associated CWUser's eid on success.
         """
-        for source in self.sources:
-            if source.support_entity('CWUser'):
+        # iter on sources_by_uri then check enabled source since sources doesn't
+        # contain copy based sources
+        for source in self.sources_by_uri.itervalues():
+            if self.config.source_enabled(source) and source.support_entity('CWUser'):
                 try:
                     return source.authenticate(session, login, **authinfo)
                 except AuthenticationError:
