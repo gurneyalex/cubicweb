@@ -25,7 +25,7 @@ from logilab.mtconverter import xml_escape
 
 from cubicweb import NoSelectableObject, role
 from cubicweb import tags, uilib, utils
-from cubicweb.selectors import partial_has_related_entities
+from cubicweb.predicates import partial_has_related_entities
 from cubicweb.view import EntityView
 from cubicweb.web.views import primary
 
@@ -52,7 +52,7 @@ class LazyViewMixin(object):
         if rql:
             urlparams['rql'] = rql
         elif eid:
-            urlparams['rql'] = uilib.rql_for_eid(eid)
+            urlparams['eid'] = eid
         elif rset:
             urlparams['rql'] = rset.printable_rql()
         if tabid is None:
