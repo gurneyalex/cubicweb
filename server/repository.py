@@ -1,4 +1,4 @@
-# copyright 2003-2011 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2012 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -120,6 +120,21 @@ def del_existing_rel_if_needed(session, eidfrom, rtype, eidto):
                             {'x': eidfrom, 'y': eidto})
 
 
+
+class NullEventBus(object):
+    def publish(self, msg):
+        pass
+
+    def add_subscription(self, topic, callback):
+        pass
+
+    def start(self):
+        pass
+
+    def stop(self):
+        pass
+
+
 class Repository(object):
     """a repository provides access to a set of persistent storages for
     entities and relations
@@ -127,18 +142,22 @@ class Repository(object):
     XXX protect pyro access
     """
 
-    def __init__(self, config, vreg=None):
+    def __init__(self, config, tasks_manager=None, vreg=None):
         self.config = config
         if vreg is None:
-            vreg = cwvreg.CubicWebVRegistry(config)
+            vreg = cwvreg.CWRegistryStore(config)
         self.vreg = vreg
+        self._tasks_manager = tasks_manager
+
         self.pyro_registered = False
         self.pyro_uri = None
+        self.app_instances_bus = NullEventBus()
         self.info('starting repository from %s', self.config.apphome)
         # dictionary of opened sessions
         self._sessions = {}
+
+
         # list of functions to be called at regular interval
-        self._looping_tasks = []
         # list of running threads
         self._running_threads = []
         # initial schema, should be build or replaced latter
@@ -162,6 +181,9 @@ class Repository(object):
             self.init_cnxset_pool()
         @onevent('after-registry-reload', self)
         def fix_user_classes(self):
+            # After registery reload the 'CWUser' class used for CWEtype
+            # changed.  To any existing user object have a different class than
+            # the new loaded one. We are hot fixing this.
             usercls = self.vreg['etypes'].etype_class('CWUser')
             for session in self._sessions.values():
                 if not isinstance(session.user, InternalManager):
@@ -309,7 +331,7 @@ class Repository(object):
         self.schema = schema
 
     def fill_schema(self):
-        """lod schema from the repository"""
+        """load schema from the repository"""
         from cubicweb.server.schemaserial import deserialize_schema
         self.info('loading schema from the repository')
         appschema = schema.CubicWebSchema(self.config.appid)
@@ -331,7 +353,13 @@ class Repository(object):
             session.close()
         self.set_schema(appschema)
 
-    def start_looping_tasks(self):
+
+    def _prepare_startup(self):
+        """Prepare "Repository as a server" for startup.
+
+        * trigger server startup hook,
+        * register session clean up task.
+        """
         if not (self.config.creating or self.config.repairing
                 or self.config.quick_start):
             # call instance level initialisation hooks
@@ -340,15 +368,23 @@ class Repository(object):
             self.cleanup_session_time = self.config['cleanup-session-time'] or 60 * 60 * 24
             assert self.cleanup_session_time > 0
             cleanup_session_interval = min(60*60, self.cleanup_session_time / 3)
-            self.looping_task(cleanup_session_interval, self.clean_sessions)
-        assert isinstance(self._looping_tasks, list), 'already started'
-        for i, (interval, func, args) in enumerate(self._looping_tasks):
-            self._looping_tasks[i] = task = utils.LoopTask(self, interval, func, args)
-            self.info('starting task %s with interval %.2fs', task.name,
-                      interval)
-            task.start()
-        # ensure no tasks will be further added
-        self._looping_tasks = tuple(self._looping_tasks)
+            assert self._tasks_manager is not None, "This Repository is not intended to be used as a server"
+            self._tasks_manager.add_looping_task(cleanup_session_interval,
+                                                 self.clean_sessions)
+
+    def start_looping_tasks(self):
+        """Actual "Repository as a server" startup.
+
+        * trigger server startup hook,
+        * register session clean up task,
+        * start all tasks.
+
+        XXX Other startup related stuffs are done elsewhere. In Repository
+        XXX __init__ or in external codes (various server managers).
+        """
+        self._prepare_startup()
+        assert self._tasks_manager is not None, "This Repository is not intended to be used as a server"
+        self._tasks_manager.start()
 
     def looping_task(self, interval, func, *args):
         """register a function to be called every `interval` seconds.
@@ -356,15 +392,12 @@ class Repository(object):
         looping tasks can only be registered during repository initialization,
         once done this method will fail.
         """
-        try:
-            self._looping_tasks.append( (interval, func, args) )
-        except AttributeError:
-            raise RuntimeError("can't add looping task once the repository is started")
+        assert self._tasks_manager is not None, "This Repository is not intended to be used as a server"
+        self._tasks_manager.add_looping_task(interval, func, *args)
 
     def threaded_task(self, func):
         """start function in a separated thread"""
-        t = utils.RepoThread(func, self._running_threads)
-        t.start()
+        utils.RepoThread(func, self._running_threads).start()
 
     #@locked
     def _get_cnxset(self):
@@ -392,21 +425,21 @@ class Repository(object):
         connections
         """
         assert not self.shutting_down, 'already shutting down'
+        if not (self.config.creating or self.config.repairing
+                or self.config.quick_start):
+            # then, the system source is still available
+            self.hm.call_hooks('before_server_shutdown', repo=self)
         self.shutting_down = True
         self.system_source.shutdown()
-        if isinstance(self._looping_tasks, tuple): # if tasks have been started
-            for looptask in self._looping_tasks:
-                self.info('canceling task %s...', looptask.name)
-                looptask.cancel()
-                looptask.join()
-                self.info('task %s finished', looptask.name)
+        if self._tasks_manager is not None:
+            self._tasks_manager.stop()
+        if not (self.config.creating or self.config.repairing
+                or self.config.quick_start):
+            self.hm.call_hooks('server_shutdown', repo=self)
         for thread in self._running_threads:
             self.info('waiting thread %s...', thread.getName())
             thread.join()
             self.info('thread %s finished', thread.getName())
-        if not (self.config.creating or self.config.repairing
-                or self.config.quick_start):
-            self.hm.call_hooks('server_shutdown', repo=self)
         self.close_sessions()
         while not self._cnxsets_pool.empty():
             cnxset = self._cnxsets_pool.get_nowait()
@@ -436,8 +469,10 @@ class Repository(object):
         """validate authentication, raise AuthenticationError on failure, return
         associated CWUser's eid on success.
         """
-        for source in self.sources:
-            if source.support_entity('CWUser'):
+        # iter on sources_by_uri then check enabled source since sources doesn't
+        # contain copy based sources
+        for source in self.sources_by_uri.itervalues():
+            if self.config.source_enabled(source) and source.support_entity('CWUser'):
                 try:
                     return source.authenticate(session, login, **authinfo)
                 except AuthenticationError:
@@ -497,7 +532,8 @@ class Repository(object):
         results['sql_no_cache'] = self.system_source.no_cache
         results['nb_open_sessions'] = len(self._sessions)
         results['nb_active_threads'] = threading.activeCount()
-        results['looping_tasks'] = ', '.join(str(t) for t in self._looping_tasks)
+        looping_tasks = self._tasks_manager._looping_tasks
+        results['looping_tasks'] = ', '.join(str(t) for t in looping_tasks)
         results['available_cnxsets'] = self._cnxsets_pool.qsize()
         results['threads'] = ', '.join(sorted(str(t) for t in threading.enumerate()))
         return results
@@ -860,6 +896,25 @@ class Repository(object):
         session.close()
         del self._sessions[sessionid]
         self.info('closed session %s for user %s', sessionid, session.user.login)
+
+    def call_service(self, sessionid, regid, async, **kwargs):
+        """
+        See :class:`cubicweb.dbapi.Connection.call_service`
+        and :class:`cubicweb.server.Service`
+        """
+        def task():
+            session = self._get_session(sessionid, setcnxset=True)
+            service = session.vreg['services'].select(regid, session, **kwargs)
+            try:
+                return service.call(**kwargs)
+            finally:
+                session.rollback() # free cnxset
+        if async:
+            self.info('calling service %s asynchronously', regid)
+            self.threaded_task(task)
+        else:
+            self.info('calling service %s synchronously', regid)
+            return task()
 
     def user_info(self, sessionid, props=None):
         """this method should be used by client to:
@@ -1653,6 +1708,7 @@ class Repository(object):
     # these are overridden by set_log_methods below
     # only defining here to prevent pylint from complaining
     info = warning = error = critical = exception = debug = lambda msg,*a,**kw: None
+
 
 def pyro_unregister(config):
     """unregister the repository from the pyro name server"""

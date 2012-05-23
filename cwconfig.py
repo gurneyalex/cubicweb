@@ -386,14 +386,6 @@ registered.',
           'help': 'allow users to login with their primary email if set',
           'group': 'main', 'level': 2,
           }),
-        ('use-request-subdomain',
-         {'type' : 'yn',
-          'default': None,
-          'help': ('if set, base-url subdomain is replaced by the request\'s '
-                   'host, to help managing sites with several subdomains in a '
-                   'single cubicweb instance'),
-          'group': 'main', 'level': 1,
-          }),
         ('mangle-emails',
          {'type' : 'yn',
           'default': False,
@@ -828,7 +820,7 @@ this option is set to yes",
     _cubes = None
 
     def init_cubes(self, cubes):
-        assert self._cubes is None, self._cubes
+        assert self._cubes is None, repr(self._cubes)
         self._cubes = self.reorder_cubes(cubes)
         # load cubes'__init__.py file first
         for cube in cubes:
