@@ -1,0 +1,5 @@
+[system]
+db-driver   = sqlite
+adapter     = native
+db-name     = tmpdb-multi
+db-encoding = UTF-8
