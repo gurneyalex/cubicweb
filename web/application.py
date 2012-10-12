@@ -461,7 +461,6 @@ class CubicWebPublisher(object):
             result = self.notfound_content(req)
             req.status_out = ex.status
         except ValidationError, ex:
-            req.status_out = httplib.CONFLICT
             result = self.validation_error_handler(req, ex)
         except RemoteCallFailed, ex:
             result = self.ajax_error_handler(req, ex)
@@ -480,7 +479,7 @@ class CubicWebPublisher(object):
         except (AuthenticationError, LogOut):
             # the rollback is handled in the finally
             raise
-        ### Last defence line
+        ### Last defense line
         except BaseException, ex:
             result = self.error_handler(req, ex, tb=True)
         finally:
@@ -511,7 +510,7 @@ class CubicWebPublisher(object):
         return ''
 
     def validation_error_handler(self, req, ex):
-        ex.errors = dict((k, v) for k, v in ex.errors.items())
+        ex.tr(req._) # translate messages using ui language
         if '__errorurl' in req.form:
             forminfo = {'error': ex,
                         'values': req.form,
@@ -526,6 +525,7 @@ class CubicWebPublisher(object):
             req.headers_out.setHeader('location', str(location))
             req.status_out = httplib.SEE_OTHER
             return ''
+        req.status_out = httplib.CONFLICT
         return self.error_handler(req, ex, tb=False)
 
     def error_handler(self, req, ex, tb=False):

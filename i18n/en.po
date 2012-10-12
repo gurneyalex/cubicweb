@@ -963,9 +963,6 @@ msgstr ""
 msgid "abstract base class for transitions"
 msgstr ""
 
-msgid "action menu"
-msgstr ""
-
 msgid "action(s) on this selection"
 msgstr ""
 
@@ -2509,6 +2506,9 @@ msgid "firstname"
 msgstr "firstname"
 
 msgid "foaf"
+msgstr ""
+
+msgid "focus on this selection"
 msgstr ""
 
 msgid "follow"
@@ -4067,6 +4067,9 @@ msgid "todo_by"
 msgstr "to do by"
 
 msgid "toggle check boxes"
+msgstr ""
+
+msgid "toggle filter"
 msgstr ""
 
 msgid "tr_count"

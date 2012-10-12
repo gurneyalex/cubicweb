@@ -1001,9 +1001,6 @@ msgstr ""
 msgid "abstract base class for transitions"
 msgstr "abstrakte Basisklasse für Übergänge"
 
-msgid "action menu"
-msgstr ""
-
 msgid "action(s) on this selection"
 msgstr "Aktionen(en) bei dieser Auswahl"
 
@@ -2563,6 +2560,9 @@ msgstr "Vorname"
 
 msgid "foaf"
 msgstr "FOAF"
+
+msgid "focus on this selection"
+msgstr ""
 
 msgid "follow"
 msgstr "dem Link folgen"
@@ -4169,6 +4169,9 @@ msgstr "zu erledigen bis"
 msgid "toggle check boxes"
 msgstr "Kontrollkästchen umkehren"
 
+msgid "toggle filter"
+msgstr "filter verbergen/zeigen"
+
 msgid "tr_count"
 msgstr ""
 
@@ -4631,9 +4634,3 @@ msgstr ""
 #~ msgstr ""
 #~ "Kann die Relation %(rtype)s der Entität %(eid)s nicht wieder herstellen, "
 #~ "diese Relation existiert nicht mehr in dem Schema."
-
-#~ msgid "log out first"
-#~ msgstr "Melden Sie sich zuerst ab."
-
-#~ msgid "week"
-#~ msgstr "Woche"

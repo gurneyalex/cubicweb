@@ -1,4 +1,4 @@
-# copyright 2003-2011 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2012 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -61,6 +61,8 @@ class EditedEntity(dict):
         # attributes, else we may accidentaly skip a desired security check
         if attr not in self:
             self.skip_security.add(attr)
+        # mark attribute as needing purge by the client
+        self.entity._cw_dont_cache_attribute(attr)
         self.edited_attribute(attr, value)
 
     def __delitem__(self, attr):
@@ -141,8 +143,7 @@ class EditedEntity(dict):
                          for rtype in self]
         try:
             entity.e_schema.check(dict_protocol_catcher(entity),
-                                  creation=creation, _=entity._cw._,
-                                  relations=relations)
+                                  creation=creation, relations=relations)
         except ValidationError, ex:
             ex.entity = self.entity
             raise

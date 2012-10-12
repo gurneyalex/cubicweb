@@ -1011,9 +1011,6 @@ msgstr ""
 msgid "abstract base class for transitions"
 msgstr "classe de base abstraite pour les transitions"
 
-msgid "action menu"
-msgstr "actions"
-
 msgid "action(s) on this selection"
 msgstr "action(s) sur cette sélection"
 
@@ -1253,7 +1250,7 @@ msgid "anonymous"
 msgstr "anonyme"
 
 msgid "anyrsetview"
-msgstr "vues \"tous les rset\""
+msgstr "vues pour tout rset"
 
 msgid "april"
 msgstr "avril"
@@ -2613,6 +2610,9 @@ msgstr "prénom"
 
 msgid "foaf"
 msgstr "foaf"
+
+msgid "focus on this selection"
+msgstr "afficher cette sélection"
 
 msgid "follow"
 msgstr "suivre le lien"
@@ -4228,7 +4228,10 @@ msgid "todo_by"
 msgstr "à faire par"
 
 msgid "toggle check boxes"
-msgstr "inverser les cases à cocher"
+msgstr "afficher/masquer les cases à cocher"
+
+msgid "toggle filter"
+msgstr "afficher/masquer le filtre"
 
 msgid "tr_count"
 msgstr "n° de transition"
@@ -4691,6 +4694,9 @@ msgstr ""
 
 #~ msgid "day"
 #~ msgstr "jour"
+
+#~ msgid "jump to selection"
+#~ msgstr "afficher cette sélection"
 
 #~ msgid "log out first"
 #~ msgstr "déconnecter vous d'abord"

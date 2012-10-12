@@ -56,8 +56,7 @@ from cubicweb import (CW_SOFTWARE_ROOT, CW_MIGRATION_MAP, QueryError,
                       RepositoryError, UniqueTogetherError, typed_eid, onevent)
 from cubicweb import cwvreg, schema, server
 from cubicweb.server import ShuttingDown, utils, hook, pool, querier, sources
-from cubicweb.server.session import Session, InternalSession, InternalManager, \
-     security_enabled
+from cubicweb.server.session import Session, InternalSession, InternalManager
 from cubicweb.server.ssplanner import EditedEntity
 
 NO_CACHE_RELATIONS = set( [('owned_by', 'object'),
@@ -109,12 +108,12 @@ def del_existing_rel_if_needed(session, eidfrom, rtype, eidto):
     # * we don't want read permissions to be applied but we want delete
     #   permission to be checked
     if card[0] in '1?':
-        with security_enabled(session, read=False):
+        with session.security_enabled(read=False):
             session.execute('DELETE X %s Y WHERE X eid %%(x)s, '
                             'NOT Y eid %%(y)s' % rtype,
                                 {'x': eidfrom, 'y': eidto})
     if card[1] in '1?':
-        with security_enabled(session, read=False):
+        with session.security_enabled(read=False):
             session.execute('DELETE X %s Y WHERE Y eid %%(y)s, '
                             'NOT X eid %%(x)s' % rtype,
                             {'x': eidfrom, 'y': eidto})
@@ -135,7 +134,7 @@ def preprocess_inlined_relations(session, entity):
             session.update_rel_cache_add(entity.eid, attr, value)
             rdef = session.rtype_eids_rdef(attr, entity.eid, value)
             if rdef.cardinality[1] in '1?' and activeintegrity:
-                with security_enabled(session, read=False):
+                with session.security_enabled(read=False):
                     session.execute('DELETE X %s Y WHERE Y eid %%(y)s' % attr,
                                     {'x': entity.eid, 'y': value})
     return relations
@@ -218,8 +217,8 @@ class Repository(object):
             # information (eg dump/restore/...)
             config._cubes = ()
             # only load hooks and entity classes in the registry
-            config.__class__.cube_appobject_path = set(('hooks', 'entities'))
-            config.__class__.cubicweb_appobject_path = set(('hooks', 'entities'))
+            config.cube_appobject_path = set(('hooks', 'entities'))
+            config.cubicweb_appobject_path = set(('hooks', 'entities'))
             self.set_schema(config.load_schema())
             config['connections-pool-size'] = 1
             # will be reinitialized later from cubes found in the database
@@ -227,16 +226,10 @@ class Repository(object):
         elif config.creating:
             # repository creation
             config.bootstrap_cubes()
-            self.set_schema(config.load_schema(), resetvreg=False)
-            # need to load the Any and CWUser entity types
-            etdirectory = join(CW_SOFTWARE_ROOT, 'entities')
-            self.vreg.init_registration([etdirectory])
-            for modname in ('__init__', 'authobjs', 'wfobjs'):
-                self.vreg.load_file(join(etdirectory, '%s.py' % modname),
-                                    'cubicweb.entities.%s' % modname)
-            hooksdirectory = join(CW_SOFTWARE_ROOT, 'hooks')
-            self.vreg.load_file(join(hooksdirectory, 'metadata.py'),
-                                'cubicweb.hooks.metadata')
+            # trigger vreg initialisation of entity classes
+            config.cubicweb_appobject_path = set(('hooks', 'entities'))
+            config.cube_appobject_path = set(('hooks', 'entities'))
+            self.set_schema(config.load_schema())
         elif config.read_instance_schema:
             # normal start: load the instance schema from the database
             self.fill_schema()
@@ -767,10 +760,10 @@ class Repository(object):
         raise `AuthenticationError` if the authentication failed
         raise `ConnectionError` if we can't open a connection
         """
+        cnxprops = kwargs.pop('cnxprops', None)
         # use an internal connection
         with self.internal_session() as session:
             # try to get a user object
-            cnxprops = kwargs.pop('cnxprops', None)
             user = self.authenticate_user(session, login, **kwargs)
         session = Session(user, self, cnxprops)
         user._cw = user.cw_rset.req = session
@@ -921,21 +914,8 @@ class Repository(object):
         * update user information on each user's request (i.e. groups and
           custom properties)
         """
-        session = self._get_session(sessionid, setcnxset=False)
-        if props is not None:
-            self.set_session_props(sessionid, props)
-        user = session.user
+        user = self._get_session(sessionid, setcnxset=False).user
         return user.eid, user.login, user.groups, user.properties
-
-    def set_session_props(self, sessionid, props):
-        """this method should be used by client to:
-        * check session id validity
-        * update user information on each user's request (i.e. groups and
-          custom properties)
-        """
-        session = self._get_session(sessionid, setcnxset=False)
-        for prop, value in props.items():
-            session.change_property(prop, value)
 
     def undoable_transactions(self, sessionid, ueid=None, txid=None,
                               **actionfilters):
@@ -1239,7 +1219,7 @@ class Repository(object):
             source = self.sources_by_eid[scleanup]
         # delete remaining relations: if user can delete the entity, he can
         # delete all its relations without security checking
-        with security_enabled(session, read=False, write=False):
+        with session.security_enabled(read=False, write=False):
             eid = entity.eid
             for rschema, _, role in entity.e_schema.relation_definitions():
                 rtype = rschema.type
@@ -1281,7 +1261,7 @@ class Repository(object):
             source = self.sources_by_eid[scleanup]
         # delete remaining relations: if user can delete the entity, he can
         # delete all its relations without security checking
-        with security_enabled(session, read=False, write=False):
+        with session.security_enabled(read=False, write=False):
             in_eids = ','.join([str(_e.eid) for _e in entities])
             for rschema, _, role in entities[0].e_schema.relation_definitions():
                 rtype = rschema.type
@@ -1567,7 +1547,7 @@ class Repository(object):
                 rdef = session.rtype_eids_rdef(rtype, subjeid, objeid)
                 card = rdef.cardinality
                 if card[0] in '?1':
-                    with security_enabled(session, read=False):
+                    with session.security_enabled(read=False):
                         session.execute('DELETE X %s Y WHERE X eid %%(x)s, '
                                         'NOT Y eid %%(y)s' % rtype,
                                         {'x': subjeid, 'y': objeid})
@@ -1578,7 +1558,7 @@ class Repository(object):
                         continue
                     subjects[subjeid] = len(relations_by_rtype[rtype]) - 1
                 if card[1] in '?1':
-                    with security_enabled(session, read=False):
+                    with session.security_enabled(read=False):
                         session.execute('DELETE X %s Y WHERE Y eid %%(y)s, '
                                         'NOT X eid %%(x)s' % rtype,
                                         {'x': subjeid, 'y': objeid})

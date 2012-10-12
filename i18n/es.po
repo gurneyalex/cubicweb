@@ -1011,9 +1011,6 @@ msgstr ""
 msgid "abstract base class for transitions"
 msgstr "Clase de base abstracta para la transiciones"
 
-msgid "action menu"
-msgstr ""
-
 msgid "action(s) on this selection"
 msgstr "Acción(es) en esta selección"
 
@@ -2605,6 +2602,9 @@ msgstr "Nombre"
 
 msgid "foaf"
 msgstr "Amigo de un Amigo, FOAF"
+
+msgid "focus on this selection"
+msgstr ""
 
 msgid "follow"
 msgstr "Seguir la liga"
@@ -4219,6 +4219,9 @@ msgstr "Asignada a"
 msgid "toggle check boxes"
 msgstr "Cambiar valor"
 
+msgid "toggle filter"
+msgstr "esconder/mostrar el filtro"
+
 msgid "tr_count"
 msgstr "n° de transición"
 
@@ -4682,18 +4685,3 @@ msgstr ""
 #~ msgstr ""
 #~ "No puede restaurar la relación %(rtype)s de la entidad %(eid)s, esta "
 #~ "relación ya no existe en el esquema."
-
-#~ msgid "day"
-#~ msgstr "día"
-
-#~ msgid "log out first"
-#~ msgstr "Desconéctese primero"
-
-#~ msgid "month"
-#~ msgstr "mes"
-
-#~ msgid "today"
-#~ msgstr "hoy"
-
-#~ msgid "week"
-#~ msgstr "sem."
