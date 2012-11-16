@@ -170,7 +170,6 @@ class CubicWebRequestBase(DBAPIRequest):
     @property
     def authmode(self):
         """Authentification mode of the instance
-
         (see :ref:`WebServerConfig`)"""
         return self.vreg.config['auth-mode']
 
@@ -226,14 +225,6 @@ class CubicWebRequestBase(DBAPIRequest):
                     return
         # 3. default language
         self.set_default_language(vreg)
-
-    def set_language(self, lang):
-        gettext, self.pgettext = self.translations[lang]
-        self._ = self.__ = gettext
-        self.lang = lang
-        self.debug('request language: %s', lang)
-        if self.cnx:
-            self.cnx.set_session_props(lang=lang)
 
     # input form parameters management ########################################
 
@@ -366,7 +357,7 @@ class CubicWebRequestBase(DBAPIRequest):
     def update_search_state(self):
         """update the current search state"""
         searchstate = self.form.get('__mode')
-        if not searchstate and self.cnx:
+        if not searchstate:
             searchstate = self.session.data.get('search_state', 'normal')
         self.set_search_state(searchstate)
 
@@ -377,8 +368,7 @@ class CubicWebRequestBase(DBAPIRequest):
         else:
             self.search_state = ('linksearch', searchstate.split(':'))
             assert len(self.search_state[-1]) == 4
-        if self.cnx:
-            self.session.data['search_state'] = searchstate
+        self.session.data['search_state'] = searchstate
 
     def match_search_state(self, rset):
         """when searching an entity to create a relation, return True if entities in
