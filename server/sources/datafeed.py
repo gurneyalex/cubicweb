@@ -406,7 +406,7 @@ class DataFeedParser(AppObject):
             attrs = dict( (k, v) for k, v in attrs.iteritems()
                           if v != getattr(entity, k))
             if attrs:
-                entity.set_attributes(**attrs)
+                entity.cw_set(**attrs)
                 self.notify_updated(entity)
 
 
