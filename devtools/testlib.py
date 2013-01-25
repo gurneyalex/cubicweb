@@ -48,7 +48,7 @@ from cubicweb import cwconfig, dbapi, devtools, web, server
 from cubicweb.utils import json
 from cubicweb.sobjects import notification
 from cubicweb.web import Redirect, application
-from cubicweb.server.session import Session, security_enabled
+from cubicweb.server.session import Session
 from cubicweb.server.hook import SendMailOp
 from cubicweb.devtools import SYSTEM_ENTITIES, SYSTEM_RELATIONS, VIEW_VALIDATORS
 from cubicweb.devtools import BASE_URL, fake, htmlparser, DEFAULT_EMPTY_DB_ID
@@ -403,7 +403,7 @@ class CubicWebTC(TestCase):
         autoclose = kwargs.pop('autoclose', True)
         if not kwargs:
             kwargs['password'] = str(login)
-        self.set_cnx(dbapi.repo_connect(self.repo, unicode(login), **kwargs))
+        self.set_cnx(dbapi._repo_connect(self.repo, unicode(login), **kwargs))
         self.websession = dbapi.DBAPISession(self.cnx)
         if login == self.vreg.config.anonymous_user()[0]:
             self.cnx.anonymous_connection = True
@@ -451,7 +451,7 @@ class CubicWebTC(TestCase):
         finally:
             self.session.set_cnxset() # ensure cnxset still set after commit
 
-    # # server side db api #######################################################
+    # server side db api #######################################################
 
     def sexecute(self, rql, args=None, eid_key=None):
         if eid_key is not None:
@@ -1060,7 +1060,7 @@ class AutoPopulateTest(CubicWebTC):
         """this method populates the database with `how_many` entities
         of each possible type. It also inserts random relations between them
         """
-        with security_enabled(self.session, read=False, write=False):
+        with self.session.security_enabled(read=False, write=False):
             self._auto_populate(how_many)
 
     def _auto_populate(self, how_many):
