@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# copyright 2003-2011 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2012 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -353,28 +353,6 @@ class CubicWebNoAppConfiguration(ConfigurationMixIn):
           'help': 'permission umask for files created by the server',
           'group': 'main', 'level': 2,
           }),
-        # pyro options
-        ('pyro-instance-id',
-         {'type' : 'string',
-          'default': Method('default_instance_id'),
-          'help': 'identifier of the CubicWeb instance in the Pyro name server',
-          'group': 'pyro', 'level': 1,
-          }),
-        ('pyro-ns-host',
-         {'type' : 'string',
-          'default': '',
-          'help': 'Pyro name server\'s host. If not set, will be detected by a \
-broadcast query. It may contains port information using <host>:<port> notation. \
-Use "NO_PYRONS" to create a Pyro server but not register to a pyro nameserver',
-          'group': 'pyro', 'level': 1,
-          }),
-        ('pyro-ns-group',
-         {'type' : 'string',
-          'default': 'cubicweb',
-          'help': 'Pyro name server\'s group where the repository will be \
-registered.',
-          'group': 'pyro', 'level': 1,
-          }),
         # common configuration options which are potentially required as soon as
         # you're using "base" application objects (ie to really server/web
         # specific)
@@ -671,54 +649,6 @@ this option is set to yes",
     cubicweb_appobject_path = set(['entities'])
     cube_appobject_path = set(['entities'])
 
-    @classmethod
-    def build_vregistry_path(cls, templpath, evobjpath=None, tvobjpath=None):
-        """given a list of directories, return a list of sub files and
-        directories that should be loaded by the instance objects registry.
-
-        :param evobjpath:
-          optional list of sub-directories (or files without the .py ext) of
-          the cubicweb library that should be tested and added to the output list
-          if they exists. If not give, default to `cubicweb_appobject_path` class
-          attribute.
-        :param tvobjpath:
-          optional list of sub-directories (or files without the .py ext) of
-          directories given in `templpath` that should be tested and added to
-          the output list if they exists. If not give, default to
-          `cube_appobject_path` class attribute.
-        """
-        vregpath = cls.build_vregistry_cubicweb_path(evobjpath)
-        vregpath += cls.build_vregistry_cube_path(templpath, tvobjpath)
-        return vregpath
-
-    @classmethod
-    def build_vregistry_cubicweb_path(cls, evobjpath=None):
-        vregpath = []
-        if evobjpath is None:
-            evobjpath = cls.cubicweb_appobject_path
-        # NOTE: for the order, see http://www.cubicweb.org/ticket/2330799
-        #       it is clearly a workaround
-        for subdir in sorted(evobjpath, key=lambda x:x != 'entities'):
-            path = join(CW_SOFTWARE_ROOT, subdir)
-            if exists(path):
-                vregpath.append(path)
-        return vregpath
-
-    @classmethod
-    def build_vregistry_cube_path(cls, templpath, tvobjpath=None):
-        vregpath = []
-        if tvobjpath is None:
-            tvobjpath = cls.cube_appobject_path
-        for directory in templpath:
-            # NOTE: for the order, see http://www.cubicweb.org/ticket/2330799
-            for subdir in sorted(tvobjpath, key=lambda x:x != 'entities'):
-                path = join(directory, subdir)
-                if exists(path):
-                    vregpath.append(path)
-                elif exists(path + '.py'):
-                    vregpath.append(path + '.py')
-        return vregpath
-
     def __init__(self, debugmode=False):
         if debugmode:
             # in python 2.7, DeprecationWarning are not shown anymore by default
@@ -766,11 +696,56 @@ this option is set to yes",
         # configure simpleTal logger
         logging.getLogger('simpleTAL').setLevel(logging.ERROR)
 
-    def vregistry_path(self):
+    def appobjects_path(self):
         """return a list of files or directories where the registry will look
         for application objects. By default return nothing in NoApp config.
         """
         return []
+
+    def build_appobjects_path(self, templpath, evobjpath=None, tvobjpath=None):
+        """given a list of directories, return a list of sub files and
+        directories that should be loaded by the instance objects registry.
+
+        :param evobjpath:
+          optional list of sub-directories (or files without the .py ext) of
+          the cubicweb library that should be tested and added to the output list
+          if they exists. If not give, default to `cubicweb_appobject_path` class
+          attribute.
+        :param tvobjpath:
+          optional list of sub-directories (or files without the .py ext) of
+          directories given in `templpath` that should be tested and added to
+          the output list if they exists. If not give, default to
+          `cube_appobject_path` class attribute.
+        """
+        vregpath = self.build_appobjects_cubicweb_path(evobjpath)
+        vregpath += self.build_appobjects_cube_path(templpath, tvobjpath)
+        return vregpath
+
+    def build_appobjects_cubicweb_path(self, evobjpath=None):
+        vregpath = []
+        if evobjpath is None:
+            evobjpath = self.cubicweb_appobject_path
+        # NOTE: for the order, see http://www.cubicweb.org/ticket/2330799
+        #       it is clearly a workaround
+        for subdir in sorted(evobjpath, key=lambda x:x != 'entities'):
+            path = join(CW_SOFTWARE_ROOT, subdir)
+            if exists(path):
+                vregpath.append(path)
+        return vregpath
+
+    def build_appobjects_cube_path(self, templpath, tvobjpath=None):
+        vregpath = []
+        if tvobjpath is None:
+            tvobjpath = self.cube_appobject_path
+        for directory in templpath:
+            # NOTE: for the order, see http://www.cubicweb.org/ticket/2330799
+            for subdir in sorted(tvobjpath, key=lambda x:x != 'entities'):
+                path = join(directory, subdir)
+                if exists(path):
+                    vregpath.append(path)
+                elif exists(path + '.py'):
+                    vregpath.append(path + '.py')
+        return vregpath
 
     apphome = None
 
@@ -1177,14 +1152,14 @@ the repository',
                     self.exception('localisation support error for language %s',
                                    language)
 
-    def vregistry_path(self):
+    def appobjects_path(self):
         """return a list of files or directories where the registry will look
         for application objects
         """
         templpath = list(reversed(self.cubes_path()))
         if self.apphome: # may be unset in tests
             templpath.append(self.apphome)
-        return self.build_vregistry_path(templpath)
+        return self.build_appobjects_path(templpath)
 
     def set_sources_mode(self, sources):
         if not 'all' in sources:

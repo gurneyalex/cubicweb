@@ -1,4 +1,4 @@
-# copyright 2003-2011 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2012 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -442,7 +442,7 @@ class InitInstanceCommand(Command):
         config = ServerConfiguration.config_for(appid)
         try:
             system = config.sources()['system']
-            extra_args=system.get('db-extra-arguments')
+            extra_args = system.get('db-extra-arguments')
             extra = extra_args and {'extra_args': extra_args} or {}
             get_connection(
                 system['db-driver'], database=system['db-name'],

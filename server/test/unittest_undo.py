@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# copyright 2003-2010 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2012 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -203,7 +203,7 @@ class UndoableTransactionTC(CubicWebTC):
         c.cw_delete()
         txuuid = self.commit()
         c2 = session.create_entity('Card', title=u'hip', content=u'hip')
-        p.set_relations(fiche=c2)
+        p.cw_set(fiche=c2)
         self.commit()
         self.assertUndoTransaction(txuuid, [
             "Can't restore object relation fiche to entity "
@@ -217,7 +217,7 @@ class UndoableTransactionTC(CubicWebTC):
         session = self.session
         g = session.create_entity('CWGroup', name=u'staff')
         session.execute('DELETE U in_group G WHERE U eid %(x)s', {'x': self.toto.eid})
-        self.toto.set_relations(in_group=g)
+        self.toto.cw_set(in_group=g)
         self.commit()
         self.toto.cw_delete()
         txuuid = self.commit()
@@ -228,6 +228,7 @@ class UndoableTransactionTC(CubicWebTC):
             "%s doesn't exist anymore." % g.eid])
         with self.assertRaises(ValidationError) as cm:
             self.commit()
+        cm.exception.translate(unicode)
         self.assertEqual(cm.exception.entity, self.toto.eid)
         self.assertEqual(cm.exception.errors,
                           {'in_group-subject': u'at least one relation in_group is '
@@ -265,7 +266,7 @@ class UndoableTransactionTC(CubicWebTC):
         email = self.request().create_entity('EmailAddress', address=u'tutu@cubicweb.org')
         prop = self.request().create_entity('CWProperty', pkey=u'ui.default-text-format',
                                             value=u'text/html')
-        tutu.set_relations(use_email=email, reverse_for_user=prop)
+        tutu.cw_set(use_email=email, reverse_for_user=prop)
         self.commit()
         with self.assertRaises(ValidationError) as cm:
             self.cnx.undo_transaction(txuuid)
@@ -278,7 +279,7 @@ class UndoableTransactionTC(CubicWebTC):
         g = session.create_entity('CWGroup', name=u'staff')
         txuuid = self.commit()
         session.execute('DELETE U in_group G WHERE U eid %(x)s', {'x': self.toto.eid})
-        self.toto.set_relations(in_group=g)
+        self.toto.cw_set(in_group=g)
         self.commit()
         with self.assertRaises(ValidationError) as cm:
             self.cnx.undo_transaction(txuuid)
@@ -304,7 +305,7 @@ class UndoableTransactionTC(CubicWebTC):
         c = session.create_entity('Card', title=u'hop', content=u'hop')
         p = session.create_entity('Personne', nom=u'louis', fiche=c)
         self.commit()
-        p.set_relations(fiche=None)
+        p.cw_set(fiche=None)
         txuuid = self.commit()
         self.assertUndoTransaction(txuuid)
         self.commit()
@@ -319,7 +320,7 @@ class UndoableTransactionTC(CubicWebTC):
         c = session.create_entity('Card', title=u'hop', content=u'hop')
         p = session.create_entity('Personne', nom=u'louis', fiche=c)
         self.commit()
-        p.set_relations(fiche=None)
+        p.cw_set(fiche=None)
         txuuid = self.commit()
         c.cw_delete()
         self.commit()
@@ -339,7 +340,7 @@ class UndoableTransactionTC(CubicWebTC):
         c = session.create_entity('Card', title=u'hop', content=u'hop')
         p = session.create_entity('Personne', nom=u'louis')
         self.commit()
-        p.set_relations(fiche=c)
+        p.cw_set(fiche=c)
         txuuid = self.commit()
         self.assertUndoTransaction(txuuid)
         self.commit()
@@ -354,7 +355,7 @@ class UndoableTransactionTC(CubicWebTC):
         c = session.create_entity('Card', title=u'hop', content=u'hop')
         p = session.create_entity('Personne', nom=u'louis')
         self.commit()
-        p.set_relations(fiche=c)
+        p.cw_set(fiche=c)
         txuuid = self.commit()
         c.cw_delete()
         self.commit()
@@ -369,7 +370,7 @@ class UndoableTransactionTC(CubicWebTC):
         c2 = session.create_entity('Card', title=u'hip', content=u'hip')
         p = session.create_entity('Personne', nom=u'louis', fiche=c1)
         self.commit()
-        p.set_relations(fiche=c2)
+        p.cw_set(fiche=c2)
         txuuid = self.commit()
         self.assertUndoTransaction(txuuid)
         self.commit()
@@ -385,7 +386,7 @@ class UndoableTransactionTC(CubicWebTC):
         c2 = session.create_entity('Card', title=u'hip', content=u'hip')
         p = session.create_entity('Personne', nom=u'louis', fiche=c1)
         self.commit()
-        p.set_relations(fiche=c2)
+        p.cw_set(fiche=c2)
         txuuid = self.commit()
         c1.cw_delete()
         self.commit()
@@ -401,7 +402,7 @@ class UndoableTransactionTC(CubicWebTC):
         p = session.create_entity('Personne', nom=u'toto')
         session.commit()
         self.session.set_cnxset()
-        p.set_attributes(nom=u'titi')
+        p.cw_set(nom=u'titi')
         txuuid = self.commit()
         self.assertUndoTransaction(txuuid)
         p.cw_clear_all_caches()
@@ -412,7 +413,7 @@ class UndoableTransactionTC(CubicWebTC):
         p = session.create_entity('Personne', nom=u'toto')
         session.commit()
         self.session.set_cnxset()
-        p.set_attributes(nom=u'titi')
+        p.cw_set(nom=u'titi')
         txuuid = self.commit()
         p.cw_delete()
         self.commit()
