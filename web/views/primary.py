@@ -1,4 +1,4 @@
-# copyright 2003-2011 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2012 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -50,7 +50,8 @@ from cubicweb.utils import support_args
 from cubicweb.predicates import match_kwargs, match_context
 from cubicweb.view import EntityView
 from cubicweb.schema import META_RTYPES, VIRTUAL_RTYPES, display_name
-from cubicweb.web import uicfg, component
+from cubicweb.web import component
+from cubicweb.web.views import uicfg
 
 
 class PrimaryView(EntityView):
@@ -96,8 +97,8 @@ class PrimaryView(EntityView):
     title = _('primary')
     show_attr_label = True
     show_rel_label = True
-    rsection = uicfg.primaryview_section
-    display_ctrl = uicfg.primaryview_display_ctrl
+    rsection = None
+    display_ctrl = None
     main_related_section = True
 
     def html_headers(self):
@@ -110,6 +111,13 @@ class PrimaryView(EntityView):
 
     def entity_call(self, entity):
         entity.complete()
+        uicfg_reg = self._cw.vreg['uicfg']
+        if self.rsection is None:
+            self.rsection = uicfg_reg.select('primaryview_section',
+                                             self._cw, entity=entity)
+        if self.display_ctrl is None:
+            self.display_ctrl = uicfg_reg.select('primaryview_display_ctrl',
+                                                 self._cw, entity=entity)
         self.render_entity(entity)
 
     def render_entity(self, entity):
