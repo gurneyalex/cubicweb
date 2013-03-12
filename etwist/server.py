@@ -16,9 +16,6 @@
 # You should have received a copy of the GNU Lesser General Public License along
 # with CubicWeb.  If not, see <http://www.gnu.org/licenses/>.
 """twisted server for CubicWeb web instances"""
-
-from __future__ import with_statement
-
 __docformat__ = "restructuredtext en"
 
 import sys
@@ -85,7 +82,7 @@ class CubicWebRootResource(resource.Resource):
         config = self.config
         # when we have an in-memory repository, clean unused sessions every XX
         # seconds and properly shutdown the server
-        if config.repo_method == 'inmemory':
+        if config['repository-uri'] == 'inmemory://':
             if config.pyro_enabled():
                 # if pyro is enabled, we have to register to the pyro name
                 # server, create a pyro daemon, and create a task to handle pyro
@@ -172,7 +169,7 @@ class CubicWebRootResource(resource.Resource):
         try:
             ### Try to generate the actual request content
             content = self.appli.handle_request(req, path)
-        except DirectResponse, ex:
+        except DirectResponse as ex:
             return ex.response
         # at last: create twisted object
         return HTTPResponse(code    = req.status_out,
