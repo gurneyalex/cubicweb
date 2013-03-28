@@ -17,7 +17,6 @@
 # with CubicWeb.  If not, see <http://www.gnu.org/licenses/>.
 
 import os, os.path as osp
-import signal
 from tempfile import mkdtemp, NamedTemporaryFile, TemporaryFile
 import tempfile
 from Queue import Queue, Empty
@@ -67,7 +66,6 @@ class FirefoxHelper(object):
         self._tmp_dir = mkdtemp(prefix='cwtest-ffxprof-')
         self._profile_data = {'uid': uuid4()}
         self._profile_name = self.profile_name_mask % self._profile_data
-        fnull = open(os.devnull, 'w')
         stdout = TemporaryFile()
         stderr = TemporaryFile()
         self.firefox_cmd = ['firefox', '-no-remote']
@@ -81,8 +79,8 @@ class FirefoxHelper(object):
                    ' Are you sure "%s" is a valid home  for user "%s"' % (home, user)
             check_call(self.firefox_cmd + ['-CreateProfile',
                         '%s %s' % (self._profile_name, self._tmp_dir)],
-                                  stdout=stdout, stderr=stderr)
-        except CalledProcessError, cpe:
+                                   stdout=stdout, stderr=stderr)
+        except CalledProcessError as cpe:
             stdout.seek(0)
             stderr.seek(0)
             raise VerboseCalledProcessError(cpe.returncode, cpe.cmd, stdout.read(), stderr.read())
@@ -96,7 +94,7 @@ class FirefoxHelper(object):
     def stop(self):
         if self._process is not None:
             assert self._process.returncode is None,  self._process.returncode
-            os.kill(self._process.pid, signal.SIGTERM)
+            self._process.terminate()
             self._process.wait()
             self._process = None
 
@@ -189,11 +187,13 @@ class QUnitTestCase(CubicWebServerTC):
                     yield InnerTest(test_name, self.fail, msg)
             except Empty:
                 error = True
-                yield InnerTest(test_file, raise_exception, RuntimeError, "%s did not report execution end. %i test processed so far." % (test_file, test_count))
-
+                msg = '%s inactivity timeout (%is). %i test results received'
+                yield InnerTest(test_file, raise_exception, RuntimeError,
+                                 msg % (test_file, timeout, test_count))
         browser.stop()
         if test_count <= 0 and not error:
-            yield InnerTest(test_name, raise_exception, RuntimeError, 'No test yielded by qunit for %s' % test_file)
+            yield InnerTest(test_name, raise_exception, RuntimeError,
+                            'No test yielded by qunit for %s' % test_file)
 
 class QUnitResultController(Controller):
 

@@ -21,8 +21,6 @@
 The server module contains functions to initialize a new repository.
 """
 
-from __future__ import with_statement
-
 __docformat__ = "restructuredtext en"
 
 import sys
@@ -32,6 +30,7 @@ from glob import glob
 from logilab.common.modutils import LazyObject
 from logilab.common.textutils import splitstrip
 from logilab.common.registry import yes
+from logilab import database
 
 from yams import BASE_GROUPS
 
@@ -77,10 +76,14 @@ DBG_SQL  = 2
 DBG_REPO = 4
 #: multi-sources
 DBG_MS   = 8
+#: hooks
+DBG_HOOKS = 16
+#: operations
+DBG_OPS = 32
 #: more verbosity
-DBG_MORE = 16
+DBG_MORE = 64
 #: all level enabled
-DBG_ALL  = DBG_RQL + DBG_SQL + DBG_REPO + DBG_MS + DBG_MORE
+DBG_ALL  = DBG_RQL + DBG_SQL + DBG_REPO + DBG_MS + DBG_HOOKS + DBG_OPS + DBG_MORE
 
 #: current debug mode
 DEBUG = 0
@@ -160,11 +163,14 @@ def init_repository(config, interactive=True, drop=False, vreg=None):
     from cubicweb.dbapi import in_memory_repo_cnx
     from cubicweb.server.repository import Repository
     from cubicweb.server.utils import manager_userpasswd
-    from cubicweb.server.sqlutils import sqlexec, sqlschema, sqldropschema
+    from cubicweb.server.sqlutils import sqlexec, sqlschema, sql_drop_all_user_tables
+    from cubicweb.server.sqlutils import _SQL_DROP_ALL_USER_TABLES_FILTER_FUNCTION as drop_filter
     # configuration to avoid db schema loading and user'state checking
     # on connection
     config.creating = True
     config.consider_user_state = False
+    config.cubicweb_appobject_path = set(('hooks', 'entities'))
+    config.cube_appobject_path = set(('hooks', 'entities'))
     # only enable the system source at initialization time
     repo = Repository(config, vreg=vreg)
     schema = repo.schema
@@ -175,13 +181,21 @@ def init_repository(config, interactive=True, drop=False, vreg=None):
     sqlcursor = sqlcnx.cursor()
     execute = sqlcursor.execute
     if drop:
-        _title = '-> drop tables '
-        dropsql = sqldropschema(schema, driver)
-        try:
-            sqlexec(dropsql, execute, pbtitle=_title)
-        except Exception, ex:
-            print '-> drop failed, skipped (%s).' % ex
-            sqlcnx.rollback()
+        helper = database.get_db_helper(driver)
+        dropsql = sql_drop_all_user_tables(helper, sqlcursor)
+        # We may fail dropping some tables because of table dependencies, in a first pass.
+        # So, we try a second drop sequence to drop remaining tables if needed.
+        # Note that 2 passes is an arbitrary choice as it seems enougth for our usecases.
+        # (looping may induce infinite recursion when user have no right for example)
+        # Here we try to keep code simple and backend independant. That why we don't try to
+        # distinguish remaining tables (wrong right, dependencies, ...).
+        failed = sqlexec(dropsql, execute, cnx=sqlcnx,
+                         pbtitle='-> dropping tables (first pass)')
+        if failed:
+            failed = sqlexec(failed, execute, cnx=sqlcnx,
+                             pbtitle='-> dropping tables (second pass)')
+            remainings = filter(drop_filter, helper.list_tables(sqlcursor))
+            assert not remainings, 'Remaining tables: %s' % ', '.join(remainings)
     _title = '-> creating tables '
     print _title,
     # schema entities and relations tables
@@ -224,10 +238,6 @@ def init_repository(config, interactive=True, drop=False, vreg=None):
     config._cubes = None # avoid assertion error
     repo, cnx = in_memory_repo_cnx(config, login, password=pwd)
     repo.system_source.eid = ssource.eid # redo this manually
-    # trigger vreg initialisation of entity classes
-    config.cubicweb_appobject_path = set(('entities',))
-    config.cube_appobject_path = set(('entities',))
-    repo.vreg.set_schema(repo.schema)
     assert len(repo.sources) == 1, repo.sources
     handler = config.migration_handler(schema, interactive=False,
                                        cnx=cnx, repo=repo)
@@ -246,20 +256,21 @@ def init_repository(config, interactive=True, drop=False, vreg=None):
     # restore initial configuration
     config.creating = False
     config.consider_user_state = True
+    # (drop instance attribute to get back to class attribute)
+    del config.cubicweb_appobject_path
+    del config.cube_appobject_path
     print '-> database for instance %s initialized.' % config.appid
 
 
 def initialize_schema(config, schema, mhandler, event='create'):
     from cubicweb.server.schemaserial import serialize_schema
-    from cubicweb.server.session import hooks_control
     session = mhandler.session
     cubes = config.cubes()
     # deactivate every hooks but those responsible to set metadata
     # so, NO INTEGRITY CHECKS are done, to have quicker db creation.
     # Active integrity is kept else we may pb such as two default
     # workflows for one entity type.
-    with hooks_control(session, session.HOOKS_DENY_ALL, 'metadata',
-                       'activeintegrity'):
+    with session.deny_all_hooks_but('metadata', 'activeintegrity'):
         # execute cubicweb's pre<event> script
         mhandler.cmd_exec_event_script('pre%s' % event)
         # execute cubes pre<event> script if any
