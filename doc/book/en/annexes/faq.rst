@@ -3,11 +3,6 @@
 Frequently Asked Questions (FAQ)
 ================================
 
-[XXX 'copy answer from forum' means reusing text from
-http://groups.google.com/group/google-appengine/browse_frm/thread/c9476925f5f66ec6
-and
-http://groups.google.com/group/google-appengine/browse_frm/thread/f48cf6099973aef5/c28cd6934dd72457
-]
 
 Generalities
 ````````````
@@ -364,7 +359,7 @@ You can prefer use a migration script similar to this shell invocation instead::
     >>> crypted = crypt_password('joepass')
     >>> rset = rql('Any U WHERE U is CWUser, U login "joe"')
     >>> joe = rset.get_entity(0,0)
-    >>> joe.set_attributes(upassword=Binary(crypted))
+    >>> joe.cw_set(upassword=Binary(crypted))
 
 Please, refer to the script example is provided in the `misc/examples/chpasswd.py` file.
 
