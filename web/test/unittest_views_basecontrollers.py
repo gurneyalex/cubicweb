@@ -32,6 +32,8 @@ from cubicweb.devtools.testlib import CubicWebTC
 from cubicweb.utils import json_dumps
 from cubicweb.uilib import rql_for_eid
 from cubicweb.web import INTERNAL_FIELD_VALUE, Redirect, RequestError, RemoteCallFailed
+import cubicweb.server.session
+from cubicweb.server.session import Transaction as OldTransaction
 from cubicweb.entities.authobjs import CWUser
 from cubicweb.web.views.autoform import get_pending_inserts, get_pending_deletes
 from cubicweb.web.views.basecontrollers import JSonController, xhtmlize, jsonize
@@ -533,18 +535,6 @@ class EditControllerTC(CubicWebTC):
             p.__class__.skip_copy_for = old_skips
 
 
-class EmbedControllerTC(CubicWebTC):
-
-    def test_nonregr_embed_publish(self):
-        # This test looks a bit stupid but at least it will probably
-        # fail if the controller API changes and if EmbedController is not
-        # updated (which is what happened before this test)
-        req = self.request()
-        req.form['url'] = 'http://www.logilab.fr/'
-        controller = self.vreg['controllers'].select('embed', req)
-        result = controller.publish(rset=None)
-
-
 class ReportBugControllerTC(CubicWebTC):
 
     def test_usable_by_guest(self):
@@ -793,9 +783,20 @@ class JSonControllerTC(AjaxControllerTC):
 
 class UndoControllerTC(CubicWebTC):
 
+    def setUp(self):
+        class Transaction(OldTransaction):
+            """Force undo feature to be turned on in all case"""
+            undo_actions = property(lambda tx: True, lambda x, y:None)
+        cubicweb.server.session.Transaction = Transaction
+        super(UndoControllerTC, self).setUp()
+
+    def tearDown(self):
+        super(UndoControllerTC, self).tearDown()
+        cubicweb.server.session.Transaction = OldTransaction
+
+
     def setup_database(self):
         req = self.request()
-        self.session.undo_actions = True
         self.toto = self.create_user(req, 'toto', password='toto', groups=('users',),
                                      commit=False)
         self.txuuid_toto = self.commit()
