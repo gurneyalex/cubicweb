@@ -1,0 +1,20 @@
+/***************************************/
+/* Manage view (views/startup.py)      */
+/***************************************/
+
+table.startup {
+  width: 100%;
+}
+
+/* table.startup td { */
+/*   padding: 0.1em 0.2em; */
+/* } */
+
+table.startup td.addcol {
+  text-align: right;
+  width: 0.5em;
+}
+
+table.startup th{
+  text-align: left;
+}
