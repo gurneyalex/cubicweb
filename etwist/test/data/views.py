@@ -1,4 +1,4 @@
-# copyright 2003-2010 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2013 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -15,21 +15,15 @@
 #
 # You should have received a copy of the GNU Lesser General Public License along
 # with CubicWeb.  If not, see <http://www.gnu.org/licenses/>.
-"""
+"""only for unit tests !"""
 
-"""
-from logilab.common.testlib import unittest_main
+from cubicweb.view import View
+from cubicweb.predicates import match_http_method
 
-from cubicweb.devtools.testlib import CubicWebTC
+class PutView(View):
+    __regid__ = 'put'
+    __select__ = match_http_method('PUT')
+    binary = True
 
-class ActionsTC(CubicWebTC):
-    def test_view_action(self):
-        req = self.request(__message='bla bla bla', vid='rss', rql='CWUser X')
-        rset = self.execute('CWUser X')
-        actions = self.vreg['actions'].poss_visible_objects(req, rset=rset)
-        vaction = [action for action in actions if action.__regid__ == 'view'][0]
-        self.assertEqual(vaction.url(), 'http://testing.fr/cubicweb/view?rql=CWUser%20X')
-
-
-if __name__ == '__main__':
-    unittest_main()
+    def call(self):
+        self.w(self._cw.content.read())
