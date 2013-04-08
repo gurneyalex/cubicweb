@@ -107,7 +107,7 @@ def generate_schema_pot(w, cubedir=None):
     notice that relation definitions description and static vocabulary
     should be marked using '_' and extracted using xgettext
     """
-    from cubicweb.cwvreg import CubicWebVRegistry
+    from cubicweb.cwvreg import CWRegistryStore
     if cubedir:
         cube = osp.split(cubedir)[-1]
         config = DevConfiguration(cube)
@@ -119,7 +119,7 @@ def generate_schema_pot(w, cubedir=None):
         cube = libconfig = None
     cleanup_sys_modules(config)
     schema = config.load_schema(remove_unused_rtypes=False)
-    vreg = CubicWebVRegistry(config)
+    vreg = CWRegistryStore(config)
     # set_schema triggers objects registrations
     vreg.set_schema(schema)
     w(DEFAULT_POT_HEAD)
@@ -138,13 +138,13 @@ def _generate_schema_pot(w, vreg, schema, libconfig=None):
     w('\n')
     vregdone = set()
     if libconfig is not None:
-        from cubicweb.cwvreg import CubicWebVRegistry, clear_rtag_objects
+        from cubicweb.cwvreg import CWRegistryStore, clear_rtag_objects
         libschema = libconfig.load_schema(remove_unused_rtypes=False)
         afs = deepcopy(uicfg.autoform_section)
         appearsin_addmenu = deepcopy(uicfg.actionbox_appearsin_addmenu)
         clear_rtag_objects()
         cleanup_sys_modules(libconfig)
-        libvreg = CubicWebVRegistry(libconfig)
+        libvreg = CWRegistryStore(libconfig)
         libvreg.set_schema(libschema) # trigger objects registration
         libafs = uicfg.autoform_section
         libappearsin_addmenu = uicfg.actionbox_appearsin_addmenu
@@ -667,13 +667,13 @@ layout, and a full featured cube with "full" layout.',
 class ExamineLogCommand(Command):
     """Examine a rql log file.
 
-    will print out the following table
+    Will print out the following table
 
-      total execution time || number of occurences || rql query
+      Percentage; Cumulative Time (clock); Cumulative Time (CPU); Occurences; Query
 
-    sorted by descending total execution time
+    sorted by descending cumulative time (clock). Time are expressed in seconds.
 
-    chances are the lines at the top are the ones that will bring the higher
+    Chances are the lines at the top are the ones that will bring the higher
     benefit after optimisation. Start there.
     """
     arguments = 'rql.log'
