@@ -33,11 +33,10 @@ from rql.stmts import Select
 from rql.nodes import (Not, VariableRef, Constant, make_relation,
                        Relation as RqlRelation)
 
-from cubicweb import Unauthorized, typed_eid, neg_role
+from cubicweb import Unauthorized, neg_role
 from cubicweb.utils import support_args
 from cubicweb.rset import ResultSet
 from cubicweb.appobject import AppObject
-from cubicweb.req import _check_cw_unsafe
 from cubicweb.schema import (RQLVocabularyConstraint, RQLConstraint,
                              GeneratedConstraint)
 from cubicweb.rqlrewrite import RQLRewriter
@@ -627,7 +626,7 @@ class Entity(AppObject):
         meaning that the entity has to be created
         """
         try:
-            typed_eid(self.eid)
+            int(self.eid)
             return True
         except (ValueError, TypeError):
             return False
@@ -1287,7 +1286,6 @@ class Entity(AppObject):
         an entity or eid, a list of entities or eids, or None (meaning that all
         relations of the given type from or to this object should be deleted).
         """
-        _check_cw_unsafe(kwargs)
         assert kwargs
         assert self.cw_is_saved(), "should not call set_attributes while entity "\
                "hasn't been saved yet"
@@ -1397,10 +1395,6 @@ class Entity(AppObject):
 
     @deprecated('[3.10] use entity.cw_attr_cache[attr]')
     def __getitem__(self, key):
-        if key == 'eid':
-            warn('[3.7] entity["eid"] is deprecated, use entity.eid instead',
-                 DeprecationWarning, stacklevel=2)
-            return self.eid
         return self.cw_attr_cache[key]
 
     @deprecated('[3.10] use entity.cw_attr_cache.get(attr[, default])')
@@ -1424,15 +1418,10 @@ class Entity(AppObject):
         the attribute to skip_security since we don't want to check security
         for such attributes set by hooks.
         """
-        if attr == 'eid':
-            warn('[3.7] entity["eid"] = value is deprecated, use entity.eid = value instead',
-                 DeprecationWarning, stacklevel=2)
-            self.eid = value
-        else:
-            try:
-                self.cw_edited[attr] = value
-            except AttributeError:
-                self.cw_attr_cache[attr] = value
+        try:
+            self.cw_edited[attr] = value
+        except AttributeError:
+            self.cw_attr_cache[attr] = value
 
     @deprecated('[3.10] use del entity.cw_edited[attr]')
     def __delitem__(self, attr):
