@@ -50,7 +50,7 @@ from cubicweb import (CW_SOFTWARE_ROOT, CW_MIGRATION_MAP, QueryError,
                       UnknownEid, AuthenticationError, ExecutionError,
                       ETypeNotSupportedBySources, MultiSourcesError,
                       BadConnectionId, Unauthorized, ValidationError,
-                      RepositoryError, UniqueTogetherError, typed_eid, onevent)
+                      RepositoryError, UniqueTogetherError, onevent)
 from cubicweb import cwvreg, schema, server
 from cubicweb.server import ShuttingDown, utils, hook, pool, querier, sources
 from cubicweb.server.session import Session, InternalSession, InternalManager
@@ -844,7 +844,7 @@ class Repository(object):
         self.debug('begin commit for session %s', sessionid)
         try:
             session = self._get_session(sessionid)
-            session.set_tx_data(txid)
+            session.set_tx(txid)
             return session.commit()
         except (ValidationError, Unauthorized):
             raise
@@ -857,7 +857,7 @@ class Repository(object):
         self.debug('begin rollback for session %s', sessionid)
         try:
             session = self._get_session(sessionid)
-            session.set_tx_data(txid)
+            session.set_tx(txid)
             session.rollback()
         except Exception:
             self.exception('unexpected error')
@@ -1014,7 +1014,7 @@ class Repository(object):
         except KeyError:
             raise BadConnectionId('No such session %s' % sessionid)
         if setcnxset:
-            session.set_tx_data(txid) # must be done before set_cnxset
+            session.set_tx(txid) # must be done before set_cnxset
             session.set_cnxset()
         return session
 
@@ -1027,7 +1027,7 @@ class Repository(object):
         uri)` for the entity of the given `eid`
         """
         try:
-            eid = typed_eid(eid)
+            eid = int(eid)
         except ValueError:
             raise UnknownEid(eid)
         try:
@@ -1055,7 +1055,7 @@ class Repository(object):
         rqlcache = self.querier._rql_cache
         for eid in eids:
             try:
-                etype, uri, extid, auri = etcache.pop(typed_eid(eid)) # may be a string in some cases
+                etype, uri, extid, auri = etcache.pop(int(eid)) # may be a string in some cases
                 rqlcache.pop( ('%s X WHERE X eid %s' % (etype, eid),), None)
                 extidcache.pop((extid, uri), None)
             except KeyError:
@@ -1084,7 +1084,7 @@ class Repository(object):
                     key, args[key]))
             cachekey.append(etype)
             # ensure eid is correctly typed in args
-            args[key] = typed_eid(args[key])
+            args[key] = int(args[key])
         return tuple(cachekey)
 
     def eid2extid(self, source, eid, session=None):
@@ -1177,7 +1177,7 @@ class Repository(object):
                     hook.CleanupDeletedEidsCacheOp.get_instance(session).add_data(entity.eid)
                     self.system_source.delete_info_multi(session, [entity], uri)
                     if source.should_call_hooks:
-                        session._threaddata.pending_operations = pending_operations
+                        session._tx.pending_operations = pending_operations
             raise
 
     def add_info(self, session, entity, source, extid=None, complete=True):
@@ -1336,7 +1336,7 @@ class Repository(object):
                 suri = 'system'
             extid = source.get_extid(entity)
             self._extid_cache[(str(extid), suri)] = entity.eid
-        self._type_source_cache[entity.eid] = (entity.__regid__, suri, extid,
+        self._type_source_cache[entity.eid] = (entity.cw_etype, suri, extid,
                                                source.uri)
         return extid
 
@@ -1350,13 +1350,13 @@ class Repository(object):
         entity._cw_is_saved = False # entity has an eid but is not yet saved
         # init edited_attributes before calling before_add_entity hooks
         entity.cw_edited = edited
-        source = self.locate_etype_source(entity.__regid__)
+        source = self.locate_etype_source(entity.cw_etype)
         # allocate an eid to the entity before calling hooks
         entity.eid = self.system_source.create_eid(session)
         # set caches asap
         extid = self.init_entity_caches(session, entity, source)
         if server.DEBUG & server.DBG_REPO:
-            print 'ADD entity', self, entity.__regid__, entity.eid, edited
+            print 'ADD entity', self, entity.cw_etype, entity.eid, edited
         prefill_entity_caches(entity)
         if source.should_call_hooks:
             self.hm.call_hooks('before_add_entity', session, entity=entity)
@@ -1389,7 +1389,7 @@ class Repository(object):
         """
         entity = edited.entity
         if server.DEBUG & server.DBG_REPO:
-            print 'UPDATE entity', entity.__regid__, entity.eid, \
+            print 'UPDATE entity', entity.cw_etype, entity.eid, \
                   entity.cw_attr_cache, edited
         hm = self.hm
         eschema = entity.e_schema

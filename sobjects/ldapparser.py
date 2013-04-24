@@ -42,11 +42,13 @@ class DataFeedLDAPAdapter(datafeed.DataFeedParser):
     @cachedproperty
     def source_entities_by_extid(self):
         source = self.source
-        return dict((userdict['dn'], userdict)
-                    for userdict in source._search(self._cw,
-                                                   source.user_base_dn,
-                                                   source.user_base_scope,
-                                                   self.searchfilterstr))
+        if source.user_base_dn.strip():
+            return dict((userdict['dn'], userdict)
+                        for userdict in source._search(self._cw,
+                                                       source.user_base_dn,
+                                                       source.user_base_scope,
+                                                       self.searchfilterstr))
+        return {}
 
     def process(self, url, raise_on_error=False):
         """IDataFeedParser main entry point"""
@@ -85,7 +87,7 @@ class DataFeedLDAPAdapter(datafeed.DataFeedParser):
         # disable read security to allow password selection
         with entity._cw.security_enabled(read=False):
             entity.complete(tuple(attrs))
-        if entity.__regid__ == 'CWUser':
+        if entity.cw_etype == 'CWUser':
             wf = entity.cw_adapt_to('IWorkflowable')
             if wf.state == 'deactivated':
                 wf.fire_transition('activate')
@@ -112,7 +114,7 @@ class DataFeedLDAPAdapter(datafeed.DataFeedParser):
         return tdict
 
     def before_entity_copy(self, entity, sourceparams):
-        if entity.__regid__ == 'EmailAddress':
+        if entity.cw_etype == 'EmailAddress':
             entity.cw_edited['address'] = sourceparams['address']
         else:
             self.ldap2cwattrs(sourceparams, entity.cw_edited)
@@ -126,7 +128,7 @@ class DataFeedLDAPAdapter(datafeed.DataFeedParser):
 
     def after_entity_copy(self, entity, sourceparams):
         super(DataFeedLDAPAdapter, self).after_entity_copy(entity, sourceparams)
-        if entity.__regid__ == 'EmailAddress':
+        if entity.cw_etype == 'EmailAddress':
             return
         groups = filter(None, [self._get_group(name)
                                for name in self.source.user_default_groups])
@@ -176,7 +178,7 @@ class DataFeedLDAPAdapter(datafeed.DataFeedParser):
             return self._cw.execute('Any X WHERE X is CWGroup, X name %(name)s',
                                     {'name': name}).get_entity(0, 0)
         except IndexError:
-            self.error('group %r referenced by source configuration %r does not exist'
-                       % (name, self.source.uri))
+            self.error('group %r referenced by source configuration %r does not exist',
+                       name, self.source.uri)
             return None
 

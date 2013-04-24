@@ -88,8 +88,8 @@ to respond to rql queries). Leave empty for anonymous bind',
 
         ('user-base-dn',
          {'type' : 'string',
-          'default': 'ou=People,dc=logilab,dc=fr',
-          'help': 'base DN to lookup for users',
+          'default': '',
+          'help': 'base DN to lookup for users; disable user importation mechanism if unset',
           'group': 'ldap-source', 'level': 1,
           }),
         ('user-scope',
@@ -328,7 +328,6 @@ You can set multiple groups by separating them by a comma.',
             else:
                 itemdict = self._process_ldap_item(rec_dn, items)
                 result.append(itemdict)
-        #print '--->', result
         self.debug('ldap built results %s', len(result))
         return result
 
