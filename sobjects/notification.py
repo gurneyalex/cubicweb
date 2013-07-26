@@ -119,7 +119,8 @@ class NotificationView(EntityView):
         for something in recipients:
             if isinstance(something, Entity):
                 # hi-jack self._cw to get a session for the returned user
-                self._cw = Session(self._cw.repo, something)
+                self._cw = Session(something, self._cw.repo)
+                self._cw.set_cnxset()
                 emailaddr = something.cw_adapt_to('IEmailable').get_email()
             else:
                 emailaddr, lang = something
@@ -143,6 +144,10 @@ class NotificationView(EntityView):
             msg = format_mail(self.user_data, [emailaddr], content, subject,
                               config=self._cw.vreg.config, msgid=msgid, references=refs)
             yield [emailaddr], msg
+            if isinstance(something, Entity):
+                self._cw.commit()
+                self._cw.close()
+                self._cw = req
         # restore language
         req.set_language(origlang)
 
@@ -287,9 +292,8 @@ Properties have been updated by %(user)s:
 url: %(url)s
 """
 
-    def context(self, **kwargs):
+    def context(self, changes=(), **kwargs):
         context = super(EntityUpdatedNotificationView, self).context(**kwargs)
-        changes = self._cw.transaction_data['changes'][self.cw_rset[0][0]]
         _ = self._cw._
         formatted_changes = []
         entity = self.cw_rset.get_entity(self.cw_row or 0, self.cw_col or 0)
