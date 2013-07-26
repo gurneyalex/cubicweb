@@ -167,6 +167,9 @@ class Repository(object):
 
         self.pyro_registered = False
         self.pyro_uri = None
+        # every pyro client is handled in its own thread; map these threads to
+        # the session we opened for them so we can clean up when they go away
+        self._pyro_sessions = {}
         self.app_instances_bus = NullEventBus()
         self.info('starting repository from %s', self.config.apphome)
         # dictionary of opened sessions
@@ -236,7 +239,7 @@ class Repository(object):
             # load schema from the file system
             if not config.creating:
                 self.warning("set fs instance'schema")
-            self.set_schema(config.load_schema())
+            self.set_schema(config.load_schema(expand_cubes=True))
         else:
             # normal start: load the instance schema from the database
             self.info('loading schema from the repository')
@@ -349,9 +352,8 @@ class Repository(object):
             except Exception as ex:
                 import traceback
                 traceback.print_exc()
-                raise Exception('Is the database initialised ? (cause: %s)' %
-                                (ex.args and ex.args[0].strip() or 'unknown')), \
-                                None, sys.exc_info()[-1]
+                raise (Exception('Is the database initialised ? (cause: %s)' % ex),
+                       None, sys.exc_info()[-1])
         return appschema
 
     def _prepare_startup(self):
@@ -756,6 +758,12 @@ class Repository(object):
             # try to get a user object
             user = self.authenticate_user(session, login, **kwargs)
         session = Session(user, self, cnxprops)
+        if threading.currentThread() in self._pyro_sessions:
+            # assume no pyro client does one get_repository followed by
+            # multiple repo.connect
+            assert self._pyro_sessions[threading.currentThread()] == None
+            self.debug('record session %s', session)
+            self._pyro_sessions[threading.currentThread()] = session
         user._cw = user.cw_rset.req = session
         user.cw_clear_relation_cache()
         self._sessions[session.id] = session
@@ -785,16 +793,7 @@ class Repository(object):
                 #       Zeroed to avoid useless overhead with pyro
                 rset._rqlst = None
                 return rset
-            except (Unauthorized, RQLSyntaxError):
-                raise
-            except ValidationError as ex:
-                # need ValidationError normalization here so error may pass
-                # through pyro
-                if hasattr(ex.entity, 'eid'):
-                    ex.entity = ex.entity.eid # error raised by yams
-                    args = list(ex.args)
-                    args[0] = ex.entity
-                    ex.args = tuple(args)
+            except (ValidationError, Unauthorized, RQLSyntaxError):
                 raise
             except Exception:
                 # FIXME: check error to catch internal errors
@@ -876,6 +875,8 @@ class Repository(object):
         # during `session_close` hooks
         session.commit()
         session.close()
+        if threading.currentThread() in self._pyro_sessions:
+            self._pyro_sessions[threading.currentThread()] = None
         del self._sessions[sessionid]
         self.info('closed session %s for user %s', sessionid, session.user.login)
 
@@ -1637,21 +1638,22 @@ class Repository(object):
         # into the pyro name server
         if self._use_pyrons():
             self.looping_task(60*10, self._ensure_pyro_ns)
+        pyro_sessions = self._pyro_sessions
         # install hacky function to free cnxset
-        self.looping_task(60, self._cleanup_pyro)
+        def handleConnection(conn, tcpserver, sessions=pyro_sessions):
+            sessions[threading.currentThread()] = None
+            return tcpserver.getAdapter().__class__.handleConnection(tcpserver.getAdapter(), conn, tcpserver)
+        daemon.getAdapter().handleConnection = handleConnection
+        def removeConnection(conn, sessions=pyro_sessions):
+            daemon.__class__.removeConnection(daemon, conn)
+            session = sessions.pop(threading.currentThread(), None)
+            if session is None:
+                # client was not yet connected to the repo
+                return
+            if not session.closed:
+                self.close(session.id)
+        daemon.removeConnection = removeConnection
         return daemon
-
-    def _cleanup_pyro(self):
-        """Very hacky function to cleanup session left by dead Pyro thread.
-
-        There is no clean pyro callback to detect this.
-        """
-        for session in self._sessions.values():
-            for thread, cnxset in session._threads_in_transaction.copy():
-                if not thread.isAlive():
-                    self.warning('Freeing cnxset used by dead pyro threads: %',
-                                 thread)
-                    session._free_thread_cnxset(thread, cnxset)
 
     def _ensure_pyro_ns(self):
         if not self._use_pyrons():

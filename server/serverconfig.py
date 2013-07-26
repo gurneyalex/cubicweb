@@ -239,14 +239,14 @@ registered.',
           {'type' : 'csv',
            'default' : None,
            'help': ('List of ZMQ addresses to subscribe to (requires pyzmq) '
-                    '(of the form `zmqpickle-tcp://<ipaddr>:<port>`)'),
+                    '(of the form `tcp://<ipaddr>:<port>`)'),
            'group': 'zmq', 'level': 1,
            }),
          ('zmq-address-pub',
           {'type' : 'string',
            'default' : None,
            'help': ('ZMQ address to use for publishing (requires pyzmq) '
-                    '(of the form `zmqpickle-tcp://<ipaddr>:<port>`)'),
+                    '(of the form `tcp://<ipaddr>:<port>`)'),
            'group': 'zmq', 'level': 1,
            }),
         ) + CubicWebConfiguration.options)
@@ -361,7 +361,7 @@ registered.',
             self.init_cubes(self.expand_cubes(origcubes))
         schema = CubicWebSchemaLoader().load(self, **kwargs)
         if expand_cubes:
-            # restaure original value
+            # restore original value
             self._cubes = origcubes
         return schema
 
