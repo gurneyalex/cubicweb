@@ -1,0 +1,3 @@
+usr/lib/PY_VERSION/*-packages/cubicweb/web
+usr/share/cubicweb/cubes/shared/data
+usr/share/cubicweb/cubes/shared/wdoc
