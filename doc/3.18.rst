@@ -11,6 +11,9 @@ New functionalities
 API changes
 -----------
 
+* not really an API change, but the entity permission checks are now
+  systematically deferred to an operation, instead of a) trying in a
+  hook and b) if it failed, retrying later in an operation
 
 
 Deprecation
@@ -24,3 +27,6 @@ Deprecated Code Drops
 * ``ldapuser`` have been dropped; use ``ldapfeed`` now
   (see `#2936496 <http://www.cubicweb.org/2936496>`_)
 
+* all 3.8 backward compat is gone
+
+* all 3.9 backward compat (including the javascript side) is gone
