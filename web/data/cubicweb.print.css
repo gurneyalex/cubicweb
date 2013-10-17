@@ -1,0 +1,15 @@
+* {
+  color: #000 !important;
+}
+
+div#popupLoginBox,
+div#popupLoginBox,
+img#logo, div.header,
+#navColumnLeft, #navColumnRight,
+#footer {
+  display: none
+}
+
+div#pageContent{
+  border: none;
+}
