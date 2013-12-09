@@ -27,7 +27,7 @@ from logilab.common.shellutils import ProgressBar
 
 from yams import BadSchemaDefinition, schema as schemamod, buildobjs as ybo
 
-from cubicweb import CW_SOFTWARE_ROOT, Binary
+from cubicweb import CW_SOFTWARE_ROOT, Binary, typed_eid
 from cubicweb.schema import (KNOWN_RPROPERTIES, CONSTRAINTS, ETYPE_NAME_MAP,
                              VIRTUAL_RTYPES, PURE_VIRTUAL_RTYPES)
 from cubicweb.server import sqlutils
@@ -77,8 +77,6 @@ def group_mapping(cursor, interactive=True):
 def cstrtype_mapping(cursor):
     """cached constraint types mapping"""
     map = dict(cursor.execute('Any T, X WHERE X is CWConstraintType, X name T'))
-    if not 'BoundConstraint' in map:
-        map['BoundConstraint'] = map['BoundaryConstraint']
     return map
 
 # schema / perms deserialization ##############################################
@@ -214,6 +212,11 @@ def deserialize_schema(schema, session):
         rdefeid, seid, reid, oeid, card, ord, desc, idx, ftidx, i18n, default = values
         typeparams = extra_props.get(rdefeid)
         typeparams = json.load(typeparams) if typeparams else {}
+        if default is not None:
+            if isinstance(default, Binary):
+                # while migrating from 3.17 to 3.18, we still have to
+                # handle String defaults
+                default = default.unzpickle()
         _add_rdef(rdefeid, seid, reid, oeid,
                   cardinality=card, description=desc, order=ord,
                   indexed=idx, fulltextindexed=ftidx, internationalizable=i18n,
@@ -234,28 +237,24 @@ def deserialize_schema(schema, session):
         if rdefs is not None:
             set_perms(rdefs, permsidx)
     unique_togethers = {}
-    try:
-        rset = session.execute(
-        'Any X,E,R WHERE '
-        'X is CWUniqueTogetherConstraint, '
-        'X constraint_of E, X relations R', build_descr=False)
-    except Exception:
-        session.rollback() # first migration introducing CWUniqueTogetherConstraint cw 3.9.6
-    else:
-        for values in rset:
-            uniquecstreid, eeid, releid = values
-            eschema = schema.schema_by_eid(eeid)
-            relations = unique_togethers.setdefault(uniquecstreid, (eschema, []))
-            rel = ertidx[releid]
-            if isinstance(rel, schemamod.RelationDefinitionSchema):
-                # not yet migrated 3.9 database ('relations' target type changed
-                # to CWRType in 3.10)
-                rtype = rel.rtype.type
-            else:
-                rtype = str(rel)
-            relations[1].append(rtype)
-        for eschema, unique_together in unique_togethers.itervalues():
-            eschema._unique_together.append(tuple(sorted(unique_together)))
+    rset = session.execute(
+    'Any X,E,R WHERE '
+    'X is CWUniqueTogetherConstraint, '
+    'X constraint_of E, X relations R', build_descr=False)
+    for values in rset:
+        uniquecstreid, eeid, releid = values
+        eschema = schema.schema_by_eid(eeid)
+        relations = unique_togethers.setdefault(uniquecstreid, (eschema, []))
+        rel = ertidx[releid]
+        if isinstance(rel, schemamod.RelationDefinitionSchema):
+            # not yet migrated 3.9 database ('relations' target type changed
+            # to CWRType in 3.10)
+            rtype = rel.rtype.type
+        else:
+            rtype = str(rel)
+        relations[1].append(rtype)
+    for eschema, unique_together in unique_togethers.itervalues():
+        eschema._unique_together.append(tuple(sorted(unique_together)))
     schema.infer_specialization_rules()
     session.commit()
     schema.reading_from_database = False
@@ -344,13 +343,10 @@ def serialize_schema(cursor, schema):
     cstrtypemap = {}
     rql = 'INSERT CWConstraintType X: X name %(ct)s'
     for cstrtype in CONSTRAINTS:
-        if cstrtype == 'BoundConstraint':
-            continue # XXX deprecated in yams 0.29 / cw 3.8.1
         cstrtypemap[cstrtype] = execute(rql, {'ct': unicode(cstrtype)},
                                         build_descr=False)[0][0]
         if pb is not None:
             pb.update()
-    cstrtypemap['BoundConstraint'] = cstrtypemap['BoundaryConstraint']
     # serialize relations
     for rschema in schema.relations():
         # skip virtual relations such as eid, has_text and identity
@@ -536,10 +532,7 @@ def _rdef_values(rdef):
         elif isinstance(value, str):
             value = unicode(value)
         if value is not None and prop == 'default':
-            if value is False:
-                value = u''
-            if not isinstance(value, unicode):
-                value = unicode(value)
+            value = Binary.zpickle(value)
         values[amap.get(prop, prop)] = value
     if extra:
         values['extra_props'] = Binary(json.dumps(extra))

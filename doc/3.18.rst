@@ -1,0 +1,41 @@
+What's new in CubicWeb 3.18?
+============================
+
+New functionalities
+--------------------
+
+* add a security debugging tool
+  (see `#2920304 <http://www.cubicweb.org/2920304>`_)
+
+
+API changes
+-----------
+
+* not really an API change, but the entity permission checks are now
+  systematically deferred to an operation, instead of a) trying in a
+  hook and b) if it failed, retrying later in an operation
+
+* The default value storage for attributes is no longer String, but
+  Bytes.  This opens the road to storing arbitrary python objects, e.g.
+  numpy arrays, and fixes a bug where default values whose truth value
+  was False were not properly migrated.
+
+Deprecation
+---------------------
+
+* the old multi-source system
+
+
+Deprecated Code Drops
+----------------------
+
+* ``ldapuser`` have been dropped; use ``ldapfeed`` now
+  (see `#2936496 <http://www.cubicweb.org/2936496>`_)
+
+* action ``GotRhythm`` was removed, make sure you do not
+  import it in your cubes (even to unregister it)
+  (see `#3093362 <http://www.cubicweb.org/3093362>`_)
+
+* all 3.8 backward compat is gone
+
+* all 3.9 backward compat (including the javascript side) is gone
