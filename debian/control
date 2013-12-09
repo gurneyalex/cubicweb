@@ -15,7 +15,7 @@ Build-Depends:
  python-unittest2 | python (>= 2.7),
  python-logilab-mtconverter,
  python-rql,
- python-yams (>= 0.37),
+ python-yams (>= 0.39),
  python-lxml,
 Standards-Version: 3.9.1
 Homepage: http://www.cubicweb.org
@@ -131,6 +131,8 @@ Recommends:
  python-fyzz,
  python-imaging,
  python-rdflib
+Breaks:
+ cubicweb-inlinedit (<< 1.1.1),
 Description: web interface library for the CubicWeb framework
  CubicWeb is a semantic web application framework.
  .
@@ -150,7 +152,7 @@ Depends:
  gettext,
  python-logilab-mtconverter (>= 0.8.0),
  python-logilab-common (>= 0.59.0),
- python-yams (>= 0.37.0),
+ python-yams (>= 0.39.0),
  python-rql (>= 0.31.2),
  python-lxml
 Recommends:
@@ -158,6 +160,10 @@ Recommends:
  python-crypto
 Conflicts: cubicweb-core
 Replaces: cubicweb-core
+Breaks:
+ cubicweb-comment (<< 1.9.1),
+ cubicweb-person (<< 1.8.0),
+ cubicweb-geocoding (<< 0.2.0),
 Description: common library for the CubicWeb framework
  CubicWeb is a semantic web application framework.
  .

@@ -1,4 +1,4 @@
-# copyright 2003-2012 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2013 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -266,12 +266,7 @@ class ListCommand(Command):
                         if tinfo:
                             descr = getattr(tinfo, 'description', '')
                             if not descr:
-                                descr = getattr(tinfo, 'short_desc', '')
-                                if descr:
-                                    warn('[3.8] short_desc is deprecated, update %s'
-                                         ' pkginfo' % cube, DeprecationWarning)
-                                else:
-                                    descr = tinfo.__doc__
+                                descr = tinfo.__doc__
                             if descr:
                                 print '    '+ '    \n'.join(descr.splitlines())
                         modes = detect_available_modes(cwcfg.cube_dir(cube))
@@ -357,7 +352,7 @@ class CreateInstanceCommand(Command):
           }),
         ('config',
          {'short': 'c', 'type' : 'choice', 'metavar': '<install type>',
-          'choices': ('all-in-one', 'repository', 'twisted'),
+          'choices': ('all-in-one', 'repository'),
           'default': 'all-in-one',
           'help': 'installation type, telling which part of an instance '
           'should be installed. You can list available configurations using the'
@@ -1039,9 +1034,56 @@ class ConfigureInstanceCommand(InstanceCommand):
                     raise ConfigurationError('unknown configuration key "%s" for mode %s' % (key, appcfg.name))
             appcfg.save()
 
+
+# WSGI #########
+
+def wsgichoices():
+    try:
+        from werkzeug import serving
+    except ImportError:
+        return ('stdlib',)
+    return ('stdlib', 'werkzeug')
+
+class WSGIDebugStartHandler(InstanceCommand):
+    """Start an interactive wsgi server """
+    name = 'wsgi'
+    actionverb = 'started'
+    arguments = '<instance>'
+    options = (
+        ('method',
+         {'short': 'm',
+          'type': 'choice',
+          'metavar': '<method>',
+          'default': 'stdlib',
+          'choices': wsgichoices(),
+          'help': 'wsgi utility/method'}),
+        ('loglevel',
+         {'short': 'l',
+          'type' : 'choice',
+          'metavar': '<log level>',
+          'default': 'debug',
+          'choices': ('debug', 'info', 'warning', 'error'),
+          'help': 'debug if -D is set, error otherwise',
+          }),
+        )
+
+    def wsgi_instance(self, appid):
+        config = cwcfg.config_for(appid, debugmode=1)
+        init_cmdline_log_threshold(config, self['loglevel'])
+        assert config.name == 'all-in-one'
+        meth = self['method']
+        if meth == 'stdlib':
+            from cubicweb.wsgi import server
+        else:
+            from cubicweb.wsgi import wz as server
+        return server.run(config)
+
+
+
 for cmdcls in (ListCommand,
                CreateInstanceCommand, DeleteInstanceCommand,
                StartInstanceCommand, StopInstanceCommand, RestartInstanceCommand,
+               WSGIDebugStartHandler,
                ReloadConfigurationCommand, StatusCommand,
                UpgradeInstanceCommand,
                ListVersionsInstanceCommand,
@@ -1051,6 +1093,8 @@ for cmdcls in (ListCommand,
                ConfigureInstanceCommand,
                ):
     CWCTL.register(cmdcls)
+
+
 
 def run(args):
     """command line tool"""

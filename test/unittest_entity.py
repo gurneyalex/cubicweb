@@ -133,6 +133,12 @@ class EntityTC(CubicWebTC):
         self.assertEqual(sorted(user._cw_related_cache), ['in_group_subject', 'primary_email_subject'])
         for group in groups:
             self.assertFalse('in_group_subject' in group._cw_related_cache, list(group._cw_related_cache))
+        user.cw_clear_all_caches()
+        user.related('in_group', entities=True)
+        self.assertIn('in_group_subject', user._cw_related_cache)
+        user.cw_clear_all_caches()
+        user.related('in_group', targettypes=('CWGroup',), entities=True)
+        self.assertNotIn('in_group_subject', user._cw_related_cache)
 
     def test_related_limit(self):
         req = self.request()
@@ -145,6 +151,18 @@ class EntityTC(CubicWebTC):
         p.cw_clear_all_caches()
         self.assertEqual(len(p.related('tags', 'object', entities=True, limit=2)), 2)
         self.assertEqual(len(p.related('tags', 'object', entities=True)), 4)
+
+    def test_related_targettypes(self):
+        req = self.request()
+        p = req.create_entity('Personne', nom=u'Loxodonta', prenom=u'Babar')
+        n = req.create_entity('Note', type=u'scratch', ecrit_par=p)
+        t = req.create_entity('Tag', name=u'a tag', tags=(p, n))
+        self.commit()
+        req = self.request()
+        t = req.entity_from_eid(t.eid)
+        self.assertEqual(2, t.related('tags').rowcount)
+        self.assertEqual(1, t.related('tags', targettypes=('Personne',)).rowcount)
+        self.assertEqual(1, t.related('tags', targettypes=('Note',)).rowcount)
 
     def test_cw_instantiate_relation(self):
         req = self.request()
@@ -742,7 +760,7 @@ du :eid:`1:*ReST*`'''
         self.assertEqual(card.absolute_url(),
                           'http://testing.fr/cubicweb/%s' % card.eid)
 
-    def test_create_entity(self):
+    def test_create_and_compare_entity(self):
         req = self.request()
         p1 = req.create_entity('Personne', nom=u'fayolle', prenom=u'alexandre')
         p2 = req.create_entity('Personne', nom=u'campeas', prenom=u'aurelien')
@@ -756,6 +774,15 @@ du :eid:`1:*ReST*`'''
         self.assertEqual(sorted([c.nom for c in p.evaluee]), ['campeas', 'fayolle'])
         self.assertEqual([c.type for c in p.reverse_ecrit_par], ['z'])
 
+        req = self.request()
+        auc = req.execute('Personne P WHERE P prenom "aurelien"').get_entity(0,0)
+        persons = set()
+        persons.add(p1)
+        persons.add(p2)
+        persons.add(auc)
+        self.assertEqual(2, len(persons))
+        self.assertNotEqual(p1, p2)
+        self.assertEqual(p2, auc)
 
 
 if __name__ == '__main__':
