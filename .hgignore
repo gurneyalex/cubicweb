@@ -1,0 +1,21 @@
+\.svn
+^build$
+^dist$
+\.pyc$
+\.pyo$
+\.bak$
+\.old$
+\~$
+\#.*?\#$
+\.swp$
+^doc/book/en/apidoc$
+\.old$
+syntax: regexp
+.*/data/database/.*\.sqlite
+.*/data/database/.*\.config
+.*/data/database/tmpdb.*
+.*/data/ldapdb/.*
+^doc/html/
+^doc/doctrees/
+^doc/book/en/devweb/js_api/
+data/pgdb/

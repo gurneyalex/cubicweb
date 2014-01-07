@@ -1,0 +1,1099 @@
+/*
+ *  :organization: Logilab
+ *  :copyright: 2003-2011 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+ *  :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
+ */
+
+/***************************************/
+/* xhtml tags                          */
+/***************************************/
+
+/* scale and rhythm cf http://lamb.cc/typograph/ */
+body {
+  font-family:  %(defaultFontFamily)s;
+  font-size: %(defaultSize)s;
+  line-height: %(defaultLineHeight)s;
+  color: %(defaultColor)s;
+}
+h1, h2, h3 { margin-top:0; margin-bottom:0; }
+
+h1,
+.vtitle {
+  font-size: %(h1FontSize)s;
+  border-bottom: %(h1BorderBottomStyle)s;
+  padding: %(h1Padding)s;
+  margin: %(h1Margin)s;
+  color: %(h1Color)s;
+}
+
+h2 {
+  font-size: %(h2FontSize)s;
+  padding: %(h2Padding)s;
+}
+
+h3 {
+  font-size: %(h3FontSize)s;
+  padding: %(h3Padding)s;
+}
+
+
+h4 {
+  font-size: %(h4FontSize)s;
+}
+
+
+div.tabbedprimary + h1,
+h1.plain {
+ border-bottom: none;
+}
+
+
+html, body {
+  background: %(pageBgColor)s;
+}
+
+a, a:active, a:visited, a:link {
+  color: %(aColor)s;
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+table {
+  border: none;
+}
+
+table th, table td {
+  vertical-align: top;
+}
+
+label, .label {
+  font-weight: bold;
+}
+
+pre {
+  clear: both;
+  font-family: 'Courier New', monospace;
+  letter-spacing: 0.015em;
+  padding: 0.6em;
+  margin: 0 2em 1.7em;
+  background-color: %(listingHighlightedBgColor)s;
+  border: 1px solid %(listingBorderColor)s;
+}
+
+p {
+  text-align: justify;
+  margin-bottom: %(defaultLineHeightEm)s;
+}
+
+ul {
+  margin-bottom: %(defaultLineHeightEm)s;
+}
+
+ol {
+  list-style-type: decimal;
+ /* margin-bottom: %(defaultLineHeightEm)s; */
+}
+
+ol ol,
+ul ul {
+  margin-left: 8px;
+  margin-bottom : 0px;
+}
+
+/* p + ul { */
+/*   margin-top: -%(defaultLineHeightEm)s; */
+/* } */
+
+li {
+  margin-left: 1.5em;
+}
+
+img {
+  border: none;
+}
+
+
+img.prevnext {
+  width: 22px;
+  height: 22px;
+}
+
+img.prevnext_nogo {
+  width: 22px;
+  height: 22px;
+  filter:alpha(opacity=25); /* IE */
+  opacity:.25;
+}
+
+fieldset {
+  border: none;
+}
+
+h1 a, h1 a:active, h1 a:visited, h1 a:link,
+h2 a, h2 a:active, h2 a:visited, h2 a:link,
+h3 a, h3 a:active, h3 a:visited, h3 a:link {
+  color: inherit;
+  text-decoration: none;
+}
+
+input, textarea {
+  padding: 0.1em 0.2em;
+  vertical-align: bottom;
+  border: 1px solid %(pageContentBorderColor)s;
+
+}
+
+input:focus {
+  border: 1px inset %(headerBgColor)s;
+}
+
+hr {
+  border: none;
+  border-bottom: 1px solid %(defaultColor)s;
+  height: 1px;
+}
+
+/***************************************/
+/* generic classes                     */
+/***************************************/
+
+h1 a:hover {
+ text-decoration: none;
+}
+
+.odd {
+  background-color: #f7f6f1;
+}
+
+.even {
+  background-color: transparent;
+}
+
+.hr {
+  border-bottom: 1px dotted %(pageContentBorderColor)s;
+  height: 17px;
+}
+
+hr.boxSeparator{
+  border: none;
+  border-bottom: 1px solid %(listingBorderColor)s;
+  height: 1px;
+}
+
+.left {
+  float: left;
+}
+
+.right {
+  float: right;
+}
+
+.clear {
+  clear: both;
+}
+
+.hidden {
+  display: none;
+  visibility: hidden;
+}
+
+li.invisible {
+  background: none;
+  padding: 0px 0px 1px 1px;
+}
+
+li.invisible div{
+  display: inline;
+}
+
+.caption {
+    font-weight: bold;
+}
+
+.legend{
+    font-style: italic;
+}
+
+
+/***************************************/
+/*   LAYOUT                            */
+/***************************************/
+
+/* header */
+
+table#header {
+  background: %(headerBg)s;
+  width: 100%;
+}
+
+table#header td {
+  vertical-align: middle;
+}
+
+table#header a {
+  color: %(defaultColor)s;
+}
+
+table#header td#header-right {
+  padding-top: 1em;
+  white-space: nowrap;
+}
+
+table#header img#logo{
+  vertical-align: middle;
+}
+
+table#header td#headtext {
+  white-space: nowrap;
+}
+
+table#header td#header-center{
+ width: 100%;
+}
+
+span#appliName {
+  font-weight: bold;
+  color: %(defaultColor)s;
+  white-space: nowrap;
+}
+
+/* Popup on login box and userActionBox */
+div.popup {
+  position: absolute;
+  background: #fff;
+  border: 1px solid %(listingBorderColor)s;
+  border-top: none;
+  text-align: left;
+  z-index: 400;
+}
+
+div.popup ul li a {
+  text-decoration: none;
+  color: #000;
+}
+
+/* main zone */
+
+div#page {
+  margin: %(defaultLayoutMargin)s;
+}
+
+table#mainLayout td#navColumnLeft {
+  width: 16em;
+  padding-right: %(defaultLayoutMargin)s;
+
+}
+
+table#mainLayout td#navColumnRight {
+  width: 16em;
+  padding-left: %(defaultLayoutMargin)s;
+}
+
+div#pageContent {
+  clear: both;
+  background: %(pageContentBgColor)s;
+  border: 1px solid %(pageContentBorderColor)s;
+  padding: 0 %(pageContentPadding)s %(pageContentPadding)s;
+}
+
+div#pageContent #contentmain .pagination {
+  margin-top: 0;
+}
+
+div#pageContent .pagination{
+  margin-top: 1.5em;
+}
+
+div#contentmain{
+  margin-top: %(pageContentPadding)s;
+}
+
+/*FIXME */
+#contentheader {
+  margin: 0px;
+  padding: 0.2em 0.5em 0.5em 0.5em;
+}
+
+#contentheader a {
+  color: %(defaultColor)s;
+}
+
+/* XXX old boxes, deprecated */
+
+div.boxFrame {
+  width: 100%;
+}
+
+div.boxTitle {
+  color: #fff;
+  background: %(contextualBoxTitleBgColor)s;
+}
+
+div.boxTitle span,
+div.sideBoxTitle span {
+  padding: 0px 0.5em;
+  white-space: nowrap;
+}
+
+div.sideBoxTitle span {
+  color: %(defaultColor)s;
+}
+
+.boxFrame a {
+  color: %(defaultColor)s;
+}
+
+div.boxContent {
+  padding: 3px 0px;
+  background: #fff;
+  border-top: none;
+}
+
+div.shadow{
+  height: 14px;
+}
+
+div.sideBoxTitle {
+  background: %(incontextBoxBodyBg)s;
+  display: block;
+  font-weight: bold;
+  border-top-left-radius: 6px;
+  border-top-right-radius: 6px;
+}
+
+div.sideBox {
+  margin-bottom: 1em;
+  border-top-left-radius: 6px;
+  border-top-right-radius: 6px;
+}
+
+ul.sideBox,
+ul.sideBox ul {
+  margin-bottom: 0px;
+}
+
+ul.sideBox li {
+ padding: 0px 0px 1px 1px;
+ margin: 1px 0 1px 4px;
+}
+
+div.sideBoxBody {
+  padding: 0.2em 5px;
+  background: %(incontextBoxBodyBg)s;
+}
+
+div.sideBoxBody a {
+  color: %(incontextBoxBodyColor)s;
+}
+
+div.sideBoxBody a:hover {
+  text-decoration: underline;
+}
+
+div.sideBox table td {
+  padding-right: 1em;
+}
+
+/* boxes */
+
+div.boxTitle {
+  overflow: hidden;
+  font-weight: bold;
+  border-top-left-radius: 6px;
+  border-top-right-radius: 6px;
+}
+
+div.boxTitle span {
+  padding: 0px 0.5em;
+  white-space: nowrap;
+}
+
+div.boxBody {
+  padding: 5px;
+  border-top: none;
+  background-color: %(leftrightBoxBodyBgColor)s;
+}
+
+div.boxBody a {
+  color: %(leftrightBoxBodyColor)s;
+}
+
+div.boxBody a:hover {
+  text-decoration: none;
+  cursor: pointer;
+  background-color: %(leftrightBoxBodyHoverBgColor)s;
+}
+
+hr.boxSeparator {
+  margin-top: 0.5em;
+  margin-bottom: 0.5em;
+}
+
+/* boxes contextual customization */
+
+.contextFreeBox div.boxTitle {
+  background: %(contextFreeBoxTitleBg)s;
+  color: %(contextFreeBoxTitleColor)s;
+}
+
+.contextualBox div.boxTitle {
+  background: %(contextualBoxTitleBg)s;
+  color: %(contextualBoxTitleColor)s;
+}
+
+.primaryRight div.boxTitle {
+  background: %(incontextBoxTitleBg)s;
+  color: %(incontextBoxTitleColor)s;
+}
+
+.primaryRight div.boxBody {
+  padding: 0.2em 5px;
+  background: %(incontextBoxBodyBgColor)s;
+}
+
+.primaryRight div.boxBody a {
+  color: %(incontextBoxBodyColor)s;
+}
+
+.primaryRight div.boxBody a:hover {
+  background-color: %(incontextBoxBodyHoverBgColor)s;
+}
+
+.primaryRight div.boxFooter {
+  margin-bottom: 1em;
+}
+
+#navColumnLeft div.boxFooter, #navColumnRight div.boxFooter{
+  height: 14px;
+}
+
+.boxBody, .boxTitle, #pageContent, #appMsg {
+    box-shadow: 1px 1px 3px Gray;
+}
+
+/* boxes lists and menus */
+
+ul.boxListing {
+  margin: 0;
+  padding: 0;
+}
+
+ul.boxListing ul {
+  padding: 1px 3px;
+}
+
+ul.boxListing a {
+  color: %(defaultColor)s;
+  padding: 1px 9px 1px 3px;
+  display: block; /* necessary to get links across all width available (see on mouse over) */
+}
+
+ul.boxListing a.action {
+  padding: 0;
+  display: inline;
+}
+
+ul.boxListing a.action + a{
+  display: inline;
+}
+
+ul.boxListing li {
+  margin: 0px;
+  padding: 0px;
+  background-image: none;
+}
+
+ul.boxListing ul li {
+  margin: 0px;
+  padding-left: 8px;
+}
+
+ul.boxListing ul li a {
+  padding-left: 10px;
+  background-image: url("bullet_orange.png");
+  background-repeat: no-repeat;
+  background-position: 0 6px;
+}
+
+ul.boxListing .selected {
+  color: %(aColor)s;
+  font-weight: bold;
+}
+
+ul.boxListing a.boxMenu:hover {
+  border-top: medium none;
+  background: %(leftrightBoxBodyHoverBgColor)s;
+}
+
+a.boxMenu,
+ul.boxListing a.boxMenu {
+  display: block;
+  padding: 1px 3px;
+  background: transparent %(bulletDownImg)s;
+}
+
+ul.boxListing a.boxMenu:hover {
+  border-top: medium none;
+  background: %(leftrightBoxBodyHoverBgColor)s %(bulletDownImg)s;
+}
+
+a.boxMenu:hover {
+  cursor: pointer;
+}
+
+a.popupMenu {
+  background: transparent url("puce_down_black.png") 2% 6px no-repeat;
+  padding-left: 2em;
+}
+
+/* custom boxes */
+
+.search_box div.boxBody {
+  padding: 4px 4px 3px;
+  background: #f0eff0 url("gradient-grey-up.png") left top repeat-x;
+}
+
+.bookmarks_box ul.boxListing div a:hover {
+  border-bottom: 1px solid #000;
+}
+
+.download_box div.boxTitle {
+  background : #8fbc8f !important;
+}
+
+.download_box div.boxBody {
+  background : #eefed9;
+}
+
+/* search box and rql bar */
+
+div#rqlinput {
+  margin-bottom: %(defaultLayoutMargin)s;
+}
+
+input#rql{
+  padding: 0.25em 0.3em;
+  width: 99%;
+}
+
+input.rqlsubmit{
+  display: block;
+  width: 20px;
+  height: 20px;
+  background: %(buttonBgColor)s url("go.png") 50% 50% no-repeat;
+  vertical-align: bottom;
+}
+
+input.norql{
+  width:155px;
+  margin-right: 2px;
+}
+
+/* user actions menu */
+a.logout, a.logout:visited, a.logout:hover{
+  color: #fff;
+  text-decoration: none;
+}
+
+div#userActionsBox {
+  width: 15em;
+  text-align: right;
+}
+
+div#userActionsBox a.popupMenu {
+  color: #000;
+  text-decoration: underline;
+  padding-right: 2em;
+}
+
+/**************/
+/* navigation */
+/**************/
+div#etyperestriction {
+  margin-bottom: 1ex;
+  border-bottom: 1px solid %(pageContentBorderColor)s;
+}
+
+/* pagination */
+
+div.pagination{
+  margin: 0.5em 0;
+}
+span.slice a:visited,
+span.slice a:hover{
+  color: %(helperColor)s;
+}
+
+span.selectedSlice a:visited,
+span.selectedSlice a {
+  color: %(defaultColor)s;
+}
+
+/* FIXME should be moved to cubes/folder */
+div.navigation a {
+  text-align: center;
+  text-decoration: none;
+}
+
+div.prevnext {
+  width: 100%;
+  margin-bottom: 1em;
+}
+
+div.prevnext a {
+  color: %(defaultColor)s;
+}
+
+/***************************************/
+/* entity views                        */
+/***************************************/
+
+div.mainRelated {
+  border: none;
+  margin-right: 1em;
+  padding: 0.5em 0.2em 0.2em;
+}
+
+div.primaryRight{
+  margin-left: %(defaultLayoutMargin)s;
+}
+
+div.metadata {
+  font-size: 90%;
+  margin: 5px 0px 3px;
+  color: %(helperColor)s;
+  text-align: right;
+}
+
+div.section {
+  width:100%;
+}
+
+div.section a:hover {
+  text-decoration: none;
+}
+
+/* basic entity view */
+
+tr.entityfield th {
+  text-align: left;
+  padding-right: 0.5em;
+}
+
+div.field {
+  display: inline;
+}
+
+div.ctxtoolbar {
+  float: right;
+  padding-left: 24px;
+  position: relative;
+  z-index: 10;
+}
+div.toolbarButton {
+  display: inline;
+}
+
+/***************************************/
+/* messages                            */
+/***************************************/
+
+.warning,
+.message,
+.errorMessage{
+  padding: 0.2em;
+  font-weight: bold;
+}
+
+.searchMessage{
+ margin-top: %(defaultLayoutMargin)s;
+}
+
+.loginMessage {
+  margin: 4px 0px;
+  font-weight: bold;
+  color: %(aColor)s;
+}
+
+div#appMsg {
+  margin-bottom: %(defaultLayoutMargin)s;
+  border: 1px solid %(incontextBoxTitleBgColor)s;
+}
+
+.message {
+  background: %(msgBgColor)s %(infoMsgBgImg)s;
+  padding-left: 15px;
+}
+
+.errorMessage {
+  margin: 10px 0px;
+  padding-left: 25px;
+  background: %(msgBgColor)s url("critical.png") 2px center no-repeat;
+  color: %(errorMsgColor)s;
+  border: 1px solid %(incontextBoxTitleBgColor)s;
+}
+
+/* search-associate message */
+.stateMessage {
+  border: 1px solid %(pageContentBorderColor)s;
+  background: %(msgBgColor)s %(infoMsgBgImg)s;
+  padding: 0.1em 0 0.1em 20px;
+}
+
+/* warning messages like "There are too many results ..." */
+.warning {
+  padding-left: 25px;
+  background: %(msgBgColor)s url("critical.png") 3px 50% no-repeat;
+}
+
+/* label shown in the top-right hand corner during form validation */
+div#progress {
+  position: fixed;
+  right: 5px;
+  top: 0px;
+  background: %(defaultColor)s;
+  color: #fff;
+  font-weight: bold;
+  display: none;
+}
+
+/***************************************/
+/* listing table                       */
+/***************************************/
+
+table.listing {
+  width: 100%;
+  font-size: 0.9167em;
+  padding: 10px 0em;
+  color: %(defaultColor)s;
+  border: 1px solid %(listingBorderColor)s;
+  margin-bottom: 1em;
+}
+
+table.listing th {
+  font-weight: bold;
+  font-size: 8pt;
+  background: %(listingHeaderBgColor)s;
+  padding: 2px 4px;
+  border: 1px solid %(listingBorderColor)s;
+  border-right:none;
+ /* white-space: nowrap; */
+}
+
+table.listing thead th.over {
+  background-color: %(listingHeaderBgColor)s;
+  cursor: pointer;
+}
+
+table.listing tr .header {
+  border-right: 1px solid %(listingBorderColor)s;
+  cursor: pointer;
+}
+
+table.listing td {
+  padding: 3px;
+  vertical-align: top;
+  border: 1px solid %(listingBorderColor)s;
+  border-right: none;
+  background-color: #fff;
+}
+
+table.listing td a,
+table.listing td a:visited {
+  color: %(defaultColor)s;
+}
+
+table.listing a:hover,
+table.listing tr.highlighted td a {
+  color:%(defaultColor)s;
+}
+
+table.listing td.top {
+  border: 1px solid #fff;
+  border-bottom: none;
+  text-align: right ! important;
+  /* insane IE row bug workraound */
+  position: relative;
+  left: -1px;
+  top: -1px;
+}
+
+table.listing input,
+table.listing textarea {
+ background: %(listingHighlightedBgColor)s;
+}
+
+table.htableForm label, table.oneRowTableForm label {
+  vertical-align: middle;
+}
+table.htableForm td {
+  padding-left: 1em;
+  padding-top: 0.5em;
+}
+table.htableForm th {
+  padding-left: 1em;
+}
+table.htableForm .validateButton {
+  margin-right: 0.2em;
+  margin-bottom: 0.2em;
+}
+
+table.oneRowTableForm td {
+  padding-left: 0.5em;
+}
+table.oneRowTableForm th {
+  padding-left: 1em;
+}
+table.oneRowTableForm .validateButton {
+  margin: 0 0 0 1em ;
+}
+
+
+table.ajaxEditRelationTable{
+  margin-bottom: 0.5em;
+}
+table.ajaxEditRelationTable td.entity{
+  padding-left: 0.5em;
+}
+
+/***************************************/
+/* error view (views/management.py)    */
+/***************************************/
+
+div.pycontext { /* html traceback */
+  font-family: Verdana, sans-serif;
+  font-size: 80%;
+  padding: 1em;
+  margin: 10px 0px 5px 20px;
+  background-color: #dee7ec;
+}
+
+div.pycontext span.name {
+  color: #ff0000;
+}
+
+/***************************************/
+/* addcombobox                         */
+/***************************************/
+
+input#newopt {
+  display: block;
+  float: left;
+  width: 120px;
+}
+
+div#newvalue{
+  margin-top: 2px;
+}
+
+#add_newopt {
+  display: block;
+  float: left;
+  width: 20px;
+  line-height: 20px;
+  background: %(buttonBgColor)s url("go.png") 50% 50% no-repeat;
+}
+
+/***************************************/
+/* buttons                             */
+/***************************************/
+
+input.button{
+  margin: 1em 1em 0px 0px;
+  border: 1px solid %(buttonBorderColor)s;
+  border-color: %(buttonBorderColor)s %(incontextBoxTitleBgColor)s %(incontextBoxTitleBgColor)s %(buttonBorderColor)s;
+}
+
+/* FileItemInnerView  jquery.treeview.css */
+.folder {
+  /* disable odd/even under folder class */
+  background-color: transparent;
+}
+
+a.addButton {
+  margin-left: 0.5em;
+  padding-left: 16px;
+  background: transparent url("add_button.png") 0% 50% no-repeat;
+}
+
+/***************************************/
+/* lists                               */
+/***************************************/
+
+ul.section,
+ul.startup {
+  margin-bottom: 0px;
+}
+
+ul.startup li,
+ul.section li {
+  margin-left: 0px;
+}
+
+ul.simple li,
+.popupWrapper ul li {
+  background: transparent url("bullet_orange.png") no-repeat 0% 6px;
+}
+
+ul.simple li {
+  padding-left: 8px;
+}
+
+.popupWrapper ul {
+  padding: 0.2em 0.3em;
+  margin-bottom: 0px;
+}
+
+.popupWrapper ul li {
+  padding-left: 8px;
+  margin-left: 0px;
+  white-space: nowrap;
+}
+
+/***************************************/
+/* footer                              */
+/***************************************/
+
+div#footer {
+  text-align: center;
+}
+div#footer a {
+  color: %(defaultColor)s;
+  text-decoration: none;
+}
+
+/****************************************/
+/* FIXME must by managed by cubes       */
+/****************************************/
+.needsvalidation {
+  font-style: italic;
+  color: gray;
+}
+
+.validateButton {
+  margin: 1em 1em 0px 0px;
+  border: 1px solid %(buttonBorderColor)s;
+  border-color: %(buttonBorderColor)s %(incontextBoxTitleBgColor)s %(incontextBoxTitleBgColor)s %(buttonBorderColor)s;
+  background: %(buttonBgColor)s url("button.png") bottom left repeat-x;
+}
+
+/********************************/
+/* placement of alt. view icons */
+/********************************/
+
+.otherView {
+  float: right;
+}
+
+/********************************/
+/* rest related classes         */
+/********************************/
+
+img.align-right {
+  margin-left: auto;
+  display:block;
+}
+
+img.align-left {
+  margin-right: auto;
+  display:block;
+}
+
+img.align-center{
+  text-align: center;
+  margin-left: auto;
+  margin-right: auto;
+  display:block;
+}
+
+/******************************/
+/* reledit                    */
+/******************************/
+
+.releditField {
+    display: inline;
+}
+
+.releditForm {
+ display:none;
+}
+
+/********************************/
+/* overwite other css here      */
+/********************************/
+
+.ui-menu li.ui-menu-item {
+  /* remove background image (orange bullet) for autocomplete suggestions */
+  background-image: none;
+}
+
+/* jquery-ui tabs */
+
+div.ui-tabs.ui-widget-content {
+  background:none;
+  border:none;
+  color:inherit;
+}
+
+div.ui-tabs ul.ui-tabs-nav {
+  padding-left: 0.5em;
+}
+
+div.ui-tabs ul.ui-tabs-nav a {
+  color:#27537A;
+  padding: 0.3em 0.6em;
+}
+
+div.ui-tabs ul.ui-tabs-nav li.ui-tabs-selected a {
+  color:black;
+}
+
+div.ui-tabs ul.ui-tabs-nav li.ui-state-hover {
+  background:none;
+}
+
+div.ui-tabs .ui-widget-header {
+  background:none;
+  border:none;
+}
+
+div.ui-tabs .ui-widget-header li {
+  border-color:#333333;
+}
+
+div.ui-tabs .ui-tabs-panel {
+  border-top:1px solid #97A5B0;
+  padding-left:0.5em;
+  color:inherit;
+}
+
+div.ui-tabs .ui-tabs-nav, div.ui-tabs .ui-tabs-panel {
+  font-family: %(defaultFontFamily)s;
+  font-size: %(defaultSize)s;
+}
+
+img.ui-datepicker-trigger {
+  margin-left: 0.5em;
+  vertical-align: bottom;
+}
+
+/* cubicweb.views.undohistory uses :
+ *   - span.undo around undo link
+ *   - ul.undo-transactions to list transaction
+ *   - ol.undo-actions to list actions in a transaction
+ */
+
+span.undo {
+  border: 1pt;
+}
+
+ol.undo-actions > li {
+  margin-left: 2em;
+  margin-top: 2px;
+  padding: 0px 0px 2px 0px;
+  background-image: none;
+}
+
