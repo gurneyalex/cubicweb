@@ -1,4 +1,4 @@
-# copyright 2003-2012 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2013 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -39,22 +39,10 @@ def has_eid(session, sqlcursor, eid, eids):
     """return true if the eid is a valid eid"""
     if eid in eids:
         return eids[eid]
-    sqlcursor.execute('SELECT type, source FROM entities WHERE eid=%s' % eid)
+    sqlcursor.execute('SELECT type FROM entities WHERE eid=%s' % eid)
     try:
-        etype, source = sqlcursor.fetchone()
+        etype = sqlcursor.fetchone()[0]
     except Exception:
-        eids[eid] = False
-        return False
-    if source and source != 'system':
-        try:
-            # insert eid *and* etype to attempt checking entity has not been
-            # replaced by another subsquently to a restore of an old dump
-            if session.execute('Any X WHERE X is %s, X eid %%(x)s' % etype,
-                               {'x': eid}):
-                eids[eid] = True
-                return True
-        except Exception: # TypeResolverError, Unauthorized...
-            pass
         eids[eid] = False
         return False
     if etype not in session.vreg.schema:
@@ -99,7 +87,7 @@ def reindex_entities(schema, session, withpb=True, etypes=None):
     # deactivate modification_date hook since we don't want them
     # to be updated due to the reindexation
     repo = session.repo
-    cursor = session.cnxset['system']
+    cursor = session.cnxset.cu
     dbhelper = session.repo.system_source.dbhelper
     if not dbhelper.has_fti_table(cursor):
         print 'no text index table'
@@ -193,7 +181,7 @@ def check_entities(schema, session, eids, fix=1):
             notify_fixed(fix)
     # source in entities, but no relation cw_source
     applcwversion = session.repo.get_versions().get('cubicweb')
-    if applcwversion >= (3,13,1): # entities.asource appeared in 3.13.1
+    if applcwversion >= (3, 13, 1): # entities.asource appeared in 3.13.1
         cursor = session.system_sql('SELECT e.eid FROM entities as e, cw_CWSource as s '
                                     'WHERE s.cw_name=e.asource AND '
                                     'NOT EXISTS(SELECT 1 FROM cw_source_relation as cs '

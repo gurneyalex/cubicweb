@@ -1,4 +1,4 @@
-# copyright 2003-2012 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2013 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -31,8 +31,6 @@ from contextlib import contextmanager
 from logilab.common.modutils import LazyObject
 from logilab.common.textutils import splitstrip
 from logilab.common.registry import yes
-from logilab import database
-
 from yams import BASE_GROUPS
 
 from cubicweb import CW_SOFTWARE_ROOT
@@ -204,7 +202,7 @@ def init_repository(config, interactive=True, drop=False, vreg=None):
     with the minimal set of entities (ie at least the schema, base groups and
     a initial user)
     """
-    from cubicweb.dbapi import in_memory_repo_cnx
+    from cubicweb.repoapi import get_repository, connect
     from cubicweb.server.repository import Repository
     from cubicweb.server.utils import manager_userpasswd
     from cubicweb.server.sqlutils import sqlexec, sqlschema, sql_drop_all_user_tables
@@ -218,7 +216,7 @@ def init_repository(config, interactive=True, drop=False, vreg=None):
     # only enable the system source at initialization time
     repo = Repository(config, vreg=vreg)
     schema = repo.schema
-    sourcescfg = config.sources()
+    sourcescfg = config.read_sources_file()
     source = sourcescfg['system']
     driver = source['db-driver']
     sqlcnx = repo.system_source.get_connection()
@@ -257,49 +255,47 @@ def init_repository(config, interactive=True, drop=False, vreg=None):
     sqlcursor.close()
     sqlcnx.commit()
     sqlcnx.close()
-    session = repo.internal_session()
-    # insert entity representing the system source
-    ssource = session.create_entity('CWSource', type=u'native', name=u'system')
-    repo.system_source.eid = ssource.eid
-    session.execute('SET X cw_source X WHERE X eid %(x)s', {'x': ssource.eid})
-    # insert base groups and default admin
-    print '-> inserting default user and default groups.'
-    try:
-        login = unicode(sourcescfg['admin']['login'])
-        pwd = sourcescfg['admin']['password']
-    except KeyError:
-        if interactive:
-            msg = 'enter login and password of the initial manager account'
-            login, pwd = manager_userpasswd(msg=msg, confirm=True)
-        else:
-            login, pwd = unicode(source['db-user']), source['db-password']
-    # sort for eid predicatability as expected in some server tests
-    for group in sorted(BASE_GROUPS):
-        session.create_entity('CWGroup', name=unicode(group))
-    admin = create_user(session, login, pwd, 'managers')
-    session.execute('SET X owned_by U WHERE X is IN (CWGroup,CWSource), U eid %(u)s',
-                    {'u': admin.eid})
-    session.commit()
-    session.close()
+    with repo.internal_cnx() as cnx:
+        # insert entity representing the system source
+        ssource = cnx.create_entity('CWSource', type=u'native', name=u'system')
+        repo.system_source.eid = ssource.eid
+        cnx.execute('SET X cw_source X WHERE X eid %(x)s', {'x': ssource.eid})
+        # insert base groups and default admin
+        print '-> inserting default user and default groups.'
+        try:
+            login = unicode(sourcescfg['admin']['login'])
+            pwd = sourcescfg['admin']['password']
+        except KeyError:
+            if interactive:
+                msg = 'enter login and password of the initial manager account'
+                login, pwd = manager_userpasswd(msg=msg, confirm=True)
+            else:
+                login, pwd = unicode(source['db-user']), source['db-password']
+        # sort for eid predicatability as expected in some server tests
+        for group in sorted(BASE_GROUPS):
+            cnx.create_entity('CWGroup', name=unicode(group))
+        admin = create_user(cnx, login, pwd, 'managers')
+        cnx.execute('SET X owned_by U WHERE X is IN (CWGroup,CWSource), U eid %(u)s',
+                        {'u': admin.eid})
+        cnx.commit()
     repo.shutdown()
     # reloging using the admin user
     config._cubes = None # avoid assertion error
-    repo, cnx = in_memory_repo_cnx(config, login, password=pwd)
-    repo.system_source.eid = ssource.eid # redo this manually
-    assert len(repo.sources) == 1, repo.sources
-    handler = config.migration_handler(schema, interactive=False,
-                                       cnx=cnx, repo=repo)
-    # install additional driver specific sql files
-    handler.cmd_install_custom_sql_scripts()
-    for cube in reversed(config.cubes()):
-        handler.cmd_install_custom_sql_scripts(cube)
-    # serialize the schema
-    initialize_schema(config, schema, handler)
-    # yoo !
-    cnx.commit()
-    repo.system_source.init_creating()
-    cnx.commit()
-    cnx.close()
+    repo = get_repository(config=config)
+    with connect(repo, login, password=pwd) as cnx:
+        repo.system_source.eid = ssource.eid # redo this manually
+        handler = config.migration_handler(schema, interactive=False,
+                                           cnx=cnx, repo=repo)
+        # install additional driver specific sql files
+        handler.cmd_install_custom_sql_scripts()
+        for cube in reversed(config.cubes()):
+            handler.cmd_install_custom_sql_scripts(cube)
+        # serialize the schema
+        initialize_schema(config, schema, handler)
+        # yoo !
+        cnx.commit()
+        repo.system_source.init_creating()
+        cnx.commit()
     repo.shutdown()
     # restore initial configuration
     config.creating = False
@@ -312,13 +308,13 @@ def init_repository(config, interactive=True, drop=False, vreg=None):
 
 def initialize_schema(config, schema, mhandler, event='create'):
     from cubicweb.server.schemaserial import serialize_schema
-    session = mhandler.session
+    cnx = mhandler.cnx
     cubes = config.cubes()
     # deactivate every hooks but those responsible to set metadata
     # so, NO INTEGRITY CHECKS are done, to have quicker db creation.
     # Active integrity is kept else we may pb such as two default
     # workflows for one entity type.
-    with session.deny_all_hooks_but('metadata', 'activeintegrity'):
+    with cnx._cnx.deny_all_hooks_but('metadata', 'activeintegrity'):
         # execute cubicweb's pre<event> script
         mhandler.cmd_exec_event_script('pre%s' % event)
         # execute cubes pre<event> script if any
@@ -327,8 +323,7 @@ def initialize_schema(config, schema, mhandler, event='create'):
         # execute instance's pre<event> script (useful in tests)
         mhandler.cmd_exec_event_script('pre%s' % event, apphome=True)
         # enter instance'schema into the database
-        session.set_cnxset()
-        serialize_schema(session, schema)
+        serialize_schema(cnx, schema)
         # execute cubicweb's post<event> script
         mhandler.cmd_exec_event_script('post%s' % event)
         # execute cubes'post<event> script if any
@@ -353,6 +348,4 @@ ON_COMMIT_ADD_RELATIONS = set(())
 SOURCE_TYPES = {'native': LazyObject('cubicweb.server.sources.native', 'NativeSQLSource'),
                 'datafeed': LazyObject('cubicweb.server.sources.datafeed', 'DataFeedSource'),
                 'ldapfeed': LazyObject('cubicweb.server.sources.ldapfeed', 'LDAPFeedSource'),
-                'pyrorql': LazyObject('cubicweb.server.sources.pyrorql', 'PyroRQLSource'),
-                'zmqrql': LazyObject('cubicweb.server.sources.zmqrql', 'ZMQRQLSource'),
                 }

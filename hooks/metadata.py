@@ -1,4 +1,4 @@
-# copyright 2003-2012 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2013 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -158,12 +158,9 @@ class ChangeEntitySourceUpdateCaches(hook.Operation):
         entity = self.entity
         extid = entity.cw_metainformation()['extid']
         repo._type_source_cache[entity.eid] = (
-            entity.cw_etype, self.newsource.uri, None, self.newsource.uri)
-        if self.oldsource.copy_based_source:
-            uri = 'system'
-        else:
-            uri = self.oldsource.uri
-        repo._extid_cache[(extid, uri)] = -entity.eid
+            entity.cw_etype, None, self.newsource.uri)
+        repo._extid_cache[extid] = -entity.eid
+
 
 class ChangeEntitySourceDeleteHook(MetaDataHook):
     """support for moving an entity from an external source by watching 'Any
@@ -197,16 +194,6 @@ class ChangeEntitySourceAddHook(MetaDataHook):
             syssource = newsource.repo_source
             oldsource = self._cw.entity_from_eid(schange[self.eidfrom])
             entity = self._cw.entity_from_eid(self.eidfrom)
-            # copy entity if necessary
-            if not oldsource.repo_source.copy_based_source:
-                entity.complete(skip_bytes=False, skip_pwd=False)
-                if not entity.creation_date:
-                    entity.cw_attr_cache['creation_date'] = datetime.now()
-                if not entity.modification_date:
-                    entity.cw_attr_cache['modification_date'] = datetime.now()
-                entity.cw_attr_cache['cwuri'] = u'%s%s' % (self._cw.base_url(), entity.eid)
-                entity.cw_edited = EditedEntity(entity, **entity.cw_attr_cache)
-                syssource.add_entity(self._cw, entity)
             # we don't want the moved entity to be reimported later.  To
             # distinguish this state, the trick is to change the associated
             # record in the 'entities' system table with eid=-eid while leaving
@@ -217,8 +204,7 @@ class ChangeEntitySourceAddHook(MetaDataHook):
             self._cw.system_sql('UPDATE entities SET eid=-eid WHERE eid=%(eid)s',
                                 {'eid': self.eidfrom})
             attrs = {'type': entity.cw_etype, 'eid': entity.eid, 'extid': None,
-                     'source': 'system', 'asource': 'system',
-                     'mtime': datetime.now()}
+                     'asource': 'system'}
             self._cw.system_sql(syssource.sqlgen.insert('entities', attrs), attrs)
             # register an operation to update repository/sources caches
             ChangeEntitySourceUpdateCaches(self._cw, entity=entity,

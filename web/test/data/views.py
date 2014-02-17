@@ -16,31 +16,7 @@
 # You should have received a copy of the GNU Lesser General Public License along
 # with CubicWeb.  If not, see <http://www.gnu.org/licenses/>.
 
-from cubicweb.web import Redirect
-from cubicweb.web.application import CubicWebPublisher
 from cubicweb.web.views.ajaxcontroller import ajaxfunc
-
-# proof of concept : monkey patch handle method so that if we are in an
-# anonymous session and __fblogin is found is req.form, the user with the
-# given login is created if necessary and then a session is opened for that
-# user
-# NOTE: this require "cookie" authentication mode
-def auto_login_handle_request(self, req, path):
-    if (not req.cnx or req.cnx.anonymous_connection) and req.form.get('__fblogin'):
-        login = password = req.form.pop('__fblogin')
-        self.repo.register_user(login, password)
-        req.form['__login'] = login
-        req.form['__password'] = password
-        if req.cnx:
-            req.cnx.close()
-        req.cnx = None
-        try:
-            self.session_handler.set_session(req)
-        except Redirect:
-            pass
-        assert req.user.login == login
-    return orig_handle(self, req, path)
-
 
 def _recursive_replace_stream_by_content(tree):
     """ Search for streams (i.e. object that have a 'read' method) in a tree
@@ -70,6 +46,3 @@ def fileupload(self):
     except Exception, ex:
         import traceback as tb
         tb.print_exc(ex)
-
-orig_handle = CubicWebPublisher.main_handle_request
-CubicWebPublisher.main_handle_request = auto_login_handle_request

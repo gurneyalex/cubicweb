@@ -32,6 +32,8 @@ from cubicweb.devtools.fake import FakeRequest
 from cubicweb.web import LogOut, Redirect, INTERNAL_FIELD_VALUE
 from cubicweb.web.views.basecontrollers import ViewController
 from cubicweb.web.application import anonymized_request
+from cubicweb.dbapi import DBAPISession, _NeedAuthAccessMock
+from cubicweb import repoapi
 
 class FakeMapping:
     """emulates a mapping module"""
@@ -177,15 +179,6 @@ class ApplicationTC(CubicWebTC):
         self.execute('DELETE X in_group G WHERE X eid %s, G name "guests"' % user.eid)
         self.commit()
 
-    def test_nonregr_publish1(self):
-        req = self.request(u'CWEType X WHERE X final FALSE, X meta FALSE')
-        self.app.handle_request(req, 'view')
-
-    def test_nonregr_publish2(self):
-        req = self.request(u'Any count(N) WHERE N todo_by U, N is Note, U eid %s'
-                           % self.user().eid)
-        self.app.handle_request(req, 'view')
-
     def test_publish_validation_error(self):
         req = self.request()
         user = self.user()
@@ -281,9 +274,9 @@ class ApplicationTC(CubicWebTC):
 
     def _test_cleaned(self, kwargs, injected, cleaned):
         req = self.request(**kwargs)
-        page = self.app.handle_request(req, 'view')
-        self.assertFalse(injected in page, (kwargs, injected))
-        self.assertTrue(cleaned in page, (kwargs, cleaned))
+        page = self.app_handle_request(req, 'view')
+        self.assertNotIn(injected, page)
+        self.assertIn(cleaned, page)
 
     def test_nonregr_script_kiddies(self):
         """test against current script injection"""
@@ -315,26 +308,14 @@ class ApplicationTC(CubicWebTC):
         self.commit()
         self.assertEqual(vreg.property_value('ui.language'), 'en')
 
-    def test_fb_login_concept(self):
-        """see data/views.py"""
-        self.set_auth_mode('cookie', 'anon')
-        self.login('anon')
-        req = self.request()
-        origcnx = req.cnx
-        req.form['__fblogin'] = u'turlututu'
-        page = self.app.handle_request(req, '')
-        self.assertFalse(req.cnx is origcnx)
-        self.assertEqual(req.user.login, 'turlututu')
-        self.assertTrue('turlututu' in page, page)
-        req.cnx.close() # avoid warning
-
     # authentication tests ####################################################
 
     def test_http_auth_no_anon(self):
         req, origsession = self.init_authentication('http')
         self.assertAuthFailure(req)
-        self.assertRaises(AuthenticationError, self.app_handle_request, req, 'login')
-        self.assertEqual(req.cnx, None)
+        self.app.handle_request(req, 'login')
+        self.assertEqual(401, req.status_out)
+        clear_cache(req, 'get_authorization')
         authstr = base64.encodestring('%s:%s' % (self.admlogin, self.admpassword))
         req.set_request_header('Authorization', 'basic %s' % authstr)
         self.assertAuthSuccess(req, origsession)
@@ -345,12 +326,13 @@ class ApplicationTC(CubicWebTC):
         req, origsession = self.init_authentication('cookie')
         self.assertAuthFailure(req)
         try:
-            form = self.app_handle_request(req, 'login')
+            form = self.app.handle_request(req, 'login')
         except Redirect as redir:
             self.fail('anonymous user should get login form')
+        clear_cache(req, 'get_authorization')
         self.assertTrue('__login' in form)
         self.assertTrue('__password' in form)
-        self.assertEqual(req.cnx, None)
+        self.assertFalse(req.cnx) # Mock cnx are False
         req.form['__login'] = self.admlogin
         req.form['__password'] = self.admpassword
         self.assertAuthSuccess(req, origsession)
@@ -369,7 +351,7 @@ class ApplicationTC(CubicWebTC):
         # req.form['__password'] = self.admpassword
         # self.assertAuthFailure(req)
         # option allow-email-login set
-        origsession.login = address
+        #origsession.login = address
         self.set_option('allow-email-login', True)
         req.form['__login'] = address
         req.form['__password'] = self.admpassword
@@ -387,22 +369,27 @@ class ApplicationTC(CubicWebTC):
                                raw=True)
         clear_cache(req, 'get_authorization')
         # reset session as if it was a new incoming request
-        req.session = req.cnx = None
+        req.session = DBAPISession(None)
+        req.user = req.cnx = _NeedAuthAccessMock
+        
 
     def _test_auth_anon(self, req):
-        self.app.connect(req)
-        asession = req.session
+        asession = self.app.get_session(req)
+        # important otherwise _reset_cookie will not use the right session
+        req.set_cnx(repoapi.ClientConnection(asession))
         self.assertEqual(len(self.open_sessions), 1)
         self.assertEqual(asession.login, 'anon')
         self.assertTrue(asession.anonymous_session)
         self._reset_cookie(req)
 
     def _test_anon_auth_fail(self, req):
-        self.assertEqual(len(self.open_sessions), 1)
-        self.app.connect(req)
+        self.assertEqual(1, len(self.open_sessions))
+        session = self.app.get_session(req)
+        # important otherwise _reset_cookie will not use the right session
+        req.set_cnx(repoapi.ClientConnection(session))
         self.assertEqual(req.message, 'authentication failure')
         self.assertEqual(req.session.anonymous_session, True)
-        self.assertEqual(len(self.open_sessions), 1)
+        self.assertEqual(1, len(self.open_sessions))
         self._reset_cookie(req)
 
     def test_http_auth_anon_allowed(self):
@@ -427,19 +414,19 @@ class ApplicationTC(CubicWebTC):
         req.form['__password'] = self.admpassword
         self.assertAuthSuccess(req, origsession)
         self.assertRaises(LogOut, self.app_handle_request, req, 'logout')
-        self.assertEqual(len(self.open_sessions), 0)
+        self.assertEqual(0, len(self.open_sessions))
 
     def test_anonymized_request(self):
         req = self.request()
-        self.assertEqual(req.session.login, self.admlogin)
+        self.assertEqual(self.admlogin, req.session.user.login)
         # admin should see anon + admin
-        self.assertEqual(len(list(req.find_entities('CWUser'))), 2)
+        self.assertEqual(2, len(list(req.find_entities('CWUser'))))
         with anonymized_request(req):
-            self.assertEqual(req.session.login, 'anon')
+            self.assertEqual('anon', req.session.login, 'anon')
             # anon should only see anon user
-            self.assertEqual(len(list(req.find_entities('CWUser'))), 1)
-        self.assertEqual(req.session.login, self.admlogin)
-        self.assertEqual(len(list(req.find_entities('CWUser'))), 2)
+            self.assertEqual(1, len(list(req.find_entities('CWUser'))))
+        self.assertEqual(self.admlogin, req.session.login)
+        self.assertEqual(2, len(list(req.find_entities('CWUser'))))
 
     def test_non_regr_optional_first_var(self):
         req = self.request()

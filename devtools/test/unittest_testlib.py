@@ -189,5 +189,62 @@ class CWUtilitiesTC(CubicWebTC):
             self.assertIn(AnAppobject, self.vreg['hip']['hop'])
         self.assertNotIn(AnAppobject, self.vreg['hip']['hop'])
 
+    def test_login(self):
+        """Calling login should not break self.session hook control"""
+        self.hook_executed = False
+        babar = self.create_user(self.request(), 'babar')
+        self.commit()
+
+        from cubicweb.server import hook
+        from cubicweb.predicates import is_instance
+
+        class MyHook(hook.Hook):
+            __regid__ = 'whatever'
+            __select__ = hook.Hook.__select__ & is_instance('CWProperty')
+            category = 'test-hook'
+            events = ('after_add_entity',)
+            test = self
+
+            def __call__(self):
+                self.test.hook_executed = True
+
+        self.login('babar')
+        with self.temporary_appobjects(MyHook):
+            with self.session.allow_all_hooks_but('test-hook'):
+                req = self.request()
+                prop = req.create_entity('CWProperty', pkey=u'ui.language', value=u'en')
+                self.commit()
+                self.assertFalse(self.hook_executed)
+
+
+class RepoAccessTC(CubicWebTC):
+    def test_repo_connection(self):
+        acc = self.new_access('admin')
+        with  acc.repo_cnx() as cnx:
+            rset = cnx.execute('Any X WHERE X is CWUser')
+            self.assertTrue(rset)
+
+    def test_client_connection(self):
+        acc = self.new_access('admin')
+        with  acc.client_cnx() as cnx:
+            rset = cnx.execute('Any X WHERE X is CWUser')
+            self.assertTrue(rset)
+
+    def test_web_request(self):
+        acc = self.new_access('admin')
+        with  acc.web_request(elephant='babar') as req:
+            rset = req.execute('Any X WHERE X is CWUser')
+            self.assertTrue(rset)
+            self.assertEqual('babar', req.form['elephant'])
+
+    def test_close(self):
+        acc = self.new_access('admin')
+        acc.close()
+
+    def test_admin_access(self):
+        with self.admin_access.client_cnx() as cnx:
+            self.assertEqual('admin', cnx.user.login)
+
+
 if __name__ == '__main__':
     unittest_main()

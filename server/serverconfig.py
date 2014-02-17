@@ -1,4 +1,4 @@
-# copyright 2003-2012 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2013 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -24,7 +24,7 @@ from os.path import join, exists
 from StringIO import StringIO
 
 import logilab.common.configuration as lgconfig
-from logilab.common.decorators import wproperty, cached
+from logilab.common.decorators import cached
 
 from cubicweb.toolsutils import read_config, restrict_perms_to_user
 from cubicweb.cwconfig import CONFIGURATIONS, CubicWebConfiguration
@@ -297,13 +297,16 @@ registered.',
     # configuration file (#16102)
     @cached
     def read_sources_file(self):
+        """return a dictionary of values found in the sources file"""
         return read_config(self.sources_file(), raise_if_unreadable=True)
 
-    def sources(self):
-        """return a dictionnaries containing sources definitions indexed by
-        sources'uri
-        """
-        return self.read_sources_file()
+    @property
+    def system_source_config(self):
+        return self.read_sources_file()['system']
+
+    @property
+    def default_admin_config(self):
+        return self.read_sources_file()['admin']
 
     def source_enabled(self, source):
         if self.sources_mode is not None:

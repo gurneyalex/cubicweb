@@ -26,6 +26,7 @@ from cubicweb import (RepositoryError, Unauthorized, AuthenticationError,
 from cubicweb.web import InvalidSession, Redirect
 from cubicweb.web.application import AbstractSessionManager
 from cubicweb.dbapi import ProgrammingError, DBAPISession
+from cubicweb import repoapi
 
 
 class InMemoryRepositorySessionManager(AbstractSessionManager):
@@ -53,72 +54,59 @@ class InMemoryRepositorySessionManager(AbstractSessionManager):
         if sessionid not in self._sessions:
             raise InvalidSession()
         session = self._sessions[sessionid]
-        if session.cnx:
-            try:
-                user = self.authmanager.validate_session(req, session)
-            except InvalidSession:
-                # invalid session
-                self.close_session(session)
-                raise
-            # associate the connection to the current request
-            req.set_session(session, user)
+        try:
+            user = self.authmanager.validate_session(req, session)
+        except InvalidSession:
+            self.close_session(session)
+            raise
+        if session.closed:
+            self.close_session(session)
+            raise InvalidSession()
         return session
 
-    def open_session(self, req, allow_no_cnx=True):
+    def open_session(self, req):
         """open and return a new session for the given request. The session is
         also bound to the request.
 
         raise :exc:`cubicweb.AuthenticationError` if authentication failed
         (no authentication info found or wrong user/password)
         """
-        try:
-            cnx, login = self.authmanager.authenticate(req)
-        except AuthenticationError:
-            if allow_no_cnx:
-                session = DBAPISession(None)
-            else:
-                raise
-        else:
-            session = DBAPISession(cnx, login)
+        session, login = self.authmanager.authenticate(req)
         self._sessions[session.sessionid] = session
-        # associate the connection to the current request
-        req.set_session(session)
         return session
 
-    def postlogin(self, req):
-        """postlogin: the user has been authenticated, redirect to the original
-        page (index by default) with a welcome message
+    def postlogin(self, req, session):
+        """postlogin: the user have been related to a session
+
+        Both req and session are passed to this function because actually
+        linking the request to the session is not yet done and not the
+        responsability of this object.
         """
         # Update last connection date
         # XXX: this should be in a post login hook in the repository, but there
         #      we can't differentiate actual login of automatic session
         #      reopening. Is it actually a problem?
         if 'last_login_time' in req.vreg.schema:
-            self._update_last_login_time(req)
-        req.set_message(req._('welcome %s!') % req.user.login)
+            self._update_last_login_time(session)
+        req.set_message(req._('welcome %s!') % session.user.login)
 
-    def _update_last_login_time(self, req):
+    def _update_last_login_time(self, session):
         # XXX should properly detect missing permission / non writeable source
         # and avoid "except (RepositoryError, Unauthorized)" below
         try:
-            req.execute('SET X last_login_time NOW WHERE X eid %(x)s',
-                        {'x' : req.user.eid})
-            req.cnx.commit()
+            cnx = repoapi.ClientConnection(session)
+            with cnx:
+                cnx.execute('SET X last_login_time NOW WHERE X eid %(x)s',
+                           {'x' : session.user.eid})
+                cnx.commit()
         except (RepositoryError, Unauthorized):
-            req.cnx.rollback()
-        except Exception:
-            req.cnx.rollback()
-            raise
+            pass
 
     def close_session(self, session):
         """close session on logout or on invalid session detected (expired out,
         corrupted...)
         """
         self.info('closing http session %s' % session.sessionid)
-        del self._sessions[session.sessionid]
-        if session.cnx:
-            try:
-                session.cnx.close()
-            except (ProgrammingError, BadConnectionId): # expired on the repository side
-                pass
-            session.cnx = None
+        self._sessions.pop(session.sessionid, None)
+        if not session.closed:
+            session.repo.close(session.id)

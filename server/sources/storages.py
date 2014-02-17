@@ -1,4 +1,4 @@
-# copyright 2003-2012 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2013 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -236,7 +236,7 @@ class BytesFileSystemStorage(Storage):
         """return the current fs_path of the attribute, or None is the attr is
         not stored yet.
         """
-        sysource = entity._cw.cnxset.source('system')
+        sysource = entity._cw.repo.system_source
         cu = sysource.doexec(entity._cw,
                              'SELECT cw_%s FROM cw_%s WHERE cw_eid=%s' % (
                              attr, entity.cw_etype, entity.eid))

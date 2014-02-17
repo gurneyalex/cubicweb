@@ -136,8 +136,8 @@ def repo_cnx(config):
     from cubicweb.dbapi import in_memory_repo_cnx
     from cubicweb.server.utils import manager_userpasswd
     try:
-        login = config.sources()['admin']['login']
-        pwd = config.sources()['admin']['password']
+        login = config.default_admin_config['login']
+        pwd = config.default_admin_config['password']
     except KeyError:
         login, pwd = manager_userpasswd()
     while True:
@@ -221,7 +221,7 @@ class RepositoryDeleteHandler(CommandHandler):
     def cleanup(self):
         """remove instance's configuration and database"""
         from logilab.database import get_db_helper
-        source = self.config.sources()['system']
+        source = self.config.system_source_config
         dbname = source['db-name']
         helper = get_db_helper(source['db-driver'])
         if ASK.confirm('Delete database %s ?' % dbname):
@@ -334,7 +334,7 @@ class CreateInstanceDBCommand(Command):
         automatic = self.get('automatic')
         appid = args.pop()
         config = ServerConfiguration.config_for(appid)
-        source = config.sources()['system']
+        source = config.system_source_config
         dbname = source['db-name']
         driver = source['db-driver']
         helper = get_db_helper(driver)
@@ -441,7 +441,7 @@ class InitInstanceCommand(Command):
         appid = args[0]
         config = ServerConfiguration.config_for(appid)
         try:
-            system = config.sources()['system']
+            system = config.system_source_config
             extra_args = system.get('db-extra-arguments')
             extra = extra_args and {'extra_args': extra_args} or {}
             get_connection(
@@ -544,7 +544,7 @@ class GrantUserOnInstanceCommand(Command):
         from cubicweb.server.sqlutils import sqlexec, sqlgrants
         appid, user = args
         config = ServerConfiguration.config_for(appid)
-        source = config.sources()['system']
+        source = config.system_source_config
         set_owner = self.config.set_owner
         cnx = system_source_cnx(source, special_privs='GRANT')
         cursor = cnx.cursor()
@@ -734,12 +734,12 @@ def _local_dump(appid, output, format='native'):
     mih.backup_database(output, askconfirm=False, format=format)
     mih.shutdown()
 
-def _local_restore(appid, backupfile, drop, systemonly=True, format='native'):
+def _local_restore(appid, backupfile, drop, format='native'):
     config = ServerConfiguration.config_for(appid)
     config.verbosity = 1 # else we won't be asked for confirmation on problems
     config.quick_start = True
     mih = config.migration_handler(connect=False, verbosity=1)
-    mih.restore_database(backupfile, drop, systemonly, askconfirm=False, format=format)
+    mih.restore_database(backupfile, drop, askconfirm=False, format=format)
     repo = mih.repo_connect()
     # version of the database
     dbversions = repo.get_versions()
@@ -848,13 +848,6 @@ class DBRestoreCommand(Command):
           'help': 'for some reason the database doesn\'t exist and so '
           'should not be dropped.'}
          ),
-        ('restore-all',
-         {'short': 'r', 'action' : 'store_true', 'default' : False,
-          'help': 'restore everything, eg not only the system source database '
-          'but also data for all sources supporting backup/restore and custom '
-          'instance data. In that case, <backupfile> is expected to be the '
-          'timestamp of the backup to restore, not a file'}
-         ),
         ('format',
          {'short': 'f', 'default': 'native', 'type': 'choice',
           'choices': ('native', 'portable'),
@@ -874,7 +867,6 @@ class DBRestoreCommand(Command):
                         raise
         _local_restore(appid, backupfile,
                        drop=not self.config.no_drop,
-                       systemonly=not self.config.restore_all,
                        format=self.config.format)
         if self.config.format == 'portable':
             try:
@@ -1014,26 +1006,6 @@ class RebuildFTICommand(Command):
         cnx.commit()
 
 
-class SynchronizeInstanceSchemaCommand(Command):
-    """Synchronize persistent schema with cube schema.
-
-    Will synchronize common stuff between the cube schema and the
-    actual persistent schema, but will not add/remove any entity or relation.
-
-    <instance>
-      the identifier of the instance to synchronize.
-    """
-    name = 'schema-sync'
-    arguments = '<instance>'
-    min_args = max_args = 1
-
-    def run(self, args):
-        appid = args[0]
-        config = ServerConfiguration.config_for(appid)
-        mih = config.migration_handler()
-        mih.cmd_synchronize_schema()
-
-
 class SynchronizeSourceCommand(Command):
     """Force a source synchronization.
 
@@ -1112,7 +1084,7 @@ for cmdclass in (CreateInstanceDBCommand, InitInstanceCommand,
                  StartRepositoryCommand,
                  DBDumpCommand, DBRestoreCommand, DBCopyCommand,
                  AddSourceCommand, CheckRepositoryCommand, RebuildFTICommand,
-                 SynchronizeInstanceSchemaCommand, SynchronizeSourceCommand, SchemaDiffCommand,
+                 SynchronizeSourceCommand, SchemaDiffCommand,
                  ):
     CWCTL.register(cmdclass)
 

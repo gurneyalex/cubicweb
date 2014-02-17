@@ -35,7 +35,7 @@ from cubicweb import (
     ValidationError, Unauthorized, Forbidden,
     AuthenticationError, NoSelectableObject,
     BadConnectionId, CW_EVENT_MANAGER)
-from cubicweb.dbapi import DBAPISession, anonymous_session
+from cubicweb.repoapi import anonymous_cnx
 from cubicweb.web import LOGGER, component
 from cubicweb.web import (
     StatusResponse, DirectResponse, Redirect, NotFound, LogOut,
@@ -50,20 +50,23 @@ SESSION_MANAGER = None
 
 @contextmanager
 def anonymized_request(req):
-    orig_session = req.session
-    req.set_session(anonymous_session(req.vreg))
+    orig_cnx = req.cnx
+    anon_clt_cnx = anonymous_cnx(orig_cnx._session.repo)
+    req.set_cnx(anon_clt_cnx)
     try:
-        yield req
+        with anon_clt_cnx:
+            yield req
     finally:
-        req.set_session(orig_session)
+        req.set_cnx(orig_cnx)
 
 class AbstractSessionManager(component.Component):
     """manage session data associated to a session identifier"""
     __regid__ = 'sessionmanager'
 
-    def __init__(self, vreg):
+    def __init__(self, repo):
+        vreg = repo.vreg
         self.session_time = vreg.config['http-session-time'] or None
-        self.authmanager = vreg['components'].select('authmanager', vreg=vreg)
+        self.authmanager = vreg['components'].select('authmanager', repo=repo)
         interval = (self.session_time or 0) / 2.
         if vreg.config.anonymous_user()[0] is not None:
             self.cleanup_anon_session_time = vreg.config['cleanup-anonymous-session-time'] or 5 * 60
@@ -111,8 +114,7 @@ class AbstractSessionManager(component.Component):
         raise NotImplementedError()
 
     def open_session(self, req):
-        """open and return a new session for the given request. The session is
-        also bound to the request.
+        """open and return a new session for the given request.
 
         raise :exc:`cubicweb.AuthenticationError` if authentication failed
         (no authentication info found or wrong user/password)
@@ -130,8 +132,8 @@ class AbstractAuthenticationManager(component.Component):
     """authenticate user associated to a request and check session validity"""
     __regid__ = 'authmanager'
 
-    def __init__(self, vreg):
-        self.vreg = vreg
+    def __init__(self, repo):
+        self.vreg = repo.vreg
 
     def validate_session(self, req, session):
         """check session validity, reconnecting it to the repository if the
@@ -159,9 +161,10 @@ class CookieSessionHandler(object):
     """a session handler using a cookie to store the session identifier"""
 
     def __init__(self, appli):
+        self.repo = appli.repo
         self.vreg = appli.vreg
         self.session_manager = self.vreg['components'].select('sessionmanager',
-                                                              vreg=self.vreg)
+                                                              repo=self.repo)
         global SESSION_MANAGER
         SESSION_MANAGER = self.session_manager
         if self.vreg.config.mode != 'test':
@@ -173,7 +176,7 @@ class CookieSessionHandler(object):
     def reset_session_manager(self):
         data = self.session_manager.dump_data()
         self.session_manager = self.vreg['components'].select('sessionmanager',
-                                                              vreg=self.vreg)
+                                                              repo=self.repo)
         self.session_manager.restore_data(data)
         global SESSION_MANAGER
         SESSION_MANAGER = self.session_manager
@@ -196,66 +199,40 @@ class CookieSessionHandler(object):
             return '__%s_https_session' % self.vreg.config.appid
         return '__%s_session' % self.vreg.config.appid
 
-    def set_session(self, req):
-        """associate a session to the request
+    def get_session(self, req):
+        """Return a session object corresponding to credentials held by the req
 
         Session id is searched from :
         - # form variable
         - cookie
 
-        if no session id is found, open a new session for the connected user
-        or request authentification as needed
+        If no session id is found, try opening a new session with credentials
+        found in the request.
 
-        :raise Redirect: if authentication has occurred and succeed
+        Raises AuthenticationError if no session can be found or created.
         """
         cookie = req.get_cookie()
         sessioncookie = self.session_cookie(req)
         try:
             sessionid = str(cookie[sessioncookie].value)
-        except KeyError: # no session cookie
+            session = self.get_session_by_id(req, sessionid)
+        except (KeyError, InvalidSession): # no valid session cookie
             session = self.open_session(req)
-        else:
-            try:
-                session = self.get_session(req, sessionid)
-            except InvalidSession:
-                # try to open a new session, so we get an anonymous session if
-                # allowed
-                session = self.open_session(req)
-            else:
-                if not session.cnx:
-                    # session exists but is not bound to a connection. We should
-                    # try to authenticate
-                    loginsucceed = False
-                    try:
-                        if self.open_session(req, allow_no_cnx=False):
-                            loginsucceed = True
-                    except Redirect:
-                        # may be raised in open_session (by postlogin mechanism)
-                        # on successful connection
-                        loginsucceed = True
-                        raise
-                    except AuthenticationError:
-                        # authentication failed, continue to use this session
-                        req.set_session(session)
-                    finally:
-                        if loginsucceed:
-                            # session should be replaced by new session created
-                            # in open_session
-                            self.session_manager.close_session(session)
+        return session
 
-    def get_session(self, req, sessionid):
+    def get_session_by_id(self, req, sessionid):
         session = self.session_manager.get_session(req, sessionid)
         session.mtime = time()
         return session
 
-    def open_session(self, req, allow_no_cnx=True):
-        session = self.session_manager.open_session(req, allow_no_cnx=allow_no_cnx)
+    def open_session(self, req):
+        session = self.session_manager.open_session(req)
         sessioncookie = self.session_cookie(req)
         secure = req.https and req.base_url().startswith('https://')
         req.set_cookie(sessioncookie, session.sessionid,
                        maxage=None, secure=secure)
         if not session.anonymous_session:
-            self.session_manager.postlogin(req)
+            self.session_manager.postlogin(req, session)
         return session
 
     def logout(self, req, goto_url):
@@ -277,21 +254,20 @@ class CubicWebPublisher(object):
     The http server will call its main entry point ``application.handle_request``.
 
     .. automethod:: cubicweb.web.application.CubicWebPublisher.main_handle_request
+
+    You have to provide both a repository and web-server config at
+    initialization. In all in one instance both config will be the same.
     """
 
-    def __init__(self, config,
-                 session_handler_fact=CookieSessionHandler,
-                 vreg=None):
+    def __init__(self, repo, config, session_handler_fact=CookieSessionHandler):
         self.info('starting web instance from %s', config.apphome)
-        if vreg is None:
-            vreg = cwvreg.CWRegistryStore(config)
-        self.vreg = vreg
-        # connect to the repository and get instance's schema
-        self.repo = config.repository(vreg)
-        if not vreg.initialized:
+        self.repo = repo
+        self.vreg = repo.vreg
+        # get instance's schema
+        if not self.vreg.initialized:
             config.init_cubes(self.repo.get_cubes())
-            vreg.init_properties(self.repo.properties())
-            vreg.set_schema(self.repo.get_schema())
+            self.vreg.init_properties(self.repo.properties())
+            self.vreg.set_schema(self.repo.get_schema())
         # set the correct publish method
         if config['query-log-file']:
             from threading import Lock
@@ -310,12 +286,12 @@ class CubicWebPublisher(object):
         self.url_resolver = self.vreg['components'].select('urlpublisher',
                                                            vreg=self.vreg)
 
-    def connect(self, req):
-        """return a connection for a logged user object according to existing
-        sessions (i.e. a new connection may be created or an already existing
-        one may be reused
+    def get_session(self, req):
+        """Return a session object corresponding to credentials held by the req
+
+        May raise AuthenticationError.
         """
-        self.session_handler.set_session(req)
+        return self.session_handler.get_session(req)
 
     # publish methods #########################################################
 
@@ -362,7 +338,24 @@ class CubicWebPublisher(object):
             req.set_header('WWW-Authenticate', [('Basic', {'realm' : realm })], raw=False)
         content = ''
         try:
-            self.connect(req)
+            try:
+                session = self.get_session(req)
+                from  cubicweb import repoapi
+                cnx = repoapi.ClientConnection(session)
+                req.set_cnx(cnx)
+            except AuthenticationError:
+                # Keep the dummy session set at initialisation.
+                # such session with work to an some extend but raise an
+                # AuthenticationError on any database access.
+                import contextlib
+                @contextlib.contextmanager
+                def dummy():
+                    yield
+                cnx = dummy()
+                # XXX We want to clean up this approach in the future. But
+                # several cubes like registration or forgotten password rely on
+                # this principle.
+
             # DENY https acces for anonymous_user
             if (req.https
                 and req.session.anonymous_session
@@ -373,7 +366,8 @@ class CubicWebPublisher(object):
             # handler
             try:
                 ### Try to generate the actual request content
-                content = self.core_handle(req, path)
+                with cnx:
+                    content = self.core_handle(req, path)
             # Handle user log-out
             except LogOut as ex:
                 # When authentification is handled by cookie the code that

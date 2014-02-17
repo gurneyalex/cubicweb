@@ -34,13 +34,13 @@ from uuid import uuid4
 from urlparse import  urlparse
 
 from logilab.common.logging_ext import set_log_methods
-from logilab.common.decorators import monkeypatch
+from logilab.common.decorators import monkeypatch, cachedproperty
 from logilab.common.deprecation import deprecated
 
-from cubicweb import ETYPE_NAME_MAP, ConnectionError, AuthenticationError,\
-     cwvreg, cwconfig
+from cubicweb import (ETYPE_NAME_MAP, AuthenticationError, ProgrammingError,
+                      cwvreg, cwconfig)
+from cubicweb.repoapi import get_repository
 from cubicweb.req import RequestSessionBase
-from cubicweb.utils import parse_repo_uri
 
 
 _MARKER = object()
@@ -91,53 +91,7 @@ class ConnectionProperties(object):
         self.close_on_del = close
 
 
-def _get_inmemory_repo(config, vreg=None):
-    from cubicweb.server.repository import Repository
-    from cubicweb.server.utils import TasksManager
-    return Repository(config, TasksManager(), vreg=vreg)
-
-def get_repository(uri=None, config=None, vreg=None):
-    """get a repository for the given URI or config/vregistry (in case we're
-    loading the repository for a client, eg web server, configuration).
-
-    The returned repository may be an in-memory repository or a proxy object
-    using a specific RPC method, depending on the given URI (pyro or zmq).
-    """
-    if uri is None:
-        return _get_inmemory_repo(config, vreg)
-
-    protocol, hostport, appid = parse_repo_uri(uri)
-
-    if protocol == 'inmemory':
-        # me may have been called with a dummy 'inmemory://' uri ...
-        return _get_inmemory_repo(config, vreg)
-
-    if protocol == 'pyroloc': # direct connection to the instance
-        from logilab.common.pyro_ext import get_proxy
-        uri = uri.replace('pyroloc', 'PYRO')
-        return get_proxy(uri)
-
-    if protocol == 'pyro': # connection mediated through the pyro ns
-        from logilab.common.pyro_ext import ns_get_proxy
-        path = appid.strip('/')
-        if not path:
-            raise ConnectionError(
-                "can't find instance name in %s (expected to be the path component)"
-                % uri)
-        if '.' in path:
-            nsgroup, nsid = path.rsplit('.', 1)
-        else:
-            nsgroup = 'cubicweb'
-            nsid = path
-        return ns_get_proxy(nsid, defaultnsgroup=nsgroup, nshost=hostport)
-
-    if protocol.startswith('zmqpickle-'):
-        from cubicweb.zmqclient import ZMQRepositoryClient
-        return ZMQRepositoryClient(uri)
-    else:
-        raise ConnectionError('unknown protocol: `%s`' % protocol)
-
-
+@deprecated('[3.19] the dbapi is deprecated. Have a look at the new repoapi.')
 def _repo_connect(repo, login, **kwargs):
     """Constructor to create a new connection to the given CubicWeb repository.
 
@@ -327,17 +281,17 @@ class DBAPIRequest(RequestSessionBase):
         else:
             # these args are initialized after a connection is
             # established
-            self.session = None
+            self.session = DBAPISession(None)
             self.cnx = self.user = _NeedAuthAccessMock()
         self.set_default_language(vreg)
 
-    def from_controller(self):
-        return 'view'
-
     def get_option_value(self, option, foreid=None):
-        return self.cnx.get_option_value(option, foreid)
+        if foreid is not None:
+            warn('[3.19] foreid argument is deprecated', DeprecationWarning,
+                 stacklevel=2)
+        return self.cnx.get_option_value(option)
 
-    def set_session(self, session, user=None):
+    def set_session(self, session):
         """method called by the session handler when the user is authenticated
         or an anonymous connection is open
         """
@@ -345,11 +299,8 @@ class DBAPIRequest(RequestSessionBase):
         if session.cnx:
             self.cnx = session.cnx
             self.execute = session.cnx.cursor(self).execute
-            if user is None:
-                user = self.cnx.user(self)
-        if user is not None:
-            self.user = user
-            self.set_entity_cache(user)
+            self.user = self.cnx.user(self)
+            self.set_entity_cache(self.user)
 
     def execute(self, *args, **kwargs): # pylint: disable=E0202
         """overriden when session is set. By default raise authentication error
@@ -371,8 +322,8 @@ class DBAPIRequest(RequestSessionBase):
 
     # server-side service call #################################################
 
-    def call_service(self, regid, async=False, **kwargs):
-        return self.cnx.call_service(regid, async, **kwargs)
+    def call_service(self, regid, **kwargs):
+        return self.cnx.call_service(regid, **kwargs)
 
     # entities cache management ###############################################
 
@@ -407,20 +358,18 @@ class DBAPIRequest(RequestSessionBase):
 
     # server session compat layer #############################################
 
-    def describe(self, eid, asdict=False):
+    def entity_metas(self, eid):
         """return a tuple (type, sourceuri, extid) for the entity with id <eid>"""
-        return self.cnx.describe(eid, asdict)
+        return self.cnx.entity_metas(eid)
 
     def source_defs(self):
         """return the definition of sources used by the repository."""
         return self.cnx.source_defs()
 
-    @deprecated('[3.17] do not use hijack_user. create new Session object')
-    def hijack_user(self, user):
-        """return a fake request/session using specified user"""
-        req = DBAPIRequest(self.vreg)
-        req.set_session(self.session, user)
-        return req
+    @deprecated('[3.19] use .entity_metas(eid) instead')
+    def describe(self, eid, asdict=False):
+        """return a tuple (type, sourceuri, extid) for the entity with id <eid>"""
+        return self.cnx.describe(eid, asdict)
 
     # these are overridden by set_log_methods below
     # only defining here to prevent pylint from complaining
@@ -428,16 +377,6 @@ class DBAPIRequest(RequestSessionBase):
 
 set_log_methods(DBAPIRequest, getLogger('cubicweb.dbapi'))
 
-
-# exceptions ##################################################################
-
-class ProgrammingError(Exception): #DatabaseError):
-    """Exception raised for errors that are related to the database's operation
-    and not necessarily under the control of the programmer, e.g. an unexpected
-    disconnect occurs, the data source name is not found, a transaction could
-    not be processed, a memory allocation error occurred during processing,
-    etc.
-    """
 
 
 # cursor / connection objects ##################################################
@@ -531,7 +470,6 @@ class Connection(object):
     # make exceptions available through the connection object
     ProgrammingError = ProgrammingError
     # attributes that may be overriden per connection instance
-    anonymous_connection = False
     cursor_class = Cursor
     vreg = None
     _closed = None
@@ -556,6 +494,13 @@ class Connection(object):
             # code not available, no way
             return False
         return isinstance(self._repo, Repository)
+
+    @property # could be a cached property but we want to prevent assigment to
+              # catch potential programming error.
+    def anonymous_connection(self):
+        login = self._repo.user_info(self.sessionid)[1]
+        anon_login = self.vreg.config.get('anonymous-user')
+        return login == anon_login
 
     def __repr__(self):
         if self.anonymous_connection:
@@ -583,8 +528,8 @@ class Connection(object):
     # server-side service call #################################################
 
     @check_not_closed
-    def call_service(self, regid, async=False, **kwargs):
-        return self._repo.call_service(self.sessionid, regid, async, **kwargs)
+    def call_service(self, regid, **kwargs):
+        return self._repo.call_service(self.sessionid, regid, **kwargs)
 
     # connection initialization methods ########################################
 
@@ -641,11 +586,11 @@ class Connection(object):
 
     def request(self):
         if self._web_request:
-            from cubicweb.web.request import CubicWebRequestBase
-            req = CubicWebRequestBase(self.vreg, False)
+            from cubicweb.web.request import DBAPICubicWebRequestBase
+            req = DBAPICubicWebRequestBase(self.vreg, False)
             req.get_header = lambda x, default=None: default
-            req.set_session = lambda session, user=None: DBAPIRequest.set_session(
-                req, session, user)
+            req.set_session = lambda session: DBAPIRequest.set_session(
+                req, session)
             req.relative_path = lambda includeparams=True: ''
         else:
             req = DBAPIRequest(self.vreg)
@@ -720,22 +665,40 @@ class Connection(object):
 
     @check_not_closed
     def get_option_value(self, option, foreid=None):
-        """Return the value for `option` in the configuration. If `foreid` is
-        specified, the actual repository to which this entity belongs is
-        dereferenced and the option value retrieved from it.
+        """Return the value for `option` in the configuration.
+
+        `foreid` argument is deprecated and now useless (as of 3.19).
         """
-        return self._repo.get_option_value(option, foreid)
+        if foreid is not None:
+            warn('[3.19] foreid argument is deprecated', DeprecationWarning,
+                 stacklevel=2)
+        return self._repo.get_option_value(option)
+
 
     @check_not_closed
+    def entity_metas(self, eid):
+        """return a tuple (type, sourceuri, extid) for the entity with id <eid>"""
+        return self._repo.entity_metas(self.sessionid, eid, **self._txid())
+
+    @deprecated('[3.19] use .entity_metas(eid) instead')
+    @check_not_closed
     def describe(self, eid, asdict=False):
-        metas = self._repo.describe(self.sessionid, eid, **self._txid())
-        if len(metas) == 3: # backward compat
-            metas = list(metas)
-            metas.append(metas[1])
+        try:
+            metas = self._repo.entity_metas(self.sessionid, eid, **self._txid())
+        except AttributeError:
+            metas = self._repo.describe(self.sessionid, eid, **self._txid())
+            # talking to pre 3.19 repository
+            if len(metas) == 3: # even older backward compat
+                metas = list(metas)
+                metas.append(metas[1])
+            if asdict:
+                return dict(zip(('type', 'source', 'extid', 'asource'), metas))
+            return metas[:-1]
         if asdict:
-            return dict(zip(('type', 'source', 'extid', 'asource'), metas))
-        # XXX :-1 for cw compat, use asdict=True for full information
-        return metas[:-1]
+            metas['asource'] = meta['source'] # XXX pre 3.19 client compat
+            return metas
+        return metas['type'], metas['source'], metas['extid']
+
 
     # db-api like interface ####################################################
 

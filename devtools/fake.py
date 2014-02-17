@@ -24,7 +24,7 @@ from logilab.database import get_db_helper
 
 from cubicweb.req import RequestSessionBase
 from cubicweb.cwvreg import CWRegistryStore
-from cubicweb.web.request import CubicWebRequestBase
+from cubicweb.web.request import ConnectionCubicWebRequestBase
 
 from cubicweb.devtools import BASE_URL, BaseApptestConfiguration
 
@@ -53,7 +53,7 @@ class FakeConfig(dict, BaseApptestConfiguration):
         return {'system': {'db-driver': 'sqlite'}}
 
 
-class FakeRequest(CubicWebRequestBase):
+class FakeRequest(ConnectionCubicWebRequestBase):
     """test implementation of an cubicweb request object"""
 
     def __init__(self, *args, **kwargs):
@@ -169,7 +169,6 @@ class FakeRepo(object):
         self.config = config or FakeConfig()
         self.vreg = vreg or CWRegistryStore(self.config, initlog=False)
         self.vreg.schema = schema
-        self.sources = []
 
     def internal_session(self):
         return FakeSession(self)
@@ -187,9 +186,6 @@ class FakeRepo(object):
             self.eids[eid] = extid
             source.after_entity_insertion(session, extid, entity)
             return eid
-
-    def eid2extid(self, source, eid, session=None):
-        return self.eids[eid]
 
 
 class FakeSource(object):
