@@ -1,4 +1,4 @@
-# copyright 2003-2013 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2014 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -44,7 +44,7 @@ from logilab.common.deprecation import deprecated
 from logilab.common.decorators import cached, clear_cache
 
 from yams.constraints import SizeConstraint
-from yams.schema2sql import eschema2sql, rschema2sql
+from yams.schema2sql import eschema2sql, rschema2sql, unique_index_name
 from yams.schema import RelationDefinitionSchema
 
 from cubicweb import CW_SOFTWARE_ROOT, AuthenticationError, ExecutionError
@@ -102,7 +102,6 @@ class ServerMigrationHelper(MigrationHelper):
         # no config on shell to a remote instance
         if config is not None and (cnx or connect):
             repo = self.repo
-            self.session.data['rebuild-infered'] = False
             # register a hook to clear our group_mapping cache and the
             # self._synchronized set when some group is added or updated
             ClearGroupMap.mih = self
@@ -292,7 +291,6 @@ class ServerMigrationHelper(MigrationHelper):
                     print 'aborting...'
                     sys.exit(0)
             self.session.keep_cnxset_mode('transaction')
-            self.session.data['rebuild-infered'] = False
             return self._cnx
 
     @property
@@ -395,11 +393,10 @@ class ServerMigrationHelper(MigrationHelper):
         sql_scripts = glob(osp.join(directory, '*.%s.sql' % driver))
         for fpath in sql_scripts:
             print '-> installing', fpath
-            try:
-                sqlexec(open(fpath).read(), self.session.system_sql, False,
-                        delimiter=';;')
-            except Exception as exc:
-                print '-> ERROR:', exc, ', skipping', fpath
+            failed = sqlexec(open(fpath).read(), self.session.system_sql, False,
+                             delimiter=';;')
+            if failed:
+                print '-> ERROR, skipping', fpath
 
     # schema synchronization internals ########################################
 
@@ -559,39 +556,41 @@ class ServerMigrationHelper(MigrationHelper):
                         self._synchronize_rdef_schema(subj, rschema, obj,
                                                       syncprops=syncprops, syncperms=syncperms)
         if syncprops: # need to process __unique_together__ after rdefs were processed
-            repo_unique_together = set([frozenset(ut)
-                                        for ut in repoeschema._unique_together])
-            unique_together = set([frozenset(ut)
-                                   for ut in eschema._unique_together])
-            for ut in repo_unique_together - unique_together:
-                restrictions = []
-                substs = {'x': repoeschema.eid}
-                for i, col in enumerate(ut):
-                    restrictions.append('C relations T%(i)d, '
-                                       'T%(i)d name %%(T%(i)d)s' % {'i': i})
-                    substs['T%d'%i] = col
-                self.rqlexec('DELETE CWUniqueTogetherConstraint C '
-                             'WHERE C constraint_of E, '
-                             '      E eid %%(x)s,'
-                             '      %s' % ', '.join(restrictions),
-                             substs)
-            def possible_unique_constraint(ut):
-                for name in ut:
+            # mappings from constraint name to columns
+            # filesystem (fs) and repository (repo) wise
+            fs = {}
+            repo = {}
+            for cols in eschema._unique_together or ():
+                fs[unique_index_name(repoeschema, cols)] = sorted(cols)
+            schemaentity = self.session.entity_from_eid(repoeschema.eid)
+            for entity in schemaentity.related('constraint_of', 'object',
+                                               targettypes=('CWUniqueTogetherConstraint',)).entities():
+                repo[entity.name] = sorted(rel.name for rel in entity.relations)
+            added = set(fs) - set(repo)
+            removed = set(repo) - set(fs)
+
+            for name in removed:
+                self.rqlexec('DELETE CWUniqueTogetherConstraint C WHERE C name %(name)s',
+                             {'name': name})
+
+            def possible_unique_constraint(cols):
+                for name in cols:
                     rschema = repoeschema.subjrels.get(name)
                     if rschema is None:
                         print 'dont add %s unique constraint on %s, missing %s' % (
-                            ','.join(ut), eschema, name)
+                            ','.join(cols), eschema, name)
                         return False
                     if not (rschema.final or rschema.inlined):
-                        (eschema, name)
                         print 'dont add %s unique constraint on %s, %s is neither final nor inlined' % (
-                            ','.join(ut), eschema, name)
+                            ','.join(cols), eschema, name)
                         return False
                 return True
-            for ut in unique_together - repo_unique_together:
-                if possible_unique_constraint(ut):
-                    rql, substs = ss.uniquetogether2rql(eschema, ut)
+
+            for name in added:
+                if possible_unique_constraint(fs[name]):
+                    rql, substs = ss._uniquetogether2rql(eschema, fs[name])
                     substs['x'] = repoeschema.eid
+                    substs['name'] = name
                     self.rqlexec(rql, substs)
 
     def _synchronize_rdef_schema(self, subjtype, rtype, objtype,
@@ -1467,12 +1466,9 @@ class ServerMigrationHelper(MigrationHelper):
                 # no result to fetch
                 return
 
-    def rqlexec(self, rql, kwargs=None, cachekey=None, build_descr=True,
+    def rqlexec(self, rql, kwargs=None, build_descr=True,
                 ask_confirm=False):
         """rql action"""
-        if cachekey is not None:
-            warn('[3.8] cachekey is deprecated, you can safely remove this argument',
-                 DeprecationWarning, stacklevel=2)
         if not isinstance(rql, (tuple, list)):
             rql = ( (rql, kwargs), )
         res = None
