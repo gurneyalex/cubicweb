@@ -424,12 +424,8 @@ class RepositoryTC(CubicWebTC):
         cnxid = repo.connect(self.admlogin, password=self.admpassword)
         session = repo._get_session(cnxid, setcnxset=True)
         self.assertEqual(repo.type_and_source_from_eid(2, session),
-                         ('CWGroup', 'system', None, 'system'))
+                         ('CWGroup', None, 'system'))
         self.assertEqual(repo.type_from_eid(2, session), 'CWGroup')
-        self.assertEqual(repo.source_from_eid(2, session).uri, 'system')
-        self.assertEqual(repo.eid2extid(repo.system_source, 2, session), None)
-        class dummysource: uri = 'toto'
-        self.assertRaises(UnknownEid, repo.eid2extid, dummysource, 2, session)
         repo.close(cnxid)
 
     def test_public_api(self):
@@ -445,7 +441,9 @@ class RepositoryTC(CubicWebTC):
         repo = self.repo
         cnxid = repo.connect(self.admlogin, password=self.admpassword)
         self.assertEqual(repo.user_info(cnxid), (6, 'admin', set([u'managers']), {}))
-        self.assertEqual(repo.describe(cnxid, 2), (u'CWGroup', u'system', None, 'system'))
+        self.assertEqual({'type': u'CWGroup', 'extid': None, 'source': 'system'},
+                         repo.entity_metas(cnxid, 2))
+        self.assertEqual(repo.describe(cnxid, 2), (u'CWGroup', 'system', None, 'system'))
         repo.close(cnxid)
         self.assertRaises(BadConnectionId, repo.user_info, cnxid)
         self.assertRaises(BadConnectionId, repo.describe, cnxid, 1)
@@ -670,15 +668,6 @@ class DataHelpersTC(CubicWebTC):
         self.session.set_cnxset()
         self.assert_(self.repo.system_source.create_eid(self.session))
 
-    def test_source_from_eid(self):
-        self.session.set_cnxset()
-        self.assertEqual(self.repo.source_from_eid(1, self.session),
-                          self.repo.sources_by_uri['system'])
-
-    def test_source_from_eid_raise(self):
-        self.session.set_cnxset()
-        self.assertRaises(UnknownEid, self.repo.source_from_eid, -2, self.session)
-
     def test_type_from_eid(self):
         self.session.set_cnxset()
         self.assertEqual(self.repo.type_from_eid(2, self.session), 'CWGroup')
@@ -695,12 +684,8 @@ class DataHelpersTC(CubicWebTC):
         self.repo.add_info(self.session, entity, self.repo.system_source)
         cu = self.session.system_sql('SELECT * FROM entities WHERE eid = -1')
         data = cu.fetchall()
-        self.assertIsInstance(data[0][4], datetime)
-        data[0] = list(data[0])
-        data[0][4] = None
-        self.assertEqual(tuplify(data), [(-1, 'Personne', 'system', 'system',
-                                          None, None)])
-        self.repo.delete_info(self.session, entity, 'system', None)
+        self.assertEqual(tuplify(data), [(-1, 'Personne', 'system', None)])
+        self.repo.delete_info(self.session, entity, 'system')
         #self.repo.commit()
         cu = self.session.system_sql('SELECT * FROM entities WHERE eid = -1')
         data = cu.fetchall()
@@ -708,38 +693,6 @@ class DataHelpersTC(CubicWebTC):
 
 
 class FTITC(CubicWebTC):
-
-    def test_reindex_and_modified_since(self):
-        self.repo.system_source.multisources_etypes.add('Personne')
-        eidp = self.execute('INSERT Personne X: X nom "toto", X prenom "tutu"')[0][0]
-        self.commit()
-        ts = datetime.now()
-        self.assertEqual(len(self.execute('Personne X WHERE X has_text "tutu"')), 1)
-        self.session.set_cnxset()
-        cu = self.session.system_sql('SELECT mtime, eid FROM entities WHERE eid = %s' % eidp)
-        omtime = cu.fetchone()[0]
-        # our sqlite datetime adapter is ignore seconds fraction, so we have to
-        # ensure update is done the next seconds
-        time.sleep(1 - (ts.second - int(ts.second)))
-        self.execute('SET X nom "tata" WHERE X eid %(x)s', {'x': eidp})
-        self.commit()
-        self.assertEqual(len(self.execute('Personne X WHERE X has_text "tutu"')), 1)
-        self.session.set_cnxset()
-        cu = self.session.system_sql('SELECT mtime FROM entities WHERE eid = %s' % eidp)
-        mtime = cu.fetchone()[0]
-        self.assertTrue(omtime < mtime)
-        self.commit()
-        date, modified, deleted = self.repo.entities_modified_since(('Personne',), omtime)
-        self.assertEqual(modified, [('Personne', eidp)])
-        self.assertEqual(deleted, [])
-        date, modified, deleted = self.repo.entities_modified_since(('Personne',), mtime)
-        self.assertEqual(modified, [])
-        self.assertEqual(deleted, [])
-        self.execute('DELETE Personne X WHERE X eid %(x)s', {'x': eidp})
-        self.commit()
-        date, modified, deleted = self.repo.entities_modified_since(('Personne',), omtime)
-        self.assertEqual(modified, [])
-        self.assertEqual(deleted, [('Personne', eidp)])
 
     def test_fulltext_container_entity(self):
         assert self.schema.rschema('use_email').fulltext_container == 'subject'

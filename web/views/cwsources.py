@@ -99,7 +99,7 @@ class CWSourceMainTab(tabs.PrimaryTab):
                               cellvids={1: 'editable-final'})
 
 
-MAPPED_SOURCE_TYPES = set( ('pyrorql', 'datafeed') )
+MAPPED_SOURCE_TYPES = set( ('datafeed',) )
 
 class CWSourceMappingTab(EntityView):
     __regid__ = 'cwsource-mapping'
@@ -117,20 +117,6 @@ class CWSourceMappingTab(EntityView):
             'Any X, SCH, XO ORDERBY ET WHERE X options XO, X cw_for_source S, S eid %(s)s, '
             'X cw_schema SCH, SCH is ET', {'s': entity.eid})
         self.wview('table', rset, 'noresult')
-        # self.w('<h3>%s</h3>' % _('Relations that should not be crossed'))
-        # self.w('<p>%s</p>' % _(
-        #     'By default, when a relation is not supported by a source, it is '
-        #     'supposed that a local relation may point to an entity from the '
-        #     'external source. Relations listed here won\'t have this '
-        #     '"crossing" behaviour.'))
-        # self.wview('list', entity.related('cw_dont_cross'), 'noresult')
-        # self.w('<h3>%s</h3>' % _('Relations that can be crossed'))
-        # self.w('<p>%s</p>' % _(
-        #     'By default, when a relation is supported by a source, it is '
-        #     'supposed that a local relation can\'t point to an entity from the '
-        #     'external source. Relations listed here may have this '
-        #     '"crossing" behaviour anyway.'))
-        # self.wview('list', entity.related('cw_may_cross'), 'noresult')
         checker = MAPPING_CHECKERS.get(entity.type, MappingChecker)(entity)
         checker.check()
         if (checker.errors or checker.warnings or checker.infos):
@@ -214,49 +200,6 @@ class MappingChecker(object):
     def custom_check(self):
         pass
 
-
-class PyroRQLMappingChecker(MappingChecker):
-    """pyrorql source mapping checker"""
-
-    def init(self):
-        self.dontcross = set()
-        self.maycross = set()
-        super(PyroRQLMappingChecker, self).init()
-
-    def init_schemacfg(self, schemacfg):
-        options = schemacfg.options or ()
-        if 'dontcross' in options:
-            self.dontcross.add(schemacfg.schema.name)
-        else:
-            super(PyroRQLMappingChecker, self).init_schemacfg(schemacfg)
-            if 'maycross' in options:
-                self.maycross.add(schemacfg.schema.name)
-
-    def custom_check(self):
-        error = self.errors.append
-        info = self.infos.append
-        for etype in self.sentities:
-            eschema = self.schema[etype]
-            for rschema, ttypes, role in eschema.relation_definitions():
-                if rschema in META_RTYPES:
-                    continue
-                if not rschema in self.srelations:
-                    if rschema not in self.dontcross:
-                        if role == 'subject' and rschema.inlined:
-                            error(_('inlined relation %(rtype)s of %(etype)s '
-                                    'should be supported') %
-                                  {'rtype': rschema, 'etype': etype})
-                        elif (rschema not in self.seen and rschema not in self.maycross):
-                            info(_('you may want to specify something for %s') %
-                                 rschema)
-                            self.seen.add(rschema)
-                elif rschema in self.maycross and rschema.inlined:
-                    error(_('you should un-inline relation %s which is '
-                            'supported and may be crossed ') % rschema)
-
-MAPPING_CHECKERS = {
-    'pyrorql': PyroRQLMappingChecker,
-    }
 
 
 class CWSourceImportsTab(EntityView):

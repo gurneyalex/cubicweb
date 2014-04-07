@@ -27,7 +27,6 @@ from rql import BadRQLQuery, RQLSyntaxError
 from cubicweb import QueryError, Unauthorized, Binary
 from cubicweb.server.sqlutils import SQL_PREFIX
 from cubicweb.server.utils import crypt_password
-from cubicweb.server.sources.native import make_schema
 from cubicweb.server.querier import manual_build_descr, _make_description
 from cubicweb.devtools import get_test_db_handler, TestServerConfiguration
 from cubicweb.devtools.testlib import CubicWebTC
@@ -58,17 +57,6 @@ def init_sqlite_connexion(cnx):
         return {"managers": "3", "users": "2", "guests":  "1", "owners": "0"}[text]
     cnx.create_function("GROUP_SORT_VALUE", 1, group_sort_value)
 SQL_CONNECT_HOOKS['sqlite'].append(init_sqlite_connexion)
-
-
-from logilab.database import _GenericAdvFuncHelper
-TYPEMAP = _GenericAdvFuncHelper.TYPE_MAPPING
-
-class MakeSchemaTC(TestCase):
-    def test_known_values(self):
-        solution = {'A': 'String', 'B': 'CWUser'}
-        self.assertEqual(make_schema((Variable('A'), Variable('B')), solution,
-                                      'table0', TYPEMAP),
-                          ('C0 text,C1 integer', {'A': 'table0.C0', 'B': 'table0.C1'}))
 
 
 def setUpClass(cls, *args):
@@ -139,7 +127,7 @@ class UtilsTC(BaseQuerierTC):
     def test_preprocess_security(self):
         plan = self._prepare_plan('Any ETN,COUNT(X) GROUPBY ETN '
                                   'WHERE X is ET, ET name ETN')
-        plan.session = self.user_groups_session('users')
+        plan.cnx = self.user_groups_session('users')
         union = plan.rqlst
         plan.preprocess(union)
         self.assertEqual(len(union.children), 1)
@@ -222,7 +210,7 @@ class UtilsTC(BaseQuerierTC):
 
     def test_preprocess_security_aggregat(self):
         plan = self._prepare_plan('Any MAX(X)')
-        plan.session = self.user_groups_session('users')
+        plan.cnx = self.user_groups_session('users')
         union = plan.rqlst
         plan.preprocess(union)
         self.assertEqual(len(union.children), 1)
@@ -1169,7 +1157,7 @@ Any P1,B,E WHERE P1 identity P2 WITH
         #'INSERT Email X: X messageid "<1234>", X subject "test", X sender Y, X recipients Y'
         eeid, = self.execute('INSERT Email X: X messageid "<1234>", X subject "test", X sender Y, X recipients Y WHERE Y is EmailAddress')[0]
         self.execute("DELETE Email X")
-        sqlc = self.session.cnxset['system']
+        sqlc = self.session.cnxset.cu
         sqlc.execute('SELECT * FROM recipients_relation')
         self.assertEqual(len(sqlc.fetchall()), 0)
         sqlc.execute('SELECT * FROM owned_by_relation WHERE eid_from=%s'%eeid)
@@ -1310,7 +1298,7 @@ Any P1,B,E WHERE P1 identity P2 WITH
         self.assertEqual(rset.description, [('CWUser',)])
         self.assertRaises(Unauthorized,
                           self.execute, "Any P WHERE X is CWUser, X login 'bob', X upassword P")
-        cursor = self.cnxset['system']
+        cursor = self.cnxset.cu
         cursor.execute("SELECT %supassword from %sCWUser WHERE %slogin='bob'"
                        % (SQL_PREFIX, SQL_PREFIX, SQL_PREFIX))
         passwd = str(cursor.fetchone()[0])
@@ -1325,7 +1313,7 @@ Any P1,B,E WHERE P1 identity P2 WITH
         self.assertEqual(rset.description[0][0], 'CWUser')
         rset = self.execute("SET X upassword %(pwd)s WHERE X is CWUser, X login 'bob'",
                             {'pwd': 'tutu'})
-        cursor = self.cnxset['system']
+        cursor = self.cnxset.cu
         cursor.execute("SELECT %supassword from %sCWUser WHERE %slogin='bob'"
                        % (SQL_PREFIX, SQL_PREFIX, SQL_PREFIX))
         passwd = str(cursor.fetchone()[0])

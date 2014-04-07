@@ -1,4 +1,4 @@
-# copyright 2003-2012 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2013 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -188,78 +188,17 @@ class ApplicationMessage(component.Component):
     """
     __select__ = yes()
     __regid__ = 'applmessages'
-    # don't want user to hide this component using an cwproperty
+    # don't want user to hide this component using a cwproperty
     cw_property_defs = {}
 
     def call(self, msg=None):
         if msg is None:
-            msgs = []
-            if self._cw.cnx:
-                srcmsg = self._cw.get_shared_data('sources_error', pop=True, txdata=True)
-                if srcmsg:
-                    msgs.append(srcmsg)
-            reqmsg = self._cw.message # XXX don't call self._cw.message twice
-            if reqmsg:
-                msgs.append(reqmsg)
-        else:
-            msgs = [msg]
+            msg = self._cw.message # XXX don't call self._cw.message twice
         self.w(u'<div id="appMsg" onclick="%s" class="%s">\n' %
-               (toggle_action('appMsg'), (msgs and ' ' or 'hidden')))
-        for msg in msgs:
-            self.w(u'<div class="message" id="%s">%s</div>' % (self.domid, msg))
+               (toggle_action('appMsg'), (msg and ' ' or 'hidden')))
+        self.w(u'<div class="message" id="%s">%s</div>' % (self.domid, msg))
         self.w(u'</div>')
 
-
-class EtypeRestrictionComponent(component.Component):
-    """displays the list of entity types contained in the resultset
-    to be able to filter accordingly.
-    """
-    __regid__ = 'etypenavigation'
-    __select__ = multi_etypes_rset() | match_form_params(
-        '__restrtype', '__restrtypes', '__restrrql')
-    cw_property_defs = VISIBLE_PROP_DEF
-    # don't want user to hide this component using an cwproperty
-    site_wide = True
-    visible = False # disabled by default
-
-    def call(self):
-        _ = self._cw._
-        self.w(u'<div id="etyperestriction">')
-        restrtype = self._cw.form.get('__restrtype')
-        restrtypes = self._cw.form.get('__restrtypes', '').split(',')
-        restrrql = self._cw.form.get('__restrrql')
-        if not restrrql:
-            rqlst = self.cw_rset.syntax_tree()
-            restrrql = rqlst.as_string(self._cw.encoding, self.cw_rset.args)
-            restrtypes = self.cw_rset.column_types(0)
-        else:
-            rqlst = parse(restrrql)
-        html = []
-        on_etype = False
-        etypes = sorted((display_name(self._cw, etype).capitalize(), etype)
-                        for etype in restrtypes)
-        for elabel, etype in etypes:
-            if etype == restrtype:
-                html.append(u'<span class="selected">%s</span>' % elabel)
-                on_etype = True
-            else:
-                rqlst.save_state()
-                for select in rqlst.children:
-                    select.add_type_restriction(select.selection[0].variable, etype)
-                newrql = rqlst.as_string(self._cw.encoding, self.cw_rset.args)
-                url = self._cw.build_url(rql=newrql, __restrrql=restrrql,
-                                         __restrtype=etype, __restrtypes=','.join(restrtypes))
-                html.append(u'<span><a href="%s">%s</a></span>' % (
-                        xml_escape(url), elabel))
-                rqlst.recover()
-        if on_etype:
-            url = self._cw.build_url(rql=restrrql)
-            html.insert(0, u'<span><a href="%s">%s</a></span>' % (
-                    url, _('Any')))
-        else:
-            html.insert(0, u'<span class="selected">%s</span>' % _('Any'))
-        self.w(u'&#160;|&#160;'.join(html))
-        self.w(u'</div>')
 
 # contextual components ########################################################
 

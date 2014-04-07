@@ -35,6 +35,23 @@ def _add_relation_definition_no_perms(subjtype, rtype, objtype):
     ss.execschemarql(rql, rdef, ss.rdef2rql(rdef, CSTRMAP, groupmap=None))
     commit(ask_confirm=False)
 
+def replace_eid_sequence_with_eid_numrange(session):
+    dbh = session.repo.system_source.dbhelper
+    cursor = session.cnxset.cu
+    try:
+        cursor.execute(dbh.sql_sequence_current_state('entities_id_seq'))
+        lasteid = cursor.fetchone()[0]
+    except: # programming error, already migrated
+        return
+
+    cursor.execute(dbh.sql_drop_sequence('entities_id_seq'))
+    cursor.execute(dbh.sql_create_numrange('entities_id_seq'))
+    cursor.execute(dbh.sql_restart_numrange('entities_id_seq', initial_value=lasteid))
+    session.commit()
+
+if applcubicwebversion < (3, 19, 0) and cubicwebversion >= (3, 19, 0):
+    replace_eid_sequence_with_eid_numrange(session)
+
 if applcubicwebversion < (3, 17, 0) and cubicwebversion >= (3, 17, 0):
     try:
         add_cube('sioc', update_database=False)
@@ -223,11 +240,11 @@ if applcubicwebversion < (3, 5, 0) and cubicwebversion >= (3, 5, 0):
 
 if applcubicwebversion < (3, 2, 2) and cubicwebversion >= (3, 2, 1):
     from base64 import b64encode
-    for table in ('entities', 'deleted_entities'):
-        for eid, extid in sql('SELECT eid, extid FROM %s WHERE extid is NOT NULL'
-                              % table, ask_confirm=False):
-            sql('UPDATE %s SET extid=%%(extid)s WHERE eid=%%(eid)s' % table,
-                {'extid': b64encode(extid), 'eid': eid}, ask_confirm=False)
+    for eid, extid in sql('SELECT eid, extid FROM entities '
+                          'WHERE extid is NOT NULL',
+                          ask_confirm=False):
+        sql('UPDATE entities SET extid=%(extid)s WHERE eid=%(eid)s',
+            {'extid': b64encode(extid), 'eid': eid}, ask_confirm=False)
     commit()
 
 if applcubicwebversion < (3, 2, 0) and cubicwebversion >= (3, 2, 0):

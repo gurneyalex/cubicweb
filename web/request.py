@@ -39,6 +39,7 @@ from logilab.common.decorators import cached
 from logilab.common.deprecation import deprecated
 from logilab.mtconverter import xml_escape
 
+from cubicweb.req import RequestSessionBase
 from cubicweb.dbapi import DBAPIRequest
 from cubicweb.uilib import remove_html_tags, js
 from cubicweb.utils import SizeConstrainedList, HTMLHead, make_uid
@@ -82,19 +83,20 @@ def list_form_param(form, param, pop=False):
 
 
 
-class CubicWebRequestBase(DBAPIRequest):
+class _CubicWebRequestBase(RequestSessionBase):
     """abstract HTTP request, should be extended according to the HTTP backend
     Immutable attributes that describe the received query and generic configuration
     """
     ajax_request = False # to be set to True by ajax controllers
 
-    def __init__(self, vreg, https=False, form=None, headers={}):
+    def __init__(self, vreg, https=False, form=None, headers=None):
         """
         :vreg: Vregistry,
         :https: boolean, s this a https request
         :form: Forms value
+        :headers: dict, request header
         """
-        super(CubicWebRequestBase, self).__init__(vreg)
+        super(_CubicWebRequestBase, self).__init__(vreg)
         #: (Boolean) Is this an https request.
         self.https = https
         #: User interface property (vary with https) (see :ref:`uiprops`)
@@ -113,12 +115,16 @@ class CubicWebRequestBase(DBAPIRequest):
         self.html_headers = HTMLHead(self)
         #: received headers
         self._headers_in = Headers()
-        for k, v in headers.iteritems():
-            self._headers_in.addRawHeader(k, v)
+        if headers is not None:
+            for k, v in headers.iteritems():
+                self._headers_in.addRawHeader(k, v)
         #: form parameters
         self.setup_params(form)
         #: received body
         self.content = StringIO()
+        # set up language based on request headers or site default (we don't
+        # have a user yet, and might not get one)
+        self.set_user_language(None)
         #: dictionary that may be used to store request data that has to be
         #: shared among various components used to publish the request (views,
         #: controller, application...)
@@ -169,7 +175,7 @@ class CubicWebRequestBase(DBAPIRequest):
         if secure:
             base_url = self.vreg.config.get('https-url')
         if base_url is None:
-            base_url = super(CubicWebRequestBase, self).base_url()
+            base_url = super(_CubicWebRequestBase, self).base_url()
         return base_url
 
     @property
@@ -205,31 +211,6 @@ class CubicWebRequestBase(DBAPIRequest):
             varmaker = rqlvar_maker()
             self.set_page_data('rql_varmaker', varmaker)
         return varmaker
-
-    def set_session(self, session, user=None):
-        """method called by the session handler when the user is authenticated
-        or an anonymous connection is open
-        """
-        super(CubicWebRequestBase, self).set_session(session, user)
-        # set request language
-        vreg = self.vreg
-        if self.user:
-            try:
-                # 1. user specified language
-                lang = vreg.typed_value('ui.language',
-                                        self.user.properties['ui.language'])
-                self.set_language(lang)
-                return
-            except KeyError:
-                pass
-        if vreg.config['language-negociation']:
-            # 2. http negociated language
-            for lang in self.header_accept_language():
-                if lang in self.translations:
-                    self.set_language(lang)
-                    return
-        # 3. default language
-        self.set_default_language(vreg)
 
     # input form parameters management ########################################
 
@@ -327,6 +308,7 @@ class CubicWebRequestBase(DBAPIRequest):
 
     def set_message(self, msg):
         assert isinstance(msg, unicode)
+        self.reset_message()
         self._msg = msg
 
     def set_message_id(self, msgid):
@@ -357,6 +339,7 @@ class CubicWebRequestBase(DBAPIRequest):
         if hasattr(self, '_msg'):
             del self._msg
         if hasattr(self, '_msgid'):
+            self.session.data.pop(self._msgid, u'')
             del self._msgid
 
     def update_search_state(self):
@@ -423,6 +406,7 @@ class CubicWebRequestBase(DBAPIRequest):
             req.execute(rql, args, key)
         return self.user_callback(rqlexec, rqlargs, *args, **kwargs)
 
+    @deprecated('[3.19] use a traditional ajaxfunc / controller')
     def user_callback(self, cb, cbargs, *args, **kwargs):
         """register the given user callback and return a URL which can
         be inserted in an HTML view. When the URL is accessed, the
@@ -725,7 +709,13 @@ class CubicWebRequestBase(DBAPIRequest):
         if '__message' in kwargs:
             msg = kwargs.pop('__message')
             kwargs['_cwmsgid'] = self.set_redirect_message(msg)
-        return super(CubicWebRequestBase, self).build_url(*args, **kwargs)
+        if not args:
+            method = 'view'
+            if (self.from_controller() == 'view'
+                and not '_restpath' in kwargs):
+                method = self.relative_path(includeparams=False) or 'view'
+            args = (method,)
+        return super(_CubicWebRequestBase, self).build_url(*args, **kwargs)
 
     def url(self, includeparams=True):
         """return currently accessed url"""
@@ -986,6 +976,108 @@ class CubicWebRequestBase(DBAPIRequest):
     def html_content_type(self):
         return 'text/html'
 
+    def set_user_language(self, user):
+        vreg = self.vreg
+        if user is not None:
+            try:
+                # 1. user-specified language
+                lang = vreg.typed_value('ui.language', user.properties['ui.language'])
+                self.set_language(lang)
+                return
+            except KeyError:
+                pass
+        if vreg.config.get('language-negociation', False):
+            # 2. http accept-language
+            for lang in self.header_accept_language():
+                if lang in self.translations:
+                    self.set_language(lang)
+                    return
+        # 3. site's default language
+        self.set_default_language(vreg)
+
+
+class DBAPICubicWebRequestBase(_CubicWebRequestBase, DBAPIRequest):
+
+    def set_session(self, session):
+        """method called by the session handler when the user is authenticated
+        or an anonymous connection is open
+        """
+        super(CubicWebRequestBase, self).set_session(session)
+        # set request language
+        self.set_user_language(session.user)
+
+
+def _cnx_func(name):
+    def proxy(req, *args, **kwargs):
+        return getattr(req.cnx, name)(*args, **kwargs)
+    return proxy
+
+
+class ConnectionCubicWebRequestBase(_CubicWebRequestBase):
+
+    def __init__(self, vreg, https=False, form=None, headers={}):
+        """"""
+        self.cnx = None
+        self.session = None
+        self.vreg = vreg
+        try:
+            # no vreg or config which doesn't handle translations
+            self.translations = vreg.config.translations
+        except AttributeError:
+            self.translations = {}
+        super(ConnectionCubicWebRequestBase, self).__init__(vreg, https=https,
+                                                       form=form, headers=headers)
+        from cubicweb.dbapi import DBAPISession, _NeedAuthAccessMock
+        self.session = DBAPISession(None)
+        self.cnx = self.user = _NeedAuthAccessMock()
+
+    def set_cnx(self, cnx):
+        self.cnx = cnx
+        self.session = cnx._session
+        self._set_user(cnx.user)
+        self.set_user_language(cnx.user)
+
+    def execute(self, *args, **kwargs):
+        rset = self.cnx.execute(*args, **kwargs)
+        rset.req = self
+        return rset
+
+    def set_default_language(self, vreg):
+        # XXX copy from dbapi
+        try:
+            lang = vreg.property_value('ui.language')
+        except Exception: # property may not be registered
+            lang = 'en'
+        try:
+            self.set_language(lang)
+        except KeyError:
+            # this occurs usually during test execution
+            self._ = self.__ = unicode
+            self.pgettext = lambda x, y: unicode(y)
+
+    entity_metas = _cnx_func('entity_metas')
+    source_defs = _cnx_func('source_defs')
+    get_shared_data = _cnx_func('get_shared_data')
+    set_shared_data = _cnx_func('set_shared_data')
+    describe = _cnx_func('describe') # deprecated XXX
+
+    # server-side service call #################################################
+
+    def call_service(self, regid, **kwargs):
+        return self.cnx.call_service(regid, **kwargs)
+
+    # entities cache management ###############################################
+
+    entity_cache = _cnx_func('entity_cache')
+    set_entity_cache = _cnx_func('set_entity_cache')
+    cached_entities = _cnx_func('cached_entities')
+    drop_entity_cache = _cnx_func('drop_entity_cache')
+
+
+
+
+CubicWebRequestBase = ConnectionCubicWebRequestBase
+
 
 ## HTTP-accept parsers / utilies ##############################################
 def _mimetype_sort_key(accept_info):
@@ -1083,4 +1175,4 @@ ACCEPT_HEADER_PARSER = {
     }
 
 from cubicweb import set_log_methods
-set_log_methods(CubicWebRequestBase, LOGGER)
+set_log_methods(_CubicWebRequestBase, LOGGER)

@@ -72,32 +72,14 @@ def crypt_password(passwd, salt=None):
     # wrong password
     return ''
 
-def cartesian_product(seqin):
-    """returns a generator which returns the cartesian product of `seqin`
 
-    for more details, see :
-    http://aspn.activestate.com/ASPN/Cookbook/Python/Recipe/302478
-    """
-    def rloop(seqin, comb):
-        """recursive looping function"""
-        if seqin:                   # any more sequences to process?
-            for item in seqin[0]:
-                newcomb = comb + [item] # add next item to current combination
-                # call rloop w/ remaining seqs, newcomb
-                for item in rloop(seqin[1:], newcomb):
-                    yield item          # seqs and newcomb
-        else:                           # processing last sequence
-            yield comb                  # comb finished, add to list
-    return rloop(seqin, [])
-
-
-def eschema_eid(session, eschema):
+def eschema_eid(cnx, eschema):
     """get eid of the CWEType entity for the given yams type. You should use
     this because when schema has been loaded from the file-system, not from the
     database, (e.g. during tests), eschema.eid is not set.
     """
     if eschema.eid is None:
-        eschema.eid = session.execute(
+        eschema.eid = cnx.execute(
             'Any X WHERE X is CWEType, X name %(name)s',
             {'name': str(eschema)})[0][0]
     return eschema.eid
@@ -126,7 +108,7 @@ def manager_userpasswd(user=None, msg=DEFAULT_MSG, confirm=False,
     return user, passwd
 
 
-_MARKER=object()
+_MARKER = object()
 def func_name(func):
     name = getattr(func, '__name__', _MARKER)
     if name is _MARKER:

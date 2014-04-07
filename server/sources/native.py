@@ -1,4 +1,4 @@
-# copyright 2003-2013 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2014 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -35,7 +35,7 @@ from threading import Lock
 from datetime import datetime
 from base64 import b64decode, b64encode
 from contextlib import contextmanager
-from os.path import abspath, basename
+from os.path import basename
 import re
 import itertools
 import zipfile
@@ -52,7 +52,7 @@ from yams import schema2sql as y2sql
 from yams.schema import role_name
 
 from cubicweb import (UnknownEid, AuthenticationError, ValidationError, Binary,
-                      UniqueTogetherError, QueryError, UndoTransactionException)
+                      UniqueTogetherError, UndoTransactionException)
 from cubicweb import transaction as tx, server, neg_role
 from cubicweb.utils import QueryCache
 from cubicweb.schema import VIRTUAL_RTYPES
@@ -95,37 +95,6 @@ class LogCursor(object):
         return self.cu.fetchone()
 
 
-def make_schema(selected, solution, table, typemap):
-    """return a sql schema to store RQL query result"""
-    sql = []
-    varmap = {}
-    for i, term in enumerate(selected):
-        name = 'C%s' % i
-        key = term.as_string()
-        varmap[key] = '%s.%s' % (table, name)
-        ttype = term.get_type(solution)
-        try:
-            sql.append('%s %s' % (name, typemap[ttype]))
-        except KeyError:
-            # assert not schema(ttype).final
-            sql.append('%s %s' % (name, typemap['Int']))
-    return ','.join(sql), varmap
-
-
-def _modified_sql(table, etypes):
-    # XXX protect against sql injection
-    if len(etypes) > 1:
-        restr = 'type IN (%s)' % ','.join("'%s'" % etype for etype in etypes)
-    else:
-        restr = "type='%s'" % etypes[0]
-    if table == 'entities':
-        attr = 'mtime'
-    else:
-        attr = 'dtime'
-    return 'SELECT type, eid FROM %s WHERE %s AND %s > %%(time)s' % (
-        table, restr, attr)
-
-
 def sql_or_clauses(sql, clauses):
     select, restr = sql.split(' WHERE ', 1)
     restrclauses = restr.split(' AND ')
@@ -138,12 +107,14 @@ def sql_or_clauses(sql, clauses):
         restr = '(%s)' % ' OR '.join(clauses)
     return '%s WHERE %s' % (select, restr)
 
+
 def rdef_table_column(rdef):
     """return table and column used to store the given relation definition in
     the database
     """
     return (SQL_PREFIX + str(rdef.subject),
             SQL_PREFIX + str(rdef.rtype))
+
 
 def rdef_physical_info(dbhelper, rdef):
     """return backend type and a boolean flag if NULL values should be allowed
@@ -182,34 +153,34 @@ def _undo_check_relation_target(tentity, rdef, role):
                                'rtype': rdef.rtype,
                                'eid': tentity.eid})
 
-def _undo_rel_info(session, subj, rtype, obj):
+def _undo_rel_info(cnx, subj, rtype, obj):
     entities = []
     for role, eid in (('subject', subj), ('object', obj)):
         try:
-            entities.append(session.entity_from_eid(eid))
+            entities.append(cnx.entity_from_eid(eid))
         except UnknownEid:
-            raise _UndoException(session._(
+            raise _UndoException(cnx._(
                 "Can't restore relation %(rtype)s, %(role)s entity %(eid)s"
                 " doesn't exist anymore.")
-                                % {'role': session._(role),
-                                   'rtype': session._(rtype),
+                                % {'role': cnx._(role),
+                                   'rtype': cnx._(rtype),
                                    'eid': eid})
     sentity, oentity = entities
     try:
-        rschema = session.vreg.schema.rschema(rtype)
+        rschema = cnx.vreg.schema.rschema(rtype)
         rdef = rschema.rdefs[(sentity.cw_etype, oentity.cw_etype)]
     except KeyError:
-        raise _UndoException(session._(
+        raise _UndoException(cnx._(
             "Can't restore relation %(rtype)s between %(subj)s and "
             "%(obj)s, that relation does not exists anymore in the "
             "schema.")
-                            % {'rtype': session._(rtype),
+                            % {'rtype': cnx._(rtype),
                                'subj': subj,
                                'obj': obj})
     return sentity, oentity, rdef
 
-def _undo_has_later_transaction(session, eid):
-    return session.system_sql('''\
+def _undo_has_later_transaction(cnx, eid):
+    return cnx.system_sql('''\
 SELECT T.tx_uuid FROM transactions AS TREF, transactions AS T
 WHERE TREF.tx_uuid='%(txuuid)s' AND T.tx_uuid!='%(txuuid)s'
 AND T.tx_time>=TREF.tx_time
@@ -218,8 +189,83 @@ AND (EXISTS(SELECT 1 FROM tx_entity_actions AS TEA
      OR EXISTS(SELECT 1 FROM tx_relation_actions as TRA
                WHERE TRA.tx_uuid=T.tx_uuid AND (
                    TRA.eid_from=%(eid)s OR TRA.eid_to=%(eid)s))
-     )''' % {'txuuid': session.transaction_data['undoing_uuid'],
+     )''' % {'txuuid': cnx.transaction_data['undoing_uuid'],
              'eid': eid}).fetchone()
+
+
+class DefaultEidGenerator(object):
+    __slots__ = ('source', 'cnx', 'lock')
+
+    def __init__(self, source):
+        self.source = source
+        self.cnx = None
+        self.lock = Lock()
+
+    def close(self):
+        if self.cnx:
+            self.cnx.close()
+        self.cnx = None
+
+    def create_eid(self, _cnx, count=1):
+        # lock needed to prevent 'Connection is busy with results for another
+        # command (0)' errors with SQLServer
+        assert count > 0
+        with self.lock:
+            return self._create_eid(count)
+
+    def _create_eid(self, count):
+        # internal function doing the eid creation without locking.
+        # needed for the recursive handling of disconnections (otherwise we
+        # deadlock on self._eid_cnx_lock
+        source = self.source
+        if self.cnx is None:
+            self.cnx = source.get_connection()
+        cnx = self.cnx
+        try:
+            cursor = cnx.cursor()
+            for sql in source.dbhelper.sqls_increment_numrange('entities_id_seq', count):
+                cursor.execute(sql)
+            eid = cursor.fetchone()[0]
+        except (source.OperationalError, source.InterfaceError):
+            # FIXME: better detection of deconnection pb
+            source.warning("trying to reconnect create eid connection")
+            self.cnx = None
+            return self._create_eid(count)
+        except source.DbapiError as exc:
+            # We get this one with pyodbc and SQL Server when connection was reset
+            if exc.args[0] == '08S01':
+                source.warning("trying to reconnect create eid connection")
+                self.cnx = None
+                return self._create_eid(count)
+            else:
+                raise
+        except Exception: # WTF?
+            cnx.rollback()
+            self.cnx = None
+            source.exception('create eid failed in an unforeseen way on SQL statement %s', sql)
+            raise
+        else:
+            cnx.commit()
+            return eid
+
+
+class SQLITEEidGenerator(object):
+    __slots__ = ('source', 'lock')
+
+    def __init__(self, source):
+        self.source = source
+        self.lock = Lock()
+
+    def close(self):
+        pass
+
+    def create_eid(self, cnx, count=1):
+        assert count > 0
+        source = self.source
+        with self.lock:
+            for sql in source.dbhelper.sqls_increment_numrange('entities_id_seq', count):
+                cursor = source.doexec(cnx, sql)
+            return cursor.fetchone()[0]
 
 
 class NativeSQLSource(SQLAdapterMixIn, AbstractSource):
@@ -292,38 +338,14 @@ class NativeSQLSource(SQLAdapterMixIn, AbstractSource):
         self.do_fti = not repo.config['delay-full-text-indexation']
         # sql queries cache
         self._cache = QueryCache(repo.config['rql-cache-size'])
-        self._temp_table_data = {}
-        # we need a lock to protect eid attribution function (XXX, really?
-        # explain)
-        self._eid_cnx_lock = Lock()
-        self._eid_creation_cnx = None
         # (etype, attr) / storage mapping
         self._storages = {}
-        # entity types that may be used by other multi-sources instances
-        self.multisources_etypes = set(repo.config['multi-sources-etypes'])
-        # XXX no_sqlite_wrap trick since we've a sqlite locking pb when
-        # running unittest_multisources with the wrapping below
-        if self.dbdriver == 'sqlite' and \
-               not getattr(repo.config, 'no_sqlite_wrap', False):
-            from cubicweb.server.sources.extlite import ConnectionWrapper
-            self.dbhelper.dbname = abspath(self.dbhelper.dbname)
-            self.get_connection = lambda: ConnectionWrapper(self)
-            self.check_connection = lambda cnx: cnx
-            def cnxset_freed(cnx):
-                cnx.close()
-            self.cnxset_freed = cnxset_freed
-        if self.dbdriver == 'sqlite':
-            self._create_eid = None
-            self.create_eid = self._create_eid_sqlite
         self.binary_to_str = self.dbhelper.dbapi_module.binary_to_str
-
-
-    @property
-    def _sqlcnx(self):
-        # XXX: sqlite connections can only be used in the same thread, so
-        #      create a new one each time necessary. If it appears to be time
-        #      consuming, find another way
-        return SQLAdapterMixIn.get_connection(self)
+        if self.dbdriver == 'sqlite':
+            self.eid_generator = SQLITEEidGenerator(self)
+        else:
+            self.eid_generator = DefaultEidGenerator(self)
+        self.create_eid = self.eid_generator.create_eid
 
     def check_config(self, source_entity):
         """check configuration of source entity"""
@@ -347,19 +369,18 @@ class NativeSQLSource(SQLAdapterMixIn, AbstractSource):
         self._cache.pop('Any X WHERE X eid %s' % eid, None)
         self._cache.pop('Any %s' % eid, None)
 
-    def sqlexec(self, session, sql, args=None):
+    def sqlexec(self, cnx, sql, args=None):
         """execute the query and return its result"""
-        return self.process_result(self.doexec(session, sql, args))
+        return self.process_result(self.doexec(cnx, sql, args))
 
     def init_creating(self, cnxset=None):
         # check full text index availibility
         if self.do_fti:
             if cnxset is None:
                 _cnxset = self.repo._get_cnxset()
-                _cnxset.cnxset_set()
             else:
                 _cnxset = cnxset
-            if not self.dbhelper.has_fti_table(_cnxset['system']):
+            if not self.dbhelper.has_fti_table(_cnxset.cu):
                 if not self.repo.config.creating:
                     self.critical('no text index table')
                 self.do_fti = False
@@ -420,9 +441,7 @@ class NativeSQLSource(SQLAdapterMixIn, AbstractSource):
         self.init_creating(source_entity._cw.cnxset)
 
     def shutdown(self):
-        if self._eid_creation_cnx:
-            self._eid_creation_cnx.close()
-            self._eid_creation_cnx = None
+        self.eid_generator.close()
 
     # XXX deprecates [un]map_attribute?
     def map_attribute(self, etype, attr, cb, sourcedb=True):
@@ -491,21 +510,18 @@ class NativeSQLSource(SQLAdapterMixIn, AbstractSource):
         # can't claim not supporting a relation
         return True #not rtype == 'content_for'
 
-    def may_cross_relation(self, rtype):
-        return True
-
-    def authenticate(self, session, login, **kwargs):
+    def authenticate(self, cnx, login, **kwargs):
         """return CWUser eid for the given login and other authentication
         information found in kwargs, else raise `AuthenticationError`
         """
         for authentifier in self.authentifiers:
             try:
-                return authentifier.authenticate(session, login, **kwargs)
+                return authentifier.authenticate(cnx, login, **kwargs)
             except AuthenticationError:
                 continue
         raise AuthenticationError()
 
-    def syntax_tree_search(self, session, union, args=None, cachekey=None,
+    def syntax_tree_search(self, cnx, union, args=None, cachekey=None,
                            varmap=None):
         """return result from this source for a rql query (actually from
         a rql syntax tree and a solution dictionary mapping each used
@@ -531,73 +547,27 @@ class NativeSQLSource(SQLAdapterMixIn, AbstractSource):
         args = self.merge_args(args, qargs)
         assert isinstance(sql, basestring), repr(sql)
         try:
-            cursor = self.doexec(session, sql, args)
+            cursor = self.doexec(cnx, sql, args)
         except (self.OperationalError, self.InterfaceError):
-            if session.mode == 'write':
+            if cnx.mode == 'write':
                 # do not attempt to reconnect if there has been some write
                 # during the transaction
                 raise
             # FIXME: better detection of deconnection pb
             self.warning("trying to reconnect")
-            session.cnxset.reconnect(self)
-            cursor = self.doexec(session, sql, args)
+            cnx.cnxset.reconnect()
+            cursor = self.doexec(cnx, sql, args)
         except self.DbapiError as exc:
             # We get this one with pyodbc and SQL Server when connection was reset
-            if exc.args[0] == '08S01' and session.mode != 'write':
+            if exc.args[0] == '08S01' and cnx.mode != 'write':
                 self.warning("trying to reconnect")
-                session.cnxset.reconnect(self)
-                cursor = self.doexec(session, sql, args)
+                cnx.cnxset.reconnect()
+                cursor = self.doexec(cnx, sql, args)
             else:
                 raise
-        results = self.process_result(cursor, cbs, session=session)
+        results = self.process_result(cursor, cbs, session=cnx)
         assert dbg_results(results)
         return results
-
-    def flying_insert(self, table, session, union, args=None, varmap=None):
-        """similar as .syntax_tree_search, but inserts data in the
-        temporary table (on-the-fly if possible, eg for the system
-        source whose the given cursor come from). If not possible,
-        inserts all data by calling .executemany().
-        """
-        assert dbg_st_search(
-            self.uri, union, varmap, args,
-            prefix='ON THE FLY temp data insertion into %s from' % table)
-        # generate sql queries if we are able to do so
-        sql, qargs, cbs = self._rql_sqlgen.generate(union, args, varmap)
-        query = 'INSERT INTO %s %s' % (table, sql.encode(self._dbencoding))
-        self.doexec(session, query, self.merge_args(args, qargs))
-
-    def manual_insert(self, results, table, session):
-        """insert given result into a temporary table on the system source"""
-        if server.DEBUG & server.DBG_RQL:
-            print '  manual insertion of', len(results), 'results into', table
-        if not results:
-            return
-        query_args = ['%%(%s)s' % i for i in xrange(len(results[0]))]
-        query = 'INSERT INTO %s VALUES(%s)' % (table, ','.join(query_args))
-        kwargs_list = []
-        for row in results:
-            kwargs = {}
-            row = tuple(row)
-            for index, cell in enumerate(row):
-                if isinstance(cell, Binary):
-                    cell = self._binary(cell.getvalue())
-                kwargs[str(index)] = cell
-            kwargs_list.append(kwargs)
-        self.doexecmany(session, query, kwargs_list)
-
-    def clean_temp_data(self, session, temptables):
-        """remove temporary data, usually associated to temporary tables"""
-        if temptables:
-            for table in temptables:
-                try:
-                    self.doexec(session,'DROP TABLE %s' % table)
-                except Exception:
-                    pass
-                try:
-                    del self._temp_table_data[table]
-                except KeyError:
-                    continue
 
     @contextmanager
     def _storage_handler(self, entity, event):
@@ -630,60 +600,60 @@ class NativeSQLSource(SQLAdapterMixIn, AbstractSource):
             for entity, attr, value in restore_values:
                 entity.cw_edited.edited_attribute(attr, value)
 
-    def add_entity(self, session, entity):
+    def add_entity(self, cnx, entity):
         """add a new entity to the source"""
         with self._storage_handler(entity, 'added'):
             attrs = self.preprocess_entity(entity)
             sql = self.sqlgen.insert(SQL_PREFIX + entity.cw_etype, attrs)
-            self.doexec(session, sql, attrs)
-            if session.ertype_supports_undo(entity.cw_etype):
-                self._record_tx_action(session, 'tx_entity_actions', 'C',
+            self.doexec(cnx, sql, attrs)
+            if cnx.ertype_supports_undo(entity.cw_etype):
+                self._record_tx_action(cnx, 'tx_entity_actions', 'C',
                                        etype=entity.cw_etype, eid=entity.eid)
 
-    def update_entity(self, session, entity):
+    def update_entity(self, cnx, entity):
         """replace an entity in the source"""
         with self._storage_handler(entity, 'updated'):
             attrs = self.preprocess_entity(entity)
-            if session.ertype_supports_undo(entity.cw_etype):
-                changes = self._save_attrs(session, entity, attrs)
-                self._record_tx_action(session, 'tx_entity_actions', 'U',
+            if cnx.ertype_supports_undo(entity.cw_etype):
+                changes = self._save_attrs(cnx, entity, attrs)
+                self._record_tx_action(cnx, 'tx_entity_actions', 'U',
                                        etype=entity.cw_etype, eid=entity.eid,
                                        changes=self._binary(dumps(changes)))
             sql = self.sqlgen.update(SQL_PREFIX + entity.cw_etype, attrs,
                                      ['cw_eid'])
-            self.doexec(session, sql, attrs)
+            self.doexec(cnx, sql, attrs)
 
-    def delete_entity(self, session, entity):
+    def delete_entity(self, cnx, entity):
         """delete an entity from the source"""
         with self._storage_handler(entity, 'deleted'):
-            if session.ertype_supports_undo(entity.cw_etype):
+            if cnx.ertype_supports_undo(entity.cw_etype):
                 attrs = [SQL_PREFIX + r.type
                          for r in entity.e_schema.subject_relations()
                          if (r.final or r.inlined) and not r in VIRTUAL_RTYPES]
-                changes = self._save_attrs(session, entity, attrs)
-                self._record_tx_action(session, 'tx_entity_actions', 'D',
+                changes = self._save_attrs(cnx, entity, attrs)
+                self._record_tx_action(cnx, 'tx_entity_actions', 'D',
                                        etype=entity.cw_etype, eid=entity.eid,
                                        changes=self._binary(dumps(changes)))
             attrs = {'cw_eid': entity.eid}
             sql = self.sqlgen.delete(SQL_PREFIX + entity.cw_etype, attrs)
-            self.doexec(session, sql, attrs)
+            self.doexec(cnx, sql, attrs)
 
-    def add_relation(self, session, subject, rtype, object, inlined=False):
+    def add_relation(self, cnx, subject, rtype, object, inlined=False):
         """add a relation to the source"""
-        self._add_relations(session,  rtype, [(subject, object)], inlined)
-        if session.ertype_supports_undo(rtype):
-            self._record_tx_action(session, 'tx_relation_actions', 'A',
+        self._add_relations(cnx,  rtype, [(subject, object)], inlined)
+        if cnx.ertype_supports_undo(rtype):
+            self._record_tx_action(cnx, 'tx_relation_actions', 'A',
                                    eid_from=subject, rtype=rtype, eid_to=object)
 
-    def add_relations(self, session,  rtype, subj_obj_list, inlined=False):
+    def add_relations(self, cnx,  rtype, subj_obj_list, inlined=False):
         """add a relations to the source"""
-        self._add_relations(session, rtype, subj_obj_list, inlined)
-        if session.ertype_supports_undo(rtype):
+        self._add_relations(cnx, rtype, subj_obj_list, inlined)
+        if cnx.ertype_supports_undo(rtype):
             for subject, object in subj_obj_list:
-                self._record_tx_action(session, 'tx_relation_actions', 'A',
+                self._record_tx_action(cnx, 'tx_relation_actions', 'A',
                                        eid_from=subject, rtype=rtype, eid_to=object)
 
-    def _add_relations(self, session, rtype, subj_obj_list, inlined=False):
+    def _add_relations(self, cnx, rtype, subj_obj_list, inlined=False):
         """add a relation to the source"""
         sql = []
         if inlined is False:
@@ -693,7 +663,7 @@ class NativeSQLSource(SQLAdapterMixIn, AbstractSource):
         else: # used by data import
             etypes = {}
             for subject, object in subj_obj_list:
-                etype = session.describe(subject)[0]
+                etype = cnx.entity_metas(subject)['type']
                 if etype in etypes:
                     etypes[etype].append((subject, object))
                 else:
@@ -705,20 +675,20 @@ class NativeSQLSource(SQLAdapterMixIn, AbstractSource):
                                      ['cw_eid']),
                             attrs))
         for statement, attrs in sql:
-            self.doexecmany(session, statement, attrs)
+            self.doexecmany(cnx, statement, attrs)
 
-    def delete_relation(self, session, subject, rtype, object):
+    def delete_relation(self, cnx, subject, rtype, object):
         """delete a relation from the source"""
         rschema = self.schema.rschema(rtype)
-        self._delete_relation(session, subject, rtype, object, rschema.inlined)
-        if session.ertype_supports_undo(rtype):
-            self._record_tx_action(session, 'tx_relation_actions', 'R',
+        self._delete_relation(cnx, subject, rtype, object, rschema.inlined)
+        if cnx.ertype_supports_undo(rtype):
+            self._record_tx_action(cnx, 'tx_relation_actions', 'R',
                                    eid_from=subject, rtype=rtype, eid_to=object)
 
-    def _delete_relation(self, session, subject, rtype, object, inlined=False):
+    def _delete_relation(self, cnx, subject, rtype, object, inlined=False):
         """delete a relation from the source"""
         if inlined:
-            table = SQL_PREFIX + session.describe(subject)[0]
+            table = SQL_PREFIX + cnx.entity_metas(subject)['type']
             column = SQL_PREFIX + rtype
             sql = 'UPDATE %s SET %s=NULL WHERE %seid=%%(eid)s' % (table, column,
                                                                   SQL_PREFIX)
@@ -726,16 +696,16 @@ class NativeSQLSource(SQLAdapterMixIn, AbstractSource):
         else:
             attrs = {'eid_from': subject, 'eid_to': object}
             sql = self.sqlgen.delete('%s_relation' % rtype, attrs)
-        self.doexec(session, sql, attrs)
+        self.doexec(cnx, sql, attrs)
 
-    def doexec(self, session, query, args=None, rollback=True):
+    def doexec(self, cnx, query, args=None, rollback=True):
         """Execute a query.
         it's a function just so that it shows up in profiling
         """
-        cursor = session.cnxset[self.uri]
+        cursor = cnx.cnxset.cu
         if server.DEBUG & server.DBG_SQL:
-            cnx = session.cnxset.connection(self.uri)
-            # getattr to get the actual connection if cnx is a ConnectionWrapper
+            cnx = cnx.cnxset.cnx
+            # getattr to get the actual connection if cnx is a CnxLoggingWrapper
             # instance
             print 'exec', query, args, getattr(cnx, '_cnx', cnx)
         try:
@@ -749,7 +719,7 @@ class NativeSQLSource(SQLAdapterMixIn, AbstractSource):
                               query, args, ex.args[0])
             if rollback:
                 try:
-                    session.cnxset.connection(self.uri).rollback()
+                    cnx.cnxset.rollback()
                     if self.repo.config.mode != 'test':
                         self.critical('transaction has been rolled back')
                 except Exception as ex:
@@ -760,24 +730,31 @@ class NativeSQLSource(SQLAdapterMixIn, AbstractSource):
                     # postgres, sqlserver
                     mo = re.search("unique_[a-z0-9]{32}", arg)
                     if mo is not None:
-                        raise UniqueTogetherError(session, cstrname=mo.group(0))
-                    # sqlite
+                        raise UniqueTogetherError(cnx, cstrname=mo.group(0))
+                    # old sqlite
                     mo = re.search('columns (.*) are not unique', arg)
                     if mo is not None: # sqlite in use
                         # we left chop the 'cw_' prefix of attribute names
                         rtypes = [c.strip()[3:]
                                   for c in mo.group(1).split(',')]
-                        raise UniqueTogetherError(session, rtypes=rtypes)
+                        raise UniqueTogetherError(cnx, rtypes=rtypes)
+                    # sqlite after http://www.sqlite.org/cgi/src/info/c80e229dd9c1230a
+                    if arg.startswith('UNIQUE constraint failed:'):
+                        # message looks like: "UNIQUE constraint failed: foo.cw_bar, foo.cw_baz"
+                        # so drop the prefix, split on comma, drop the tablenames, and drop "cw_"
+                        columns = arg.split(':', 1)[1].split(',')
+                        rtypes = [c.split('.', 1)[1].strip()[3:] for c in columns]
+                        raise UniqueTogetherError(cnx, rtypes=rtypes)
             raise
         return cursor
 
-    def doexecmany(self, session, query, args):
+    def doexecmany(self, cnx, query, args):
         """Execute a query.
         it's a function just so that it shows up in profiling
         """
         if server.DEBUG & server.DBG_SQL:
             print 'execmany', query, 'with', len(args), 'arguments'
-        cursor = session.cnxset[self.uri]
+        cursor = cnx.cnxset.cu
         try:
             # str(query) to avoid error if it's an unicode string
             cursor.executemany(str(query), args)
@@ -788,7 +765,7 @@ class NativeSQLSource(SQLAdapterMixIn, AbstractSource):
                 self.critical("sql many: %r\n args: %s\ndbms message: %r",
                               query, args, ex.args[0])
             try:
-                session.cnxset.connection(self.uri).rollback()
+                cnx.cnxset.rollback()
                 if self.repo.config.mode != 'test':
                     self.critical('transaction has been rolled back')
             except Exception:
@@ -797,7 +774,7 @@ class NativeSQLSource(SQLAdapterMixIn, AbstractSource):
 
     # short cut to method requiring advanced db helper usage ##################
 
-    def update_rdef_column(self, session, rdef):
+    def update_rdef_column(self, cnx, rdef):
         """update physical column for a relation definition (final or inlined)
         """
         table, column = rdef_table_column(rdef)
@@ -806,12 +783,12 @@ class NativeSQLSource(SQLAdapterMixIn, AbstractSource):
             self.error("backend can't alter %s.%s to %s%s", table, column, coltype,
                        not allownull and 'NOT NULL' or '')
             return
-        self.dbhelper.change_col_type(LogCursor(session.cnxset[self.uri]),
+        self.dbhelper.change_col_type(LogCursor(cnx.cnxset.cu),
                                       table, column, coltype, allownull)
         self.info('altered %s.%s: now %s%s', table, column, coltype,
                   not allownull and 'NOT NULL' or '')
 
-    def update_rdef_null_allowed(self, session, rdef):
+    def update_rdef_null_allowed(self, cnx, rdef):
         """update NULL / NOT NULL of physical column for a relation definition
         (final or inlined)
         """
@@ -821,62 +798,62 @@ class NativeSQLSource(SQLAdapterMixIn, AbstractSource):
             return
         table, column = rdef_table_column(rdef)
         coltype, allownull = rdef_physical_info(self.dbhelper, rdef)
-        self.dbhelper.set_null_allowed(LogCursor(session.cnxset[self.uri]),
+        self.dbhelper.set_null_allowed(LogCursor(cnx.cnxset.cu),
                                        table, column, coltype, allownull)
 
-    def update_rdef_indexed(self, session, rdef):
+    def update_rdef_indexed(self, cnx, rdef):
         table, column = rdef_table_column(rdef)
         if rdef.indexed:
-            self.create_index(session, table, column)
+            self.create_index(cnx, table, column)
         else:
-            self.drop_index(session, table, column)
+            self.drop_index(cnx, table, column)
 
-    def update_rdef_unique(self, session, rdef):
+    def update_rdef_unique(self, cnx, rdef):
         table, column = rdef_table_column(rdef)
         if rdef.constraint_by_type('UniqueConstraint'):
-            self.create_index(session, table, column, unique=True)
+            self.create_index(cnx, table, column, unique=True)
         else:
-            self.drop_index(session, table, column, unique=True)
+            self.drop_index(cnx, table, column, unique=True)
 
-    def create_index(self, session, table, column, unique=False):
-        cursor = LogCursor(session.cnxset[self.uri])
+    def create_index(self, cnx, table, column, unique=False):
+        cursor = LogCursor(cnx.cnxset.cu)
         self.dbhelper.create_index(cursor, table, column, unique)
 
-    def drop_index(self, session, table, column, unique=False):
-        cursor = LogCursor(session.cnxset[self.uri])
+    def drop_index(self, cnx, table, column, unique=False):
+        cursor = LogCursor(cnx.cnxset.cu)
         self.dbhelper.drop_index(cursor, table, column, unique)
 
     # system source interface #################################################
 
-    def _eid_type_source(self, session, eid, sql, _retry=True):
+    def _eid_type_source(self, cnx, eid, sql, _retry=True):
         try:
-            res = self.doexec(session, sql).fetchone()
+            res = self.doexec(cnx, sql).fetchone()
             if res is not None:
                 return res
         except (self.OperationalError, self.InterfaceError):
-            if session.mode == 'read' and _retry:
+            if cnx.mode == 'read' and _retry:
                 self.warning("trying to reconnect (eid_type_source())")
-                session.cnxset.reconnect(self)
-                return self._eid_type_source(session, eid, sql, _retry=False)
+                cnx.cnxset.reconnect()
+                return self._eid_type_source(cnx, eid, sql, _retry=False)
         except Exception:
-            assert session.cnxset, 'session has no connections set'
+            assert cnx.cnxset, 'connection has no connections set'
             self.exception('failed to query entities table for eid %s', eid)
         raise UnknownEid(eid)
 
-    def eid_type_source(self, session, eid): # pylint: disable=E0202
+    def eid_type_source(self, cnx, eid): # pylint: disable=E0202
         """return a tuple (type, source, extid) for the entity with id <eid>"""
-        sql = 'SELECT type, source, extid, asource FROM entities WHERE eid=%s' % eid
-        res = self._eid_type_source(session, eid, sql)
+        sql = 'SELECT type, extid, asource FROM entities WHERE eid=%s' % eid
+        res = self._eid_type_source(cnx, eid, sql)
         if res[-2] is not None:
             if not isinstance(res, list):
                 res = list(res)
             res[-2] = b64decode(res[-2])
         return res
 
-    def eid_type_source_pre_131(self, session, eid):
+    def eid_type_source_pre_131(self, cnx, eid):
         """return a tuple (type, source, extid) for the entity with id <eid>"""
-        sql = 'SELECT type, source, extid FROM entities WHERE eid=%s' % eid
-        res = self._eid_type_source(session, eid, sql)
+        sql = 'SELECT type, extid FROM entities WHERE eid=%s' % eid
+        res = self._eid_type_source(cnx, eid, sql)
         if not isinstance(res, list):
             res = list(res)
         if res[-1] is not None:
@@ -884,13 +861,12 @@ class NativeSQLSource(SQLAdapterMixIn, AbstractSource):
         res.append(res[1])
         return res
 
-    def extid2eid(self, session, source_uri, extid):
+    def extid2eid(self, cnx, extid):
         """get eid from an external id. Return None if no record found."""
         assert isinstance(extid, str)
-        cursor = self.doexec(session,
-                             'SELECT eid FROM entities '
-                             'WHERE extid=%(x)s AND source=%(s)s',
-                             {'x': b64encode(extid), 's': source_uri})
+        cursor = self.doexec(cnx,
+                             'SELECT eid FROM entities WHERE extid=%(x)s',
+                             {'x': b64encode(extid)})
         # XXX testing rowcount cause strange bug with sqlite, results are there
         #     but rowcount is 0
         #if cursor.rowcount > 0:
@@ -902,167 +878,70 @@ class NativeSQLSource(SQLAdapterMixIn, AbstractSource):
             pass
         return None
 
-    def make_temp_table_name(self, table):
-        return self.dbhelper.temporary_table_name(table)
-
-    def temp_table_def(self, selected, sol, table):
-        return make_schema(selected, sol, table, self.dbhelper.TYPE_MAPPING)
-
-    def create_temp_table(self, session, table, schema):
-        # we don't want on commit drop, this may cause problem when
-        # running with an ldap source, and table will be deleted manually any way
-        # on commit
-        sql = self.dbhelper.sql_temporary_table(table, schema, False)
-        self.doexec(session, sql)
-
-    def _create_eid_sqlite(self, session):
-        with self._eid_cnx_lock:
-            for sql in self.dbhelper.sqls_increment_sequence('entities_id_seq'):
-                cursor = self.doexec(session, sql)
-            return cursor.fetchone()[0]
-
-
-    def create_eid(self, session): # pylint: disable=E0202
-        # lock needed to prevent 'Connection is busy with results for another
-        # command (0)' errors with SQLServer
-        with self._eid_cnx_lock:
-            return self._create_eid() # pylint: disable=E1102
-
-    def _create_eid(self): # pylint: disable=E0202
-        # internal function doing the eid creation without locking.
-        # needed for the recursive handling of disconnections (otherwise we
-        # deadlock on self._eid_cnx_lock
-        if self._eid_creation_cnx is None:
-            self._eid_creation_cnx = self.get_connection()
-        cnx = self._eid_creation_cnx
-        try:
-            cursor = cnx.cursor()
-            for sql in self.dbhelper.sqls_increment_sequence('entities_id_seq'):
-                cursor.execute(sql)
-            eid = cursor.fetchone()[0]
-        except (self.OperationalError, self.InterfaceError):
-            # FIXME: better detection of deconnection pb
-            self.warning("trying to reconnect create eid connection")
-            self._eid_creation_cnx = None
-            return self._create_eid() # pylint: disable=E1102
-        except self.DbapiError as exc:
-            # We get this one with pyodbc and SQL Server when connection was reset
-            if exc.args[0] == '08S01':
-                self.warning("trying to reconnect create eid connection")
-                self._eid_creation_cnx = None
-                return self._create_eid() # pylint: disable=E1102
-            else:
-                raise
-        except Exception: # WTF?
-            cnx.rollback()
-            self._eid_creation_cnx = None
-            self.exception('create eid failed in an unforeseen way on SQL statement %s', sql)
-            raise
-        else:
-            cnx.commit()
-            return eid
-
-    def _handle_is_relation_sql(self, session, sql, attrs):
+    def _handle_is_relation_sql(self, cnx, sql, attrs):
         """ Handler for specific is_relation sql that may be
         overwritten in some stores"""
-        self.doexec(session, sql % attrs)
+        self.doexec(cnx, sql % attrs)
 
     _handle_insert_entity_sql = doexec
     _handle_is_instance_of_sql = _handle_source_relation_sql = _handle_is_relation_sql
 
-    def add_info(self, session, entity, source, extid, complete):
+    def add_info(self, cnx, entity, source, extid, complete):
         """add type and source info for an eid into the system table"""
-        # begin by inserting eid/type/source/extid into the entities table
-        if extid is not None:
-            assert isinstance(extid, str)
-            extid = b64encode(extid)
-        uri = 'system' if source.copy_based_source else source.uri
-        attrs = {'type': entity.cw_etype, 'eid': entity.eid, 'extid': extid,
-                 'source': uri, 'asource': source.uri, 'mtime': datetime.utcnow()}
-        self._handle_insert_entity_sql(session, self.sqlgen.insert('entities', attrs), attrs)
-        # insert core relations: is, is_instance_of and cw_source
-        try:
-            self._handle_is_relation_sql(session, 'INSERT INTO is_relation(eid_from,eid_to) VALUES (%s,%s)',
-                                         (entity.eid, eschema_eid(session, entity.e_schema)))
-        except IndexError:
-            # during schema serialization, skip
-            pass
-        else:
-            for eschema in entity.e_schema.ancestors() + [entity.e_schema]:
-                self._handle_is_relation_sql(session,
-                                             'INSERT INTO is_instance_of_relation(eid_from,eid_to) VALUES (%s,%s)',
-                                             (entity.eid, eschema_eid(session, eschema)))
-        if 'CWSource' in self.schema and source.eid is not None: # else, cw < 3.10
-            self._handle_is_relation_sql(session, 'INSERT INTO cw_source_relation(eid_from,eid_to) VALUES (%s,%s)',
-                                         (entity.eid, source.eid))
-        # now we can update the full text index
-        if self.do_fti and self.need_fti_indexation(entity.cw_etype):
-            if complete:
-                entity.complete(entity.e_schema.indexable_attributes())
-            self.index_entity(session, entity=entity)
+        with cnx.ensure_cnx_set:
+            # begin by inserting eid/type/source/extid into the entities table
+            if extid is not None:
+                assert isinstance(extid, str)
+                extid = b64encode(extid)
+            attrs = {'type': entity.cw_etype, 'eid': entity.eid, 'extid': extid,
+                     'asource': source.uri}
+            self._handle_insert_entity_sql(cnx, self.sqlgen.insert('entities', attrs), attrs)
+            # insert core relations: is, is_instance_of and cw_source
+            try:
+                self._handle_is_relation_sql(cnx, 'INSERT INTO is_relation(eid_from,eid_to) VALUES (%s,%s)',
+                                             (entity.eid, eschema_eid(cnx, entity.e_schema)))
+            except IndexError:
+                # during schema serialization, skip
+                pass
+            else:
+                for eschema in entity.e_schema.ancestors() + [entity.e_schema]:
+                    self._handle_is_relation_sql(cnx,
+                                                 'INSERT INTO is_instance_of_relation(eid_from,eid_to) VALUES (%s,%s)',
+                                                 (entity.eid, eschema_eid(cnx, eschema)))
+            if 'CWSource' in self.schema and source.eid is not None: # else, cw < 3.10
+                self._handle_is_relation_sql(cnx, 'INSERT INTO cw_source_relation(eid_from,eid_to) VALUES (%s,%s)',
+                                             (entity.eid, source.eid))
+            # now we can update the full text index
+            if self.do_fti and self.need_fti_indexation(entity.cw_etype):
+                if complete:
+                    entity.complete(entity.e_schema.indexable_attributes())
+                self.index_entity(cnx, entity=entity)
 
-    def update_info(self, session, entity, need_fti_update):
+    def update_info(self, cnx, entity, need_fti_update):
         """mark entity as being modified, fulltext reindex if needed"""
         if self.do_fti and need_fti_update:
             # reindex the entity only if this query is updating at least
             # one indexable attribute
-            self.index_entity(session, entity=entity)
-        # update entities.mtime.
-        # XXX Only if entity.cw_etype in self.multisources_etypes?
-        attrs = {'eid': entity.eid, 'mtime': datetime.utcnow()}
-        self.doexec(session, self.sqlgen.update('entities', attrs, ['eid']), attrs)
+            self.index_entity(cnx, entity=entity)
 
-    def delete_info_multi(self, session, entities, uri):
+    def delete_info_multi(self, cnx, entities):
         """delete system information on deletion of a list of entities with the
         same etype and belinging to the same source
 
         * update the fti
         * remove record from the `entities` table
-        * transfer it to the `deleted_entities`
         """
-        self.fti_unindex_entities(session, entities)
+        self.fti_unindex_entities(cnx, entities)
         attrs = {'eid': '(%s)' % ','.join([str(_e.eid) for _e in entities])}
-        self.doexec(session, self.sqlgen.delete_many('entities', attrs), attrs)
-        if entities[0].__regid__ not in self.multisources_etypes:
-            return
-        attrs = {'type': entities[0].__regid__,
-                 'source': uri, 'dtime': datetime.utcnow()}
-        for entity in entities:
-            extid = entity.cw_metainformation()['extid']
-            if extid is not None:
-                assert isinstance(extid, str), type(extid)
-                extid = b64encode(extid)
-            attrs.update({'eid': entity.eid, 'extid': extid})
-            self.doexec(session, self.sqlgen.insert('deleted_entities', attrs), attrs)
-
-    def modified_entities(self, session, etypes, mtime):
-        """return a 2-uple:
-        * list of (etype, eid) of entities of the given types which have been
-          modified since the given timestamp (actually entities whose full text
-          index content has changed)
-        * list of (etype, eid) of entities of the given types which have been
-          deleted since the given timestamp
-        """
-        for etype in etypes:
-            if not etype in self.multisources_etypes:
-                self.error('%s not listed as a multi-sources entity types. '
-                              'Modify your configuration' % etype)
-                self.multisources_etypes.add(etype)
-        modsql = _modified_sql('entities', etypes)
-        cursor = self.doexec(session, modsql, {'time': mtime})
-        modentities = cursor.fetchall()
-        delsql = _modified_sql('deleted_entities', etypes)
-        cursor = self.doexec(session, delsql, {'time': mtime})
-        delentities = cursor.fetchall()
-        return modentities, delentities
+        self.doexec(cnx, self.sqlgen.delete_many('entities', attrs), attrs)
 
     # undo support #############################################################
 
-    def undoable_transactions(self, session, ueid=None, **actionfilters):
-        """See :class:`cubicweb.dbapi.Connection.undoable_transactions`"""
-        # force filtering to session's user if not a manager
-        if not session.user.is_in_group('managers'):
-            ueid = session.user.eid
+    def undoable_transactions(self, cnx, ueid=None, **actionfilters):
+        """See :class:`cubicweb.repoapi.ClientConnection.undoable_transactions`"""
+        # force filtering to connection's user if not a manager
+        if not cnx.user.is_in_group('managers'):
+            ueid = cnx.user.eid
         restr = {}
         if ueid is not None:
             restr['tx_user'] = ueid
@@ -1126,17 +1005,18 @@ class NativeSQLSource(SQLAdapterMixIn, AbstractSource):
             restr.update(tearestr)
         # we want results ordered by transaction's time descendant
         sql += ' ORDER BY tx_time DESC'
-        cu = self.doexec(session, sql, restr)
-        # turn results into transaction objects
-        return [tx.Transaction(*args) for args in cu.fetchall()]
+        with cnx.ensure_cnx_set:
+            cu = self.doexec(cnx, sql, restr)
+            # turn results into transaction objects
+            return [tx.Transaction(*args) for args in cu.fetchall()]
 
-    def tx_info(self, session, txuuid):
-        """See :class:`cubicweb.dbapi.Connection.transaction_info`"""
-        return tx.Transaction(txuuid, *self._tx_info(session, txuuid))
+    def tx_info(self, cnx, txuuid):
+        """See :class:`cubicweb.repoapi.ClientConnection.transaction_info`"""
+        return tx.Transaction(txuuid, *self._tx_info(cnx, txuuid))
 
-    def tx_actions(self, session, txuuid, public):
-        """See :class:`cubicweb.dbapi.Connection.transaction_actions`"""
-        self._tx_info(session, txuuid)
+    def tx_actions(self, cnx, txuuid, public):
+        """See :class:`cubicweb.repoapi.ClientConnection.transaction_actions`"""
+        self._tx_info(cnx, txuuid)
         restr = {'tx_uuid': txuuid}
         if public:
             restr['txa_public'] = True
@@ -1144,54 +1024,54 @@ class NativeSQLSource(SQLAdapterMixIn, AbstractSource):
         sql = self.sqlgen.select('tx_entity_actions', restr,
                                  ('txa_action', 'txa_public', 'txa_order',
                                   'etype', 'eid', 'changes'))
-        cu = self.doexec(session, sql, restr)
+        cu = self.doexec(cnx, sql, restr)
         actions = [tx.EntityAction(a,p,o,et,e,c and loads(self.binary_to_str(c)))
                    for a,p,o,et,e,c in cu.fetchall()]
         sql = self.sqlgen.select('tx_relation_actions', restr,
                                  ('txa_action', 'txa_public', 'txa_order',
                                   'rtype', 'eid_from', 'eid_to'))
-        cu = self.doexec(session, sql, restr)
+        cu = self.doexec(cnx, sql, restr)
         actions += [tx.RelationAction(*args) for args in cu.fetchall()]
         return sorted(actions, key=lambda x: x.order)
 
-    def undo_transaction(self, session, txuuid):
-        """See :class:`cubicweb.dbapi.Connection.undo_transaction`
+    def undo_transaction(self, cnx, txuuid):
+        """See :class:`cubicweb.repoapi.ClientConnection.undo_transaction`
 
         important note: while undoing of a transaction, only hooks in the
         'integrity', 'activeintegrity' and 'undo' categories are called.
         """
         # set mode so connections set isn't released subsquently until commit/rollback
-        session.mode = 'write'
+        cnx.mode = 'write'
         errors = []
-        session.transaction_data['undoing_uuid'] = txuuid
-        with session.deny_all_hooks_but('integrity', 'activeintegrity', 'undo'):
-            with session.security_enabled(read=False):
-                for action in reversed(self.tx_actions(session, txuuid, False)):
+        cnx.transaction_data['undoing_uuid'] = txuuid
+        with cnx.deny_all_hooks_but('integrity', 'activeintegrity', 'undo'):
+            with cnx.security_enabled(read=False):
+                for action in reversed(self.tx_actions(cnx, txuuid, False)):
                     undomethod = getattr(self, '_undo_%s' % action.action.lower())
-                    errors += undomethod(session, action)
+                    errors += undomethod(cnx, action)
         # remove the transactions record
-        self.doexec(session,
+        self.doexec(cnx,
                     "DELETE FROM transactions WHERE tx_uuid='%s'" % txuuid)
         if errors:
             raise UndoTransactionException(txuuid, errors)
         else:
             return
 
-    def start_undoable_transaction(self, session, uuid):
-        """session callback to insert a transaction record in the transactions
+    def start_undoable_transaction(self, cnx, uuid):
+        """connection callback to insert a transaction record in the transactions
         table when some undoable transaction is started
         """
-        ueid = session.user.eid
+        ueid = cnx.user.eid
         attrs = {'tx_uuid': uuid, 'tx_user': ueid, 'tx_time': datetime.utcnow()}
-        self.doexec(session, self.sqlgen.insert('transactions', attrs), attrs)
+        self.doexec(cnx, self.sqlgen.insert('transactions', attrs), attrs)
 
-    def _save_attrs(self, session, entity, attrs):
+    def _save_attrs(self, cnx, entity, attrs):
         """return a pickleable dictionary containing current values for given
         attributes of the entity
         """
         restr = {'cw_eid': entity.eid}
         sql = self.sqlgen.select(SQL_PREFIX + entity.cw_etype, restr, attrs)
-        cu = self.doexec(session, sql, restr)
+        cu = self.doexec(cnx, sql, restr)
         values = dict(zip(attrs, cu.fetchone()))
         # ensure backend specific binary are converted back to string
         eschema = entity.e_schema
@@ -1206,36 +1086,38 @@ class NativeSQLSource(SQLAdapterMixIn, AbstractSource):
                     values[column] = self.binary_to_str(value)
         return values
 
-    def _record_tx_action(self, session, table, action, **kwargs):
+    def _record_tx_action(self, cnx, table, action, **kwargs):
         """record a transaction action in the given table (either
         'tx_entity_actions' or 'tx_relation_action')
         """
-        kwargs['tx_uuid'] = session.transaction_uuid()
+        kwargs['tx_uuid'] = cnx.transaction_uuid()
         kwargs['txa_action'] = action
-        kwargs['txa_order'] = session.transaction_inc_action_counter()
-        kwargs['txa_public'] = session.running_dbapi_query
-        self.doexec(session, self.sqlgen.insert(table, kwargs), kwargs)
+        kwargs['txa_order'] = cnx.transaction_inc_action_counter()
+        kwargs['txa_public'] = cnx.running_dbapi_query
+        self.doexec(cnx, self.sqlgen.insert(table, kwargs), kwargs)
 
-    def _tx_info(self, session, txuuid):
+    def _tx_info(self, cnx, txuuid):
         """return transaction's time and user of the transaction with the given uuid.
 
         raise `NoSuchTransaction` if there is no such transaction of if the
-        session's user isn't allowed to see it.
+        connection's user isn't allowed to see it.
         """
-        restr = {'tx_uuid': txuuid}
-        sql = self.sqlgen.select('transactions', restr, ('tx_time', 'tx_user'))
-        cu = self.doexec(session, sql, restr)
-        try:
-            time, ueid = cu.fetchone()
-        except TypeError:
-            raise tx.NoSuchTransaction(txuuid)
-        if not (session.user.is_in_group('managers')
-                or session.user.eid == ueid):
-            raise tx.NoSuchTransaction(txuuid)
-        return time, ueid
+        with cnx.ensure_cnx_set:
+            restr = {'tx_uuid': txuuid}
+            sql = self.sqlgen.select('transactions', restr,
+                                     ('tx_time', 'tx_user'))
+            cu = self.doexec(cnx, sql, restr)
+            try:
+                time, ueid = cu.fetchone()
+            except TypeError:
+                raise tx.NoSuchTransaction(txuuid)
+            if not (cnx.user.is_in_group('managers')
+                    or cnx.user.eid == ueid):
+                raise tx.NoSuchTransaction(txuuid)
+            return time, ueid
 
     def _reedit_entity(self, entity, changes, err):
-        session = entity._cw
+        cnx = entity._cw
         eid = entity.eid
         entity.cw_edited = edited = EditedEntity(entity)
         # check for schema changes, entities linked through inlined relation
@@ -1249,7 +1131,7 @@ class NativeSQLSource(SQLAdapterMixIn, AbstractSource):
             try:
                 rschema = getrschema[rtype]
             except KeyError:
-                err(session._("can't restore relation %(rtype)s of entity %(eid)s, "
+                err(cnx._("can't restore relation %(rtype)s of entity %(eid)s, "
                               "this relation does not exist in the schema anymore.")
                     % {'rtype': rtype, 'eid': eid})
             if not rschema.final:
@@ -1262,57 +1144,53 @@ class NativeSQLSource(SQLAdapterMixIn, AbstractSource):
                         entity._cw.entity_from_eid(value) # check target exists
                         edited[rtype] = value
                     except UnknownEid:
-                        err(session._("can't restore entity %(eid)s of type %(eschema)s, "
+                        err(cnx._("can't restore entity %(eid)s of type %(eschema)s, "
                                       "target of %(rtype)s (eid %(value)s) does not exist any longer")
                             % locals())
             elif eschema.destination(rtype) in ('Bytes', 'Password'):
                 changes[column] = self._binary(value)
                 edited[rtype] = Binary(value)
             elif isinstance(value, str):
-                edited[rtype] = unicode(value, session.encoding, 'replace')
+                edited[rtype] = unicode(value, cnx.encoding, 'replace')
             else:
                 edited[rtype] = value
         # This must only be done after init_entitiy_caches : defered in calling functions
         # edited.check()
 
-    def _undo_d(self, session, action):
+    def _undo_d(self, cnx, action):
         """undo an entity deletion"""
         errors = []
         err = errors.append
         eid = action.eid
         etype = action.etype
-        _ = session._
+        _ = cnx._
         # get an entity instance
         try:
-            entity = self.repo.vreg['etypes'].etype_class(etype)(session)
+            entity = self.repo.vreg['etypes'].etype_class(etype)(cnx)
         except Exception:
             err("can't restore entity %s of type %s, type no more supported"
                 % (eid, etype))
             return errors
         self._reedit_entity(entity, action.changes, err)
         entity.eid = eid
-        session.repo.init_entity_caches(session, entity, self)
+        cnx.repo.init_entity_caches(cnx, entity, self)
         entity.cw_edited.check()
-        self.repo.hm.call_hooks('before_add_entity', session, entity=entity)
+        self.repo.hm.call_hooks('before_add_entity', cnx, entity=entity)
         # restore the entity
         action.changes['cw_eid'] = eid
         sql = self.sqlgen.insert(SQL_PREFIX + etype, action.changes)
-        self.doexec(session, sql, action.changes)
+        self.doexec(cnx, sql, action.changes)
         # restore record in entities (will update fti if needed)
-        self.add_info(session, entity, self, None, True)
-        # remove record from deleted_entities if entity's type is multi-sources
-        if entity.cw_etype in self.multisources_etypes:
-            self.doexec(session,
-                        'DELETE FROM deleted_entities WHERE eid=%s' % eid)
-        self.repo.hm.call_hooks('after_add_entity', session, entity=entity)
+        self.add_info(cnx, entity, self, None, True)
+        self.repo.hm.call_hooks('after_add_entity', cnx, entity=entity)
         return errors
 
-    def _undo_r(self, session, action):
+    def _undo_r(self, cnx, action):
         """undo a relation removal"""
         errors = []
         subj, rtype, obj = action.eid_from, action.rtype, action.eid_to
         try:
-            sentity, oentity, rdef = _undo_rel_info(session, subj, rtype, obj)
+            sentity, oentity, rdef = _undo_rel_info(cnx, subj, rtype, obj)
         except _UndoException as ex:
             errors.append(unicode(ex))
         else:
@@ -1324,78 +1202,78 @@ class NativeSQLSource(SQLAdapterMixIn, AbstractSource):
                     errors.append(unicode(ex))
                     continue
         if not errors:
-            self.repo.hm.call_hooks('before_add_relation', session,
+            self.repo.hm.call_hooks('before_add_relation', cnx,
                                     eidfrom=subj, rtype=rtype, eidto=obj)
             # add relation in the database
-            self._add_relations(session, rtype, [(subj, obj)], rdef.rtype.inlined)
+            self._add_relations(cnx, rtype, [(subj, obj)], rdef.rtype.inlined)
             # set related cache
-            session.update_rel_cache_add(subj, rtype, obj, rdef.rtype.symmetric)
-            self.repo.hm.call_hooks('after_add_relation', session,
+            cnx.update_rel_cache_add(subj, rtype, obj, rdef.rtype.symmetric)
+            self.repo.hm.call_hooks('after_add_relation', cnx,
                                     eidfrom=subj, rtype=rtype, eidto=obj)
         return errors
 
-    def _undo_c(self, session, action):
+    def _undo_c(self, cnx, action):
         """undo an entity creation"""
         eid = action.eid
         # XXX done to avoid fetching all remaining relation for the entity
         # we should find an efficient way to do this (keeping current veolidf
         # massive deletion performance)
-        if _undo_has_later_transaction(session, eid):
-            msg = session._('some later transaction(s) touch entity, undo them '
+        if _undo_has_later_transaction(cnx, eid):
+            msg = cnx._('some later transaction(s) touch entity, undo them '
                             'first')
             raise ValidationError(eid, {None: msg})
         etype = action.etype
         # get an entity instance
         try:
-            entity = self.repo.vreg['etypes'].etype_class(etype)(session)
+            entity = self.repo.vreg['etypes'].etype_class(etype)(cnx)
         except Exception:
-            return [session._(
+            return [cnx._(
                 "Can't undo creation of entity %(eid)s of type %(etype)s, type "
                 "no more supported" % {'eid': eid, 'etype': etype})]
         entity.eid = eid
         # for proper eid/type cache update
-        CleanupDeletedEidsCacheOp.get_instance(session).add_data(eid)
-        self.repo.hm.call_hooks('before_delete_entity', session, entity=entity)
+        CleanupDeletedEidsCacheOp.get_instance(cnx).add_data(eid)
+        self.repo.hm.call_hooks('before_delete_entity', cnx, entity=entity)
         # remove is / is_instance_of which are added using sql by hooks, hence
         # unvisible as transaction action
-        self.doexec(session, 'DELETE FROM is_relation WHERE eid_from=%s' % eid)
-        self.doexec(session, 'DELETE FROM is_instance_of_relation WHERE eid_from=%s' % eid)
-        self.doexec(session, 'DELETE FROM cw_source_relation WHERE eid_from=%s' % self.eid)
+        self.doexec(cnx, 'DELETE FROM is_relation WHERE eid_from=%s' % eid)
+        self.doexec(cnx, 'DELETE FROM is_instance_of_relation WHERE eid_from=%s' % eid)
+        self.doexec(cnx, 'DELETE FROM cw_source_relation WHERE eid_from=%s' % self.eid)
         # XXX check removal of inlined relation?
         # delete the entity
         attrs = {'cw_eid': eid}
         sql = self.sqlgen.delete(SQL_PREFIX + entity.cw_etype, attrs)
-        self.doexec(session, sql, attrs)
+        self.doexec(cnx, sql, attrs)
         # remove record from entities (will update fti if needed)
-        self.delete_info_multi(session, [entity], self.uri)
-        self.repo.hm.call_hooks('after_delete_entity', session, entity=entity)
+        self.delete_info_multi(cnx, [entity])
+        self.repo.hm.call_hooks('after_delete_entity', cnx, entity=entity)
         return ()
 
-    def _undo_u(self, session, action):
+    def _undo_u(self, cnx, action):
         """undo an entity update"""
         errors = []
         err = errors.append
         try:
-            entity = session.entity_from_eid(action.eid)
+            entity = cnx.entity_from_eid(action.eid)
         except UnknownEid:
-            err(session._("can't restore state of entity %s, it has been "
+            err(cnx._("can't restore state of entity %s, it has been "
                           "deleted inbetween") % action.eid)
             return errors
         self._reedit_entity(entity, action.changes, err)
         entity.cw_edited.check()
-        self.repo.hm.call_hooks('before_update_entity', session, entity=entity)
+        self.repo.hm.call_hooks('before_update_entity', cnx, entity=entity)
         sql = self.sqlgen.update(SQL_PREFIX + entity.cw_etype, action.changes,
                                  ['cw_eid'])
-        self.doexec(session, sql, action.changes)
-        self.repo.hm.call_hooks('after_update_entity', session, entity=entity)
+        self.doexec(cnx, sql, action.changes)
+        self.repo.hm.call_hooks('after_update_entity', cnx, entity=entity)
         return errors
 
-    def _undo_a(self, session, action):
+    def _undo_a(self, cnx, action):
         """undo a relation addition"""
         errors = []
         subj, rtype, obj = action.eid_from, action.rtype, action.eid_to
         try:
-            sentity, oentity, rdef = _undo_rel_info(session, subj, rtype, obj)
+            sentity, oentity, rdef = _undo_rel_info(cnx, subj, rtype, obj)
         except _UndoException as ex:
             errors.append(unicode(ex))
         else:
@@ -1406,19 +1284,19 @@ class NativeSQLSource(SQLAdapterMixIn, AbstractSource):
             else:
                 sql = 'SELECT 1 FROM %s_relation WHERE eid_from=%s and eid_to=%s'\
                       % (rtype, subj, obj)
-            cu = self.doexec(session, sql)
+            cu = self.doexec(cnx, sql)
             if cu.fetchone() is None:
-                errors.append(session._(
+                errors.append(cnx._(
                     "Can't undo addition of relation %(rtype)s from %(subj)s to"
                     " %(obj)s, doesn't exist anymore" % locals()))
         if not errors:
-            self.repo.hm.call_hooks('before_delete_relation', session,
+            self.repo.hm.call_hooks('before_delete_relation', cnx,
                                     eidfrom=subj, rtype=rtype, eidto=obj)
             # delete relation from the database
-            self._delete_relation(session, subj, rtype, obj, rschema.inlined)
+            self._delete_relation(cnx, subj, rtype, obj, rschema.inlined)
             # set related cache
-            session.update_rel_cache_del(subj, rtype, obj, rschema.symmetric)
-            self.repo.hm.call_hooks('after_delete_relation', session,
+            cnx.update_rel_cache_del(subj, rtype, obj, rschema.symmetric)
+            self.repo.hm.call_hooks('after_delete_relation', cnx,
                                     eidfrom=subj, rtype=rtype, eidto=obj)
         return errors
 
@@ -1433,16 +1311,16 @@ class NativeSQLSource(SQLAdapterMixIn, AbstractSource):
             return True
         return False
 
-    def index_entity(self, session, entity):
+    def index_entity(self, cnx, entity):
         """create an operation to [re]index textual content of the given entity
         on commit
         """
-        FTIndexEntityOp.get_instance(session).add_data(entity.eid)
+        FTIndexEntityOp.get_instance(cnx).add_data(entity.eid)
 
-    def fti_unindex_entities(self, session, entities):
+    def fti_unindex_entities(self, cnx, entities):
         """remove text content for entities from the full text index
         """
-        cursor = session.cnxset['system']
+        cursor = cnx.cnxset.cu
         cursor_unindex_object = self.dbhelper.cursor_unindex_object
         try:
             for entity in entities:
@@ -1451,11 +1329,11 @@ class NativeSQLSource(SQLAdapterMixIn, AbstractSource):
             self.exception('error while unindexing %s', entity)
 
 
-    def fti_index_entities(self, session, entities):
+    def fti_index_entities(self, cnx, entities):
         """add text content of created/modified entities to the full text index
         """
         cursor_index_object = self.dbhelper.cursor_index_object
-        cursor = session.cnxset['system']
+        cursor = cnx.cnxset.cu
         try:
             # use cursor_index_object, not cursor_reindex_object since
             # unindexing done in the FTIndexEntityOp
@@ -1476,10 +1354,10 @@ class FTIndexEntityOp(hook.DataOperationMixIn, hook.LateOperation):
     """
 
     def precommit_event(self):
-        session = self.session
-        source = session.repo.system_source
-        pendingeids = session.transaction_data.get('pendingeids', ())
-        done = session.transaction_data.setdefault('indexedeids', set())
+        cnx = self.cnx
+        source = cnx.repo.system_source
+        pendingeids = cnx.transaction_data.get('pendingeids', ())
+        done = cnx.transaction_data.setdefault('indexedeids', set())
         to_reindex = set()
         for eid in self.get_data():
             if eid in pendingeids or eid in done:
@@ -1487,10 +1365,10 @@ class FTIndexEntityOp(hook.DataOperationMixIn, hook.LateOperation):
                 # processed
                 continue
             done.add(eid)
-            iftindexable = session.entity_from_eid(eid).cw_adapt_to('IFTIndexable')
+            iftindexable = cnx.entity_from_eid(eid).cw_adapt_to('IFTIndexable')
             to_reindex |= set(iftindexable.fti_containers())
-        source.fti_unindex_entities(session, to_reindex)
-        source.fti_index_entities(session, to_reindex)
+        source.fti_unindex_entities(cnx, to_reindex)
+        source.fti_index_entities(cnx, to_reindex)
 
 def sql_schema(driver):
     helper = get_db_helper(driver)
@@ -1503,25 +1381,11 @@ def sql_schema(driver):
 CREATE TABLE entities (
   eid INTEGER PRIMARY KEY NOT NULL,
   type VARCHAR(64) NOT NULL,
-  source VARCHAR(128) NOT NULL,
   asource VARCHAR(128) NOT NULL,
-  mtime %s NOT NULL,
   extid VARCHAR(256)
 );;
 CREATE INDEX entities_type_idx ON entities(type);;
-CREATE INDEX entities_mtime_idx ON entities(mtime);;
 CREATE INDEX entities_extid_idx ON entities(extid);;
-
-CREATE TABLE deleted_entities (
-  eid INTEGER PRIMARY KEY NOT NULL,
-  type VARCHAR(64) NOT NULL,
-  source VARCHAR(128) NOT NULL,
-  dtime %s NOT NULL,
-  extid VARCHAR(256)
-);;
-CREATE INDEX deleted_entities_type_idx ON deleted_entities(type);;
-CREATE INDEX deleted_entities_dtime_idx ON deleted_entities(dtime);;
-CREATE INDEX deleted_entities_extid_idx ON deleted_entities(extid);;
 
 CREATE TABLE transactions (
   tx_uuid CHAR(32) PRIMARY KEY NOT NULL,
@@ -1560,8 +1424,8 @@ CREATE INDEX tx_relation_actions_txa_public_idx ON tx_relation_actions(txa_publi
 CREATE INDEX tx_relation_actions_eid_from_idx ON tx_relation_actions(eid_from);;
 CREATE INDEX tx_relation_actions_eid_to_idx ON tx_relation_actions(eid_to);;
 CREATE INDEX tx_relation_actions_tx_uuid_idx ON tx_relation_actions(tx_uuid);;
-""" % (helper.sql_create_sequence('entities_id_seq').replace(';', ';;'),
-       typemap['Datetime'], typemap['Datetime'], typemap['Datetime'],
+""" % (helper.sql_create_numrange('entities_id_seq').replace(';', ';;'),
+       typemap['Datetime'],
        typemap['Boolean'], typemap['Bytes'], typemap['Boolean'])
     if helper.backend_name == 'sqlite':
         # sqlite support the ON DELETE CASCADE syntax but do nothing
@@ -1581,16 +1445,15 @@ def sql_drop_schema(driver):
     return """
 %s
 DROP TABLE entities;
-DROP TABLE deleted_entities;
 DROP TABLE tx_entity_actions;
 DROP TABLE tx_relation_actions;
 DROP TABLE transactions;
-""" % helper.sql_drop_sequence('entities_id_seq')
+""" % helper.sql_drop_numrange('entities_id_seq')
 
 
 def grant_schema(user, set_owner=True):
     result = ''
-    for table in ('entities', 'deleted_entities', 'entities_id_seq',
+    for table in ('entities', 'entities_id_seq',
                   'transactions', 'tx_entity_actions', 'tx_relation_actions'):
         if set_owner:
             result = 'ALTER TABLE %s OWNER TO %s;\n' % (table, user)
@@ -1620,7 +1483,7 @@ class LoginPasswordAuthentifier(BaseAuthentifier):
             self._passwd_rqlst = self.source.compile_rql(self.passwd_rql, self._sols)
             self._auth_rqlst = self.source.compile_rql(self.auth_rql, self._sols)
 
-    def authenticate(self, session, login, password=None, **kwargs):
+    def authenticate(self, cnx, login, password=None, **kwargs):
         """return CWUser eid for the given login/password if this account is
         defined in this source, else raise `AuthenticationError`
 
@@ -1629,7 +1492,7 @@ class LoginPasswordAuthentifier(BaseAuthentifier):
         """
         args = {'login': login, 'pwd' : None}
         if password is not None:
-            rset = self.source.syntax_tree_search(session, self._passwd_rqlst, args)
+            rset = self.source.syntax_tree_search(cnx, self._passwd_rqlst, args)
             try:
                 pwd = rset[0][0]
             except IndexError:
@@ -1640,7 +1503,7 @@ class LoginPasswordAuthentifier(BaseAuthentifier):
             # passwords are stored using the Bytes type, so we get a StringIO
             args['pwd'] = Binary(crypt_password(password, pwd.getvalue()))
         # get eid from login and (crypted) password
-        rset = self.source.syntax_tree_search(session, self._auth_rqlst, args)
+        rset = self.source.syntax_tree_search(cnx, self._auth_rqlst, args)
         try:
             user = rset[0][0]
             # If the stored hash uses a deprecated scheme (e.g. DES or MD5 used
@@ -1650,32 +1513,33 @@ class LoginPasswordAuthentifier(BaseAuthentifier):
                 if not verify: # should not happen, but...
                     raise AuthenticationError('bad password')
                 if newhash:
-                    session.system_sql("UPDATE %s SET %s=%%(newhash)s WHERE %s=%%(login)s" % (
+                    cnx.system_sql("UPDATE %s SET %s=%%(newhash)s WHERE %s=%%(login)s" % (
                                         SQL_PREFIX + 'CWUser',
                                         SQL_PREFIX + 'upassword',
                                         SQL_PREFIX + 'login'),
                                        {'newhash': self.source._binary(newhash),
                                         'login': login})
-                    session.commit(free_cnxset=False)
+                    cnx.commit(free_cnxset=False)
             return user
         except IndexError:
             raise AuthenticationError('bad password')
 
 
 class EmailPasswordAuthentifier(BaseAuthentifier):
-    def authenticate(self, session, login, **authinfo):
+    def authenticate(self, cnx, login, **authinfo):
         # email_auth flag prevent from infinite recursion (call to
         # repo.check_auth_info at the end of this method may lead us here again)
         if not '@' in login or authinfo.pop('email_auth', None):
             raise AuthenticationError('not an email')
-        rset = session.execute('Any L WHERE U login L, U primary_email M, '
+        rset = cnx.execute('Any L WHERE U login L, U primary_email M, '
                                'M address %(login)s', {'login': login},
                                build_descr=False)
         if rset.rowcount != 1:
             raise AuthenticationError('unexisting email')
         login = rset.rows[0][0]
         authinfo['email_auth'] = True
-        return self.source.repo.check_auth_info(session, login, authinfo)
+        return self.source.repo.check_auth_info(cnx, login, authinfo)
+
 
 class DatabaseIndependentBackupRestore(object):
     """Helper class to perform db backend agnostic backup and restore
@@ -1721,7 +1585,7 @@ class DatabaseIndependentBackupRestore(object):
         self.cnx = self.get_connection()
         try:
             self.cursor = self.cnx.cursor()
-            self.cursor.arraysize=100
+            self.cursor.arraysize = 100
             self.logger.info('writing metadata')
             self.write_metadata(archive)
             for seq in self.get_sequences():
@@ -1737,7 +1601,6 @@ class DatabaseIndependentBackupRestore(object):
 
     def get_tables(self):
         non_entity_tables = ['entities',
-                             'deleted_entities',
                              'transactions',
                              'tx_entity_actions',
                              'tx_relation_actions',
@@ -1765,8 +1628,8 @@ class DatabaseIndependentBackupRestore(object):
         archive.writestr('tables.txt', '\n'.join(self.get_tables()))
         archive.writestr('sequences.txt', '\n'.join(self.get_sequences()))
         versions = self._get_versions()
-        versions_str = '\n'.join('%s %s' % (k,v)
-                                 for k,v in versions)
+        versions_str = '\n'.join('%s %s' % (k, v)
+                                 for k, v in versions)
         archive.writestr('versions.txt', versions_str)
 
     def write_sequence(self, archive, seq):
