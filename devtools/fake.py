@@ -24,7 +24,7 @@ from logilab.database import get_db_helper
 
 from cubicweb.req import RequestSessionBase
 from cubicweb.cwvreg import CWRegistryStore
-from cubicweb.web.request import CubicWebRequestBase
+from cubicweb.web.request import ConnectionCubicWebRequestBase
 
 from cubicweb.devtools import BASE_URL, BaseApptestConfiguration
 
@@ -53,7 +53,7 @@ class FakeConfig(dict, BaseApptestConfiguration):
         return {'system': {'db-driver': 'sqlite'}}
 
 
-class FakeRequest(CubicWebRequestBase):
+class FakeRequest(ConnectionCubicWebRequestBase):
     """test implementation of an cubicweb request object"""
 
     def __init__(self, *args, **kwargs):
@@ -88,20 +88,20 @@ class FakeRequest(CubicWebRequestBase):
         return url.split('?', 1)[0]
 
     def set_request_header(self, header, value, raw=False):
-        """set an incoming HTTP header (For test purpose only)"""
+        """set an incoming HTTP header (for test purpose only)"""
         if isinstance(value, basestring):
             value = [value]
-        if raw: #
+        if raw:
             # adding encoded header is important, else page content
             # will be reconverted back to unicode and apart unefficiency, this
             # may cause decoding problem (e.g. when downloading a file)
             self._headers_in.setRawHeaders(header, value)
-        else: #
+        else:
             self._headers_in.setHeader(header, value) #
 
     def get_response_header(self, header, default=None, raw=False):
-        """return output header (For test purpose only"""
-        if raw: #
+        """return output header (for test purpose only)"""
+        if raw:
             return self.headers_out.getRawHeaders(header, [default])[0]
         return self.headers_out.getHeader(header, default)
 
@@ -169,7 +169,6 @@ class FakeRepo(object):
         self.config = config or FakeConfig()
         self.vreg = vreg or CWRegistryStore(self.config, initlog=False)
         self.vreg.schema = schema
-        self.sources = []
 
     def internal_session(self):
         return FakeSession(self)
@@ -187,9 +186,6 @@ class FakeRepo(object):
             self.eids[eid] = extid
             source.after_entity_insertion(session, extid, entity)
             return eid
-
-    def eid2extid(self, source, eid, session=None):
-        return self.eids[eid]
 
 
 class FakeSource(object):

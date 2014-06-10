@@ -177,14 +177,6 @@ class multisource_inlined_rel(RelationDefinition):
     subject = ('Card', 'Note')
     object = ('Affaire', 'Note')
 
-class multisource_rel(RelationDefinition):
-    subject = ('Card', 'Note')
-    object = 'Note'
-
-class multisource_crossed_rel(RelationDefinition):
-    subject = ('Card', 'Note')
-    object = 'Note'
-
 
 class see_also_1(RelationDefinition):
     name = 'see_also'

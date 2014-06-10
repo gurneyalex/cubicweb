@@ -27,14 +27,11 @@ __docformat__ = "restructuredtext en"
 
 from StringIO import StringIO
 from urllib import quote
+from urlparse import parse_qs
 
-from logilab.common.decorators import cached
-
+from cubicweb.multipart import copy_file, parse_form_data
 from cubicweb.web.request import CubicWebRequestBase
-from cubicweb.wsgi import (pformat, qs2dict, safe_copyfileobj, parse_file_upload,
-                           normalize_header)
-from cubicweb.web.http_headers import Headers
-
+from cubicweb.wsgi import pformat, normalize_header
 
 
 class CubicWebWsgiRequest(CubicWebRequestBase):
@@ -45,7 +42,20 @@ class CubicWebWsgiRequest(CubicWebRequestBase):
         self.environ = environ
         self.path = environ['PATH_INFO']
         self.method = environ['REQUEST_METHOD'].upper()
-        self.content = environ['wsgi.input']
+
+        # content_length "may be empty or absent"
+        try:
+            length = int(environ['CONTENT_LENGTH'])
+        except (KeyError, ValueError):
+            length = 0
+        # wsgi.input is not seekable, so copy the request contents to a temporary file
+        if length < 100000:
+            self.content = StringIO()
+        else:
+            self.content = tempfile.TemporaryFile()
+        copy_file(environ['wsgi.input'], self.content, maxread=length)
+        self.content.seek(0, 0)
+        environ['wsgi.input'] = self.content
 
         headers_in = dict((normalize_header(k[5:]), v) for k, v in self.environ.items()
                           if k.startswith('HTTP_'))
@@ -55,10 +65,11 @@ class CubicWebWsgiRequest(CubicWebRequestBase):
         super(CubicWebWsgiRequest, self).__init__(vreg, https, post,
                                                   headers= headers_in)
         if files is not None:
-            for key, (name, _, stream) in files.iteritems():
-                if name is not None:
-                    name = unicode(name, self.encoding)
-                self.form[key] = (name, stream)
+            for key, part in files.iteritems():
+                name = None
+                if part.filename is not None:
+                    name = unicode(part.filename, self.encoding)
+                self.form[key] = (name, part.file)
 
     def __repr__(self):
         # Since this is called as part of error handling, we need to be very
@@ -122,32 +133,11 @@ class CubicWebWsgiRequest(CubicWebRequestBase):
 
     def get_posted_data(self):
         # The WSGI spec says 'QUERY_STRING' may be absent.
-        post = qs2dict(self.environ.get('QUERY_STRING', ''))
+        post = parse_qs(self.environ.get('QUERY_STRING', ''))
         files = None
         if self.method == 'POST':
-            if self.environ.get('CONTENT_TYPE', '').startswith('multipart'):
-                header_dict = dict((normalize_header(k[5:]), v)
-                                   for k, v in self.environ.items()
-                                   if k.startswith('HTTP_'))
-                header_dict['Content-Type'] = self.environ.get('CONTENT_TYPE', '')
-                post_, files = parse_file_upload(header_dict, self.raw_post_data)
-                post.update(post_)
-            else:
-                post.update(qs2dict(self.raw_post_data))
+            forms, files = parse_form_data(self.environ, strict=True,
+                                           mem_limit=self.vreg.config['max-post-length'])
+            post.update(forms)
+        self.content.seek(0, 0)
         return post, files
-
-    @property
-    @cached
-    def raw_post_data(self):
-        buf = StringIO()
-        try:
-            # CONTENT_LENGTH might be absent if POST doesn't have content at all (lighttpd)
-            content_length = int(self.environ.get('CONTENT_LENGTH', 0))
-        except ValueError: # if CONTENT_LENGTH was empty string or not an integer
-            content_length = 0
-        if content_length > 0:
-            safe_copyfileobj(self.environ['wsgi.input'], buf,
-                    size=content_length)
-        postdata = buf.getvalue()
-        buf.close()
-        return postdata

@@ -97,7 +97,7 @@ class CubicWebWSGIApplication(object):
     """
 
     def __init__(self, config):
-        self.appli = CubicWebPublisher(config)
+        self.appli = CubicWebPublisher(config.repository(), config)
         self.config = config
         self.base_url = self.config['base-url']
         self.url_rewriter = self.appli.vreg['components'].select_or_none('urlrewriter')

@@ -312,7 +312,7 @@ function ajaxFuncArgs(fname, form /* ... */) {
     $.extend(form, {
         'fname': fname,
         'pageid': pageid,
-        'arg': $.map(cw.utils.sliceList(arguments, 2), jQuery.toJSON)
+        'arg': $.map(cw.utils.sliceList(arguments, 2), JSON.stringify)
     });
     return form;
 }
@@ -338,7 +338,6 @@ jQuery.fn.loadxhtml = function(url, form, reqtype, mode, cursor) {
     } else if (this.size() < 1) {
         cw.log('loadxhtml called without an element');
     }
-    var callback = null;
     var node = this.get(0); // only consider the first element
     if (cursor) {
         setProgressCursor();
@@ -362,9 +361,6 @@ jQuery.fn.loadxhtml = function(url, form, reqtype, mode, cursor) {
             jQuery(node).append(domnode);
         }
         _postAjaxLoad(node);
-        while (jQuery.isFunction(callback)) {
-            callback = callback.apply(this, [domnode]);
-        }
     });
     d.addErrback(remoteCallFailed);
     if (cursor) {
@@ -749,7 +745,7 @@ function remoteExec(fname /* ... */) {
     var props = {
         fname: fname,
         pageid: pageid,
-        arg: $.map(cw.utils.sliceList(arguments, 1), jQuery.toJSON)
+        arg: $.map(cw.utils.sliceList(arguments, 1), JSON.stringify)
     };
     var result = jQuery.ajax({
         url: AJAX_BASE_URL,
@@ -769,7 +765,7 @@ function asyncRemoteExec(fname /* ... */) {
     var props = {
         fname: fname,
         pageid: pageid,
-        arg: $.map(cw.utils.sliceList(arguments, 1), jQuery.toJSON)
+        arg: $.map(cw.utils.sliceList(arguments, 1), JSON.stringify)
     };
     // XXX we should inline the content of loadRemote here
     var deferred = loadRemote(AJAX_BASE_URL, props, 'POST');

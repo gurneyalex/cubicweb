@@ -53,15 +53,11 @@ from cubicweb.schema import (ETYPE_NAME_MAP, META_RTYPES, VIRTUAL_RTYPES,
                              PURE_VIRTUAL_RTYPES,
                              CubicWebRelationSchema, order_eschemas)
 from cubicweb.cwvreg import CW_EVENT_MANAGER
-from cubicweb.dbapi import get_repository, _repo_connect
+from cubicweb import repoapi
 from cubicweb.migration import MigrationHelper, yes
-from cubicweb.server import hook
-try:
-    from cubicweb.server import SOURCE_TYPES, schemaserial as ss
-    from cubicweb.server.utils import manager_userpasswd
-    from cubicweb.server.sqlutils import sqlexec, SQL_PREFIX
-except ImportError: # LAX
-    pass
+from cubicweb.server import hook, schemaserial as ss
+from cubicweb.server.utils import manager_userpasswd
+from cubicweb.server.sqlutils import sqlexec, SQL_PREFIX
 
 
 def mock_object(**params):
@@ -82,6 +78,7 @@ class ClearGroupMap(hook.Hook):
         if not cls.__regid__ in repo.vreg['after_add_entity_hooks']:
             repo.vreg.register(ClearGroupMap)
 
+
 class ServerMigrationHelper(MigrationHelper):
     """specific migration helper for server side migration scripts,
     providing actions related to schema/data migration
@@ -95,10 +92,14 @@ class ServerMigrationHelper(MigrationHelper):
             assert repo
         if cnx is not None:
             assert repo
-            self._cnx = cnx
+            self.cnx = cnx
             self.repo = repo
+            self.session = cnx._session
         elif connect:
             self.repo_connect()
+            self.set_session()
+        else:
+            self.session = None
         # no config on shell to a remote instance
         if config is not None and (cnx or connect):
             repo = self.repo
@@ -124,11 +125,38 @@ class ServerMigrationHelper(MigrationHelper):
         self.fs_schema = schema
         self._synchronized = set()
 
+    def set_session(self):
+        try:
+            login = self.repo.config.default_admin_config['login']
+            pwd = self.repo.config.default_admin_config['password']
+        except KeyError:
+            login, pwd = manager_userpasswd()
+        while True:
+            try:
+                self.cnx = repoapi.connect(self.repo, login, password=pwd)
+                if not 'managers' in self.cnx.user.groups:
+                    print 'migration need an account in the managers group'
+                else:
+                    break
+            except AuthenticationError:
+                print 'wrong user/password'
+            except (KeyboardInterrupt, EOFError):
+                print 'aborting...'
+                sys.exit(0)
+            try:
+                login, pwd = manager_userpasswd()
+            except (KeyboardInterrupt, EOFError):
+                print 'aborting...'
+                sys.exit(0)
+        self.session = self.repo._get_session(self.cnx.sessionid)
+        self.session.keep_cnxset_mode('transaction')
+        self.session.set_shared_data('rebuild-infered', False)
+
     # overriden from base MigrationHelper ######################################
 
     @cached
     def repo_connect(self):
-        self.repo = get_repository(config=self.config)
+        self.repo = repoapi.get_repository(config=self.config)
         return self.repo
 
     def cube_upgraded(self, cube, version):
@@ -147,18 +175,19 @@ class ServerMigrationHelper(MigrationHelper):
             elif options.backup_db:
                 self.backup_database(askconfirm=False)
         # disable notification during migration
-        with self.session.allow_all_hooks_but('notification'):
+        with self.cnx.allow_all_hooks_but('notification'):
             super(ServerMigrationHelper, self).migrate(vcconf, toupgrade, options)
 
     def cmd_process_script(self, migrscript, funcname=None, *args, **kwargs):
-        try:
-            return super(ServerMigrationHelper, self).cmd_process_script(
-                  migrscript, funcname, *args, **kwargs)
-        except ExecutionError as err:
-            sys.stderr.write("-> %s\n" % err)
-        except BaseException:
-            self.rollback()
-            raise
+        with self.cnx._cnx.ensure_cnx_set:
+            try:
+                return super(ServerMigrationHelper, self).cmd_process_script(
+                      migrscript, funcname, *args, **kwargs)
+            except ExecutionError as err:
+                sys.stderr.write("-> %s\n" % err)
+            except BaseException:
+                self.rollback()
+                raise
 
     # Adjust docstring
     cmd_process_script.__doc__ = MigrationHelper.cmd_process_script.__doc__
@@ -186,18 +215,18 @@ class ServerMigrationHelper(MigrationHelper):
         open(backupfile,'w').close() # kinda lock
         os.chmod(backupfile, 0600)
         # backup
+        source = repo.system_source
         tmpdir = tempfile.mkdtemp()
         try:
             failed = False
-            for source in repo.sources:
-                try:
-                    source.backup(osp.join(tmpdir, source.uri), self.confirm, format=format)
-                except Exception as ex:
-                    print '-> error trying to backup %s [%s]' % (source.uri, ex)
-                    if not self.confirm('Continue anyway?', default='n'):
-                        raise SystemExit(1)
-                    else:
-                        failed = True
+            try:
+                source.backup(osp.join(tmpdir, source.uri), self.confirm, format=format)
+            except Exception as ex:
+                print '-> error trying to backup %s [%s]' % (source.uri, ex)
+                if not self.confirm('Continue anyway?', default='n'):
+                    raise SystemExit(1)
+                else:
+                    failed = True
             with open(osp.join(tmpdir, 'format.txt'), 'w') as format_file:
                 format_file.write('%s\n' % format)
             with open(osp.join(tmpdir, 'versions.txt'), 'w') as version_file:
@@ -216,8 +245,7 @@ class ServerMigrationHelper(MigrationHelper):
         finally:
             shutil.rmtree(tmpdir)
 
-    def restore_database(self, backupfile, drop=True, systemonly=True,
-                         askconfirm=True, format='native'):
+    def restore_database(self, backupfile, drop=True, askconfirm=True, format='native'):
         # check
         if not osp.exists(backupfile):
             raise ExecutionError("Backup file %s doesn't exist" % backupfile)
@@ -246,76 +274,26 @@ class ServerMigrationHelper(MigrationHelper):
                     format = written_format
         self.config.init_cnxset_pool = False
         repo = self.repo_connect()
-        for source in repo.sources:
-            if systemonly and source.uri != 'system':
-                continue
-            try:
-                source.restore(osp.join(tmpdir, source.uri), self.confirm, drop, format)
-            except Exception as exc:
-                print '-> error trying to restore %s [%s]' % (source.uri, exc)
-                if not self.confirm('Continue anyway?', default='n'):
-                    raise SystemExit(1)
+        source = repo.system_source
+        try:
+            source.restore(osp.join(tmpdir, source.uri), self.confirm, drop, format)
+        except Exception as exc:
+            print '-> error trying to restore %s [%s]' % (source.uri, exc)
+            if not self.confirm('Continue anyway?', default='n'):
+                raise SystemExit(1)
         shutil.rmtree(tmpdir)
         # call hooks
         repo.init_cnxset_pool()
         repo.hm.call_hooks('server_restore', repo=repo, timestamp=backupfile)
         print '-> database restored.'
 
-    @property
-    def cnx(self):
-        """lazy connection"""
-        try:
-            return self._cnx
-        except AttributeError:
-            sourcescfg = self.repo.config.sources()
-            try:
-                login = sourcescfg['admin']['login']
-                pwd = sourcescfg['admin']['password']
-            except KeyError:
-                login, pwd = manager_userpasswd()
-            while True:
-                try:
-                    self._cnx = _repo_connect(self.repo, login, password=pwd)
-                    if not 'managers' in self._cnx.user(self.session).groups:
-                        print 'migration need an account in the managers group'
-                    else:
-                        break
-                except AuthenticationError:
-                    print 'wrong user/password'
-                except (KeyboardInterrupt, EOFError):
-                    print 'aborting...'
-                    sys.exit(0)
-                try:
-                    login, pwd = manager_userpasswd()
-                except (KeyboardInterrupt, EOFError):
-                    print 'aborting...'
-                    sys.exit(0)
-            self.session.keep_cnxset_mode('transaction')
-            return self._cnx
-
-    @property
-    def session(self):
-        if self.config is not None:
-            session = self.repo._get_session(self.cnx.sessionid)
-            if session.cnxset is None:
-                session.read_security = False
-                session.write_security = False
-            session.set_cnxset()
-            return session
-        # no access to session on remote instance
-        return None
-
     def commit(self):
-        if hasattr(self, '_cnx'):
-            self._cnx.commit()
-        if self.session:
-            self.session.set_cnxset()
+        if hasattr(self, 'cnx'):
+            self.cnx.commit(free_cnxset=False)
 
     def rollback(self):
-        if hasattr(self, '_cnx'):
-            self._cnx.rollback()
-        if self.session:
-            self.session.set_cnxset()
+        if hasattr(self, 'cnx'):
+            self.cnx.rollback(free_cnxset=False)
 
     def rqlexecall(self, rqliter, ask_confirm=False):
         for rql, kwargs in rqliter:
@@ -333,7 +311,7 @@ class ServerMigrationHelper(MigrationHelper):
                         'schema': self.repo.get_schema(),
                         'cnx': self.cnx,
                         'fsschema': self.fs_schema,
-                        'session' : self.session,
+                        'session' : self.cnx._cnx,
                         'repo' : self.repo,
                         })
         return context
@@ -341,12 +319,12 @@ class ServerMigrationHelper(MigrationHelper):
     @cached
     def group_mapping(self):
         """cached group mapping"""
-        return ss.group_mapping(self._cw)
+        return ss.group_mapping(self.cnx)
 
     @cached
     def cstrtype_mapping(self):
         """cached constraint types mapping"""
-        return ss.cstrtype_mapping(self._cw)
+        return ss.cstrtype_mapping(self.cnx)
 
     def cmd_exec_event_script(self, event, cube=None, funcname=None,
                               *args, **kwargs):
@@ -371,7 +349,7 @@ class ServerMigrationHelper(MigrationHelper):
             self.execscript_confirm = yes
             try:
                 if event == 'postcreate':
-                    with self.session.allow_all_hooks_but():
+                    with self.cnx.allow_all_hooks_but():
                         return self.cmd_process_script(apc, funcname, *args, **kwargs)
                 return self.cmd_process_script(apc, funcname, *args, **kwargs)
             finally:
@@ -393,7 +371,7 @@ class ServerMigrationHelper(MigrationHelper):
         sql_scripts = glob(osp.join(directory, '*.%s.sql' % driver))
         for fpath in sql_scripts:
             print '-> installing', fpath
-            failed = sqlexec(open(fpath).read(), self.session.system_sql, False,
+            failed = sqlexec(open(fpath).read(), self.cnx.system_sql, False,
                              delimiter=';;')
             if failed:
                 print '-> ERROR, skipping', fpath
@@ -562,7 +540,7 @@ class ServerMigrationHelper(MigrationHelper):
             repo = {}
             for cols in eschema._unique_together or ():
                 fs[unique_index_name(repoeschema, cols)] = sorted(cols)
-            schemaentity = self.session.entity_from_eid(repoeschema.eid)
+            schemaentity = self.cnx.entity_from_eid(repoeschema.eid)
             for entity in schemaentity.related('constraint_of', 'object',
                                                targettypes=('CWUniqueTogetherConstraint',)).entities():
                 repo[entity.name] = sorted(rel.name for rel in entity.relations)
@@ -630,21 +608,8 @@ class ServerMigrationHelper(MigrationHelper):
             #       out of sync with newconstraints when multiple
             #       constraints of the same type are used
             for cstr in oldconstraints:
-                for newcstr in newconstraints:
-                    if newcstr.type() == cstr.type():
-                        break
-                else:
-                    newcstr = None
-                if newcstr is None:
-                    self.rqlexec('DELETE X constrained_by C WHERE C eid %(x)s',
-                                 {'x': cstr.eid}, ask_confirm=confirm)
-                else:
-                    newconstraints.remove(newcstr)
-                    value = unicode(newcstr.serialize())
-                    if value != unicode(cstr.serialize()):
-                        self.rqlexec('SET X value %(v)s WHERE X eid %(x)s',
-                                     {'x': cstr.eid, 'v': value},
-                                     ask_confirm=confirm)
+                self.rqlexec('DELETE CWConstraint C WHERE C eid %(x)s',
+                             {'x': cstr.eid}, ask_confirm=confirm)
             # 2. add new constraints
             cstrtype_map = self.cstrtype_mapping()
             self.rqlexecall(ss.constraints2rql(cstrtype_map, newconstraints,
@@ -719,7 +684,7 @@ class ServerMigrationHelper(MigrationHelper):
                                                  str(totype))
         # execute post-create files
         for cube in reversed(newcubes):
-            with self.session.allow_all_hooks_but():
+            with self.cnx.allow_all_hooks_but():
                 self.cmd_exec_event_script('postcreate', cube)
                 self.commit()
 
@@ -821,7 +786,7 @@ class ServerMigrationHelper(MigrationHelper):
         groupmap = self.group_mapping()
         cstrtypemap = self.cstrtype_mapping()
         # register the entity into CWEType
-        execute = self._cw.execute
+        execute = self.cnx.execute
         ss.execschemarql(execute, eschema, ss.eschema2rql(eschema, groupmap))
         # add specializes relation if needed
         specialized = eschema.specializes()
@@ -1001,8 +966,8 @@ class ServerMigrationHelper(MigrationHelper):
                 # repository caches are properly cleanup
                 hook.CleanupDeletedEidsCacheOp.get_instance(session).union(thispending)
                 # and don't forget to remove record from system tables
-                entities = [session.entity_from_eid(eid, rdeftype) for eid in thispending]
-                self.repo.system_source.delete_info_multi(session, entities, 'system')
+                entities = [self.cnx.entity_from_eid(eid, rdeftype) for eid in thispending]
+                self.repo.system_source.delete_info_multi(self.cnx._cnx, entities)
                 self.sqlexec('DELETE FROM cw_%s WHERE cw_from_entity=%%(eid)s OR '
                              'cw_to_entity=%%(eid)s' % rdeftype,
                              {'eid': oldeid}, ask_confirm=False)
@@ -1050,7 +1015,7 @@ class ServerMigrationHelper(MigrationHelper):
         """
         reposchema = self.repo.schema
         rschema = self.fs_schema.rschema(rtype)
-        execute = self._cw.execute
+        execute = self.cnx.execute
         if rtype in reposchema:
             print 'warning: relation type %s is already known, skip addition' % (
                 rtype)
@@ -1129,7 +1094,7 @@ class ServerMigrationHelper(MigrationHelper):
                 subjtype, rtype, objtype)
             return
         rdef = self._get_rdef(rschema, subjtype, objtype)
-        ss.execschemarql(self._cw.execute, rdef,
+        ss.execschemarql(self.cnx.execute, rdef,
                          ss.rdef2rql(rdef, self.cstrtype_mapping(),
                                      self.group_mapping()))
         if commit:
@@ -1356,14 +1321,6 @@ class ServerMigrationHelper(MigrationHelper):
 
     # other data migration commands ###########################################
 
-    @property
-    def _cw(self):
-        session = self.session
-        if session is not None:
-            session.set_cnxset()
-            return session
-        return self.cnx.request()
-
     def cmd_storage_changed(self, etype, attribute):
         """migrate entities to a custom storage. The new storage is expected to
         be set, it will be temporarily removed for the migration.
@@ -1387,22 +1344,28 @@ class ServerMigrationHelper(MigrationHelper):
 
     def cmd_create_entity(self, etype, commit=False, **kwargs):
         """add a new entity of the given type"""
-        entity = self._cw.create_entity(etype, **kwargs)
+        entity = self.cnx.create_entity(etype, **kwargs)
         if commit:
             self.commit()
         return entity
 
+    def cmd_find(self, etype, **kwargs):
+        """find entities of the given type and attribute values"""
+        return self.cnx.find(etype, **kwargs)
+
+    @deprecated("[3.19] use find(*args, **kwargs).entities() instead")
     def cmd_find_entities(self, etype, **kwargs):
         """find entities of the given type and attribute values"""
-        return self._cw.find_entities(etype, **kwargs)
+        return self.cnx.find(etype, **kwargs).entities()
 
+    @deprecated("[3.19] use find(*args, **kwargs).one() instead")
     def cmd_find_one_entity(self, etype, **kwargs):
         """find one entity of the given type and attribute values.
 
         raise :exc:`cubicweb.req.FindEntityError` if can not return one and only
         one entity.
         """
-        return self._cw.find_one_entity(etype, **kwargs)
+        return self.cnx.find(etype, **kwargs).one()
 
     def cmd_update_etype_fti_weight(self, etype, weight):
         if self.repo.system_source.dbdriver == 'postgres':
@@ -1416,7 +1379,7 @@ class ServerMigrationHelper(MigrationHelper):
         indexable entity types
         """
         from cubicweb.server.checkintegrity import reindex_entities
-        reindex_entities(self.repo.schema, self.session, etypes=etypes)
+        reindex_entities(self.repo.schema, self.cnx._cnx, etypes=etypes)
 
     @contextmanager
     def cmd_dropped_constraints(self, etype, attrname, cstrtype=None,
@@ -1461,7 +1424,7 @@ class ServerMigrationHelper(MigrationHelper):
         """
         if not ask_confirm or self.confirm('Execute sql: %s ?' % sql):
             try:
-                cu = self.session.system_sql(sql, args)
+                cu = self.cnx.system_sql(sql, args)
             except Exception:
                 ex = sys.exc_info()[1]
                 if self.confirm('Error: %s\nabort?' % ex, pdb=True):
@@ -1479,7 +1442,7 @@ class ServerMigrationHelper(MigrationHelper):
         if not isinstance(rql, (tuple, list)):
             rql = ( (rql, kwargs), )
         res = None
-        execute = self._cw.execute
+        execute = self.cnx.execute
         for rql, kwargs in rql:
             if kwargs:
                 msg = '%s (%s)' % (rql, kwargs)
@@ -1515,7 +1478,7 @@ class ServerMigrationHelper(MigrationHelper):
         self.sqlexec(sql, ask_confirm=False)
         dbhelper = self.repo.system_source.dbhelper
         sqltype = dbhelper.TYPE_MAPPING[newtype]
-        cursor = self.session.cnxset[self.repo.system_source.uri]
+        cursor = self.cnx._cnx.cnxset.cu
         dbhelper.change_col_type(cursor, 'cw_%s'  % etype, 'cw_%s' % attr, sqltype, allownull)
         if commit:
             self.commit()

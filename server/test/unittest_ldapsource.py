@@ -1,4 +1,4 @@
-# copyright 2003-2012 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2014 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -31,7 +31,6 @@ from cubicweb import AuthenticationError
 from cubicweb.devtools.testlib import CubicWebTC
 from cubicweb.devtools.repotest import RQLGeneratorTC
 from cubicweb.devtools.httptest import get_available_port
-from cubicweb.devtools import get_test_db_handler
 
 
 CONFIG_LDAPFEED = u'''
@@ -241,7 +240,7 @@ class LDAPFeedUserTC(LDAPFeedTestBase):
         self.assertMetadata(e)
         self.assertEqual(e.firstname, None)
         self.assertEqual(e.surname, None)
-        self.assertTrue('users' in [g.name for g in e.in_group])
+        self.assertIn('users', set(g.name for g in e.in_group))
         self.assertEqual(e.owned_by[0].login, 'syt')
         self.assertEqual(e.created_by, ())
         addresses = [pe.address for pe in e.use_email]

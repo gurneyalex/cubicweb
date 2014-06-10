@@ -129,7 +129,7 @@ class RQLRewriteTC(TestCase):
             "F name 'read', F require_group E, A is State, E is CWGroup, F is CWPermission), "
             "(EXISTS(S ref LIKE 'PUBLIC%')) OR (EXISTS(B in_group G, G name 'public', G is CWGroup)), "
             "S is Affaire")
-        self.assertTrue('D' in kwargs)
+        self.assertIn('D', kwargs)
 
     def test_or(self):
         constraint = '(X identity U) OR (X in_state ST, CL identity U, CL in_state ST, ST name "subscribed")'
@@ -507,11 +507,12 @@ class RewriteFullTC(CubicWebTC):
             args = {}
         querier = self.repo.querier
         union = querier.parse(rql)
-        querier.solutions(self.session, union, args)
-        querier._annotate(union)
-        plan = querier.plan_factory(union, args, self.session)
-        plan.preprocess(union)
-        return union
+        with self.admin_access.repo_cnx() as cnx:
+            querier.solutions(cnx, union, args)
+            querier._annotate(union)
+            plan = querier.plan_factory(union, args, cnx)
+            plan.preprocess(union)
+            return union
 
     def test_ambiguous_optional_same_exprs(self):
         """See #3013535"""

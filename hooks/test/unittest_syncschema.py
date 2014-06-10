@@ -30,7 +30,6 @@ def tearDownModule(*args):
     del SchemaModificationHooksTC.schema_eids
 
 class SchemaModificationHooksTC(CubicWebTC):
-    reset_schema = True
 
     def setUp(self):
         super(SchemaModificationHooksTC, self).setUp()
@@ -39,8 +38,8 @@ class SchemaModificationHooksTC(CubicWebTC):
 
     def index_exists(self, etype, attr, unique=False):
         self.session.set_cnxset()
-        dbhelper = self.session.cnxset.source('system').dbhelper
-        sqlcursor = self.session.cnxset['system']
+        dbhelper = self.repo.system_source.dbhelper
+        sqlcursor = self.session.cnxset.cu
         return dbhelper.index_exists(sqlcursor, SQL_PREFIX + etype, SQL_PREFIX + attr, unique=unique)
 
     def _set_perms(self, eid):
@@ -60,8 +59,8 @@ class SchemaModificationHooksTC(CubicWebTC):
     def test_base(self):
         schema = self.repo.schema
         self.session.set_cnxset()
-        dbhelper = self.session.cnxset.source('system').dbhelper
-        sqlcursor = self.session.cnxset['system']
+        dbhelper = self.repo.system_source.dbhelper
+        sqlcursor = self.session.cnxset.cu
         self.assertFalse(schema.has_entity('Societe2'))
         self.assertFalse(schema.has_entity('concerne2'))
         # schema should be update on insertion (after commit)
@@ -83,12 +82,12 @@ class SchemaModificationHooksTC(CubicWebTC):
             'INSERT CWRelation X: X cardinality "**", X relation_type RT, X from_entity E, X to_entity E '
             'WHERE RT name "concerne2", E name "Societe2"')[0][0]
         self._set_perms(concerne2_rdef_eid)
-        self.assertFalse('name' in schema['Societe2'].subject_relations())
-        self.assertFalse('concerne2' in schema['Societe2'].subject_relations())
+        self.assertNotIn('name', schema['Societe2'].subject_relations())
+        self.assertNotIn('concerne2', schema['Societe2'].subject_relations())
         self.assertFalse(self.index_exists('Societe2', 'name'))
         self.commit()
-        self.assertTrue('name' in schema['Societe2'].subject_relations())
-        self.assertTrue('concerne2' in schema['Societe2'].subject_relations())
+        self.assertIn('name', schema['Societe2'].subject_relations())
+        self.assertIn('concerne2', schema['Societe2'].subject_relations())
         self.assertTrue(self.index_exists('Societe2', 'name'))
         # now we should be able to insert and query Societe2
         s2eid = self.execute('INSERT Societe2 X: X name "logilab"')[0][0]
@@ -104,8 +103,8 @@ class SchemaModificationHooksTC(CubicWebTC):
         self.commit()
         self.execute('DELETE CWRelation X WHERE X eid %(x)s', {'x': concerne2_rdef_eid})
         self.commit()
-        self.assertTrue('concerne2' in schema['CWUser'].subject_relations())
-        self.assertFalse('concerne2' in schema['Societe2'].subject_relations())
+        self.assertIn('concerne2', schema['CWUser'].subject_relations())
+        self.assertNotIn('concerne2', schema['Societe2'].subject_relations())
         self.assertFalse(self.execute('Any X WHERE X concerne2 Y'))
         # schema should be cleaned on delete (after commit)
         self.execute('DELETE CWEType X WHERE X name "Societe2"')
@@ -117,7 +116,7 @@ class SchemaModificationHooksTC(CubicWebTC):
         self.assertFalse(self.index_exists('Societe2', 'name'))
         self.assertFalse(schema.has_entity('Societe2'))
         self.assertFalse(schema.has_entity('concerne2'))
-        self.assertFalse('concerne2' in schema['CWUser'].subject_relations())
+        self.assertNotIn('concerne2', schema['CWUser'].subject_relations())
 
     def test_metartype_with_nordefs(self):
         META_RTYPES.add('custom_meta')
@@ -153,9 +152,9 @@ class SchemaModificationHooksTC(CubicWebTC):
         instanceof_etypes = [etype for etype, in self.execute('Any ETN WHERE X eid %s, X is_instance_of ET, ET name ETN' % seid)]
         self.assertEqual(sorted(instanceof_etypes), ['BaseTransition', 'Transition'])
         snames = [name for name, in self.execute('Any N WHERE S is BaseTransition, S name N')]
-        self.assertFalse('subdiv' in snames)
+        self.assertNotIn('subdiv', snames)
         snames = [name for name, in self.execute('Any N WHERE S is_instance_of BaseTransition, S name N')]
-        self.assertTrue('subdiv' in snames)
+        self.assertIn('subdiv', snames)
 
 
     def test_perms_synchronization_1(self):
@@ -201,8 +200,8 @@ class SchemaModificationHooksTC(CubicWebTC):
 
     def test_uninline_relation(self):
         self.session.set_cnxset()
-        dbhelper = self.session.cnxset.source('system').dbhelper
-        sqlcursor = self.session.cnxset['system']
+        dbhelper = self.repo.system_source.dbhelper
+        sqlcursor = self.session.cnxset.cu
         self.assertTrue(self.schema['state_of'].inlined)
         try:
             self.execute('SET X inlined FALSE WHERE X name "state_of"')
@@ -226,8 +225,8 @@ class SchemaModificationHooksTC(CubicWebTC):
 
     def test_indexed_change(self):
         self.session.set_cnxset()
-        dbhelper = self.session.cnxset.source('system').dbhelper
-        sqlcursor = self.session.cnxset['system']
+        dbhelper = self.repo.system_source.dbhelper
+        sqlcursor = self.session.cnxset.cu
         try:
             self.execute('SET X indexed FALSE WHERE X relation_type R, R name "name"')
             self.assertTrue(self.schema['name'].rdef('Workflow', 'String').indexed)
@@ -245,23 +244,19 @@ class SchemaModificationHooksTC(CubicWebTC):
 
     def test_unique_change(self):
         self.session.set_cnxset()
-        dbhelper = self.session.cnxset.source('system').dbhelper
-        sqlcursor = self.session.cnxset['system']
+        dbhelper = self.repo.system_source.dbhelper
+        sqlcursor = self.session.cnxset.cu
         try:
-            self.execute('INSERT CWConstraint X: X cstrtype CT, DEF constrained_by X '
-                         'WHERE CT name "UniqueConstraint", DEF relation_type RT, DEF from_entity E,'
-                         'RT name "name", E name "Workflow"')
+            eid = self.execute('INSERT CWConstraint X: X cstrtype CT, DEF constrained_by X '
+                               'WHERE CT name "UniqueConstraint", DEF relation_type RT, DEF from_entity E,'
+                               'RT name "name", E name "Workflow"').rows[0][0]
             self.assertFalse(self.schema['Workflow'].has_unique_values('name'))
             self.assertFalse(self.index_exists('Workflow', 'name', unique=True))
             self.commit()
             self.assertTrue(self.schema['Workflow'].has_unique_values('name'))
             self.assertTrue(self.index_exists('Workflow', 'name', unique=True))
         finally:
-            self.execute('DELETE DEF constrained_by X WHERE X cstrtype CT, '
-                         'CT name "UniqueConstraint", DEF relation_type RT, DEF from_entity E,'
-                         'RT name "name", E name "Workflow"')
-            self.assertTrue(self.schema['Workflow'].has_unique_values('name'))
-            self.assertTrue(self.index_exists('Workflow', 'name', unique=True))
+            self.execute('DELETE CWConstraint C WHERE C eid %(eid)s', {'eid': eid})
             self.commit()
             self.assertFalse(self.schema['Workflow'].has_unique_values('name'))
             self.assertFalse(self.index_exists('Workflow', 'name', unique=True))
@@ -299,8 +294,8 @@ class SchemaModificationHooksTC(CubicWebTC):
                      {'x': attreid})
         self.commit()
         self.schema.rebuild_infered_relations()
-        self.assertTrue('Transition' in self.schema['messageid'].subjects())
-        self.assertTrue('WorkflowTransition' in self.schema['messageid'].subjects())
+        self.assertIn('Transition', self.schema['messageid'].subjects())
+        self.assertIn('WorkflowTransition', self.schema['messageid'].subjects())
         self.execute('Any X WHERE X is_instance_of BaseTransition, X messageid "hop"')
 
     def test_change_fulltextindexed(self):

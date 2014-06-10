@@ -633,11 +633,9 @@ class Entity(AppObject):
 
     @cached
     def cw_metainformation(self):
-        res = self._cw.describe(self.eid, asdict=True)
-        # use 'asource' and not 'source' since this is the actual source,
-        # while 'source' is the physical source (where it's stored)
-        res['source'] = self._cw.source_defs()[res.pop('asource')]
-        return res
+        metas = self._cw.entity_metas(self.eid)
+        metas['source'] = self._cw.source_defs()[metas['source']]
+        return metas
 
     def cw_check_perm(self, action):
         self.e_schema.check_perm(self._cw, action, eid=self.eid)
@@ -1076,6 +1074,25 @@ class Entity(AppObject):
 
     # generic vocabulary methods ##############################################
 
+    def cw_linkable_rql(self, rtype, targettype, role, ordermethod=None,
+                        vocabconstraints=True, lt_infos={}, limit=None):
+        """build a rql to fetch targettype entities either related or unrelated
+        to this entity using (rtype, role) relation.
+
+        Consider relation permissions so that returned entities may be actually
+        linked by `rtype`.
+
+        `lt_infos` are supplementary informations, usually coming from __linkto
+        parameter, that can help further restricting the results in case current
+        entity is not yet created. It is a dict describing entities the current
+        entity will be linked to, which keys are (rtype, role) tuples and values
+        are a list of eids.
+        """
+        return self._cw_compute_linkable_rql(rtype, targettype, role, ordermethod=None,
+                                             vocabconstraints=vocabconstraints,
+                                             lt_infos=lt_infos, limit=limit,
+                                             unrelated_only=False)
+
     def cw_unrelated_rql(self, rtype, targettype, role, ordermethod=None,
                          vocabconstraints=True, lt_infos={}, limit=None):
         """build a rql to fetch `targettype` entities unrelated to this entity
@@ -1089,6 +1106,21 @@ class Entity(AppObject):
         entity is not yet created. It is a dict describing entities the current
         entity will be linked to, which keys are (rtype, role) tuples and values
         are a list of eids.
+        """
+        return self._cw_compute_linkable_rql(rtype, targettype, role, ordermethod=None,
+                                             vocabconstraints=vocabconstraints,
+                                             lt_infos=lt_infos, limit=limit,
+                                             unrelated_only=True)
+
+    def _cw_compute_linkable_rql(self, rtype, targettype, role, ordermethod=None,
+                                 vocabconstraints=True, lt_infos={}, limit=None,
+                                 unrelated_only=False):
+        """build a rql to fetch `targettype` entities that may be related to
+        this entity using the (rtype, role) relation.
+
+        By default (unrelated_only=False), this includes the already linked
+        entities as well as the unrelated ones. If `unrelated_only` is True, the
+        rql filters out the already related entities.
         """
         ordermethod = ordermethod or 'fetch_unrelated_order'
         rschema = self._cw.vreg.schema.rschema(rtype)
@@ -1118,7 +1150,7 @@ class Entity(AppObject):
             else:
                 rel = make_relation(searchedvar, rtype, (variable,), VariableRef)
             select.add_restriction(Not(rel))
-        elif self.has_eid():
+        elif self.has_eid() and unrelated_only:
             # elif we have an eid, we don't want a target entity which is
             # already linked to ourself through this relation
             rel = make_relation(subjvar, rtype, (objvar,), VariableRef)

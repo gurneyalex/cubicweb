@@ -1,4 +1,4 @@
-# copyright 2003-2012 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2013 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -25,8 +25,11 @@ import logging
 import shutil
 import pickle
 import glob
+import random
+import subprocess
 import warnings
 import tempfile
+import getpass
 from hashlib import sha1 # pylint: disable=E0611
 from datetime import timedelta
 from os.path import (abspath, join, exists, split, isabs, isdir)
@@ -86,6 +89,13 @@ DEFAULT_SOURCES = {'system': {'adapter' : 'native',
                               'password': u'gingkow',
                               },
                    }
+DEFAULT_PSQL_SOURCES = DEFAULT_SOURCES.copy()
+DEFAULT_PSQL_SOURCES['system'] = DEFAULT_SOURCES['system'].copy()
+DEFAULT_PSQL_SOURCES['system']['db-driver'] = 'postgres'
+DEFAULT_PSQL_SOURCES['system']['db-host'] = '/tmp'
+DEFAULT_PSQL_SOURCES['system']['db-port'] = str(random.randrange(5432, 2**16))
+DEFAULT_PSQL_SOURCES['system']['db-user'] = unicode(getpass.getuser())
+DEFAULT_PSQL_SOURCES['system']['db-password'] = None
 
 def turn_repo_off(repo):
     """ Idea: this is less costly than a full re-creation of the repo object.
@@ -121,8 +131,7 @@ def turn_repo_on(repo):
         repo._type_source_cache = {}
         repo._extid_cache = {}
         repo.querier._rql_cache = {}
-        for source in repo.sources:
-            source.reset_caches()
+        repo.system_source.reset_caches()
         repo._needs_refresh = False
 
 
@@ -131,6 +140,8 @@ class TestServerConfiguration(ServerConfiguration):
     read_instance_schema = False
     init_repository = True
     skip_db_create_and_restore = False
+    default_sources = DEFAULT_SOURCES
+
     def __init__(self, appid='data', apphome=None, log_threshold=logging.CRITICAL+10):
         # must be set before calling parent __init__
         if apphome is None:
@@ -192,20 +203,20 @@ class TestServerConfiguration(ServerConfiguration):
             sourcefile = super(TestServerConfiguration, self).sources_file()
         return sourcefile
 
-    def sources(self):
+    def read_sources_file(self):
         """By default, we run tests with the sqlite DB backend.  One may use its
         own configuration by just creating a 'sources' file in the test
-        directory from wich tests are launched or by specifying an alternative
+        directory from which tests are launched or by specifying an alternative
         sources file using self.sourcefile.
         """
         try:
-            sources = super(TestServerConfiguration, self).sources()
+            sources = super(TestServerConfiguration, self).read_sources_file()
         except ExecutionError:
             sources = {}
         if not sources:
-            sources = DEFAULT_SOURCES
+            sources = self.default_sources
         if 'admin' not in sources:
-            sources['admin'] = DEFAULT_SOURCES['admin']
+            sources['admin'] = self.default_sources['admin']
         return sources
 
     # web config methods needed here for cases when we use this config as a web
@@ -246,6 +257,10 @@ class ApptestConfiguration(BaseApptestConfiguration):
         self.sourcefile = sourcefile
 
 
+class PostgresApptestConfiguration(ApptestConfiguration):
+    default_sources = DEFAULT_PSQL_SOURCES
+
+
 class RealDatabaseConfiguration(ApptestConfiguration):
     """configuration class for tests to run on a real database.
 
@@ -268,7 +283,6 @@ class RealDatabaseConfiguration(ApptestConfiguration):
     """
     skip_db_create_and_restore = True
     read_instance_schema = True # read schema from database
-
 
 # test database handling #######################################################
 
@@ -389,12 +403,12 @@ class TestDataBaseHandler(object):
 
     def get_cnx(self):
         """return Connection object on the current repository"""
-        from cubicweb.dbapi import _repo_connect
+        from cubicweb.repoapi import connect
         repo = self.get_repo()
-        sources = self.config.sources()
+        sources = self.config.read_sources_file()
         login  = unicode(sources['admin']['login'])
         password = sources['admin']['password'] or 'xxx'
-        cnx = _repo_connect(repo, login, password=password)
+        cnx = connect(repo, login, password=password)
         return cnx
 
     def get_repo_and_cnx(self, db_id=DEFAULT_EMPTY_DB_ID):
@@ -412,8 +426,7 @@ class TestDataBaseHandler(object):
 
     @property
     def system_source(self):
-        sources = self.config.sources()
-        return sources['system']
+        return self.config.system_source_config
 
     @property
     def dbname(self):
@@ -521,6 +534,27 @@ class NoCreateDropDatabaseHandler(TestDataBaseHandler):
 
 class PostgresTestDataBaseHandler(TestDataBaseHandler):
     DRIVER = 'postgres'
+
+    __CTL = set()
+
+    @classmethod
+    def killall(cls):
+        for datadir in cls.__CTL:
+            subprocess.call(['pg_ctl', 'stop', '-D', datadir, '-m', 'fast'])
+
+    def __init__(self, config):
+        super(PostgresTestDataBaseHandler, self).__init__(config)
+        datadir = join(self.config.apphome, 'pgdb')
+        if not exists(datadir):
+            subprocess.check_call(['initdb', '-D', datadir, '-E', 'utf-8', '--locale=C'])
+        port = self.system_source['db-port']
+        directory = self.system_source['db-host']
+        env = os.environ.copy()
+        env['PGPORT'] = str(port)
+        env['PGHOST'] = str(directory)
+        subprocess.check_call(['pg_ctl', 'start', '-w', '-D', datadir, '-o', '-h "" -k %s -p %s' % (directory, port)],
+                              env=env)
+        self.__CTL.add(datadir)
 
     @property
     @cached
@@ -694,8 +728,8 @@ class SQLiteTestDataBaseHandler(TestDataBaseHandler):
     def absolute_dbfile(self):
         """absolute path of current database file"""
         dbfile = join(self._ensure_test_backup_db_dir(),
-                      self.config.sources()['system']['db-name'])
-        self.config.sources()['system']['db-name'] = dbfile
+                      self.system_source['db-name'])
+        self.system_source['db-name'] = dbfile
         return dbfile
 
     def process_cache_entry(self, directory, dbname, db_id, entry):
@@ -734,6 +768,7 @@ class SQLiteTestDataBaseHandler(TestDataBaseHandler):
 
 import atexit
 atexit.register(SQLiteTestDataBaseHandler._cleanup_all_tmpdb)
+atexit.register(PostgresTestDataBaseHandler.killall)
 
 
 def install_sqlite_patch(querier):
@@ -840,8 +875,7 @@ def get_test_db_handler(config):
     handler = HCACHE.get(config)
     if handler is not None:
         return handler
-    sources = config.sources()
-    driver = sources['system']['db-driver']
+    driver = config.system_source_config['db-driver']
     key = (driver, config)
     handlerkls = HANDLERS.get(driver, None)
     if handlerkls is not None:

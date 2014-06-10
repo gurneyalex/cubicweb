@@ -1,4 +1,4 @@
-# copyright 2003-2012 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2013 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -68,13 +68,13 @@ def _extract_eid_consts(plan, rqlst):
     """return a dict mapping rqlst variable object to their eid if specified in
     the syntax tree
     """
-    session = plan.session
+    cnx = plan.cnx
     if rqlst.where is None:
         return {}
     eidconsts = {}
-    neweids = session.transaction_data.get('neweids', ())
-    checkread = session.read_security
-    eschema = session.vreg.schema.eschema
+    neweids = cnx.transaction_data.get('neweids', ())
+    checkread = cnx.read_security
+    eschema = cnx.vreg.schema.eschema
     for rel in rqlst.where.get_nodes(Relation):
         # only care for 'eid' relations ...
         if (rel.r_type == 'eid'
@@ -89,9 +89,9 @@ def _extract_eid_consts(plan, rqlst):
                 # the generated select substep if not emited (eg nothing
                 # to be selected)
                 if checkread and eid not in neweids:
-                    with session.security_enabled(read=False):
-                        eschema(session.describe(eid)[0]).check_perm(
-                            session, 'read', eid=eid)
+                    with cnx.security_enabled(read=False):
+                        eschema(cnx.entity_metas(eid)['type']).check_perm(
+                            cnx, 'read', eid=eid)
                 eidconsts[lhs.variable] = eid
     return eidconsts
 
@@ -145,17 +145,17 @@ class SSPlanner(object):
         the rqlst should not be tagged at this point.
         """
         plan.preprocess(rqlst)
-        return (OneFetchStep(plan, rqlst, plan.session.repo.sources),)
+        return (OneFetchStep(plan, rqlst),)
 
     def build_insert_plan(self, plan, rqlst):
         """get an execution plan from an INSERT RQL query"""
         # each variable in main variables is a new entity to insert
         to_build = {}
-        session = plan.session
-        etype_class = session.vreg['etypes'].etype_class
+        cnx = plan.cnx
+        etype_class = cnx.vreg['etypes'].etype_class
         for etype, var in rqlst.main_variables:
             # need to do this since entity class is shared w. web client code !
-            to_build[var.name] = EditedEntity(etype_class(etype)(session))
+            to_build[var.name] = EditedEntity(etype_class(etype)(cnx))
             plan.add_entity_def(to_build[var.name])
         # add constant values to entity def, mark variables to be selected
         to_select = _extract_const_attributes(plan, rqlst, to_build)
@@ -311,24 +311,6 @@ def varmap_test_repr(varmap, tablesinorder):
         maprepr[var] = '%s.%s' % (tablesinorder[table], col)
     return maprepr
 
-def offset_result(offset, result):
-    offset -= len(result)
-    if offset < 0:
-        result = result[offset:]
-        offset = None
-    elif offset == 0:
-        offset = None
-        result = ()
-    return offset, result
-
-
-class LimitOffsetMixIn(object):
-    limit = offset = None
-    def set_limit_offset(self, limit, offset):
-        self.limit = limit
-        self.offset = offset or None
-
-
 class Step(object):
     """base abstract class for execution step"""
     def __init__(self, plan):
@@ -357,29 +339,21 @@ class Step(object):
             [step.test_repr() for step in self.children],)
 
 
-class OneFetchStep(LimitOffsetMixIn, Step):
+class OneFetchStep(Step):
     """step consisting in fetching data from sources and directly returning
     results
     """
-    def __init__(self, plan, union, sources, inputmap=None):
+    def __init__(self, plan, union, inputmap=None):
         Step.__init__(self, plan)
         self.union = union
-        self.sources = sources
         self.inputmap = inputmap
-        self.set_limit_offset(union.children[-1].limit, union.children[-1].offset)
-
-    def set_limit_offset(self, limit, offset):
-        LimitOffsetMixIn.set_limit_offset(self, limit, offset)
-        for select in self.union.children:
-            select.limit = limit
-            select.offset = offset
 
     def execute(self):
         """call .syntax_tree_search with the given syntax tree on each
         source for each solution
         """
         self.execute_children()
-        session = self.plan.session
+        cnx = self.plan.cnx
         args = self.plan.args
         inputmap = self.inputmap
         union = self.union
@@ -395,31 +369,9 @@ class OneFetchStep(LimitOffsetMixIn, Step):
             cachekey = tuple(cachekey)
         else:
             cachekey = union.as_string()
-        result = []
-        # limit / offset processing
-        limit = self.limit
-        offset = self.offset
-        if offset is not None:
-            if len(self.sources) > 1:
-                # we'll have to deal with limit/offset by ourself
-                if union.children[-1].limit:
-                    union.children[-1].limit = limit + offset
-                union.children[-1].offset = None
-            else:
-                offset, limit = None, None
-        for source in self.sources:
-            if offset is None and limit is not None:
-                # modifying the sample rqlst is enough since sql generation
-                # will pick it here as well
-                union.children[-1].limit = limit - len(result)
-            result_ = source.syntax_tree_search(session, union, args, cachekey,
-                                                inputmap)
-            if offset is not None:
-                offset, result_ = offset_result(offset, result_)
-            result += result_
-            if limit is not None:
-                if len(result) >= limit:
-                    return result[:limit]
+        # get results for query
+        source = cnx.repo.system_source
+        result = source.syntax_tree_search(cnx, union, args, cachekey, inputmap)
         #print 'ONEFETCH RESULT %s' % (result)
         return result
 
@@ -432,8 +384,7 @@ class OneFetchStep(LimitOffsetMixIn, Step):
         return (self.__class__.__name__,
                 sorted((r.as_string(kwargs=self.plan.args), r.solutions)
                        for r in self.union.children),
-                self.limit, self.offset,
-                sorted(self.sources), inputmap)
+                inputmap)
 
 
 # UPDATE/INSERT/DELETE steps ##################################################
@@ -515,8 +466,8 @@ class DeleteEntitiesStep(Step):
         results = self.execute_child()
         if results:
             todelete = frozenset(int(eid) for eid, in results)
-            session = self.plan.session
-            session.repo.glob_delete_entities(session, todelete)
+            cnx = self.plan.cnx
+            cnx.repo.glob_delete_entities(cnx, todelete)
         return results
 
 class DeleteRelationsStep(Step):
@@ -528,10 +479,10 @@ class DeleteRelationsStep(Step):
 
     def execute(self):
         """execute this step"""
-        session = self.plan.session
-        delete = session.repo.glob_delete_relation
+        cnx = self.plan.cnx
+        delete = cnx.repo.glob_delete_relation
         for subj, obj in self.execute_child():
-            delete(session, subj, self.rtype, obj)
+            delete(cnx, subj, self.rtype, obj)
 
 
 class UpdateStep(Step):
@@ -545,8 +496,8 @@ class UpdateStep(Step):
 
     def execute(self):
         """execute this step"""
-        session = self.plan.session
-        repo = session.repo
+        cnx = self.plan.cnx
+        repo = cnx.repo
         edefs = {}
         relations = {}
         # insert relations
@@ -564,7 +515,7 @@ class UpdateStep(Step):
                     try:
                         edited = edefs[eid]
                     except KeyError:
-                        edef = session.entity_from_eid(eid)
+                        edef = cnx.entity_from_eid(eid)
                         edefs[eid] = edited = EditedEntity(edef)
                     edited.edited_attribute(str(rschema), rhsval)
                 else:
@@ -575,9 +526,9 @@ class UpdateStep(Step):
                         relations[str_rschema] = [(lhsval, rhsval)]
             result[i] = newrow
         # update entities
-        repo.glob_add_relations(session, relations)
+        repo.glob_add_relations(cnx, relations)
         for eid, edited in edefs.iteritems():
-            repo.glob_update_entity(session, edited)
+            repo.glob_update_entity(cnx, edited)
         return result
 
 def _handle_relterm(info, row, newrow):

@@ -33,7 +33,7 @@ from cubicweb.utils import json_dumps
 from cubicweb.uilib import rql_for_eid
 from cubicweb.web import INTERNAL_FIELD_VALUE, Redirect, RequestError, RemoteCallFailed
 import cubicweb.server.session
-from cubicweb.server.session import Transaction as OldTransaction
+from cubicweb.server.session import Connection as OldConnection
 from cubicweb.entities.authobjs import CWUser
 from cubicweb.web.views.autoform import get_pending_inserts, get_pending_deletes
 from cubicweb.web.views.basecontrollers import JSonController, xhtmlize, jsonize
@@ -53,11 +53,11 @@ def req_form(user):
 class EditControllerTC(CubicWebTC):
     def setUp(self):
         CubicWebTC.setUp(self)
-        self.assertTrue('users' in self.schema.eschema('CWGroup').get_groups('read'))
+        self.assertIn('users', self.schema.eschema('CWGroup').get_groups('read'))
 
     def tearDown(self):
         CubicWebTC.tearDown(self)
-        self.assertTrue('users' in self.schema.eschema('CWGroup').get_groups('read'))
+        self.assertIn('users', self.schema.eschema('CWGroup').get_groups('read'))
 
     def test_noparam_edit(self):
         """check behaviour of this controller without any form parameter
@@ -121,7 +121,7 @@ class EditControllerTC(CubicWebTC):
         path, params = self.expect_redirect_handle_request(req, 'edit')
         cnx.commit() # commit to check we don't get late validation error for instance
         self.assertEqual(path, 'cwuser/user')
-        self.assertFalse('vid' in params)
+        self.assertNotIn('vid', params)
 
     def test_user_editing_itself_no_relation(self):
         """checking we can edit an entity without specifying some required
@@ -916,15 +916,15 @@ class JSonControllerTC(AjaxControllerTC):
 class UndoControllerTC(CubicWebTC):
 
     def setUp(self):
-        class Transaction(OldTransaction):
+        class Connection(OldConnection):
             """Force undo feature to be turned on in all case"""
             undo_actions = property(lambda tx: True, lambda x, y:None)
-        cubicweb.server.session.Transaction = Transaction
+        cubicweb.server.session.Connection = Connection
         super(UndoControllerTC, self).setUp()
 
     def tearDown(self):
         super(UndoControllerTC, self).tearDown()
-        cubicweb.server.session.Transaction = OldTransaction
+        cubicweb.server.session.Connection = OldConnection
 
 
     def setup_database(self):
