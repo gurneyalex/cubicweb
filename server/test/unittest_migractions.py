@@ -1,4 +1,4 @@
-# copyright 2003-2013 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2014 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -72,6 +72,22 @@ class MigrationCommandsTC(CubicWebTC):
         CubicWebTC.tearDown(self)
         self.repo.vreg['etypes'].clear_caches()
 
+    def test_add_attribute_bool(self):
+        self.assertFalse('yesno' in self.schema)
+        self.session.create_entity('Note')
+        self.commit()
+        self.mh.cmd_add_attribute('Note', 'yesno')
+        self.assertTrue('yesno' in self.schema)
+        self.assertEqual(self.schema['yesno'].subjects(), ('Note',))
+        self.assertEqual(self.schema['yesno'].objects(), ('Boolean',))
+        self.assertEqual(self.schema['Note'].default('yesno'), False)
+        # test default value set on existing entities
+        note = self.session.execute('Note X').get_entity(0, 0)
+        self.assertEqual(note.yesno, False)
+        # test default value set for next entities
+        self.assertEqual(self.session.create_entity('Note').yesno, False)
+        self.mh.rollback()
+
     def test_add_attribute_int(self):
         self.assertFalse('whatever' in self.schema)
         self.session.create_entity('Note')
@@ -82,12 +98,13 @@ class MigrationCommandsTC(CubicWebTC):
         self.assertTrue('whatever' in self.schema)
         self.assertEqual(self.schema['whatever'].subjects(), ('Note',))
         self.assertEqual(self.schema['whatever'].objects(), ('Int',))
-        self.assertEqual(self.schema['Note'].default('whatever'), 2)
+        self.assertEqual(self.schema['Note'].default('whatever'), 0)
         # test default value set on existing entities
         note = self.session.execute('Note X').get_entity(0, 0)
-        self.assertEqual(note.whatever, 2)
+        self.assertIsInstance(note.whatever, int)
+        self.assertEqual(note.whatever, 0)
         # test default value set for next entities
-        self.assertEqual(self.session.create_entity('Note').whatever, 2)
+        self.assertEqual(self.session.create_entity('Note').whatever, 0)
         # test attribute order
         orderdict2 = dict(self.mh.rqlexec('Any RTN, O WHERE X name "Note", RDEF from_entity X, '
                                           'RDEF relation_type RT, RDEF ordernum O, RT name RTN'))
@@ -127,9 +144,14 @@ class MigrationCommandsTC(CubicWebTC):
 
     def test_add_datetime_with_default_value_attribute(self):
         self.assertFalse('mydate' in self.schema)
-        self.assertFalse('shortpara' in self.schema)
+        self.assertFalse('oldstyledefaultdate' in self.schema)
+        self.assertFalse('newstyledefaultdate' in self.schema)
         self.mh.cmd_add_attribute('Note', 'mydate')
+        self.mh.cmd_add_attribute('Note', 'oldstyledefaultdate')
+        self.mh.cmd_add_attribute('Note', 'newstyledefaultdate')
         self.assertTrue('mydate' in self.schema)
+        self.assertTrue('oldstyledefaultdate' in self.schema)
+        self.assertTrue('newstyledefaultdate' in self.schema)
         self.assertEqual(self.schema['mydate'].subjects(), ('Note', ))
         self.assertEqual(self.schema['mydate'].objects(), ('Date', ))
         testdate = date(2005, 12, 13)
@@ -137,8 +159,13 @@ class MigrationCommandsTC(CubicWebTC):
         eid2 = self.mh.rqlexec('INSERT Note N: N mydate %(mydate)s', {'mydate' : testdate})[0][0]
         d1 = self.mh.rqlexec('Any D WHERE X eid %(x)s, X mydate D', {'x': eid1})[0][0]
         d2 = self.mh.rqlexec('Any D WHERE X eid %(x)s, X mydate D', {'x': eid2})[0][0]
+        d3 = self.mh.rqlexec('Any D WHERE X eid %(x)s, X oldstyledefaultdate D', {'x': eid1})[0][0]
+        d4 = self.mh.rqlexec('Any D WHERE X eid %(x)s, X newstyledefaultdate D', {'x': eid1})[0][0]
         self.assertEqual(d1, date.today())
         self.assertEqual(d2, testdate)
+        myfavoritedate = date(2013, 1, 1)
+        self.assertEqual(d3, myfavoritedate)
+        self.assertEqual(d4, myfavoritedate)
         self.mh.rollback()
 
     def test_drop_chosen_constraints_ctxmanager(self):
@@ -198,7 +225,6 @@ class MigrationCommandsTC(CubicWebTC):
         self.assertTrue(self.session.execute('CWEType X WHERE X name "Folder2"'))
         self.assertTrue('filed_under2' in self.schema)
         self.assertTrue(self.session.execute('CWRType X WHERE X name "filed_under2"'))
-        self.schema.rebuild_infered_relations()
         self.assertEqual(sorted(str(rs) for rs in self.schema['Folder2'].subject_relations()),
                           ['created_by', 'creation_date', 'cw_source', 'cwuri',
                            'description', 'description_format',
@@ -244,7 +270,6 @@ class MigrationCommandsTC(CubicWebTC):
     def test_add_drop_relation_type(self):
         self.mh.cmd_add_entity_type('Folder2', auto=False)
         self.mh.cmd_add_relation_type('filed_under2')
-        self.schema.rebuild_infered_relations()
         self.assertTrue('filed_under2' in self.schema)
         # Old will be missing as it has been renamed into 'New' in the migrated
         # schema while New hasn't been added here.
@@ -301,16 +326,10 @@ class MigrationCommandsTC(CubicWebTC):
         self.assertEqual(sorted(str(e) for e in self.schema['concerne'].subjects()),
                           ['Affaire', 'Personne'])
         self.assertEqual(sorted(str(e) for e in self.schema['concerne'].objects()),
-                          ['Affaire', 'Division', 'Note', 'SubDivision'])
-        self.schema.rebuild_infered_relations() # need to be explicitly called once everything is in place
-        self.assertEqual(sorted(str(e) for e in self.schema['concerne'].objects()),
                           ['Affaire', 'Note'])
         self.mh.cmd_add_relation_definition('Affaire', 'concerne', 'Societe')
         self.assertEqual(sorted(str(e) for e in self.schema['concerne'].subjects()),
                           ['Affaire', 'Personne'])
-        self.assertEqual(sorted(str(e) for e in self.schema['concerne'].objects()),
-                          ['Affaire', 'Note', 'Societe'])
-        self.schema.rebuild_infered_relations() # need to be explicitly called once everything is in place
         self.assertEqual(sorted(str(e) for e in self.schema['concerne'].objects()),
                           ['Affaire', 'Division', 'Note', 'Societe', 'SubDivision'])
         # trick: overwrite self.maxeid to avoid deletion of just reintroduced types
@@ -409,8 +428,8 @@ class MigrationCommandsTC(CubicWebTC):
         self.assertEqual(eexpr.reverse_read_permission, ())
         self.assertEqual(eexpr.reverse_delete_permission, ())
         self.assertEqual(eexpr.reverse_update_permission, ())
-        # no more rqlexpr to delete and add para attribute
-        self.assertFalse(self._rrqlexpr_rset('add', 'para'))
+        self.assertTrue(self._rrqlexpr_rset('add', 'para'))
+        # no rqlexpr to delete para attribute
         self.assertFalse(self._rrqlexpr_rset('delete', 'para'))
         # new rql expr to add ecrit_par relation
         rexpr = self._rrqlexpr_entity('add', 'ecrit_par')
@@ -438,19 +457,24 @@ class MigrationCommandsTC(CubicWebTC):
         self.assertEqual(len(self._rrqlexpr_rset('delete', 'concerne')), len(delete_concerne_rqlexpr))
         self.assertEqual(len(self._rrqlexpr_rset('add', 'concerne')), len(add_concerne_rqlexpr))
         # * migrschema involve:
-        #   * 7 rqlexprs deletion (2 in (Affaire read + Societe + travaille) + 1
-        #     in para attribute)
+        #   * 7 erqlexprs deletions (2 in (Affaire + Societe + Note.para) + 1 Note.something
+        #   * 2 rrqlexprs deletions (travaille)
         #   * 1 update (Affaire update)
         #   * 2 new (Note add, ecrit_par add)
-        #   * 2 implicit new for attributes update_permission (Note.para, Personne.test)
+        #   * 2 implicit new for attributes (Note.para, Person.test)
         # remaining orphan rql expr which should be deleted at commit (composite relation)
-        self.assertEqual(cursor.execute('Any COUNT(X) WHERE X is RQLExpression, '
-                                         'NOT ET1 read_permission X, NOT ET2 add_permission X, '
-                                         'NOT ET3 delete_permission X, NOT ET4 update_permission X')[0][0],
-                          7+1)
+        # unattached expressions -> pending deletion on commit
+        self.assertEqual(cursor.execute('Any COUNT(X) WHERE X is RQLExpression, X exprtype "ERQLExpression",'
+                                        'NOT ET1 read_permission X, NOT ET2 add_permission X, '
+                                        'NOT ET3 delete_permission X, NOT ET4 update_permission X')[0][0],
+                          7)
+        self.assertEqual(cursor.execute('Any COUNT(X) WHERE X is RQLExpression, X exprtype "RRQLExpression",'
+                                        'NOT ET1 read_permission X, NOT ET2 add_permission X, '
+                                        'NOT ET3 delete_permission X, NOT ET4 update_permission X')[0][0],
+                          2)
         # finally
         self.assertEqual(cursor.execute('Any COUNT(X) WHERE X is RQLExpression')[0][0],
-                          nbrqlexpr_start + 1 + 2 + 2)
+                         nbrqlexpr_start + 1 + 2 + 2 + 2)
         self.mh.commit()
         # unique_together test
         self.assertEqual(len(self.schema.eschema('Personne')._unique_together), 1)
@@ -587,12 +611,10 @@ class MigrationCommandsTC(CubicWebTC):
     @tag('longrun')
     def test_introduce_base_class(self):
         self.mh.cmd_add_entity_type('Para')
-        self.mh.repo.schema.rebuild_infered_relations()
         self.assertEqual(sorted(et.type for et in self.schema['Para'].specialized_by()),
                           ['Note'])
         self.assertEqual(self.schema['Note'].specializes().type, 'Para')
         self.mh.cmd_add_entity_type('Text')
-        self.mh.repo.schema.rebuild_infered_relations()
         self.assertEqual(sorted(et.type for et in self.schema['Para'].specialized_by()),
                           ['Note', 'Text'])
         self.assertEqual(self.schema['Text'].specializes().type, 'Para')
@@ -616,12 +638,8 @@ class MigrationCommandsTC(CubicWebTC):
         #
         # also we need more tests about introducing/removing base classes or
         # specialization relationship...
-        self.session.data['rebuild-infered'] = True
-        try:
-            self.session.execute('DELETE X specializes Y WHERE Y name "Para"')
-            self.session.commit(free_cnxset=False)
-        finally:
-            self.session.data['rebuild-infered'] = False
+        self.session.execute('DELETE X specializes Y WHERE Y name "Para"')
+        self.session.commit(free_cnxset=False)
         self.assertEqual(sorted(et.type for et in self.schema['Para'].specialized_by()),
                           [])
         self.assertEqual(self.schema['Note'].specializes(), None)
