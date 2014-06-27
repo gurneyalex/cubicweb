@@ -59,7 +59,7 @@ class CubicWebWsgiRequest(CubicWebRequestBase):
 
         headers_in = dict((normalize_header(k[5:]), v) for k, v in self.environ.items()
                           if k.startswith('HTTP_'))
-        https = environ.get("HTTPS") in ('yes', 'on', '1')
+        https = self.is_secure()
         post, files = self.get_posted_data()
 
         super(CubicWebWsgiRequest, self).__init__(vreg, https, post,
@@ -104,32 +104,8 @@ class CubicWebWsgiRequest(CubicWebRequestBase):
 
     ## wsgi request helpers ###################################################
 
-    def instance_uri(self):
-        """Return the instance's base URI (no PATH_INFO or QUERY_STRING)
-
-        see python2.5's wsgiref.util.instance_uri code
-        """
-        environ = self.environ
-        url = environ['wsgi.url_scheme'] + '://'
-        if environ.get('HTTP_HOST'):
-            url += environ['HTTP_HOST']
-        else:
-            url += environ['SERVER_NAME']
-            if environ['wsgi.url_scheme'] == 'https':
-                if environ['SERVER_PORT'] != '443':
-                    url += ':' + environ['SERVER_PORT']
-            else:
-                if environ['SERVER_PORT'] != '80':
-                    url += ':' + environ['SERVER_PORT']
-        url += quote(environ.get('SCRIPT_NAME') or '/')
-        return url
-
-    def get_full_path(self):
-        return '%s%s' % (self.path, self.environ.get('QUERY_STRING', '') and ('?' + self.environ.get('QUERY_STRING', '')) or '')
-
     def is_secure(self):
-        return 'wsgi.url_scheme' in self.environ \
-            and self.environ['wsgi.url_scheme'] == 'https'
+        return self.environ['wsgi.url_scheme'] == 'https'
 
     def get_posted_data(self):
         # The WSGI spec says 'QUERY_STRING' may be absent.

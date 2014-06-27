@@ -23,6 +23,7 @@ import sys
 from time import clock, time
 from contextlib import contextmanager
 from warnings import warn
+import json
 
 import httplib
 
@@ -581,8 +582,10 @@ class CubicWebPublisher(object):
         status = httplib.INTERNAL_SERVER_ERROR
         if isinstance(ex, PublishException) and ex.status is not None:
             status = ex.status
-        req.status_out = status
-        json_dumper = getattr(ex, 'dumps', lambda : unicode(ex))
+        if req.status_out < 400:
+            # don't overwrite it if it's already set
+            req.status_out = status
+        json_dumper = getattr(ex, 'dumps', lambda : json.dumps({'reason': unicode(ex)}))
         return json_dumper()
 
     # special case handling
