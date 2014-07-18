@@ -112,9 +112,6 @@ class ResultSet(object):
         """returns the result set's size"""
         return self.rowcount
 
-    def __nonzero__(self):
-        return self.rowcount
-
     def __getitem__(self, i):
         """returns the ith element of the result set"""
         return self.rows[i] #ResultSetRow(self.rows[i])
@@ -544,7 +541,8 @@ class ResultSet(object):
                 else:
                     attr_cols[attr] = i
             else:
-                rdef = eschema.rdef(attr, role)
+                # XXX takefirst=True to remove warning triggered by ambiguous relations
+                rdef = eschema.rdef(attr, role, takefirst=True)
                 # only keep value if it can't be multivalued
                 if rdef.role_cardinality(role) in '1?':
                     rel_cols[(attr, role)] = i

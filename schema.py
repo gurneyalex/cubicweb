@@ -1,4 +1,4 @@
-# copyright 2003-2013 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2014 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -68,10 +68,13 @@ WORKFLOW_DEF_RTYPES = set(('workflow_of', 'state_of', 'transition_of',
                            'allowed_transition', 'destination_state',
                            'from_state', 'to_state', 'condition',
                            'subworkflow', 'subworkflow_state', 'subworkflow_exit',
+                           'by_transition',
                            ))
 SYSTEM_RTYPES = set(('in_group', 'require_group',
                      # cwproperty
                      'for_user',
+                     'cw_schema', 'cw_import_of', 'cw_for_source',
+                     'cw_host_config_of',
                      )) | WORKFLOW_RTYPES
 NO_I18NCONTEXT = META_RTYPES | WORKFLOW_RTYPES
 
@@ -560,7 +563,7 @@ def set_action_permissions(self, action, permissions):
 PermissionMixIn.set_action_permissions = set_action_permissions
 
 def has_local_role(self, action):
-    """return true if the action *may* be granted localy (eg either rql
+    """return true if the action *may* be granted locally (eg either rql
     expressions or the owners group are used in security definition)
 
     XXX this method is only there since we don't know well how to deal with
@@ -582,7 +585,7 @@ def may_have_permission(self, action, req):
 PermissionMixIn.may_have_permission = may_have_permission
 
 def has_perm(self, _cw, action, **kwargs):
-    """return true if the action is granted globaly or localy"""
+    """return true if the action is granted globally or locally"""
     try:
         self.check_perm(_cw, action, **kwargs)
         return True
@@ -675,6 +678,34 @@ class CubicWebEntitySchema(EntitySchema):
         if eid is None and edef is not None:
             eid = getattr(edef, 'eid', None)
         self.eid = eid
+
+    def targets(self, role):
+        assert role in ('subject', 'object')
+        if role == 'subject':
+            return self.subjrels.values()
+        return self.objrels.values()
+
+    @cachedproperty
+    def composite_rdef_roles(self):
+        """Return all relation definitions that define the current entity
+        type as a composite.
+        """
+        rdef_roles = []
+        for role in ('subject', 'object'):
+            for rschema in self.targets(role):
+                if rschema.final:
+                    continue
+                for rdef in rschema.rdefs.values():
+                    if (role == 'subject' and rdef.subject == self) or \
+                            (role == 'object' and rdef.object == self):
+                        crole = rdef.composite
+                        if crole == role:
+                            rdef_roles.append((rdef, role))
+        return rdef_roles
+
+    @cachedproperty
+    def is_composite(self):
+        return bool(len(self.composite_rdef_roles))
 
     def check_permission_definitions(self):
         super(CubicWebEntitySchema, self).check_permission_definitions()
@@ -819,20 +850,20 @@ class CubicWebRelationSchema(RelationSchema):
             assert not ('fromeid' in kwargs or 'toeid' in kwargs), kwargs
             assert action in ('read', 'update')
             if 'eid' in kwargs:
-                subjtype = _cw.describe(kwargs['eid'])[0]
+                subjtype = _cw.entity_metas(kwargs['eid'])['type']
             else:
                 subjtype = objtype = None
         else:
             assert not 'eid' in kwargs, kwargs
             assert action in ('read', 'add', 'delete')
             if 'fromeid' in kwargs:
-                subjtype = _cw.describe(kwargs['fromeid'])[0]
+                subjtype = _cw.entity_metas(kwargs['fromeid'])['type']
             elif 'frometype' in kwargs:
                 subjtype = kwargs.pop('frometype')
             else:
                 subjtype = None
             if 'toeid' in kwargs:
-                objtype = _cw.describe(kwargs['toeid'])[0]
+                objtype = _cw.entity_metas(kwargs['toeid'])['type']
             elif 'toetype' in kwargs:
                 objtype = kwargs.pop('toetype')
             else:

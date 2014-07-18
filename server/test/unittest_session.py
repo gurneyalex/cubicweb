@@ -1,4 +1,4 @@
-# copyright 2003-2012 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2014 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -39,10 +39,16 @@ class SessionTC(CubicWebTC):
 
     def test_hooks_control(self):
         session = self.session
+        # this test check the "old" behavior of session with automatic connection management
+        # close the default cnx, we do nto want it to interfer with the test
+        self.cnx.close()
+        # open a dedicated one
+        session.set_cnx('Some-random-cnx-unrelated-to-the-default-one')
+        # go test go
         self.assertEqual(HOOKS_ALLOW_ALL, session.hooks_mode)
         self.assertEqual(set(), session.disabled_hook_categories)
         self.assertEqual(set(), session.enabled_hook_categories)
-        self.assertEqual(1, len(session._txs))
+        self.assertEqual(1, len(session._cnxs))
         with session.deny_all_hooks_but('metadata'):
             self.assertEqual(HOOKS_DENY_ALL, session.hooks_mode)
             self.assertEqual(set(), session.disabled_hook_categories)
@@ -64,11 +70,34 @@ class SessionTC(CubicWebTC):
             self.assertEqual(set(('metadata',)), session.enabled_hook_categories)
         # leaving context manager with no transaction running should reset the
         # transaction local storage (and associated cnxset)
-        self.assertEqual({}, session._txs)
+        self.assertEqual({}, session._cnxs)
         self.assertEqual(None, session.cnxset)
         self.assertEqual(HOOKS_ALLOW_ALL, session.hooks_mode, session.HOOKS_ALLOW_ALL)
         self.assertEqual(set(), session.disabled_hook_categories)
         self.assertEqual(set(), session.enabled_hook_categories)
+
+    def test_explicite_connection(self):
+        with self.session.new_cnx() as cnx:
+            rset = cnx.execute('Any X LIMIT 1 WHERE X is CWUser')
+            self.assertEqual(1, len(rset))
+            user = rset.get_entity(0, 0)
+            user.cw_delete()
+            cnx.rollback()
+            new_user = cnx.entity_from_eid(user.eid)
+            self.assertIsNotNone(new_user.login)
+        self.assertFalse(cnx._open)
+
+    def test_internal_cnx(self):
+        with self.repo.internal_cnx() as cnx:
+            rset = cnx.execute('Any X LIMIT 1 WHERE X is CWUser')
+            self.assertEqual(1, len(rset))
+            user = rset.get_entity(0, 0)
+            user.cw_delete()
+            cnx.rollback()
+            new_user = cnx.entity_from_eid(user.eid)
+            self.assertIsNotNone(new_user.login)
+        self.assertFalse(cnx._open)
+
 
 
 if __name__ == '__main__':

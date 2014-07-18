@@ -1,4 +1,4 @@
-# copyright 2003-2012 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2014 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -21,12 +21,16 @@ __docformat__ = "restructuredtext en"
 
 import os
 import sys
+import errno
 import logging
 import shutil
 import pickle
 import glob
+import random
+import subprocess
 import warnings
 import tempfile
+import getpass
 from hashlib import sha1 # pylint: disable=E0611
 from datetime import timedelta
 from os.path import (abspath, join, exists, split, isabs, isdir)
@@ -86,6 +90,13 @@ DEFAULT_SOURCES = {'system': {'adapter' : 'native',
                               'password': u'gingkow',
                               },
                    }
+DEFAULT_PSQL_SOURCES = DEFAULT_SOURCES.copy()
+DEFAULT_PSQL_SOURCES['system'] = DEFAULT_SOURCES['system'].copy()
+DEFAULT_PSQL_SOURCES['system']['db-driver'] = 'postgres'
+DEFAULT_PSQL_SOURCES['system']['db-host'] = '/tmp'
+DEFAULT_PSQL_SOURCES['system']['db-port'] = str(random.randrange(5432, 2**16))
+DEFAULT_PSQL_SOURCES['system']['db-user'] = unicode(getpass.getuser())
+DEFAULT_PSQL_SOURCES['system']['db-password'] = None
 
 def turn_repo_off(repo):
     """ Idea: this is less costly than a full re-creation of the repo object.
@@ -121,8 +132,7 @@ def turn_repo_on(repo):
         repo._type_source_cache = {}
         repo._extid_cache = {}
         repo.querier._rql_cache = {}
-        for source in repo.sources:
-            source.reset_caches()
+        repo.system_source.reset_caches()
         repo._needs_refresh = False
 
 
@@ -131,6 +141,8 @@ class TestServerConfiguration(ServerConfiguration):
     read_instance_schema = False
     init_repository = True
     skip_db_create_and_restore = False
+    default_sources = DEFAULT_SOURCES
+
     def __init__(self, appid='data', apphome=None, log_threshold=logging.CRITICAL+10):
         # must be set before calling parent __init__
         if apphome is None:
@@ -192,20 +204,20 @@ class TestServerConfiguration(ServerConfiguration):
             sourcefile = super(TestServerConfiguration, self).sources_file()
         return sourcefile
 
-    def sources(self):
+    def read_sources_file(self):
         """By default, we run tests with the sqlite DB backend.  One may use its
         own configuration by just creating a 'sources' file in the test
-        directory from wich tests are launched or by specifying an alternative
+        directory from which tests are launched or by specifying an alternative
         sources file using self.sourcefile.
         """
         try:
-            sources = super(TestServerConfiguration, self).sources()
+            sources = super(TestServerConfiguration, self).read_sources_file()
         except ExecutionError:
             sources = {}
         if not sources:
-            sources = DEFAULT_SOURCES
+            sources = self.default_sources
         if 'admin' not in sources:
-            sources['admin'] = DEFAULT_SOURCES['admin']
+            sources['admin'] = self.default_sources['admin']
         return sources
 
     # web config methods needed here for cases when we use this config as a web
@@ -246,6 +258,10 @@ class ApptestConfiguration(BaseApptestConfiguration):
         self.sourcefile = sourcefile
 
 
+class PostgresApptestConfiguration(ApptestConfiguration):
+    default_sources = DEFAULT_PSQL_SOURCES
+
+
 class RealDatabaseConfiguration(ApptestConfiguration):
     """configuration class for tests to run on a real database.
 
@@ -262,13 +278,13 @@ class RealDatabaseConfiguration(ApptestConfiguration):
                                               sourcefile='/path/to/sources')
 
           def test_something(self):
-              rset = self.execute('Any X WHERE X is CWUser')
-              self.view('foaf', rset)
+              with self.admin_access.web_request() as req:
+                  rset = req.execute('Any X WHERE X is CWUser')
+                  self.view('foaf', rset, req=req)
 
     """
     skip_db_create_and_restore = True
     read_instance_schema = True # read schema from database
-
 
 # test database handling #######################################################
 
@@ -279,8 +295,9 @@ class TestDataBaseHandler(object):
     db_cache = {}
     explored_glob = set()
 
-    def __init__(self, config):
+    def __init__(self, config, init_config=None):
         self.config = config
+        self.init_config = init_config
         self._repo = None
         # pure consistency check
         assert self.system_source['db-driver'] == self.DRIVER
@@ -368,6 +385,9 @@ class TestDataBaseHandler(object):
         """
         if self._repo is None:
             self._repo = self._new_repo(self.config)
+        # config has now been bootstrapped, call init_config if specified
+        if self.init_config is not None:
+            self.init_config(self.config)
         repo = self._repo
         repo.turn_repo_on()
         if startup and not repo._has_started:
@@ -389,12 +409,12 @@ class TestDataBaseHandler(object):
 
     def get_cnx(self):
         """return Connection object on the current repository"""
-        from cubicweb.dbapi import _repo_connect
+        from cubicweb.repoapi import connect
         repo = self.get_repo()
-        sources = self.config.sources()
+        sources = self.config.read_sources_file()
         login  = unicode(sources['admin']['login'])
         password = sources['admin']['password'] or 'xxx'
-        cnx = _repo_connect(repo, login, password=password)
+        cnx = connect(repo, login, password=password)
         return cnx
 
     def get_repo_and_cnx(self, db_id=DEFAULT_EMPTY_DB_ID):
@@ -412,8 +432,7 @@ class TestDataBaseHandler(object):
 
     @property
     def system_source(self):
-        sources = self.config.sources()
-        return sources['system']
+        return self.config.system_source_config
 
     @property
     def dbname(self):
@@ -477,15 +496,9 @@ class TestDataBaseHandler(object):
             self.restore_database(DEFAULT_EMPTY_DB_ID)
             repo = self.get_repo(startup=True)
             cnx = self.get_cnx()
-            session = repo._sessions[cnx.sessionid]
-            session.set_cnxset()
-            _commit = session.commit
-            def keep_cnxset_commit(free_cnxset=False):
-                _commit(free_cnxset=free_cnxset)
-            session.commit = keep_cnxset_commit
-            pre_setup_func(session, self.config)
-            session.commit()
-            cnx.close()
+            with cnx:
+                pre_setup_func(cnx._cnx, self.config)
+                cnx.commit()
         self.backup_database(test_db_id)
 
 
@@ -521,6 +534,42 @@ class NoCreateDropDatabaseHandler(TestDataBaseHandler):
 
 class PostgresTestDataBaseHandler(TestDataBaseHandler):
     DRIVER = 'postgres'
+
+    __CTL = set()
+
+    @classmethod
+    def killall(cls):
+        for datadir in cls.__CTL:
+            subprocess.call(['pg_ctl', 'stop', '-D', datadir, '-m', 'fast'])
+
+    def __init__(self, *args, **kwargs):
+        super(PostgresTestDataBaseHandler, self).__init__(*args, **kwargs)
+        datadir = join(self.config.apphome, 'pgdb')
+        if not exists(datadir):
+            try:
+                subprocess.check_call(['initdb', '-D', datadir, '-E', 'utf-8', '--locale=C'])
+
+            except OSError, err:
+                if err.errno == errno.ENOENT:
+                    raise OSError('"initdb" could not be found. '
+                                  'You should add the postgresql bin folder to your PATH '
+                                  '(/usr/lib/postgresql/9.1/bin for example).')
+                raise
+        port = self.system_source['db-port']
+        directory = self.system_source['db-host']
+        env = os.environ.copy()
+        env['PGPORT'] = str(port)
+        env['PGHOST'] = str(directory)
+        try:
+            subprocess.check_call(['pg_ctl', 'start', '-w', '-D', datadir, '-o', '-h "" -k %s -p %s' % (directory, port)],
+                                  env=env)
+        except OSError, err:
+            if err.errno == errno.ENOENT:
+                raise OSError('"pg_ctl" could not be found. '
+                              'You should add the postgresql bin folder to your PATH '
+                              '(/usr/lib/postgresql/9.1/bin for example).')
+            raise
+        self.__CTL.add(datadir)
 
     @property
     @cached
@@ -577,7 +626,8 @@ class PostgresTestDataBaseHandler(TestDataBaseHandler):
             finally:
                 templcursor.close()
                 cnx.close()
-            init_repository(self.config, interactive=False)
+            init_repository(self.config, interactive=False,
+                            init_config=self.init_config)
         except BaseException:
             if self.dbcnx is not None:
                 self.dbcnx.rollback()
@@ -653,7 +703,8 @@ class SQLServerTestDataBaseHandler(TestDataBaseHandler):
         """initialize a fresh sqlserver databse used for testing purpose"""
         if self.config.init_repository:
             from cubicweb.server import init_repository
-            init_repository(self.config, interactive=False, drop=True)
+            init_repository(self.config, interactive=False, drop=True,
+                            init_config=self.init_config)
 
 ### sqlite test database handling ##############################################
 
@@ -694,8 +745,8 @@ class SQLiteTestDataBaseHandler(TestDataBaseHandler):
     def absolute_dbfile(self):
         """absolute path of current database file"""
         dbfile = join(self._ensure_test_backup_db_dir(),
-                      self.config.sources()['system']['db-name'])
-        self.config.sources()['system']['db-name'] = dbfile
+                      self.system_source['db-name'])
+        self.system_source['db-name'] = dbfile
         return dbfile
 
     def process_cache_entry(self, directory, dbname, db_id, entry):
@@ -730,10 +781,12 @@ class SQLiteTestDataBaseHandler(TestDataBaseHandler):
         # initialize the database
         from cubicweb.server import init_repository
         self._cleanup_database(self.absolute_dbfile())
-        init_repository(self.config, interactive=False)
+        init_repository(self.config, interactive=False,
+                        init_config=self.init_config)
 
 import atexit
 atexit.register(SQLiteTestDataBaseHandler._cleanup_all_tmpdb)
+atexit.register(PostgresTestDataBaseHandler.killall)
 
 
 def install_sqlite_patch(querier):
@@ -823,7 +876,7 @@ HCACHE = HCache()
 # XXX a class method on Test ?
 
 _CONFIG = None
-def get_test_db_handler(config):
+def get_test_db_handler(config, init_config=None):
     global _CONFIG
     if _CONFIG is not None and config is not _CONFIG:
         from logilab.common.modutils import cleanup_sys_modules
@@ -840,12 +893,11 @@ def get_test_db_handler(config):
     handler = HCACHE.get(config)
     if handler is not None:
         return handler
-    sources = config.sources()
-    driver = sources['system']['db-driver']
+    driver = config.system_source_config['db-driver']
     key = (driver, config)
     handlerkls = HANDLERS.get(driver, None)
     if handlerkls is not None:
-        handler = handlerkls(config)
+        handler = handlerkls(config, init_config)
         if config.skip_db_create_and_restore:
             handler = NoCreateDropDatabaseHandler(handler)
         HCACHE.set(config, handler)

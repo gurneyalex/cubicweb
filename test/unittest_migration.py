@@ -1,4 +1,4 @@
-# copyright 2003-2012 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2013 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -76,7 +76,7 @@ class MigrationToolsTC(TestCase):
     def test_filter_scripts_for_mode(self):
         config = CubicWebConfiguration('data')
         config.verbosity = 0
-        self.assert_(not isinstance(config.migration_handler(), ServerMigrationHelper))
+        self.assertNotIsInstance(config.migration_handler(), ServerMigrationHelper)
         self.assertIsInstance(config.migration_handler(), MigrationHelper)
         config = self.config
         config.__class__.name = 'repository'
@@ -99,16 +99,15 @@ class BaseCreationTC(TestCase):
     def test_db_creation(self):
         """make sure database can be created"""
         config = ApptestConfiguration('data', apphome=self.datadir)
-        source = config.sources()['system']
+        source = config.system_source_config
         self.assertEqual(source['db-driver'], 'sqlite')
         handler = get_test_db_handler(config)
         handler.init_test_database()
         handler.build_db_cache()
         repo, cnx = handler.get_repo_and_cnx()
-        cu = cnx.cursor()
-        self.assertEqual(cu.execute('Any SN WHERE X is CWUser, X login "admin", X in_state S, S name SN').rows,
-                          [['activated']])
-        cnx.close()
+        with cnx:
+            self.assertEqual(cnx.execute('Any SN WHERE X is CWUser, X login "admin", X in_state S, S name SN').rows,
+                             [['activated']])
         repo.shutdown()
 
 if __name__ == '__main__':

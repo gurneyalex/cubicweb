@@ -1,4 +1,4 @@
-# copyright 2003-2012 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2014 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -24,10 +24,8 @@ class LogFormTemplateTC(CubicWebTC):
 
     def _login_labels(self):
         valid = self.content_type_validators.get('text/html', XMLValidator)()
-        req = self.request()
-        req.cnx.anonymous_connection = True
-        page = valid.parse_string(self.vreg['views'].main_template(self.request(), 'login'))
-        req.cnx.anonymous_connection = False
+        req = self.requestcls(self.vreg, url='login')
+        page = valid.parse_string(self.vreg['views'].main_template(req, 'login'))
         return page.find_tag('label')
 
     def test_label(self):
@@ -40,7 +38,8 @@ class LogFormTemplateTC(CubicWebTC):
 class MainNoTopTemplateTC(CubicWebTC):
 
     def test_valid_xhtml(self):
-        self.view('index', template='main-no-top')
+        with self.admin_access.web_request() as req:
+            self.view('index', template='main-no-top', req=req)
 
 
 if __name__ == '__main__':

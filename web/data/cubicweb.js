@@ -100,7 +100,8 @@ jQuery.extend(cw, {
             return $node.text();
         }
         return cw.evalJSON(sortvalue);
-    }
+    },
+
 });
 
 
@@ -384,10 +385,18 @@ jQuery.extend(cw.utils, {
      */
     strFuncCall: function(fname /* ...*/) {
 	    return (fname + '(' +
-		    $.map(cw.utils.sliceList(arguments, 1), jQuery.toJSON).join(',')
+		    $.map(cw.utils.sliceList(arguments, 1), JSON.stringify).join(',')
 		    + ')'
 		    );
+    },
+
+    callAddOrDeleteThenReload: function (add_or_delete, rtype, subjeid, objeid) {
+        var d = asyncRemoteExec(add_or_delete, rtype, subjeid, objeid);
+        d.addCallback(function() {
+            window.location.reload();
+        });
     }
+
 
 });
 

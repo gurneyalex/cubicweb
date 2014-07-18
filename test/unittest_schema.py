@@ -1,4 +1,4 @@
-# copyright 2003-2013 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2014 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -248,8 +248,8 @@ class SchemaReaderClassTest(TestCase):
 
     def test_fulltext_container(self):
         schema = loader.load(config)
-        self.assertTrue('has_text' in schema['CWUser'].subject_relations())
-        self.assertFalse('has_text' in schema['EmailAddress'].subject_relations())
+        self.assertIn('has_text', schema['CWUser'].subject_relations())
+        self.assertNotIn('has_text', schema['EmailAddress'].subject_relations())
 
     def test_permission_settings(self):
         schema = loader.load(config)
@@ -329,12 +329,14 @@ class NormalizeExpressionTC(TestCase):
         self.assertEqual(normalize_expression('X  bla Y,Y blur Z  ,  Z zigoulou   X '),
                                                'X bla Y, Y blur Z, Z zigoulou X')
 
+
 class RQLExpressionTC(TestCase):
     def test_comparison(self):
         self.assertEqual(ERQLExpression('X is CWUser', 'X', 0),
                           ERQLExpression('X is CWUser', 'X', 0))
         self.assertNotEqual(ERQLExpression('X is CWUser', 'X', 0),
                              ERQLExpression('X is CWGroup', 'X', 0))
+
 
 class GuessRrqlExprMainVarsTC(TestCase):
     def test_exists(self):
@@ -345,15 +347,111 @@ class GuessRrqlExprMainVarsTC(TestCase):
 class RQLConstraintTC(CubicWebTC):
     def test_user_constraint(self):
         cstr = RQLConstraint('U identity O')
-        anoneid = self.execute('Any X WHERE X login "anon"')[0][0]
-        self.assertRaises(ValidationError, cstr.repo_check, self.session, 1, 'rel', anoneid)
-        self.assertEqual(cstr.repo_check(self.session, 1, self.session.user.eid),
-        None) # no validation error, constraint checked
+        with self.admin_access.repo_cnx() as cnx:
+            anoneid = cnx.execute('Any X WHERE X login "anon"')[0][0]
+            self.assertRaises(ValidationError,
+                              cstr.repo_check, cnx, 1, 'rel', anoneid)
+            self.assertEqual(cstr.repo_check(cnx, 1, cnx.user.eid),
+                             None) # no validation error, constraint checked
+
 
 class WorkflowShemaTC(CubicWebTC):
     def test_trinfo_default_format(self):
-        tr = self.request().user.cw_adapt_to('IWorkflowable').fire_transition('deactivate')
-        self.assertEqual(tr.comment_format, 'text/plain')
+        with self.admin_access.web_request() as req:
+            tr = req.user.cw_adapt_to('IWorkflowable').fire_transition('deactivate')
+            self.assertEqual(tr.comment_format, 'text/plain')
+
+
+class CompositeSchemaTC(CubicWebTC):
+    composites = {
+        'BaseTransition': [('condition', 'BaseTransition', 'RQLExpression', 'subject')],
+        'CWAttribute': [('add_permission', 'CWAttribute', 'RQLExpression', 'subject'),
+                        ('constrained_by', 'CWAttribute', 'CWConstraint', 'subject'),
+                        ('read_permission', 'CWAttribute', 'RQLExpression', 'subject'),
+                        ('update_permission', 'CWAttribute', 'RQLExpression', 'subject')],
+        'CWEType': [('add_permission', 'CWEType', 'RQLExpression', 'subject'),
+                    ('constraint_of', 'CWUniqueTogetherConstraint', 'CWEType', 'object'),
+                    ('cw_schema', 'CWSourceSchemaConfig', 'CWEType', 'object'),
+                    ('delete_permission', 'CWEType', 'RQLExpression', 'subject'),
+                    ('from_entity', 'CWAttribute', 'CWEType', 'object'),
+                    ('from_entity', 'CWRelation', 'CWEType', 'object'),
+                    ('read_permission', 'CWEType', 'RQLExpression', 'subject'),
+                    ('to_entity', 'CWAttribute', 'CWEType', 'object'),
+                    ('to_entity', 'CWRelation', 'CWEType', 'object'),
+                    ('update_permission', 'CWEType', 'RQLExpression', 'subject')],
+        'CWRType': [('cw_schema', 'CWSourceSchemaConfig', 'CWRType', 'object'),
+                    ('relation_type', 'CWAttribute', 'CWRType', 'object'),
+                    ('relation_type', 'CWRelation', 'CWRType', 'object')],
+        'CWRelation': [('add_permission', 'CWRelation', 'RQLExpression', 'subject'),
+                       ('constrained_by', 'CWRelation', 'CWConstraint', 'subject'),
+                       ('cw_schema', 'CWSourceSchemaConfig', 'CWRelation', 'object'),
+                       ('delete_permission', 'CWRelation', 'RQLExpression', 'subject'),
+                       ('read_permission', 'CWRelation', 'RQLExpression', 'subject')],
+        'CWSource': [('cw_for_source', 'CWSourceSchemaConfig', 'CWSource', 'object'),
+                     ('cw_host_config_of', 'CWSourceHostConfig', 'CWSource', 'object'),
+                     ('cw_import_of', 'CWDataImport', 'CWSource', 'object'),
+                     ('cw_source', 'Ami', 'CWSource', 'object'),
+                     ('cw_source', 'BaseTransition', 'CWSource', 'object'),
+                     ('cw_source', 'Bookmark', 'CWSource', 'object'),
+                     ('cw_source', 'CWAttribute', 'CWSource', 'object'),
+                     ('cw_source', 'CWCache', 'CWSource', 'object'),
+                     ('cw_source', 'CWConstraint', 'CWSource', 'object'),
+                     ('cw_source', 'CWConstraintType', 'CWSource', 'object'),
+                     ('cw_source', 'CWDataImport', 'CWSource', 'object'),
+                     ('cw_source', 'CWEType', 'CWSource', 'object'),
+                     ('cw_source', 'CWGroup', 'CWSource', 'object'),
+                     ('cw_source', 'CWPermission', 'CWSource', 'object'),
+                     ('cw_source', 'CWProperty', 'CWSource', 'object'),
+                     ('cw_source', 'CWRType', 'CWSource', 'object'),
+                     ('cw_source', 'CWRelation', 'CWSource', 'object'),
+                     ('cw_source', 'CWSource', 'CWSource', 'object'),
+                     ('cw_source', 'CWSourceHostConfig', 'CWSource', 'object'),
+                     ('cw_source', 'CWSourceSchemaConfig', 'CWSource', 'object'),
+                     ('cw_source', 'CWUniqueTogetherConstraint', 'CWSource', 'object'),
+                     ('cw_source', 'CWUser', 'CWSource', 'object'),
+                     ('cw_source', 'Card', 'CWSource', 'object'),
+                     ('cw_source', 'EmailAddress', 'CWSource', 'object'),
+                     ('cw_source', 'ExternalUri', 'CWSource', 'object'),
+                     ('cw_source', 'File', 'CWSource', 'object'),
+                     ('cw_source', 'Note', 'CWSource', 'object'),
+                     ('cw_source', 'Personne', 'CWSource', 'object'),
+                     ('cw_source', 'Produit', 'CWSource', 'object'),
+                     ('cw_source', 'RQLExpression', 'CWSource', 'object'),
+                     ('cw_source', 'Service', 'CWSource', 'object'),
+                     ('cw_source', 'Societe', 'CWSource', 'object'),
+                     ('cw_source', 'State', 'CWSource', 'object'),
+                     ('cw_source', 'StateFull', 'CWSource', 'object'),
+                     ('cw_source', 'SubNote', 'CWSource', 'object'),
+                     ('cw_source', 'SubWorkflowExitPoint', 'CWSource', 'object'),
+                     ('cw_source', 'Tag', 'CWSource', 'object'),
+                     ('cw_source', 'TrInfo', 'CWSource', 'object'),
+                     ('cw_source', 'Transition', 'CWSource', 'object'),
+                     ('cw_source', 'Usine', 'CWSource', 'object'),
+                     ('cw_source', 'Workflow', 'CWSource', 'object'),
+                     ('cw_source', 'WorkflowTransition', 'CWSource', 'object')],
+        'CWUser': [('for_user', 'CWProperty', 'CWUser', 'object'),
+                   ('use_email', 'CWUser', 'EmailAddress', 'subject'),
+                   ('wf_info_for', 'TrInfo', 'CWUser', 'object')],
+        'StateFull': [('wf_info_for', 'TrInfo', 'StateFull', 'object')],
+        'Transition': [('condition', 'Transition', 'RQLExpression', 'subject')],
+        'Workflow': [('state_of', 'State', 'Workflow', 'object'),
+                     ('transition_of', 'BaseTransition', 'Workflow', 'object'),
+                     ('transition_of', 'Transition', 'Workflow', 'object'),
+                     ('transition_of', 'WorkflowTransition', 'Workflow', 'object')],
+        'WorkflowTransition': [('condition', 'WorkflowTransition', 'RQLExpression', 'subject'),
+                               ('subworkflow_exit', 'WorkflowTransition', 'SubWorkflowExitPoint', 'subject')]
+    }
+
+    def test_composite_entities(self):
+        schema = self.vreg.schema
+        self.assertEqual(sorted(self.composites),
+                         [eschema.type for eschema in sorted(schema.entities())
+                          if eschema.is_composite])
+        for etype in self.composites:
+            self.set_description('composite rdefs for %s' % etype)
+            yield self.assertEqual, self.composites[etype], \
+                             sorted([(r.rtype.type, r.subject.type, r.object.type, role)
+                                     for r, role in sorted(schema[etype].composite_rdef_roles)])
 
 if __name__ == '__main__':
     unittest_main()

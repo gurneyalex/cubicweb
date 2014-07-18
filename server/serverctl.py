@@ -1,4 +1,4 @@
-# copyright 2003-2012 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2014 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -132,17 +132,19 @@ def _db_sys_cnx(source, special_privs, interactive=True):
     return cnx
 
 def repo_cnx(config):
-    """return a in-memory repository and a db api connection it"""
-    from cubicweb.dbapi import in_memory_repo_cnx
+    """return a in-memory repository and a repoapi connection to it"""
+    from cubicweb import repoapi
     from cubicweb.server.utils import manager_userpasswd
     try:
-        login = config.sources()['admin']['login']
-        pwd = config.sources()['admin']['password']
+        login = config.default_admin_config['login']
+        pwd = config.default_admin_config['password']
     except KeyError:
         login, pwd = manager_userpasswd()
     while True:
         try:
-            return in_memory_repo_cnx(config, login, password=pwd)
+            repo = repoapi.get_repository(config=config)
+            cnx = repoapi.connect(repo, login, password=pwd)
+            return repo, cnx
         except AuthenticationError:
             print '-> Error: wrong user/password.'
             # reset cubes else we'll have an assertion error on next retry
@@ -221,7 +223,7 @@ class RepositoryDeleteHandler(CommandHandler):
     def cleanup(self):
         """remove instance's configuration and database"""
         from logilab.database import get_db_helper
-        source = self.config.sources()['system']
+        source = self.config.system_source_config
         dbname = source['db-name']
         helper = get_db_helper(source['db-driver'])
         if ASK.confirm('Delete database %s ?' % dbname):
@@ -334,7 +336,7 @@ class CreateInstanceDBCommand(Command):
         automatic = self.get('automatic')
         appid = args.pop()
         config = ServerConfiguration.config_for(appid)
-        source = config.sources()['system']
+        source = config.system_source_config
         dbname = source['db-name']
         driver = source['db-driver']
         helper = get_db_helper(driver)
@@ -441,7 +443,7 @@ class InitInstanceCommand(Command):
         appid = args[0]
         config = ServerConfiguration.config_for(appid)
         try:
-            system = config.sources()['system']
+            system = config.system_source_config
             extra_args = system.get('db-extra-arguments')
             extra = extra_args and {'extra_args': extra_args} or {}
             get_connection(
@@ -457,7 +459,7 @@ class InitInstanceCommand(Command):
         init_repository(config, drop=self.config.drop)
         if not self.config.automatic:
             while ASK.confirm('Enter another source ?', default_is_yes=False):
-                CWCTL.run(['add-source', '--config-level',
+                CWCTL.run(['source-add', '--config-level',
                            str(self.config.config_level), config.appid])
 
 
@@ -467,7 +469,7 @@ class AddSourceCommand(Command):
     <instance>
       the identifier of the instance to initialize.
     """
-    name = 'add-source'
+    name = 'source-add'
     arguments = '<instance>'
     min_args = max_args = 1
     options = (
@@ -482,43 +484,43 @@ class AddSourceCommand(Command):
         config = ServerConfiguration.config_for(appid)
         config.quick_start = True
         repo, cnx = repo_cnx(config)
-        req = cnx.request()
-        used = set(n for n, in req.execute('Any SN WHERE S is CWSource, S name SN'))
-        cubes = repo.get_cubes()
-        while True:
-            type = raw_input('source type (%s): '
-                                % ', '.join(sorted(SOURCE_TYPES)))
-            if type not in SOURCE_TYPES:
-                print '-> unknown source type, use one of the available types.'
-                continue
-            sourcemodule = SOURCE_TYPES[type].module
-            if not sourcemodule.startswith('cubicweb.'):
-                # module names look like cubes.mycube.themodule
-                sourcecube = SOURCE_TYPES[type].module.split('.', 2)[1]
-                # if the source adapter is coming from an external component,
-                # ensure it's specified in used cubes
-                if not sourcecube in cubes:
-                    print ('-> this source type require the %s cube which is '
-                           'not used by the instance.')
+        with cnx:
+            used = set(n for n, in cnx.execute('Any SN WHERE S is CWSource, S name SN'))
+            cubes = repo.get_cubes()
+            while True:
+                type = raw_input('source type (%s): '
+                                    % ', '.join(sorted(SOURCE_TYPES)))
+                if type not in SOURCE_TYPES:
+                    print '-> unknown source type, use one of the available types.'
                     continue
-            break
-        while True:
-            sourceuri = raw_input('source identifier (a unique name used to '
-                                  'tell sources apart): ').strip()
-            if not sourceuri:
-                print '-> mandatory.'
-            else:
-                sourceuri = unicode(sourceuri, sys.stdin.encoding)
-                if sourceuri in used:
-                    print '-> uri already used, choose another one.'
+                sourcemodule = SOURCE_TYPES[type].module
+                if not sourcemodule.startswith('cubicweb.'):
+                    # module names look like cubes.mycube.themodule
+                    sourcecube = SOURCE_TYPES[type].module.split('.', 2)[1]
+                    # if the source adapter is coming from an external component,
+                    # ensure it's specified in used cubes
+                    if not sourcecube in cubes:
+                        print ('-> this source type require the %s cube which is '
+                               'not used by the instance.')
+                        continue
+                break
+            while True:
+                sourceuri = raw_input('source identifier (a unique name used to '
+                                      'tell sources apart): ').strip()
+                if not sourceuri:
+                    print '-> mandatory.'
                 else:
-                    break
-        # XXX configurable inputlevel
-        sconfig = ask_source_config(config, type, inputlevel=self.config.config_level)
-        cfgstr = unicode(generate_source_config(sconfig), sys.stdin.encoding)
-        req.create_entity('CWSource', name=sourceuri,
-                          type=unicode(type), config=cfgstr)
-        cnx.commit()
+                    sourceuri = unicode(sourceuri, sys.stdin.encoding)
+                    if sourceuri in used:
+                        print '-> uri already used, choose another one.'
+                    else:
+                        break
+            # XXX configurable inputlevel
+            sconfig = ask_source_config(config, type, inputlevel=self.config.config_level)
+            cfgstr = unicode(generate_source_config(sconfig), sys.stdin.encoding)
+            cnx.create_entity('CWSource', name=sourceuri,
+                              type=unicode(type), config=cfgstr)
+            cnx.commit()
 
 
 class GrantUserOnInstanceCommand(Command):
@@ -544,7 +546,7 @@ class GrantUserOnInstanceCommand(Command):
         from cubicweb.server.sqlutils import sqlexec, sqlgrants
         appid, user = args
         config = ServerConfiguration.config_for(appid)
-        source = config.sources()['system']
+        source = config.system_source_config
         set_owner = self.config.set_owner
         cnx = system_source_cnx(source, special_privs='GRANT')
         cursor = cnx.cursor()
@@ -675,6 +677,7 @@ class StartRepositoryCommand(Command):
     def run(self, args):
         from logilab.common.daemon import daemonize, setugid
         from cubicweb.cwctl import init_cmdline_log_threshold
+        print 'WARNING: Standalone repository with pyro or zmq access is deprecated'
         appid = args[0]
         debug = self['debug']
         if sys.platform == 'win32' and not debug:
@@ -734,12 +737,12 @@ def _local_dump(appid, output, format='native'):
     mih.backup_database(output, askconfirm=False, format=format)
     mih.shutdown()
 
-def _local_restore(appid, backupfile, drop, systemonly=True, format='native'):
+def _local_restore(appid, backupfile, drop, format='native'):
     config = ServerConfiguration.config_for(appid)
     config.verbosity = 1 # else we won't be asked for confirmation on problems
     config.quick_start = True
     mih = config.migration_handler(connect=False, verbosity=1)
-    mih.restore_database(backupfile, drop, systemonly, askconfirm=False, format=format)
+    mih.restore_database(backupfile, drop, askconfirm=False, format=format)
     repo = mih.repo_connect()
     # version of the database
     dbversions = repo.get_versions()
@@ -848,13 +851,6 @@ class DBRestoreCommand(Command):
           'help': 'for some reason the database doesn\'t exist and so '
           'should not be dropped.'}
          ),
-        ('restore-all',
-         {'short': 'r', 'action' : 'store_true', 'default' : False,
-          'help': 'restore everything, eg not only the system source database '
-          'but also data for all sources supporting backup/restore and custom '
-          'instance data. In that case, <backupfile> is expected to be the '
-          'timestamp of the backup to restore, not a file'}
-         ),
         ('format',
          {'short': 'f', 'default': 'native', 'type': 'choice',
           'choices': ('native', 'portable'),
@@ -874,7 +870,6 @@ class DBRestoreCommand(Command):
                         raise
         _local_restore(appid, backupfile,
                        drop=not self.config.no_drop,
-                       systemonly=not self.config.restore_all,
                        format=self.config.format)
         if self.config.format == 'portable':
             try:
@@ -985,9 +980,12 @@ option is set to "y" or "yes" (may be long for large database).'}
         appid = args[0]
         config = ServerConfiguration.config_for(appid)
         config.repairing = self.config.force
-        repo, cnx = repo_cnx(config)
-        check(repo, cnx,
-              self.config.checks, self.config.reindex, self.config.autofix)
+        repo, _cnx = repo_cnx(config)
+        with repo.internal_cnx() as cnx:
+            check(repo, cnx,
+                  self.config.checks,
+                  self.config.reindex,
+                  self.config.autofix)
 
 
 class RebuildFTICommand(Command):
@@ -1009,29 +1007,9 @@ class RebuildFTICommand(Command):
         etypes = args or None
         config = ServerConfiguration.config_for(appid)
         repo, cnx = repo_cnx(config)
-        session = repo._get_session(cnx.sessionid, setcnxset=True)
-        reindex_entities(repo.schema, session, etypes=etypes)
-        cnx.commit()
-
-
-class SynchronizeInstanceSchemaCommand(Command):
-    """Synchronize persistent schema with cube schema.
-
-    Will synchronize common stuff between the cube schema and the
-    actual persistent schema, but will not add/remove any entity or relation.
-
-    <instance>
-      the identifier of the instance to synchronize.
-    """
-    name = 'schema-sync'
-    arguments = '<instance>'
-    min_args = max_args = 1
-
-    def run(self, args):
-        appid = args[0]
-        config = ServerConfiguration.config_for(appid)
-        mih = config.migration_handler()
-        mih.cmd_synchronize_schema()
+        with cnx:
+            reindex_entities(repo.schema, cnx._cnx, etypes=etypes)
+            cnx.commit()
 
 
 class SynchronizeSourceCommand(Command):
@@ -1102,7 +1080,7 @@ class SchemaDiffCommand(Command):
         diff_tool = args.pop(0)
         config = ServerConfiguration.config_for(appid)
         repo, cnx = repo_cnx(config)
-        session = repo._get_session(cnx.sessionid, setcnxset=True)
+        cnx.close()
         fsschema = config.load_schema(expand_cubes=True)
         schema_diff(fsschema, repo.schema, permissionshandler, diff_tool, ignore=('eid',))
 
@@ -1112,7 +1090,7 @@ for cmdclass in (CreateInstanceDBCommand, InitInstanceCommand,
                  StartRepositoryCommand,
                  DBDumpCommand, DBRestoreCommand, DBCopyCommand,
                  AddSourceCommand, CheckRepositoryCommand, RebuildFTICommand,
-                 SynchronizeInstanceSchemaCommand, SynchronizeSourceCommand, SchemaDiffCommand,
+                 SynchronizeSourceCommand, SchemaDiffCommand,
                  ):
     CWCTL.register(cmdclass)
 

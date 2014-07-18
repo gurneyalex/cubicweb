@@ -554,27 +554,19 @@ this option is set to yes",
                         todo.append(depcube)
         return cubes
 
-    def reorder_cubes(self, cubes):
+    @classmethod
+    def reorder_cubes(cls, cubes):
         """reorder cubes from the top level cubes to inner dependencies
         cubes
         """
         from logilab.common.graph import ordered_nodes, UnorderableGraph
-        # See help string for 'ui-cube' in web/webconfig.py for the reasons
-        # behind this hack.
-        uicube = self.get('ui-cube', None)
         graph = {}
-        if uicube:
-            graph[uicube] = set()
         for cube in cubes:
             cube = CW_MIGRATION_MAP.get(cube, cube)
-            graph[cube] = set(dep for dep in self.cube_dependencies(cube)
+            graph[cube] = set(dep for dep in cls.cube_dependencies(cube)
                               if dep in cubes)
-            graph[cube] |= set(dep for dep in self.cube_recommends(cube)
+            graph[cube] |= set(dep for dep in cls.cube_recommends(cube)
                                if dep in cubes)
-            if uicube and cube != uicube \
-                    and cube not in self.cube_dependencies(uicube) \
-                    and cube not in self.cube_recommends(uicube):
-                graph[cube].add(uicube)
         try:
             return ordered_nodes(graph)
         except UnorderableGraph as ex:
@@ -795,7 +787,6 @@ this option is set to yes",
     _cubes = None
 
     def init_cubes(self, cubes):
-        assert self._cubes is None, repr(self._cubes)
         self._cubes = self.reorder_cubes(cubes)
         # load cubes'__init__.py file first
         for cube in cubes:
@@ -999,7 +990,7 @@ the repository',
         super(CubicWebConfiguration, self).adjust_sys_path()
         # adding apphome to python path is not usually necessary in production
         # environments, but necessary for tests
-        if self.apphome and not self.apphome in sys.path:
+        if self.apphome and self.apphome not in sys.path:
             sys.path.insert(0, self.apphome)
 
     @property

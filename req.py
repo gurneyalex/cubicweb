@@ -75,6 +75,23 @@ class RequestSessionBase(object):
         self.local_perm_cache = {}
         self._ = unicode
 
+    def _set_user(self, orig_user):
+        """set the user for this req_session_base
+
+        A special method is needed to ensure the linked user is linked to the
+        connection too.
+        """
+        # cnx validity is checked by the call to .user_info
+        rset = self.eid_rset(orig_user.eid, 'CWUser')
+        user_cls = self.vreg['etypes'].etype_class('CWUser')
+        user = user_cls(self, rset, row=0, groups=orig_user.groups,
+                        properties=orig_user.properties)
+        user.cw_attr_cache['login'] = orig_user.login # cache login
+        self.user = user
+        self.set_entity_cache(user)
+        self.set_language(user.prefered_language())
+
+
     def set_language(self, lang):
         """install i18n configuration for `lang` translation.
 
@@ -86,7 +103,7 @@ class RequestSessionBase(object):
         self._ = self.__ = gettext
         self.pgettext = pgettext
 
-    def get_option_value(self, option, foreid=None):
+    def get_option_value(self, option):
         raise NotImplementedError
 
     def property_value(self, key):
@@ -94,7 +111,9 @@ class RequestSessionBase(object):
         user specific value if any, else using site value
         """
         if self.user:
-            return self.user.property_value(key)
+            val = self.user.property_value(key)
+            if val is not None:
+                return val
         return self.vreg.property_value(key)
 
     def etype_rset(self, etype, size=1):
@@ -114,7 +133,7 @@ class RequestSessionBase(object):
         """
         eid = int(eid)
         if etype is None:
-            etype = self.describe(eid)[0]
+            etype = self.entity_metas(eid)['type']
         rset = ResultSet([(eid,)], 'Any X WHERE X eid %(x)s', {'x': eid},
                          [(etype,)])
         rset.req = self
@@ -188,7 +207,7 @@ class RequestSessionBase(object):
         """
         parts = ['Any X WHERE X is %s' % etype]
         varmaker = rqlvar_maker(defined='X')
-        eschema = self.vreg.schema[etype]
+        eschema = self.vreg.schema.eschema(etype)
         for attr, value in kwargs.items():
             if isinstance(value, list) or isinstance(value, tuple):
                 raise NotImplementedError("List of values are not supported")
@@ -224,6 +243,11 @@ class RequestSessionBase(object):
         - cubes.blog.mycache
         - etc.
         """
+        warn.warning('[3.19] .get_cache will disappear soon. '
+                     'Distributed caching mechanisms are being introduced instead.'
+                     'Other caching mechanism can be used more reliably '
+                     'to the same effect.',
+                     DeprecationWarning)
         if cachename in CACHE_REGISTRY:
             cache = CACHE_REGISTRY[cachename]
         else:
@@ -253,24 +277,20 @@ class RequestSessionBase(object):
         """
         # use *args since we don't want first argument to be "anonymous" to
         # avoid potential clash with kwargs
+        method = None
         if args:
             assert len(args) == 1, 'only 0 or 1 non-named-argument expected'
             method = args[0]
-        else:
-            method = None
+        if method is None:
+            method = 'view'
         # XXX I (adim) think that if method is passed explicitly, we should
         #     not try to process it and directly call req.build_url()
-        if method is None:
-            if self.from_controller() == 'view' and not '_restpath' in kwargs:
-                method = self.relative_path(includeparams=False) or 'view'
-            else:
-                method = 'view'
         base_url = kwargs.pop('base_url', None)
         if base_url is None:
             secure = kwargs.pop('__secure__', None)
             base_url = self.base_url(secure=secure)
         if '_restpath' in kwargs:
-            assert method == 'view', method
+            assert method == 'view', repr(method)
             path = kwargs.pop('_restpath')
         else:
             path = method

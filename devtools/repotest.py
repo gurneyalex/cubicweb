@@ -1,4 +1,4 @@
-# copyright 2003-2012 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2014 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -22,17 +22,12 @@ This module contains functions to initialize a new repository.
 
 __docformat__ = "restructuredtext en"
 
-from copy import deepcopy
 from pprint import pprint
 
-from logilab.common.decorators import clear_cache
 from logilab.common.testlib import SkipTest
 
-def tuplify(list):
-    for i in range(len(list)):
-        if type(list[i]) is not type(()):
-            list[i] = tuple(list[i])
-    return list
+def tuplify(mylist):
+    return [tuple(item) for item in mylist]
 
 def snippet_cmp(a, b):
     a = (a[0], [e.expression for e in a[1]])
@@ -40,17 +35,18 @@ def snippet_cmp(a, b):
     return cmp(a, b)
 
 def test_plan(self, rql, expected, kwargs=None):
-    plan = self._prepare_plan(rql, kwargs)
-    self.planner.build_plan(plan)
-    try:
-        self.assertEqual(len(plan.steps), len(expected),
-                          'expected %s steps, got %s' % (len(expected), len(plan.steps)))
-        # step order is important
-        for i, step in enumerate(plan.steps):
-            compare_steps(self, step.test_repr(), expected[i])
-    except AssertionError:
-        pprint([step.test_repr() for step in plan.steps])
-        raise
+    with self.session.new_cnx() as cnx:
+        plan = self._prepare_plan(cnx, rql, kwargs)
+        self.planner.build_plan(plan)
+        try:
+            self.assertEqual(len(plan.steps), len(expected),
+                              'expected %s steps, got %s' % (len(expected), len(plan.steps)))
+            # step order is important
+            for i, step in enumerate(plan.steps):
+                compare_steps(self, step.test_repr(), expected[i])
+        except AssertionError:
+            pprint([step.test_repr() for step in plan.steps])
+            raise
 
 def compare_steps(self, step, expected):
     try:
@@ -141,7 +137,7 @@ from logilab.database import get_db_helper
 
 from rql import RQLHelper
 
-from cubicweb.devtools.fake import FakeRepo, FakeSession
+from cubicweb.devtools.fake import FakeRepo, FakeConfig, FakeSession
 from cubicweb.server import set_debug, debugged
 from cubicweb.server.querier import QuerierHelper
 from cubicweb.server.session import Session
@@ -159,10 +155,11 @@ class RQLGeneratorTC(TestCase):
                 raise SkipTest(str(ex))
 
     def setUp(self):
-        self.repo = FakeRepo(self.schema)
+        self.repo = FakeRepo(self.schema, config=FakeConfig(apphome=self.datadir))
         self.repo.system_source = mock_object(dbdriver=self.backend)
-        self.rqlhelper = RQLHelper(self.schema, special_relations={'eid': 'uid',
-                                                                   'has_text': 'fti'},
+        self.rqlhelper = RQLHelper(self.schema,
+                                   special_relations={'eid': 'uid',
+                                                      'has_text': 'fti'},
                                    backend=self.backend)
         self.qhelper = QuerierHelper(self.repo, self.schema)
         ExecutionPlan._check_permissions = _dummy_check_permissions
@@ -204,27 +201,22 @@ class BaseQuerierTC(TestCase):
         self.ueid = self.session.user.eid
         assert self.ueid != -1
         self.repo._type_source_cache = {} # clear cache
-        self.cnxset = self.session.set_cnxset()
         self.maxeid = self.get_max_eid()
         do_monkey_patch()
         self._dumb_sessions = []
 
     def get_max_eid(self):
-        return self.session.execute('Any MAX(X)')[0][0]
+        with self.session.new_cnx() as cnx:
+            return cnx.execute('Any MAX(X)')[0][0]
+
     def cleanup(self):
-        self.session.set_cnxset()
-        self.session.execute('DELETE Any X WHERE X eid > %s' % self.maxeid)
+        with self.session.new_cnx() as cnx:
+            cnx.execute('DELETE Any X WHERE X eid > %s' % self.maxeid)
+            cnx.commit()
 
     def tearDown(self):
         undo_monkey_patch()
-        self.session.rollback()
         self.cleanup()
-        self.commit()
-        # properly close dumb sessions
-        for session in self._dumb_sessions:
-            session.rollback()
-            session.close()
-        self.repo._free_cnxset(self.cnxset)
         assert self.session.user.eid != -1
 
     def set_debug(self, debug):
@@ -239,7 +231,7 @@ class BaseQuerierTC(TestCase):
         rqlhelper._analyser.uid_func_mapping = {}
         return rqlhelper
 
-    def _prepare_plan(self, rql, kwargs=None, simplify=True):
+    def _prepare_plan(self, cnx, rql, kwargs=None, simplify=True):
         rqlhelper = self._rqlhelper()
         rqlst = rqlhelper.parse(rql)
         rqlhelper.compute_solutions(rqlst, kwargs=kwargs)
@@ -247,10 +239,10 @@ class BaseQuerierTC(TestCase):
             rqlhelper.simplify(rqlst)
         for select in rqlst.children:
             select.solutions.sort()
-        return self.o.plan_factory(rqlst, kwargs, self.session)
+        return self.o.plan_factory(rqlst, kwargs, cnx)
 
-    def _prepare(self, rql, kwargs=None):
-        plan = self._prepare_plan(rql, kwargs, simplify=False)
+    def _prepare(self, cnx, rql, kwargs=None):
+        plan = self._prepare_plan(cnx, rql, kwargs, simplify=False)
         plan.preprocess(plan.rqlst)
         rqlst = plan.rqlst.children[0]
         rqlst.solutions = remove_unused_solutions(rqlst, rqlst.solutions, {}, self.repo.schema)[0]
@@ -259,72 +251,46 @@ class BaseQuerierTC(TestCase):
     def user_groups_session(self, *groups):
         """lightweight session using the current user with hi-jacked groups"""
         # use self.session.user.eid to get correct owned_by relation, unless explicit eid
-        u = self.repo._build_user(self.session, self.session.user.eid)
-        u._groups = set(groups)
-        s = Session(u, self.repo)
-        s._tx.cnxset = self.cnxset
-        s._tx.ctx_count = 1
-        # register session to ensure it gets closed
-        self._dumb_sessions.append(s)
-        return s
+        with self.session.new_cnx() as cnx:
+            u = self.repo._build_user(cnx, self.session.user.eid)
+            u._groups = set(groups)
+            s = Session(u, self.repo)
+            return s
 
-    def execute(self, rql, args=None, build_descr=True):
-        return self.o.execute(self.session, rql, args, build_descr)
-
-    def commit(self):
-        self.session.commit()
-        self.session.set_cnxset()
+    def qexecute(self, rql, args=None, build_descr=True):
+        with self.session.new_cnx() as cnx:
+            with cnx.ensure_cnx_set:
+                try:
+                    return self.o.execute(cnx, rql, args, build_descr)
+                finally:
+                    if rql.startswith(('INSERT', 'DELETE', 'SET')):
+                        cnx.commit()
 
 
 class BasePlannerTC(BaseQuerierTC):
-    newsources = ()
 
     def setup(self):
-        clear_cache(self.repo, 'rel_type_sources')
-        clear_cache(self.repo, 'rel_type_sources')
-        clear_cache(self.repo, 'can_cross_relation')
-        clear_cache(self.repo, 'is_multi_sources_relation')
         # XXX source_defs
         self.o = self.repo.querier
         self.session = self.repo._sessions.values()[0]
-        self.cnxset = self.session.set_cnxset()
         self.schema = self.o.schema
-        self.sources = self.o._repo.sources
-        self.system = self.sources[-1]
+        self.system = self.repo.system_source
         do_monkey_patch()
-        self._dumb_sessions = [] # by hi-jacked parent setup
         self.repo.vreg.rqlhelper.backend = 'postgres' # so FTIRANK is considered
-        self.newsources = []
-
-    def add_source(self, sourcecls, uri):
-        source = sourcecls(self.repo, {'uri': uri, 'type': 'whatever'})
-        if not source.copy_based_source:
-            self.sources.append(source)
-        self.newsources.append(source)
-        self.repo.sources_by_uri[uri] = source
-        setattr(self, uri, source)
 
     def tearDown(self):
-        for source in self.newsources:
-            if not source.copy_based_source:
-                self.sources.remove(source)
-            del self.repo.sources_by_uri[source.uri]
         undo_monkey_patch()
-        for session in self._dumb_sessions:
-            if session._tx.cnxset is not None:
-                session._tx.cnxset = None
-            session.close()
 
-    def _prepare_plan(self, rql, kwargs=None):
+    def _prepare_plan(self, cnx, rql, kwargs=None):
         rqlst = self.o.parse(rql, annotate=True)
-        self.o.solutions(self.session, rqlst, kwargs)
+        self.o.solutions(cnx, rqlst, kwargs)
         if rqlst.TYPE == 'select':
             self.repo.vreg.rqlhelper.annotate(rqlst)
             for select in rqlst.children:
                 select.solutions.sort()
         else:
             rqlst.solutions.sort()
-        return self.o.plan_factory(rqlst, kwargs, self.session)
+        return self.o.plan_factory(rqlst, kwargs, cnx)
 
 
 # monkey patch some methods to get predicatable results #######################
@@ -350,7 +316,6 @@ def _build_variantes(self, newsolutions):
 
 from cubicweb.server.querier import ExecutionPlan
 _orig_check_permissions = ExecutionPlan._check_permissions
-_orig_init_temp_table = ExecutionPlan.init_temp_table
 
 def _check_permissions(*args, **kwargs):
     res, restricted = _orig_check_permissions(*args, **kwargs)
@@ -359,15 +324,6 @@ def _check_permissions(*args, **kwargs):
 
 def _dummy_check_permissions(self, rqlst):
     return {(): rqlst.solutions}, set()
-
-def _init_temp_table(self, table, selection, solution):
-    if self.tablesinorder is None:
-        tablesinorder = self.tablesinorder = {}
-    else:
-        tablesinorder = self.tablesinorder
-    if not table in tablesinorder:
-        tablesinorder[table] = 'table%s' % len(tablesinorder)
-    return _orig_init_temp_table(self, table, selection, solution)
 
 from cubicweb.server import rqlannotation
 _orig_select_principal = rqlannotation._select_principal
@@ -381,40 +337,6 @@ def _select_principal(scope, relations):
     return _orig_select_principal(scope, relations,
                                   _sort=lambda rels: sorted(rels, key=sort_key))
 
-try:
-    from cubicweb.server.msplanner import PartPlanInformation
-except ImportError:
-    class PartPlanInformation(object):
-        def merge_input_maps(self, *args, **kwargs):
-            pass
-        def _choose_term(self, sourceterms):
-            pass
-_orig_merge_input_maps = PartPlanInformation.merge_input_maps
-_orig_choose_term = PartPlanInformation._choose_term
-
-def _merge_input_maps(*args, **kwargs):
-    return sorted(_orig_merge_input_maps(*args, **kwargs))
-
-def _choose_term(self, source, sourceterms):
-    # predictable order for test purpose
-    def get_key(x):
-        try:
-            # variable
-            return x.name
-        except AttributeError:
-            try:
-                # relation
-                return x.r_type
-            except AttributeError:
-                # const
-                return x.value
-    return _orig_choose_term(self, source, DumbOrderedDict2(sourceterms, get_key))
-
-from cubicweb.server.sources.pyrorql import PyroRQLSource
-_orig_syntax_tree_search = PyroRQLSource.syntax_tree_search
-
-def _syntax_tree_search(*args, **kwargs):
-    return deepcopy(_orig_syntax_tree_search(*args, **kwargs))
 
 def _ordered_iter_relations(stinfo):
     return sorted(_orig_iter_relations(stinfo), key=lambda x:x.r_type)
@@ -425,17 +347,9 @@ def do_monkey_patch():
     rqlrewrite.RQLRewriter.build_variantes = _build_variantes
     ExecutionPlan._check_permissions = _check_permissions
     ExecutionPlan.tablesinorder = None
-    ExecutionPlan.init_temp_table = _init_temp_table
-    PartPlanInformation.merge_input_maps = _merge_input_maps
-    PartPlanInformation._choose_term = _choose_term
-    PyroRQLSource.syntax_tree_search = _syntax_tree_search
 
 def undo_monkey_patch():
     rqlrewrite.iter_relations = _orig_iter_relations
     rqlrewrite.RQLRewriter.insert_snippets = _orig_insert_snippets
     rqlrewrite.RQLRewriter.build_variantes = _orig_build_variantes
     ExecutionPlan._check_permissions = _orig_check_permissions
-    ExecutionPlan.init_temp_table = _orig_init_temp_table
-    PartPlanInformation.merge_input_maps = _orig_merge_input_maps
-    PartPlanInformation._choose_term = _orig_choose_term
-    PyroRQLSource.syntax_tree_search = _orig_syntax_tree_search
