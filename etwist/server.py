@@ -47,22 +47,14 @@ def start_task(interval, func):
     # to wait all tasks to be finished for the server to be actually started
     lc.start(interval, now=False)
 
-def host_prefixed_baseurl(baseurl, host):
-    scheme, netloc, url, query, fragment = urlsplit(baseurl)
-    netloc_domain = '.' + '.'.join(netloc.split('.')[-2:])
-    if host.endswith(netloc_domain):
-        netloc = host
-    baseurl = urlunsplit((scheme, netloc, url, query, fragment))
-    return baseurl
-
 
 class CubicWebRootResource(resource.Resource):
-    def __init__(self, config, vreg=None):
+    def __init__(self, config, repo):
         resource.Resource.__init__(self)
         self.config = config
         # instantiate publisher here and not in init_publisher to get some
         # checks done before daemonization (eg versions consistency)
-        self.appli = CubicWebPublisher(config, vreg=vreg)
+        self.appli = CubicWebPublisher(repo, config)
         self.base_url = config['base-url']
         self.https_url = config['https-url']
         global MAX_POST_LENGTH
@@ -77,6 +69,7 @@ class CubicWebRootResource(resource.Resource):
                 # if pyro is enabled, we have to register to the pyro name
                 # server, create a pyro daemon, and create a task to handle pyro
                 # requests
+                self.appli.repo.warning('remote repository access through pyro is deprecated')
                 self.pyro_daemon = self.appli.repo.pyro_register()
                 self.pyro_listen_timeout = 0.02
                 self.appli.repo.looping_task(1, self.pyro_loop_event)
@@ -271,12 +264,20 @@ from cubicweb import set_log_methods
 LOGGER = getLogger('cubicweb.twisted')
 set_log_methods(CubicWebRootResource, LOGGER)
 
-def run(config, vreg=None, debug=None):
+def run(config, debug=None, repo=None):
+    # repo may by passed during test.
+    #
+    # Test has already created a repo object so we should not create a new one.
+    # Explicitly passing the repo object avoid relying on the fragile
+    # config.repository() cache. We could imagine making repo a mandatory
+    # argument and receives it from the starting command directly.
     if debug is not None:
         config.debugmode = debug
     config.check_writeable_uid_directory(config.appdatahome)
     # create the site
-    root_resource = CubicWebRootResource(config, vreg=vreg)
+    if repo is None:
+        repo = config.repository()
+    root_resource = CubicWebRootResource(config, repo)
     website = server.Site(root_resource)
     # serve it via standard HTTP on port set in the configuration
     port = config['port'] or 8080

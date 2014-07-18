@@ -20,7 +20,6 @@
 __docformat__ = "restructuredtext en"
 
 import os
-from itertools import chain
 import json
 
 from logilab.common.shellutils import ProgressBar
@@ -28,13 +27,13 @@ from logilab.common.shellutils import ProgressBar
 from yams import (BadSchemaDefinition, schema as schemamod, buildobjs as ybo,
                   schema2sql as y2sql)
 
-from cubicweb import CW_SOFTWARE_ROOT, Binary, typed_eid
+from cubicweb import Binary
 from cubicweb.schema import (KNOWN_RPROPERTIES, CONSTRAINTS, ETYPE_NAME_MAP,
-                             VIRTUAL_RTYPES, PURE_VIRTUAL_RTYPES)
+                             VIRTUAL_RTYPES)
 from cubicweb.server import sqlutils
 
 
-def group_mapping(cursor, interactive=True):
+def group_mapping(cnx, interactive=True):
     """create a group mapping from an rql cursor
 
     A group mapping has standard group names as key (managers, owners at least)
@@ -43,7 +42,7 @@ def group_mapping(cursor, interactive=True):
     from the user.
     """
     res = {}
-    for eid, name in cursor.execute('Any G, N WHERE G is CWGroup, G name N',
+    for eid, name in cnx.execute('Any G, N WHERE G is CWGroup, G name N',
                                     build_descr=False):
         res[name] = eid
     if not interactive:
@@ -75,33 +74,33 @@ def group_mapping(cursor, interactive=True):
                 break
     return res
 
-def cstrtype_mapping(cursor):
+def cstrtype_mapping(cnx):
     """cached constraint types mapping"""
-    map = dict(cursor.execute('Any T, X WHERE X is CWConstraintType, X name T'))
+    map = dict(cnx.execute('Any T, X WHERE X is CWConstraintType, X name T'))
     return map
 
 # schema / perms deserialization ##############################################
 
-def deserialize_schema(schema, session):
+def deserialize_schema(schema, cnx):
     """return a schema according to information stored in an rql database
     as CWRType and CWEType entities
     """
-    repo = session.repo
+    repo = cnx.repo
     dbhelper = repo.system_source.dbhelper
     # XXX bw compat (3.6 migration)
-    sqlcu = session.cnxset['system']
-    sqlcu.execute("SELECT * FROM cw_CWRType WHERE cw_name='symetric'")
-    if sqlcu.fetchall():
-        sql = dbhelper.sql_rename_col('cw_CWRType', 'cw_symetric', 'cw_symmetric',
-                                      dbhelper.TYPE_MAPPING['Boolean'], True)
-        sqlcu.execute(sql)
-        sqlcu.execute("UPDATE cw_CWRType SET cw_name='symmetric' WHERE cw_name='symetric'")
-        session.commit(False)
+    with cnx.ensure_cnx_set:
+        sqlcu = cnx.system_sql("SELECT * FROM cw_CWRType WHERE cw_name='symetric'")
+        if sqlcu.fetchall():
+            sql = dbhelper.sql_rename_col('cw_CWRType', 'cw_symetric', 'cw_symmetric',
+                                          dbhelper.TYPE_MAPPING['Boolean'], True)
+            sqlcu.execute(sql)
+            sqlcu.execute("UPDATE cw_CWRType SET cw_name='symmetric' WHERE cw_name='symetric'")
+            cnx.commit(False)
     ertidx = {}
     copiedeids = set()
-    permsidx = deserialize_ertype_permissions(session)
+    permsidx = deserialize_ertype_permissions(cnx)
     schema.reading_from_database = True
-    for eid, etype, desc in session.execute(
+    for eid, etype, desc in cnx.execute(
         'Any X, N, D WHERE X is CWEType, X name N, X description D',
         build_descr=False):
         # base types are already in the schema, skip them
@@ -115,7 +114,7 @@ def deserialize_schema(schema, session):
             needcopy = False
             netype = ETYPE_NAME_MAP[etype]
             # can't use write rql queries at this point, use raw sql
-            sqlexec = session.system_sql
+            sqlexec = cnx.system_sql
             if sqlexec('SELECT 1 FROM %(p)sCWEType WHERE %(p)sname=%%(n)s'
                        % {'p': sqlutils.SQL_PREFIX}, {'n': netype}).fetchone():
                 # the new type already exists, we should copy (eg make existing
@@ -132,17 +131,12 @@ def deserialize_schema(schema, session):
                     sqlexec(alter_table_sql)
             sqlexec('UPDATE entities SET type=%(n)s WHERE type=%(x)s',
                     {'x': etype, 'n': netype})
-            session.commit(False)
-            try:
-                sqlexec('UPDATE deleted_entities SET type=%(n)s WHERE type=%(x)s',
-                        {'x': etype, 'n': netype})
-            except Exception:
-                pass
+            cnx.commit(False)
             tocleanup = [eid]
             tocleanup += (eid for eid, cached in repo._type_source_cache.iteritems()
                           if etype == cached[0])
             repo.clear_caches(tocleanup)
-            session.commit(False)
+            cnx.commit(False)
             if needcopy:
                 ertidx[eid] = netype
                 copiedeids.add(eid)
@@ -154,14 +148,14 @@ def deserialize_schema(schema, session):
         eschema = schema.add_entity_type(
             ybo.EntityType(name=etype, description=desc, eid=eid))
         set_perms(eschema, permsidx)
-    for etype, stype in session.execute(
+    for etype, stype in cnx.execute(
         'Any XN, ETN WHERE X is CWEType, X name XN, X specializes ET, ET name ETN',
         build_descr=False):
         etype = ETYPE_NAME_MAP.get(etype, etype)
         stype = ETYPE_NAME_MAP.get(stype, stype)
         schema.eschema(etype)._specialized_type = stype
         schema.eschema(stype)._specialized_by.append(etype)
-    for eid, rtype, desc, sym, il, ftc in session.execute(
+    for eid, rtype, desc, sym, il, ftc in cnx.execute(
         'Any X,N,D,S,I,FTC WHERE X is CWRType, X name N, X description D, '
         'X symmetric S, X inlined I, X fulltext_container FTC', build_descr=False):
         ertidx[eid] = rtype
@@ -169,7 +163,7 @@ def deserialize_schema(schema, session):
             ybo.RelationType(name=rtype, description=desc,
                              symmetric=bool(sym), inlined=bool(il),
                              fulltext_container=ftc, eid=eid))
-    cstrsidx = deserialize_rdef_constraints(session)
+    cstrsidx = deserialize_rdef_constraints(cnx)
     pendingrdefs = []
     # closure to factorize common code of attribute/relation rdef addition
     def _add_rdef(rdefeid, seid, reid, oeid, **kwargs):
@@ -198,13 +192,13 @@ def deserialize_schema(schema, session):
                 set_perms(rdefs, permsidx)
     # Get the type parameters for additional base types.
     try:
-        extra_props = dict(session.execute('Any X, XTP WHERE X is CWAttribute, '
+        extra_props = dict(cnx.execute('Any X, XTP WHERE X is CWAttribute, '
                                            'X extra_props XTP'))
     except Exception:
-        session.critical('Previous CRITICAL notification about extra_props is not '
+        cnx.critical('Previous CRITICAL notification about extra_props is not '
                          'a problem if you are migrating to cubicweb 3.17')
         extra_props = {} # not yet in the schema (introduced by 3.17 migration)
-    for values in session.execute(
+    for values in cnx.execute(
         'Any X,SE,RT,OE,CARD,ORD,DESC,IDX,FTIDX,I18N,DFLT WHERE X is CWAttribute,'
         'X relation_type RT, X cardinality CARD, X ordernum ORD, X indexed IDX,'
         'X description DESC, X internationalizable I18N, X defaultval DFLT,'
@@ -222,7 +216,7 @@ def deserialize_schema(schema, session):
                   cardinality=card, description=desc, order=ord,
                   indexed=idx, fulltextindexed=ftidx, internationalizable=i18n,
                   default=default, **typeparams)
-    for values in session.execute(
+    for values in cnx.execute(
         'Any X,SE,RT,OE,CARD,ORD,DESC,C WHERE X is CWRelation, X relation_type RT,'
         'X cardinality CARD, X ordernum ORD, X description DESC, '
         'X from_entity SE, X to_entity OE, X composite C', build_descr=False):
@@ -238,7 +232,7 @@ def deserialize_schema(schema, session):
         if rdefs is not None:
             set_perms(rdefs, permsidx)
     unique_togethers = {}
-    rset = session.execute(
+    rset = cnx.execute(
     'Any X,E,R WHERE '
     'X is CWUniqueTogetherConstraint, '
     'X constraint_of E, X relations R', build_descr=False)
@@ -257,11 +251,11 @@ def deserialize_schema(schema, session):
     for eschema, unique_together in unique_togethers.itervalues():
         eschema._unique_together.append(tuple(sorted(unique_together)))
     schema.infer_specialization_rules()
-    session.commit()
+    cnx.commit()
     schema.reading_from_database = False
 
 
-def deserialize_ertype_permissions(session):
+def deserialize_ertype_permissions(cnx):
     """return sect action:groups associations for the given
     entity or relation schema with its eid, according to schema's
     permissions stored in the database as [read|add|delete|update]_permission
@@ -270,21 +264,21 @@ def deserialize_ertype_permissions(session):
     res = {}
     for action in ('read', 'add', 'update', 'delete'):
         rql = 'Any E,N WHERE G is CWGroup, G name N, E %s_permission G' % action
-        for eid, gname in session.execute(rql, build_descr=False):
+        for eid, gname in cnx.execute(rql, build_descr=False):
             res.setdefault(eid, {}).setdefault(action, []).append(gname)
         rql = ('Any E,X,EXPR,V WHERE X is RQLExpression, X expression EXPR, '
                'E %s_permission X, X mainvars V' % action)
-        for eid, expreid, expr, mainvars in session.execute(rql, build_descr=False):
+        for eid, expreid, expr, mainvars in cnx.execute(rql, build_descr=False):
             # we don't know yet if it's a rql expr for an entity or a relation,
             # so append a tuple to differentiate from groups and so we'll be
             # able to instantiate it later
             res.setdefault(eid, {}).setdefault(action, []).append( (expr, mainvars, expreid) )
     return res
 
-def deserialize_rdef_constraints(session):
+def deserialize_rdef_constraints(cnx):
     """return the list of relation definition's constraints as instances"""
     res = {}
-    for rdefeid, ceid, ct, val in session.execute(
+    for rdefeid, ceid, ct, val in cnx.execute(
         'Any E, X,TN,V WHERE E constrained_by X, X is CWConstraint, '
         'X cstrtype T, T name TN, X value V', build_descr=False):
         cstr = CONSTRAINTS[ct].deserialize(val)
@@ -311,7 +305,7 @@ def set_perms(erschema, permsidx):
 
 # schema / perms serialization ################################################
 
-def serialize_schema(cursor, schema):
+def serialize_schema(cnx, schema):
     """synchronize schema and permissions in the database according to
     current schema
     """
@@ -319,7 +313,7 @@ def serialize_schema(cursor, schema):
     if not quiet:
         _title = '-> storing the schema in the database '
         print _title,
-    execute = cursor.execute
+    execute = cnx.execute
     eschemas = schema.entities()
     if not quiet:
         pb_size = (len(eschemas + schema.relations())
@@ -328,7 +322,7 @@ def serialize_schema(cursor, schema):
         pb = ProgressBar(pb_size, title=_title)
     else:
         pb = None
-    groupmap = group_mapping(cursor, interactive=False)
+    groupmap = group_mapping(cnx, interactive=False)
     # serialize all entity types, assuring CWEType is serialized first for proper
     # is / is_instance_of insertion
     eschemas.remove(schema.eschema('CWEType'))

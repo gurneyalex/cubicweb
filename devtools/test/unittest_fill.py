@@ -39,31 +39,31 @@ class AutoExtendableTC(TestCase):
 
 
     def test_autoextend(self):
-        self.assertFalse('generate_server' in dir(ValueGenerator))
+        self.assertNotIn('generate_server', dir(ValueGenerator))
         class MyValueGenerator(ValueGenerator):
             def generate_server(self, index):
                 return attrname
-        self.assertTrue('generate_server' in dir(ValueGenerator))
+        self.assertIn('generate_server', dir(ValueGenerator))
 
 
     def test_bad_signature_detection(self):
-        self.assertFalse('generate_server' in dir(ValueGenerator))
+        self.assertNotIn('generate_server', dir(ValueGenerator))
         try:
             class MyValueGenerator(ValueGenerator):
                 def generate_server(self):
                     pass
         except TypeError:
-            self.assertFalse('generate_server' in dir(ValueGenerator))
+            self.assertNotIn('generate_server', dir(ValueGenerator))
         else:
             self.fail('TypeError not raised')
 
 
     def test_signature_extension(self):
-        self.assertFalse('generate_server' in dir(ValueGenerator))
+        self.assertNotIn('generate_server', dir(ValueGenerator))
         class MyValueGenerator(ValueGenerator):
             def generate_server(self, index, foo):
                 pass
-        self.assertTrue('generate_server' in dir(ValueGenerator))
+        self.assertIn('generate_server', dir(ValueGenerator))
 
 
 if __name__ == '__main__':

@@ -176,7 +176,6 @@ class TheMainTemplate(MainTemplate):
         w = self.whead
         lang = self._cw.lang
         self.write_doctype()
-        # explictly close the <base> tag to avoid IE 6 bugs while browsing DOM
         self._cw.html_headers.define_var('BASE_URL', self._cw.base_url())
         self._cw.html_headers.define_var('DATA_URL', self._cw.datadir_url)
         w(u'<meta http-equiv="content-type" content="%s; charset=%s"/>\n'
@@ -474,7 +473,7 @@ class BaseLogForm(forms.FieldsForm):
             if target and target != '/':
                 url_args['postlogin_path'] = target
             return self._cw.build_url('login', __secure__=True, **url_args)
-        return super(LogForm, self).form_action()
+        return super(BaseLogForm, self).form_action()
 
 class LogForm(BaseLogForm):
     """Simple login form that send username and password
