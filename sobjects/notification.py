@@ -129,9 +129,10 @@ class NotificationView(EntityView):
             # need a fresh stream at each iteration, reset it explicitly
             self.w = None
             try:
-                # XXX call render before subject to set .row/.col attributes on the
-                #     view
                 try:
+                    # XXX forcing the row & col here may make the content and
+                    #     subject inconsistent because subject will depend on
+                    #     self.cw_row & self.cw_col if they are set.
                     content = self.render(row=0, col=0, **kwargs)
                     subject = self.subject()
                 except SkipEmail:
@@ -206,7 +207,7 @@ class NotificationView(EntityView):
         kwargs.update({'user': self.user_data['login'],
                        'eid': entity.eid,
                        'etype': entity.dc_type(),
-                       'url': entity.absolute_url(),
+                       'url': entity.absolute_url(__secure__=True),
                        'title': entity.dc_long_title(),})
         return kwargs
 
