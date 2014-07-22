@@ -1,0 +1,127 @@
+#filterbox fieldset{
+ margin: 0px;
+ padding: 0px;
+}
+
+.facet {
+  border: 1px solid chocolate;
+  background: #fff;
+  padding: %(facet_Padding)s;
+  margin-bottom: %(facet_MarginBottom)s;
+  border-top-left-radius: 5px;
+  border-bottom-right-radius: 7px;
+}
+
+.facetGroup {
+  margin: .3em;
+  float: left;
+}
+
+div.facetTitle, div.bkSearch  {
+ color: #000;
+ margin: 2px;
+ cursor: pointer;
+ font-weight: bold;
+ font: %(facet_titleFont)s;
+}
+
+div.facetTitle a {
+ padding-left: 10px;
+ background: transparent url("puce.png") 0% 50% no-repeat;
+}
+
+.opened {
+ color: #000 !important;
+}
+
+.facetGroup div.rangeFacet {
+  width: 13em;
+}
+
+.facetGroup div.vocabularyFacet {
+  /* when facets spread on several lines, it can relieve the eye
+     to have them vertically aligned; these properties should
+     be used then  */
+  /* width: 13em; */
+}
+
+div.vocabularyFacet {
+  max-height: %(facet_vocabMaxHeight)s;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+div.facetCheckBox {
+  clear: both;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+div.facetValue{
+  padding-left: 2px;
+  clear: both
+}
+
+div.facetValue img {
+  float: left;
+  background: #fff;
+}
+
+div.facetValueSelected {
+  background: #EBE8D9;
+}
+
+#leftcol label {
+  color: #523015;
+}
+
+div#filter_box div.boxTitle {
+  visibility: hidden;
+  display: none;
+}
+
+div#filter_box {
+  border: none;
+}
+
+.facet input {
+  margin-top: .2em;
+  border: 1px solid #ccc;
+  font-size: small;
+}
+
+.facetValueDisabled span {
+  font-style: italic;
+  text-decoration: line-through;
+}
+
+div#filterboxTitle {
+  margin-top: 50px;
+  margin-bottom: 1em;
+  color: #1190A1;
+  font-size: 75%;
+  padding: 0.15em;
+  text-transform: uppercase;
+}
+
+div#facetLoading {
+  display: none;
+  position: fixed;
+  background: #f2f2f2;
+  top: 400px;
+  width: 200px;
+  padding: 1em;
+  font-size:      120%;
+  font-weight:    bold;
+  text-align:     center;
+}
+
+div.facetTitleSelected {
+  background: url("required.png") no-repeat right top;
+}
+
+.filter {
+  background-color: #EBE8D9;
+  border: dotted grey 1px;
+  display: inline-block;
+}
