@@ -28,7 +28,7 @@ from logilab.common.graph import ordered_nodes
 from rql.utils import rqlvar_maker
 
 from cubicweb import Binary, ValidationError
-from cubicweb.view import EntityAdapter, implements_adapter_compat
+from cubicweb.view import EntityAdapter
 from cubicweb.predicates import is_instance
 from cubicweb.web import (INTERNAL_FIELD_VALUE, RequestError, NothingToEdit,
                           ProcessFormError)
@@ -36,7 +36,6 @@ from cubicweb.web.views import basecontrollers, autoform
 
 
 class IEditControlAdapter(EntityAdapter):
-    __needs_bw_compat__ = True
     __regid__ = 'IEditControl'
     __select__ = is_instance('Any')
 
@@ -47,7 +46,6 @@ class IEditControlAdapter(EntityAdapter):
                  DeprecationWarning)
         super(IEditControlAdapter, self).__init__(_cw, **kwargs)
 
-    @implements_adapter_compat('IEditControl')
     def after_deletion_path(self):
         """return (path, parameters) which should be used as redirect
         information when this entity is being deleted
@@ -57,7 +55,6 @@ class IEditControlAdapter(EntityAdapter):
             return parent.rest_path(), {}
         return str(self.entity.e_schema).lower(), {}
 
-    @implements_adapter_compat('IEditControl')
     def pre_web_edit(self):
         """callback called by the web editcontroller when an entity will be
         created/modified, to let a chance to do some entity specific stuff.
@@ -161,7 +158,7 @@ class EditController(basecontrollers.ViewController):
                         # if cardinality is 1 and if the target entity is being
                         # simultaneously edited, the current entity must be
                         # created before the target one
-                        if rdef.cardinality[0] == '1':
+                        if rdef.cardinality[0 if role == 'subject' else 1] == '1':
                             target_eid = values[param]
                             if target_eid in values_by_eid:
                                 # add dependency from the target entity to the
@@ -275,7 +272,7 @@ class EditController(basecontrollers.ViewController):
             errors = dict((f.role_name(), unicode(ex)) for f, ex in self.errors)
             raise ValidationError(valerror_eid(entity.eid), errors)
         if eid is None: # creation or copy
-            entity.eid = self._insert_entity(etype, formparams['eid'], rqlquery)
+            entity.eid = eid = self._insert_entity(etype, formparams['eid'], rqlquery)
         elif rqlquery.edited: # edition of an existant entity
             self._update_entity(eid, rqlquery)
         if is_main_entity:
