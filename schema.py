@@ -37,9 +37,11 @@ from yams.schema import Schema, ERSchema, EntitySchema, RelationSchema, \
      RelationDefinitionSchema, PermissionMixIn, role_name
 from yams.constraints import BaseConstraint, FormatConstraint
 from yams.reader import (CONSTRAINTS, PyFileReader, SchemaLoader,
-                         obsolete as yobsolete, cleanup_sys_modules)
+                         obsolete as yobsolete, cleanup_sys_modules,
+                         fill_schema_from_namespace)
 
 from rql import parse, nodes, RQLSyntaxError, TypeResolverException
+from rql.analyze import ETypeResolver
 
 import cubicweb
 from cubicweb import ETYPE_NAME_MAP, ValidationError, Unauthorized
@@ -81,7 +83,7 @@ SKIP_COMPOSITE_RELS = [('cw_source', 'subject')]
 
 # set of entity and relation types used to build the schema
 SCHEMA_TYPES = set((
-    'CWEType', 'CWRType', 'CWAttribute', 'CWRelation',
+    'CWEType', 'CWRType', 'CWComputedRType', 'CWAttribute', 'CWRelation',
     'CWConstraint', 'CWConstraintType', 'CWUniqueTogetherConstraint',
     'RQLExpression',
     'specializes',
@@ -106,6 +108,11 @@ _LOGGER = getLogger('cubicweb.schemaloader')
 ybo.ETYPE_PROPERTIES += ('eid',)
 ybo.RTYPE_PROPERTIES += ('eid',)
 
+def build_schema_from_namespace(items):
+    schema = CubicWebSchema('noname')
+    fill_schema_from_namespace(schema, items, register_base_types=False)
+    return schema
+
 # Bases for manipulating RQL in schema #########################################
 
 def guess_rrqlexpr_mainvars(expression):
@@ -118,7 +125,8 @@ def guess_rrqlexpr_mainvars(expression):
     if 'U' in defined:
         mainvars.add('U')
     if not mainvars:
-        raise Exception('unable to guess selection variables')
+        raise BadSchemaDefinition('unable to guess selection variables in %r'
+                                  % expression)
     return mainvars
 
 def split_expression(rqlstring):
@@ -136,6 +144,44 @@ def normalize_expression(rqlstring):
     return u', '.join(' '.join(expr.split()) for expr in rqlstring.split(','))
 
 
+def _check_valid_formula(rdef, formula_rqlst):
+    """Check the formula is a valid RQL query with some restriction (no union,
+    single selected node, etc.), raise BadSchemaDefinition if not
+    """
+    if len(formula_rqlst.children) != 1:
+        raise BadSchemaDefinition('computed attribute %(attr)s on %(etype)s: '
+                                  'can not use UNION in formula %(form)r' %
+                                  {'attr' : rdef.rtype,
+                                   'etype' : rdef.subject.type,
+                                   'form' : rdef.formula})
+    select = formula_rqlst.children[0]
+    if len(select.selection) != 1:
+        raise BadSchemaDefinition('computed attribute %(attr)s on %(etype)s: '
+                                  'can only select one term in formula %(form)r' %
+                                  {'attr' : rdef.rtype,
+                                   'etype' : rdef.subject.type,
+                                   'form' : rdef.formula})
+    term = select.selection[0]
+    types = set(term.get_type(sol) for sol in select.solutions)
+    if len(types) != 1:
+        raise BadSchemaDefinition('computed attribute %(attr)s on %(etype)s: '
+                                  'multiple possible types (%(types)s) for formula %(form)r' %
+                                  {'attr' : rdef.rtype,
+                                   'etype' : rdef.subject.type,
+                                   'types' : list(types),
+                                   'form' : rdef.formula})
+    computed_type = types.pop()
+    expected_type = rdef.object.type
+    if computed_type != expected_type:
+        raise BadSchemaDefinition('computed attribute %(attr)s on %(etype)s: '
+                                  'computed attribute type (%(comp_type)s) mismatch with '
+                                  'specified type (%(attr_type)s)' %
+                                  {'attr' : rdef.rtype,
+                                   'etype' : rdef.subject.type,
+                                   'comp_type' : computed_type,
+                                   'attr_type' : expected_type})
+
+
 class RQLExpression(object):
     """Base class for RQL expression used in schema (constraints and
     permissions)
@@ -146,6 +192,7 @@ class RQLExpression(object):
     # to be defined in concrete classes
     rqlst = None
     predefined_variables = None
+    full_rql = None
 
     def __init__(self, expression, mainvars, eid):
         """
@@ -1001,6 +1048,59 @@ class CubicWebSchema(Schema):
     def schema_by_eid(self, eid):
         return self._eid_index[eid]
 
+    def iter_computed_attributes(self):
+        for relation in self.relations():
+            for rdef in relation.rdefs.itervalues():
+                if rdef.final and rdef.formula is not None:
+                    yield rdef
+
+    def iter_computed_relations(self):
+        for relation in self.relations():
+            if relation.rule:
+                yield relation
+
+    def finalize(self):
+        super(CubicWebSchema, self).finalize()
+        self.finalize_computed_attributes()
+        self.finalize_computed_relations()
+
+    def finalize_computed_attributes(self):
+        """Check computed attributes validity (if any), else raise
+        `BadSchemaDefinition`
+        """
+        analyzer = ETypeResolver(self)
+        for rdef in self.iter_computed_attributes():
+            rqlst = parse(rdef.formula)
+            select = rqlst.children[0]
+            analyzer.visit(select)
+            _check_valid_formula(rdef, rqlst)
+            rdef.formula_select = select # avoid later recomputation
+
+
+    def finalize_computed_relations(self):
+        """Build relation definitions for computed relations
+
+        The subject and object types are infered using rql analyzer.
+        """
+        analyzer = ETypeResolver(self)
+        for rschema in self.iter_computed_relations():
+            # XXX rule is valid if both S and O are defined and not in an exists
+            rqlexpr = RRQLExpression(rschema.rule)
+            rqlst = rqlexpr.snippet_rqlst
+            analyzer.visit(rqlst)
+            couples = set((sol['S'], sol['O']) for sol in rqlst.solutions)
+            for subjtype, objtype in couples:
+                if self[objtype].final:
+                    raise BadSchemaDefinition('computed relations cannot be final')
+                rdef = ybo.RelationDefinition(
+                    subjtype, rschema.type, objtype)
+                rdef.infered = True
+                self.add_relation_def(rdef)
+
+    def rebuild_infered_relations(self):
+        super(CubicWebSchema, self).rebuild_infered_relations()
+        self.finalize_computed_relations()
+
 
 # additional cw specific constraints ###########################################
 
@@ -1262,6 +1362,7 @@ class CubicWebSchemaLoader(BootstrapSchemaLoader):
     # these are overridden by set_log_methods below
     # only defining here to prevent pylint from complaining
     info = warning = error = critical = exception = debug = lambda msg,*a,**kw: None
+
 
 set_log_methods(CubicWebSchemaLoader, getLogger('cubicweb.schemaloader'))
 set_log_methods(BootstrapSchemaLoader, getLogger('cubicweb.bootstrapschemaloader'))

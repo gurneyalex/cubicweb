@@ -26,14 +26,16 @@ from rql import RQLSyntaxError
 
 from yams import ValidationError, BadSchemaDefinition
 from yams.constraints import SizeConstraint, StaticVocabularyConstraint
-from yams.buildobjs import RelationDefinition, EntityType, RelationType
+from yams.buildobjs import (RelationDefinition, EntityType, RelationType,
+                            Int, String, SubjectRelation, ComputedRelation)
 from yams.reader import fill_schema
 
 from cubicweb.schema import (
     CubicWebSchema, CubicWebEntitySchema, CubicWebSchemaLoader,
     RQLConstraint, RQLUniqueConstraint, RQLVocabularyConstraint,
     RQLExpression, ERQLExpression, RRQLExpression,
-    normalize_expression, order_eschemas, guess_rrqlexpr_mainvars)
+    normalize_expression, order_eschemas, guess_rrqlexpr_mainvars,
+    build_schema_from_namespace)
 from cubicweb.devtools import TestServerConfiguration as TestConfiguration
 from cubicweb.devtools.testlib import CubicWebTC
 
@@ -161,9 +163,10 @@ class SchemaReaderClassTest(TestCase):
         entities = sorted([str(e) for e in schema.entities()])
         expected_entities = ['Ami', 'BaseTransition', 'BigInt', 'Bookmark', 'Boolean', 'Bytes', 'Card',
                              'Date', 'Datetime', 'Decimal',
-                             'CWCache', 'CWConstraint', 'CWConstraintType', 'CWDataImport',
-                             'CWEType', 'CWAttribute', 'CWGroup', 'EmailAddress', 'CWRelation',
-                             'CWPermission', 'CWProperty', 'CWRType',
+                             'CWCache', 'CWComputedRType', 'CWConstraint',
+                             'CWConstraintType', 'CWDataImport', 'CWEType',
+                             'CWAttribute', 'CWGroup', 'EmailAddress',
+                             'CWRelation', 'CWPermission', 'CWProperty', 'CWRType',
                              'CWSource', 'CWSourceHostConfig', 'CWSourceSchemaConfig',
                              'CWUniqueTogetherConstraint', 'CWUser',
                              'ExternalUri', 'File', 'Float', 'Int', 'Interval', 'Note',
@@ -190,7 +193,7 @@ class SchemaReaderClassTest(TestCase):
 
                               'ean', 'ecrit_par', 'eid', 'end_timestamp', 'evaluee', 'expression', 'exprtype', 'extra_props',
 
-                              'fabrique_par', 'final', 'firstname', 'for_user', 'fournit',
+                              'fabrique_par', 'final', 'firstname', 'for_user', 'formula', 'fournit',
                               'from_entity', 'from_state', 'fulltext_container', 'fulltextindexed',
 
                               'has_group_permission', 'has_text',
@@ -207,7 +210,7 @@ class SchemaReaderClassTest(TestCase):
 
                               'parser', 'path', 'pkey', 'prefered_form', 'prenom', 'primary_email',
 
-                              'read_permission', 'relation_type', 'relations', 'require_group',
+                              'read_permission', 'relation_type', 'relations', 'require_group', 'rule',
 
                               'specializes', 'start_timestamp', 'state_of', 'status', 'subworkflow', 'subworkflow_exit', 'subworkflow_state', 'surname', 'symmetric', 'synopsis',
 
@@ -280,6 +283,88 @@ class SchemaReaderClassTest(TestCase):
                          {'read': ('managers', 'users'),
                           'add': ('managers',),
                           'delete': ('managers',)})
+
+    def test_computed_attribute(self):
+        """Check schema finalization for computed attributes."""
+        class Person(EntityType):
+            salary = Int()
+
+        class works_for(RelationDefinition):
+            subject = 'Person'
+            object  = 'Company'
+            cardinality = '?*'
+
+        class Company(EntityType):
+            total_salary = Int(formula='Any SUM(SA) GROUPBY X WHERE '
+                                       'P works_for X, P salary SA')
+        good_schema = build_schema_from_namespace(vars().items())
+
+        class Company(EntityType):
+            total_salary = String(formula='Any SUM(SA) GROUPBY X WHERE '
+                                          'P works_for X, P salary SA')
+
+        with self.assertRaises(BadSchemaDefinition) as exc:
+            bad_schema = build_schema_from_namespace(vars().items())
+
+        self.assertEqual(str(exc.exception),
+                         'computed attribute total_salary on Company: '
+                         'computed attribute type (Int) mismatch with '
+                         'specified type (String)')
+
+
+class SchemaReaderComputedRelationAndAttributesTest(TestCase):
+
+    def test_infer_computed_relation(self):
+        class Person(EntityType):
+            name = String()
+
+        class Company(EntityType):
+            name  = String()
+
+        class Service(EntityType):
+            name = String()
+
+        class works_for(RelationDefinition):
+            subject = 'Person'
+            object = 'Company'
+
+        class produce(RelationDefinition):
+            subject = ('Person', 'Company')
+            object = 'Service'
+
+        class achete(RelationDefinition):
+            subject = 'Person'
+            object = 'Service'
+
+        class produces_and_buys(ComputedRelation):
+            rule = 'S produce O, S achete O'
+
+        class produces_and_buys2(ComputedRelation):
+            rule = 'S works_for SO, SO produce O'
+
+        class reproduce(ComputedRelation):
+            rule = 'S produce O'
+
+        schema = build_schema_from_namespace(vars().items())
+
+        # check object/subject type
+        self.assertEqual([('Person','Service')],
+                         schema['produces_and_buys'].rdefs.keys())
+        self.assertEqual([('Person','Service')],
+                         schema['produces_and_buys2'].rdefs.keys())
+        self.assertEqual([('Company', 'Service'), ('Person', 'Service')],
+                         schema['reproduce'].rdefs.keys())
+        # check relations as marked infered
+        self.assertTrue(
+            schema['produces_and_buys'].rdefs[('Person','Service')].infered)
+
+        del schema
+        class autoname(ComputedRelation):
+            rule = 'S produce X, X name O'
+
+        with self.assertRaises(BadSchemaDefinition) as cm:
+            build_schema_from_namespace(vars().items())
+        self.assertEqual(str(cm.exception), 'computed relations cannot be final')
 
 
 class BadSchemaTC(TestCase):
@@ -395,6 +480,7 @@ class CompositeSchemaTC(CubicWebTC):
                      ('cw_source', 'Bookmark', 'CWSource', 'object'),
                      ('cw_source', 'CWAttribute', 'CWSource', 'object'),
                      ('cw_source', 'CWCache', 'CWSource', 'object'),
+                     ('cw_source', 'CWComputedRType', 'CWSource', 'object'),
                      ('cw_source', 'CWConstraint', 'CWSource', 'object'),
                      ('cw_source', 'CWConstraintType', 'CWSource', 'object'),
                      ('cw_source', 'CWDataImport', 'CWSource', 'object'),
@@ -453,6 +539,7 @@ class CompositeSchemaTC(CubicWebTC):
             yield self.assertEqual, self.composites[etype], \
                              sorted([(r.rtype.type, r.subject.type, r.object.type, role)
                                      for r, role in sorted(schema[etype].composite_rdef_roles)])
+
 
 if __name__ == '__main__':
     unittest_main()

@@ -579,6 +579,9 @@ class ServerMigrationHelper(MigrationHelper):
         """
         subjtype, objtype = str(subjtype), str(objtype)
         rschema = self.fs_schema.rschema(rtype)
+        if rschema.rule:
+            raise ExecutionError('Cannot synchronize a relation definition for a '
+                                 'computed relation (%s)' % rschema)
         reporschema = self.repo.schema.rschema(rschema)
         if (subjtype, rschema, objtype) in self._synchronized:
             return
@@ -1018,11 +1021,13 @@ class ServerMigrationHelper(MigrationHelper):
         if rtype in reposchema:
             print 'warning: relation type %s is already known, skip addition' % (
                 rtype)
+        elif rschema.rule:
+            ss.execschemarql(execute, rschema, ss.crschema2rql(rschema))
         else:
             # register the relation into CWRType and insert necessary relation
             # definitions
             ss.execschemarql(execute, rschema, ss.rschema2rql(rschema, addrdef=False))
-        if addrdef:
+        if not rschema.rule and addrdef:
             self.commit()
             gmap = self.group_mapping()
             cmap = self.cstrtype_mapping()
@@ -1057,8 +1062,12 @@ class ServerMigrationHelper(MigrationHelper):
 
     def cmd_drop_relation_type(self, rtype, commit=True):
         """unregister an existing relation type"""
-        # unregister the relation from CWRType
-        self.rqlexec('DELETE CWRType X WHERE X name %r' % rtype,
+        rschema = self.repo.schema[rtype]
+        if rschema.rule:
+            etype = 'CWComputedRType'
+        else:
+            etype = 'CWRType'
+        self.rqlexec('DELETE %s X WHERE X name %r' % (etype, rtype),
                      ask_confirm=self.verbosity>=2)
         if commit:
             self.commit()
@@ -1086,6 +1095,9 @@ class ServerMigrationHelper(MigrationHelper):
         schema definition file
         """
         rschema = self.fs_schema.rschema(rtype)
+        if rschema.rule:
+            raise ExecutionError('Cannot add a relation definition for a '
+                                 'computed relation (%s)' % rschema)
         if not rtype in self.repo.schema:
             self.cmd_add_relation_type(rtype, addrdef=False, commit=True)
         if (subjtype, objtype) in self.repo.schema.rschema(rtype).rdefs:
@@ -1113,6 +1125,9 @@ class ServerMigrationHelper(MigrationHelper):
     def cmd_drop_relation_definition(self, subjtype, rtype, objtype, commit=True):
         """unregister an existing relation definition"""
         rschema = self.repo.schema.rschema(rtype)
+        if rschema.rule:
+            raise ExecutionError('Cannot drop a relation definition for a '
+                                 'computed relation (%s)' % rschema)
         # unregister the definition from CWAttribute or CWRelation
         if rschema.final:
             etype = 'CWAttribute'

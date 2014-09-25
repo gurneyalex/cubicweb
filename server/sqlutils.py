@@ -47,7 +47,7 @@ def _run_command(cmd):
     return subprocess.call(cmd)
 
 
-def sqlexec(sqlstmts, cursor_or_execute, withpb=not os.environ.get('APYCOT_ROOT'),
+def sqlexec(sqlstmts, cursor_or_execute, withpb=True,
             pbtitle='', delimiter=';', cnx=None):
     """execute sql statements ignoring DROP/ CREATE GROUP or USER statements
     error.
@@ -299,7 +299,7 @@ class SQLAdapterMixIn(object):
     """
     cnx_wrap = ConnectionWrapper
 
-    def __init__(self, source_config):
+    def __init__(self, source_config, repairing=False):
         try:
             self.dbdriver = source_config['db-driver'].lower()
             dbname = source_config['db-name']
@@ -328,6 +328,14 @@ class SQLAdapterMixIn(object):
         if self.dbdriver == 'sqlite':
             self.cnx_wrap = SqliteConnectionWrapper
             self.dbhelper.dbname = abspath(self.dbhelper.dbname)
+        if not repairing:
+            statement_timeout = int(source_config.get('db-statement-timeout', 0))
+            if statement_timeout > 0:
+                def set_postgres_timeout(cnx):
+                    cnx.cursor().execute('SET statement_timeout to %d' % statement_timeout)
+                    cnx.commit()
+                postgres_hooks = SQL_CONNECT_HOOKS['postgres']
+                postgres_hooks.append(set_postgres_timeout)
 
     def wrapped_connection(self):
         """open and return a connection to the database, wrapped into a class

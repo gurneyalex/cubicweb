@@ -94,6 +94,7 @@ class FileUploadTC(CubicWebServerTC):
         self.assertEqual(webreq.status_code, 200)
         self.assertDictEqual(expect, loads(webreq.content))
 
+
 class LanguageTC(CubicWebServerTC):
 
     def test_language_neg(self):
@@ -103,6 +104,19 @@ class LanguageTC(CubicWebServerTC):
         headers = {'Accept-Language': 'en'}
         webreq = self.web_request(headers=headers)
         self.assertIn('lang="en"', webreq.read())
+
+    def test_response_codes(self):
+        with self.admin_access.client_cnx() as cnx:
+            admin_eid = cnx.user.eid
+        # guest can't see admin
+        webreq = self.web_request('/%d' % admin_eid)
+        self.assertEqual(webreq.status, 403)
+
+        # but admin can
+        self.web_login()
+        webreq = self.web_request('/%d' % admin_eid)
+        self.assertEqual(webreq.status, 200)
+
 
 class LogQueriesTC(CubicWebServerTC):
     @classmethod
