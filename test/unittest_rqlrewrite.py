@@ -1,4 +1,4 @@
-# copyright 2003-2013 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2014 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -486,6 +486,13 @@ class RQLRewriteTC(TestCase):
         rqlst = parse('Any A, R WHERE A ref R, S is Affaire')
         rewrite(rqlst, {('A', 'X'): (c_ok, c_bad)}, {})
 
+    def test_nonregr_is_instance_of(self):
+        user_expr = ERQLExpression('NOT X in_group AF, AF name "guests"')
+        rqlst = parse('Any O WHERE S use_email O, S is CWUser, O is_instance_of EmailAddress')
+        rewrite(rqlst, {('S', 'X'): (user_expr,)}, {})
+        self.assertEqual(rqlst.as_string(),
+                         'Any O WHERE S use_email O, S is CWUser, O is EmailAddress, '
+                         'EXISTS(NOT S in_group A, A name "guests", A is CWGroup)')
 
 from cubicweb.devtools.testlib import CubicWebTC
 from logilab.common.decorators import classproperty
@@ -547,6 +554,41 @@ class RewriteFullTC(CubicWebTC):
                              'X responsable AC?, AC modification_date AD, '
                              'AC is CWUser, E is CWUser, X is IN(Division, Societe)',
                              union.as_string())
+
+    def test_question_mark_attribute_snippet(self):
+        # see #3661918
+        from cubicweb.rqlrewrite import RQLRewriter
+        from logilab.common.decorators import monkeypatch
+        repotest.undo_monkey_patch()
+        orig_insert_snippets = RQLRewriter.insert_snippets
+        # patch insert_snippets and not rewrite, insert_snippets is already
+        # monkey patches (see above setupModule/repotest)
+        @monkeypatch(RQLRewriter)
+        def insert_snippets(self, snippets, varexistsmap=None):
+            # crash occurs if snippets are processed in a specific order, force
+            # destiny
+            if snippets[0][0] != {u'N': 'X'}:
+                snippets = list(reversed(snippets))
+            return orig_insert_snippets(self, snippets, varexistsmap)
+        try:
+            with self.temporary_permissions(
+                    (self.schema['Affaire'],
+                     {'read': (ERQLExpression('X ref "blah"'), )}),
+                    (self.schema['Note'],
+                     {'read': (ERQLExpression(
+                         'EXISTS(X inlined_affaire Z), EXISTS(Z owned_by U)'), )}),
+            ):
+                union = self.process(
+                    'Any A,COUNT(N) GROUPBY A '
+                    'WHERE A is Affaire, N? inlined_affaire A')
+                self.assertEqual('Any A,COUNT(N) GROUPBY A WHERE A is Affaire '
+                                 'WITH N,A BEING (Any N,A WHERE N? inlined_affaire A, '
+                                 '(N is NULL) OR (EXISTS(EXISTS(N inlined_affaire B), '
+                                 'EXISTS(B owned_by %(E)s), B is Affaire)), '
+                                 'A is Affaire, N is Note, EXISTS(A ref "blah"))',
+                                 union.as_string())
+        finally:
+            RQLRewriter.insert_snippets = orig_insert_snippets
 
 if __name__ == '__main__':
     unittest_main()

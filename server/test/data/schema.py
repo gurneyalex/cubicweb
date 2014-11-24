@@ -1,4 +1,4 @@
-# copyright 2003-2011 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2014 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -92,10 +92,16 @@ class Note(WorkflowableEntityType):
     type = String(maxsize=6)
     para = String(maxsize=512,
                   __permissions__ = {
+                      'add': ('managers', ERQLExpression('X in_state S, S name "todo"')),
                       'read':   ('managers', 'users', 'guests'),
                       'update': ('managers', ERQLExpression('X in_state S, S name "todo"')),
                       })
-
+    something = String(maxsize=1,
+                      __permissions__ = {
+                          'read': ('managers', 'users', 'guests'),
+                          'add': (ERQLExpression('NOT X para NULL'),),
+                          'update': ('managers', 'owners')
+                      })
     migrated_from = SubjectRelation('Note')
     attachment = SubjectRelation('File')
     inline1 = SubjectRelation('Affaire', inlined=True, cardinality='?*',
@@ -103,6 +109,23 @@ class Note(WorkflowableEntityType):
                                                               'Y type T, Y inline1 A2, A2 todo_by C',
                                                                'S,Y')])
     todo_by = SubjectRelation('CWUser')
+
+
+class Frozable(EntityType):
+    __permissions__ = {
+        'read':   ('managers', 'users'),
+        'add':    ('managers', 'users'),
+        'update': ('managers', ERQLExpression('X frozen False'),),
+        'delete': ('managers', ERQLExpression('X frozen False'),)
+    }
+    name = String()
+    frozen = Boolean(default=False,
+                     __permissions__ = {
+                         'read':   ('managers', 'users'),
+                         'add':    ('managers', 'users'),
+                         'update': ('managers', 'owners')
+                         })
+
 
 class Personne(EntityType):
     __unique_together__ = [('nom', 'prenom', 'inline2')]
@@ -120,6 +143,7 @@ class Personne(EntityType):
     tzdatenaiss = TZDatetime()
     test   = Boolean(__permissions__={
         'read': ('managers', 'users', 'guests'),
+        'add': ('managers',),
         'update': ('managers',),
         })
     description = String()

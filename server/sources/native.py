@@ -42,7 +42,6 @@ import zipfile
 import logging
 import sys
 
-from logilab.common.compat import any
 from logilab.common.decorators import cached, clear_cache
 from logilab.common.configuration import Method
 from logilab.common.shellutils import getlogin
@@ -424,7 +423,7 @@ class NativeSQLSource(SQLAdapterMixIn, AbstractSource):
             self._eid_creation_cnx.close()
             self._eid_creation_cnx = None
 
-    # XXX deprecates [un]map_attribute ?
+    # XXX deprecates [un]map_attribute?
     def map_attribute(self, etype, attr, cb, sourcedb=True):
         self._rql_sqlgen.attr_map['%s.%s' % (etype, attr)] = (cb, sourcedb)
 
@@ -739,7 +738,7 @@ class NativeSQLSource(SQLAdapterMixIn, AbstractSource):
             # instance
             print 'exec', query, args, getattr(cnx, '_cnx', cnx)
         try:
-            # str(query) to avoid error if it's an unicode string
+            # str(query) to avoid error if it's a unicode string
             cursor.execute(str(query), args)
         except Exception as ex:
             if self.repo.config.mode != 'test':
@@ -757,16 +756,10 @@ class NativeSQLSource(SQLAdapterMixIn, AbstractSource):
             if ex.__class__.__name__ == 'IntegrityError':
                 # need string comparison because of various backends
                 for arg in ex.args:
-                    if 'SQL Server' in arg:
-                        mo = re.search("'unique_cw_[^ ]+'", arg)
-                    else: # postgres
-                        mo = re.search('"unique_cw_[^ ]+"', arg)
+                    # postgres, sqlserver
+                    mo = re.search("unique_[a-z0-9]{32}", arg)
                     if mo is not None:
-                        index_name = mo.group(0)[1:-1] # eat the surrounding " pair
-                        elements = index_name.split('_cw_')[1:]
-                        etype = elements[0]
-                        rtypes = elements[1:]
-                        raise UniqueTogetherError(etype, rtypes)
+                        raise UniqueTogetherError(session, cstrname=mo.group(0))
                     # sqlite
                     mo = re.search('columns (.*) are not unique', arg)
                     if mo is None:
@@ -776,8 +769,7 @@ class NativeSQLSource(SQLAdapterMixIn, AbstractSource):
                         # we left chop the 'cw_' prefix of attribute names
                         rtypes = [c.strip()[3:]
                                   for c in mo.group(1).split(',')]
-                        etype = '???'
-                        raise UniqueTogetherError(etype, rtypes)
+                        raise UniqueTogetherError(session, rtypes=rtypes)
             raise
         return cursor
 
@@ -789,7 +781,7 @@ class NativeSQLSource(SQLAdapterMixIn, AbstractSource):
             print 'execmany', query, 'with', len(args), 'arguments'
         cursor = session.cnxset[self.uri]
         try:
-            # str(query) to avoid error if it's an unicode string
+            # str(query) to avoid error if it's a unicode string
             cursor.executemany(str(query), args)
         except Exception as ex:
             if self.repo.config.mode != 'test':
