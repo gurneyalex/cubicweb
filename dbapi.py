@@ -164,7 +164,7 @@ def connect(database, login=None,
 
     * a simple instance id for in-memory connection
 
-    * an uri like scheme://host:port/instanceid where scheme may be one of
+    * a uri like scheme://host:port/instanceid where scheme may be one of
       'pyro', 'inmemory' or 'zmqpickle'
 
       * if scheme is 'pyro', <host:port> determine the name server address. If
@@ -422,25 +422,6 @@ class DBAPIRequest(RequestSessionBase):
         req.set_session(self.session, user)
         return req
 
-    @deprecated('[3.8] use direct access to req.session.data dictionary')
-    def session_data(self):
-        """return a dictionary containing session data"""
-        return self.session.data
-
-    @deprecated('[3.8] use direct access to req.session.data dictionary')
-    def get_session_data(self, key, default=None, pop=False):
-        if pop:
-            return self.session.data.pop(key, default)
-        return self.session.data.get(key, default)
-
-    @deprecated('[3.8] use direct access to req.session.data dictionary')
-    def set_session_data(self, key, value):
-        self.session.data[key] = value
-
-    @deprecated('[3.8] use direct access to req.session.data dictionary')
-    def del_session_data(self, key):
-        self.session.data.pop(key, None)
-
     # these are overridden by set_log_methods below
     # only defining here to prevent pylint from complaining
     info = warning = error = critical = exception = debug = lambda msg,*a,**kw: None
@@ -486,11 +467,11 @@ class Cursor(object):
     def _txid(self):
         return self.connection._txid(self)
 
-    def execute(self, rql, args=None, eid_key=None, build_descr=True):
+    def execute(self, rql, args=None, build_descr=True):
         """execute a rql query, return resulting rows and their description in
         a :class:`~cubicweb.rset.ResultSet` object
 
-        * `rql` should be an Unicode string or a plain ASCII string, containing
+        * `rql` should be a Unicode string or a plain ASCII string, containing
           the rql query
 
         * `args` the optional args dictionary associated to the query, with key
@@ -517,10 +498,6 @@ class Cursor(object):
 
             execute('Any X WHERE X eid %(x)s', {'x': 123})
         """
-        if eid_key is not None:
-            warn('[3.8] eid_key is deprecated, you can safely remove this argument',
-                 DeprecationWarning, stacklevel=2)
-        # XXX use named argument for build_descr in case repo is < 3.8
         rset = self._repo.execute(self._sessid, rql, args,
                                   build_descr=build_descr, **self._txid())
         rset.req = self.req

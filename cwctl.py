@@ -1,4 +1,4 @@
-# copyright 2003-2012 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2013 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -48,13 +48,9 @@ from cubicweb.cwconfig import CubicWebConfiguration as cwcfg, CWDEV, CONFIGURATI
 from cubicweb.toolsutils import Command, rm, create_dir, underline_title
 from cubicweb.__pkginfo__ import version
 
-if support_args(CommandLine, 'check_duplicated_command'):
-    # don't check duplicated commands, it occurs when reloading site_cubicweb
-    CWCTL = CommandLine('cubicweb-ctl', 'The CubicWeb swiss-knife.',
-                        version=version, check_duplicated_command=False)
-else:
-    CWCTL = CommandLine('cubicweb-ctl', 'The CubicWeb swiss-knife.',
-                        version=version)
+# don't check duplicated commands, it occurs when reloading site_cubicweb
+CWCTL = CommandLine('cubicweb-ctl', 'The CubicWeb swiss-knife.',
+                    version=version, check_duplicated_command=False)
 
 def wait_process_end(pid, maxtry=10, waittime=1):
     """wait for a process to actually die"""
@@ -266,12 +262,7 @@ class ListCommand(Command):
                         if tinfo:
                             descr = getattr(tinfo, 'description', '')
                             if not descr:
-                                descr = getattr(tinfo, 'short_desc', '')
-                                if descr:
-                                    warn('[3.8] short_desc is deprecated, update %s'
-                                         ' pkginfo' % cube, DeprecationWarning)
-                                else:
-                                    descr = tinfo.__doc__
+                                descr = tinfo.__doc__
                             if descr:
                                 print '    '+ '    \n'.join(descr.splitlines())
                         modes = detect_available_modes(cwcfg.cube_dir(cube))
@@ -326,7 +317,7 @@ def check_options_consistency(config):
                               'used together')
 
 class CreateInstanceCommand(Command):
-    """Create an instance from a cube. This is an unified
+    """Create an instance from a cube. This is a unified
     command which can handle web / server / all-in-one installation
     according to available parts of the software library and of the
     desired cube.
@@ -357,7 +348,7 @@ class CreateInstanceCommand(Command):
           }),
         ('config',
          {'short': 'c', 'type' : 'choice', 'metavar': '<install type>',
-          'choices': ('all-in-one', 'repository', 'twisted'),
+          'choices': ('all-in-one', 'repository'),
           'default': 'all-in-one',
           'help': 'installation type, telling which part of an instance '
           'should be installed. You can list available configurations using the'
@@ -405,13 +396,14 @@ class CreateInstanceCommand(Command):
         print
         helper.bootstrap(cubes, self.config.automatic, self.config.config_level)
         # input for cubes specific options
-        sections = set(sect.lower() for sect, opt, odict in config.all_options()
-                       if 'type' in odict
-                       and odict.get('level') <= self.config.config_level)
-        for section in sections:
-            if section not in ('main', 'email', 'pyro', 'web'):
-                print '\n' + underline_title('%s options' % section)
-                config.input_config(section, self.config.config_level)
+        if not self.config.automatic:
+            sections = set(sect.lower() for sect, opt, odict in config.all_options()
+                           if 'type' in odict
+                           and odict.get('level') <= self.config.config_level)
+            for section in sections:
+                if section not in ('main', 'email', 'pyro', 'web'):
+                    print '\n' + underline_title('%s options' % section)
+                    config.input_config(section, self.config.config_level)
         # write down configuration
         config.save()
         self._handle_win32(config, appid)
@@ -761,6 +753,7 @@ given, appropriate sources for migration will be automatically selected \
         mih = config.migration_handler()
         repo = mih.repo_connect()
         vcconf = repo.get_versions()
+        helper = self.config_helper(config, required=False)
         if self.config.force_cube_version:
             for cube, version in self.config.force_cube_version.iteritems():
                 vcconf[cube] = Version(version)
@@ -799,6 +792,8 @@ given, appropriate sources for migration will be automatically selected \
         if not self.i18nupgrade(config):
             return
         print
+        if helper:
+            helper.postupgrade(repo)
         print '-> instance migrated.'
         if instance_running and not (CWDEV or self.config.nostartstop):
             # restart instance through fork to get a proper environment, avoid
@@ -853,7 +848,7 @@ class ShellCommand(Command):
     in batch mode.
 
     By default it will connect to a local instance using an in memory
-    connection, unless an URL to a running instance is specified.
+    connection, unless a URL to a running instance is specified.
 
     Arguments after bare "--" string will not be processed by the shell command
     You can use it to pass extra arguments to your script and expect for
@@ -1039,9 +1034,56 @@ class ConfigureInstanceCommand(InstanceCommand):
                     raise ConfigurationError('unknown configuration key "%s" for mode %s' % (key, appcfg.name))
             appcfg.save()
 
+
+# WSGI #########
+
+def wsgichoices():
+    try:
+        from werkzeug import serving
+    except ImportError:
+        return ('stdlib',)
+    return ('stdlib', 'werkzeug')
+
+class WSGIDebugStartHandler(InstanceCommand):
+    """Start an interactive wsgi server """
+    name = 'wsgi'
+    actionverb = 'started'
+    arguments = '<instance>'
+    options = (
+        ('method',
+         {'short': 'm',
+          'type': 'choice',
+          'metavar': '<method>',
+          'default': 'stdlib',
+          'choices': wsgichoices(),
+          'help': 'wsgi utility/method'}),
+        ('loglevel',
+         {'short': 'l',
+          'type' : 'choice',
+          'metavar': '<log level>',
+          'default': 'debug',
+          'choices': ('debug', 'info', 'warning', 'error'),
+          'help': 'debug if -D is set, error otherwise',
+          }),
+        )
+
+    def wsgi_instance(self, appid):
+        config = cwcfg.config_for(appid, debugmode=1)
+        init_cmdline_log_threshold(config, self['loglevel'])
+        assert config.name == 'all-in-one'
+        meth = self['method']
+        if meth == 'stdlib':
+            from cubicweb.wsgi import server
+        else:
+            from cubicweb.wsgi import wz as server
+        return server.run(config)
+
+
+
 for cmdcls in (ListCommand,
                CreateInstanceCommand, DeleteInstanceCommand,
                StartInstanceCommand, StopInstanceCommand, RestartInstanceCommand,
+               WSGIDebugStartHandler,
                ReloadConfigurationCommand, StatusCommand,
                UpgradeInstanceCommand,
                ListVersionsInstanceCommand,
@@ -1051,6 +1093,8 @@ for cmdcls in (ListCommand,
                ConfigureInstanceCommand,
                ):
     CWCTL.register(cmdcls)
+
+
 
 def run(args):
     """command line tool"""

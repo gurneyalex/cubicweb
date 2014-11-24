@@ -90,8 +90,8 @@ __docformat__ = "restructuredtext en"
 
 from itertools import imap, ifilterfalse
 
-from logilab.common.compat import any
 from logilab.common.decorators import cached
+from logilab.common.deprecation import deprecated
 
 from rql import BadRQLQuery
 from rql.stmts import Union, Select
@@ -1262,6 +1262,7 @@ class PartPlanInformation(object):
         inputmap.update(step.outputmap)
 
 
+@deprecated('[3.18] old multi-source system will go away in the next version')
 class MSPlanner(SSPlanner):
     """MultiSourcesPlanner: build execution plan for rql queries
 
