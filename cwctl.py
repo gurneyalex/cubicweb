@@ -782,7 +782,9 @@ given, appropriate sources for migration will be automatically selected \
         if self.config.fs_only or toupgrade:
             for cube, fromversion, toversion in toupgrade:
                 print '-> migration needed from %s to %s for %s' % (fromversion, toversion, cube)
-            mih.migrate(vcconf, reversed(toupgrade), self.config)
+            with mih.cnx:
+                with mih.cnx.security_enabled(False, False):
+                    mih.migrate(vcconf, reversed(toupgrade), self.config)
         else:
             print '-> no data migration needed for instance %s.' % appid
         # rewrite main configuration file
@@ -913,13 +915,14 @@ directly give URI as instance id instead',
     def _handle_networked(self, appuri):
         """ returns migration context handler & shutdown function """
         from cubicweb import AuthenticationError
-        from cubicweb.dbapi import connect
+        from cubicweb.repoapi import connect, get_repository
         from cubicweb.server.utils import manager_userpasswd
         from cubicweb.server.migractions import ServerMigrationHelper
         while True:
             try:
                 login, pwd = manager_userpasswd(msg=None)
-                cnx = connect(appuri, login=login, password=pwd, mulcnx=False)
+                repo = get_repository(appuri)
+                cnx = connect(repo, login=login, password=pwd, mulcnx=False)
             except AuthenticationError as ex:
                 print ex
             except (KeyboardInterrupt, EOFError):
@@ -949,15 +952,17 @@ directly give URI as instance id instead',
         else:
             mih, shutdown_callback = self._handle_networked(appuri)
         try:
-            if args:
-                # use cmdline parser to access left/right attributes only
-                # remember that usage requires instance appid as first argument
-                scripts, args = self.cmdline_parser.largs[1:], self.cmdline_parser.rargs
-                for script in scripts:
-                    mih.cmd_process_script(script, scriptargs=args)
-                    mih.commit()
-            else:
-                mih.interactive_shell()
+            with mih.cnx:
+                with mih.cnx.security_enabled(False, False):
+                    if args:
+                        # use cmdline parser to access left/right attributes only
+                        # remember that usage requires instance appid as first argument
+                        scripts, args = self.cmdline_parser.largs[1:], self.cmdline_parser.rargs
+                        for script in scripts:
+                                mih.cmd_process_script(script, scriptargs=args)
+                                mih.commit()
+                    else:
+                        mih.interactive_shell()
         finally:
             shutdown_callback()
 
@@ -1044,12 +1049,16 @@ def wsgichoices():
         return ('stdlib',)
     return ('stdlib', 'werkzeug')
 
-class WSGIDebugStartHandler(InstanceCommand):
+class WSGIStartHandler(InstanceCommand):
     """Start an interactive wsgi server """
     name = 'wsgi'
     actionverb = 'started'
     arguments = '<instance>'
     options = (
+        ("debug",
+         {'short': 'D', 'action': 'store_true',
+          'default': False,
+          'help': 'start server in debug mode.'}),
         ('method',
          {'short': 'm',
           'type': 'choice',
@@ -1059,16 +1068,16 @@ class WSGIDebugStartHandler(InstanceCommand):
           'help': 'wsgi utility/method'}),
         ('loglevel',
          {'short': 'l',
-          'type' : 'choice',
+          'type': 'choice',
           'metavar': '<log level>',
-          'default': 'debug',
+          'default': None,
           'choices': ('debug', 'info', 'warning', 'error'),
           'help': 'debug if -D is set, error otherwise',
           }),
         )
 
     def wsgi_instance(self, appid):
-        config = cwcfg.config_for(appid, debugmode=1)
+        config = cwcfg.config_for(appid, debugmode=self['debug'])
         init_cmdline_log_threshold(config, self['loglevel'])
         assert config.name == 'all-in-one'
         meth = self['method']
@@ -1083,7 +1092,7 @@ class WSGIDebugStartHandler(InstanceCommand):
 for cmdcls in (ListCommand,
                CreateInstanceCommand, DeleteInstanceCommand,
                StartInstanceCommand, StopInstanceCommand, RestartInstanceCommand,
-               WSGIDebugStartHandler,
+               WSGIStartHandler,
                ReloadConfigurationCommand, StatusCommand,
                UpgradeInstanceCommand,
                ListVersionsInstanceCommand,

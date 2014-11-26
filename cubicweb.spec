@@ -7,7 +7,7 @@
 %endif
 
 Name:           cubicweb
-Version:        3.18.7
+Version:        3.19.5
 Release:        logilab.1%{?dist}
 Summary:        CubicWeb is a semantic web application framework
 Source0:        http://download.logilab.org/pub/cubicweb/cubicweb-%{version}.tar.gz
@@ -24,7 +24,7 @@ Requires:       %{python}-logilab-common >= 0.62.0
 Requires:       %{python}-logilab-mtconverter >= 0.8.0
 Requires:       %{python}-rql >= 0.31.2
 Requires:       %{python}-yams >= 0.39.1
-Requires:       %{python}-logilab-database >= 1.11.0
+Requires:       %{python}-logilab-database >= 1.12.1
 Requires:       %{python}-passlib
 Requires:       %{python}-lxml
 Requires:       %{python}-twisted-web

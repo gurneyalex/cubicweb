@@ -16,7 +16,7 @@
 # You should have received a copy of the GNU Lesser General Public License along
 # with CubicWeb.  If not, see <http://www.gnu.org/licenses/>.
 """Security hooks: check permissions to add/delete/update entities according to
-the user connected to a session
+the connected user
 """
 
 __docformat__ = "restructuredtext en"
@@ -31,7 +31,7 @@ from cubicweb.server import BEFORE_ADD_RELATIONS, ON_COMMIT_ADD_RELATIONS, hook
 
 
 
-def check_entity_attributes(session, entity, action, editedattrs=None):
+def check_entity_attributes(cnx, entity, action, editedattrs=None):
     eid = entity.eid
     eschema = entity.e_schema
     if action == 'delete':
@@ -67,24 +67,24 @@ def check_entity_attributes(session, entity, action, editedattrs=None):
                 # That means an immutable attribute; as an optimization, avoid
                 # going through check_perm.
                 raise Unauthorized(action, str(rdef))
-            rdef.check_perm(session, action, eid=eid)
+            rdef.check_perm(cnx, action, eid=eid)
 
 
 class CheckEntityPermissionOp(hook.DataOperationMixIn, hook.LateOperation):
     def precommit_event(self):
-        session = self.session
+        cnx = self.cnx
         for eid, action, edited in self.get_data():
-            entity = session.entity_from_eid(eid)
-            check_entity_attributes(session, entity, action, edited)
+            entity = cnx.entity_from_eid(eid)
+            check_entity_attributes(cnx, entity, action, edited)
 
 
 class CheckRelationPermissionOp(hook.DataOperationMixIn, hook.LateOperation):
     def precommit_event(self):
-        session = self.session
+        cnx = self.cnx
         for action, rschema, eidfrom, eidto in self.get_data():
-            rdef = rschema.rdef(session.describe(eidfrom)[0],
-                                session.describe(eidto)[0])
-            rdef.check_perm(session, action, fromeid=eidfrom, toeid=eidto)
+            rdef = rschema.rdef(cnx.entity_metas(eidfrom)['type'],
+                                cnx.entity_metas(eidto)['type'])
+            rdef.check_perm(cnx, action, fromeid=eidfrom, toeid=eidto)
 
 
 @objectify_predicate
@@ -138,8 +138,8 @@ class BeforeAddRelationSecurityHook(SecurityHook):
             if (self.eidfrom, self.rtype, self.eidto) in nocheck:
                 return
             rschema = self._cw.repo.schema[self.rtype]
-            rdef = rschema.rdef(self._cw.describe(self.eidfrom)[0],
-                                self._cw.describe(self.eidto)[0])
+            rdef = rschema.rdef(self._cw.entity_metas(self.eidfrom)['type'],
+                                self._cw.entity_metas(self.eidto)['type'])
             rdef.check_perm(self._cw, 'add', fromeid=self.eidfrom, toeid=self.eidto)
 
 
@@ -157,8 +157,8 @@ class AfterAddRelationSecurityHook(SecurityHook):
                 CheckRelationPermissionOp.get_instance(self._cw).add_data(
                     ('add', rschema, self.eidfrom, self.eidto) )
             else:
-                rdef = rschema.rdef(self._cw.describe(self.eidfrom)[0],
-                                    self._cw.describe(self.eidto)[0])
+                rdef = rschema.rdef(self._cw.entity_metas(self.eidfrom)['type'],
+                                    self._cw.entity_metas(self.eidto)['type'])
                 rdef.check_perm(self._cw, 'add', fromeid=self.eidfrom, toeid=self.eidto)
 
 
@@ -171,7 +171,7 @@ class BeforeDeleteRelationSecurityHook(SecurityHook):
         if (self.eidfrom, self.rtype, self.eidto) in nocheck:
             return
         rschema = self._cw.repo.schema[self.rtype]
-        rdef = rschema.rdef(self._cw.describe(self.eidfrom)[0],
-                            self._cw.describe(self.eidto)[0])
+        rdef = rschema.rdef(self._cw.entity_metas(self.eidfrom)['type'],
+                            self._cw.entity_metas(self.eidto)['type'])
         rdef.check_perm(self._cw, 'delete', fromeid=self.eidfrom, toeid=self.eidto)
 

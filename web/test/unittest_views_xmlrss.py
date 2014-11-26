@@ -1,14 +1,16 @@
 from cubicweb.devtools.testlib import CubicWebTC
 from cubicweb.web.views.xmlrss import SERIALIZERS
+
 class EntityXMLViewTC(CubicWebTC):
     """see also cw.sobjects.test.unittest_parsers"""
     def test(self):
-        req = self.request(relation=['tags-object', 'in_group-subject',
-                                     'in_state-subject', 'use_email-subject'])
-        self.assertMultiLineEqual(
-            req.user.view('xml'),
-            '''\
-<CWUser eid="6" cwuri="None6" cwsource="system">
+        rels = ['tags-object', 'in_group-subject',
+                'in_state-subject', 'use_email-subject']
+        with self.admin_access.web_request(relation=rels) as req:
+            self.assertMultiLineEqual(
+                req.user.view('xml'),
+                '''\
+<CWUser eid="6" cwuri="http://testing.fr/cubicweb/6" cwsource="system">
   <login>admin</login>
   <upassword/>
   <firstname/>
@@ -19,10 +21,10 @@ class EntityXMLViewTC(CubicWebTC):
   <tags role="object">
   </tags>
   <in_group role="subject">
-    <CWGroup eid="%(group_eid)s" cwuri="None%(group_eid)s"/>
+    <CWGroup eid="%(group_eid)s" cwuri="http://testing.fr/cubicweb/%(group_eid)s"/>
   </in_group>
   <in_state role="subject">
-    <State eid="%(state_eid)s" cwuri="None%(state_eid)s" name="activated"/>
+    <State eid="%(state_eid)s" cwuri="http://testing.fr/cubicweb/%(state_eid)s" name="activated"/>
   </in_state>
   <use_email role="subject">
   </use_email>

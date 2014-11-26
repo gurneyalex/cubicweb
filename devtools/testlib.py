@@ -39,12 +39,14 @@ from logilab.common.decorators import cached, classproperty, clear_cache, iclass
 from logilab.common.deprecation import deprecated, class_deprecated
 from logilab.common.shellutils import getlogin
 
-from cubicweb import ValidationError, NoSelectableObject
-from cubicweb import cwconfig, dbapi, devtools, web, server
+from cubicweb import (ValidationError, NoSelectableObject, AuthenticationError,
+                      ProgrammingError, BadConnectionId)
+from cubicweb import cwconfig, devtools, web, server, repoapi
 from cubicweb.utils import json
 from cubicweb.sobjects import notification
 from cubicweb.web import Redirect, application
 from cubicweb.server.hook import SendMailOp
+from cubicweb.server.session import Session
 from cubicweb.devtools import SYSTEM_ENTITIES, SYSTEM_RELATIONS, VIEW_VALIDATORS
 from cubicweb.devtools import fake, htmlparser, DEFAULT_EMPTY_DB_ID
 from cubicweb.utils import json
@@ -155,7 +157,7 @@ cwconfig.SMTP = MockSMTP
 
 
 class TestCaseConnectionProxy(object):
-    """thin wrapper around `cubicweb.dbapi.Connection` context-manager
+    """thin wrapper around `cubicweb.repoapi.ClientConnection` context-manager
     used in CubicWebTC (cf. `cubicweb.devtools.testlib.CubicWebTC.login` method)
 
     It just proxies to the default connection context manager but
@@ -169,14 +171,105 @@ class TestCaseConnectionProxy(object):
         return getattr(self.cnx, attrname)
 
     def __enter__(self):
-        return self.cnx.__enter__()
+        # already open
+        return self.cnx
 
     def __exit__(self, exctype, exc, tb):
         try:
             return self.cnx.__exit__(exctype, exc, tb)
         finally:
-            self.cnx.close()
             self.testcase.restore_connection()
+
+# Repoaccess utility ###############################################3###########
+
+class RepoAccess(object):
+    """An helper to easily create object to access the repo as a specific user
+
+    Each RepoAccess have it own session.
+
+    A repo access can create three type of object:
+
+    .. automethod:: cubicweb.testlib.RepoAccess.repo_cnx
+    .. automethod:: cubicweb.testlib.RepoAccess.client_cnx
+    .. automethod:: cubicweb.testlib.RepoAccess.web_request
+
+    The RepoAccess need to be closed to destroy the associated Session.
+    TestCase usually take care of this aspect for the user.
+
+    .. automethod:: cubicweb.testlib.RepoAccess.close
+    """
+
+    def __init__(self, repo, login, requestcls):
+        self._repo = repo
+        self._login = login
+        self.requestcls = requestcls
+        self._session = self._unsafe_connect(login)
+
+    def _unsafe_connect(self, login, **kwargs):
+        """ a completely unsafe connect method for the tests """
+        # use an internal connection
+        with self._repo.internal_cnx() as cnx:
+            # try to get a user object
+            user = cnx.find('CWUser', login=login).one()
+            user.groups
+            user.properties
+            user.login
+            session = Session(user, self._repo)
+            self._repo._sessions[session.sessionid] = session
+            user._cw = user.cw_rset.req = session
+        with session.new_cnx() as cnx:
+            self._repo.hm.call_hooks('session_open', cnx)
+            # commit connection at this point in case write operation has been
+            # done during `session_open` hooks
+            cnx.commit()
+        return session
+
+    @contextmanager
+    def repo_cnx(self):
+        """Context manager returning a server side connection for the user"""
+        with self._session.new_cnx() as cnx:
+            yield cnx
+
+    @contextmanager
+    def client_cnx(self):
+        """Context manager returning a client side connection for the user"""
+        with repoapi.ClientConnection(self._session) as cnx:
+            yield cnx
+
+    @contextmanager
+    def web_request(self, url=None, headers={}, method='GET', **kwargs):
+        """Context manager returning a web request pre-linked to a client cnx
+
+        To commit and rollback use::
+
+            req.cnx.commit()
+            req.cnx.rolback()
+        """
+        req = self.requestcls(self._repo.vreg, url=url, headers=headers,
+                              method=method, form=kwargs)
+        clt_cnx = repoapi.ClientConnection(self._session)
+        req.set_cnx(clt_cnx)
+        with clt_cnx:
+            yield req
+
+    def close(self):
+        """Close the session associated to the RepoAccess"""
+        if self._session is not None:
+            self._repo.close(self._session.sessionid)
+        self._session = None
+
+    @contextmanager
+    def shell(self):
+        from cubicweb.server.migractions import ServerMigrationHelper
+        with repoapi.ClientConnection(self._session) as cnx:
+            mih = ServerMigrationHelper(None, repo=self._repo, cnx=cnx,
+                                        interactive=False,
+                                        # hack so it don't try to load fs schema
+                                        schema=1)
+            yield mih
+            cnx.commit()
+
+
 
 # base class for cubicweb tests requiring a full cw environments ###############
 
@@ -188,7 +281,7 @@ class CubicWebTC(TestCase):
     * `vreg`, the vregistry
     * `schema`, self.vreg.schema
     * `config`, cubicweb configuration
-    * `cnx`, dbapi connection to the repository using an admin user
+    * `cnx`, repoapi connection to the repository using an admin user
     * `session`, server side session associated to `cnx`
     * `app`, the cubicweb publisher (for web testing)
     * `repo`, the repository object
@@ -198,21 +291,200 @@ class CubicWebTC(TestCase):
     """
     appid = 'data'
     configcls = devtools.ApptestConfiguration
-    reset_schema = reset_vreg = False # reset schema / vreg between tests
+    requestcls = fake.FakeRequest
     tags = TestCase.tags | Tags('cubicweb', 'cw_repo')
     test_db_id = DEFAULT_EMPTY_DB_ID
     _cnxs = set() # establised connection
-    _cnx  = None  # current connection
+                  # stay on connection for leak detection purpose
 
-    # Too much complicated stuff. the class doesn't need to bear the repo anymore
-    @classmethod
-    def set_cnx(cls, cnx):
-        cls._cnxs.add(cnx)
-        cls._cnx = cnx
+    # anonymous is logged by default in cubicweb test cases
+    anonymous_allowed = True
+
+    def __init__(self, *args, **kwargs):
+        self._admin_session = None
+        self._admin_clt_cnx = None
+        self._current_session = None
+        self._current_clt_cnx = None
+        self.repo = None
+        self._open_access = set()
+        super(CubicWebTC, self).__init__(*args, **kwargs)
+
+    # repository connection handling ###########################################
+
+    def new_access(self, login):
+        """provide a new RepoAccess object for a given user
+
+        The access is automatically closed at the end of the test."""
+        access = RepoAccess(self.repo, login, self.requestcls)
+        self._open_access.add(access)
+        return access
+
+    def _close_access(self):
+        while self._open_access:
+            try:
+                self._open_access.pop().close()
+            except BadConnectionId:
+                continue # already closed
+
+    @deprecated('[3.19] explicitly use RepoAccess object in test instead')
+    def set_cnx(self, cnx):
+        assert getattr(cnx, '_session', None) is not None
+        if cnx is self._admin_clt_cnx:
+            self._pop_custom_cnx()
+        else:
+            self._cnxs.add(cnx) # register the cnx to make sure it is removed
+            self._current_session = cnx._session
+            self._current_clt_cnx = cnx
 
     @property
+    @deprecated('[3.19] explicitly use RepoAccess object in test instead')
     def cnx(self):
-        return self.__class__._cnx
+        # XXX we want to deprecate this
+        clt_cnx = self._current_clt_cnx
+        if clt_cnx is None:
+            clt_cnx = self._admin_clt_cnx
+        return clt_cnx
+
+    def _close_cnx(self):
+        """ensure that all cnx used by a test have been closed"""
+        for cnx in list(self._cnxs):
+            if cnx._open and not cnx._session.closed:
+                cnx.rollback()
+                cnx.close()
+            self._cnxs.remove(cnx)
+
+    @property
+    @deprecated('[3.19] explicitly use RepoAccess object in test instead')
+    def session(self):
+        """return current server side session"""
+        # XXX We want to use a srv_connection instead and deprecate this
+        # property
+        session = self._current_session
+        if session is None:
+            session = self._admin_session
+            # bypassing all sanity to use the same repo cnx in the session
+            #
+            # we can't call set_cnx as the Connection is not managed by the
+            # session.
+            session._Session__threaddata.cnx = self._admin_clt_cnx._cnx
+        else:
+            session._Session__threaddata.cnx = self.cnx._cnx
+        session.set_cnxset()
+        return session
+
+    @property
+    @deprecated('[3.19] explicitly use RepoAccess object in test instead')
+    def websession(self):
+        return self.session
+
+    @property
+    @deprecated('[3.19] explicitly use RepoAccess object in test instead')
+    def adminsession(self):
+        """return current server side session (using default manager account)"""
+        return self._admin_session
+
+    @deprecated('[3.19] explicitly use RepoAccess object in test instead')
+    def login(self, login, **kwargs):
+        """return a connection for the given login/password"""
+        __ = kwargs.pop('autoclose', True) # not used anymore
+        if login == self.admlogin:
+            # undo any previous login, if we're not used as a context manager
+            self.restore_connection()
+            return self.cnx
+        else:
+            if not kwargs:
+                kwargs['password'] = str(login)
+            clt_cnx = repoapi.connect(self.repo, login, **kwargs)
+        self.set_cnx(clt_cnx)
+        clt_cnx.__enter__()
+        return TestCaseConnectionProxy(self, clt_cnx)
+
+    @deprecated('[3.19] explicitly use RepoAccess object in test instead')
+    def restore_connection(self):
+        self._pop_custom_cnx()
+
+    def _pop_custom_cnx(self):
+        if self._current_clt_cnx is not None:
+            if self._current_clt_cnx._open:
+                self._current_clt_cnx.close()
+            if not  self._current_session.closed:
+                self.repo.close(self._current_session.sessionid)
+            self._current_clt_cnx = None
+            self._current_session = None
+
+    #XXX this doesn't need to a be classmethod anymore
+    def _init_repo(self):
+        """init the repository and connection to it.
+        """
+        # get or restore and working db.
+        db_handler = devtools.get_test_db_handler(self.config, self.init_config)
+        db_handler.build_db_cache(self.test_db_id, self.pre_setup_database)
+        db_handler.restore_database(self.test_db_id)
+        self.repo = db_handler.get_repo(startup=True)
+        # get an admin session (without actual login)
+        login = unicode(db_handler.config.default_admin_config['login'])
+        self.admin_access = self.new_access(login)
+        self._admin_session = self.admin_access._session
+        self._admin_clt_cnx = repoapi.ClientConnection(self._admin_session)
+        self._cnxs.add(self._admin_clt_cnx)
+        self._admin_clt_cnx.__enter__()
+        self.config.repository = lambda x=None: self.repo
+
+    # db api ##################################################################
+
+    @nocoverage
+    @deprecated('[3.19] explicitly use RepoAccess object in test instead')
+    def cursor(self, req=None):
+        if req is not None:
+            return req.cnx
+        else:
+            return self.cnx
+
+    @nocoverage
+    @deprecated('[3.19] explicitly use RepoAccess object in test instead')
+    def execute(self, rql, args=None, req=None):
+        """executes <rql>, builds a resultset, and returns a couple (rset, req)
+        where req is a FakeRequest
+        """
+        req = req or self.request(rql=rql)
+        return req.execute(unicode(rql), args)
+
+    @nocoverage
+    @deprecated('[3.19] explicitly use RepoAccess object in test instead')
+    def commit(self):
+        try:
+            return self.cnx.commit()
+        finally:
+            self.session.set_cnxset() # ensure cnxset still set after commit
+
+    @nocoverage
+    @deprecated('[3.19] explicitly use RepoAccess object in test instead')
+    def rollback(self):
+        try:
+            self.cnx.rollback()
+        except ProgrammingError:
+            pass # connection closed
+        finally:
+            self.session.set_cnxset() # ensure cnxset still set after commit
+
+    @deprecated('[3.19] explicitly use RepoAccess object in test instead')
+    def request(self, rollbackfirst=False, url=None, headers={}, **kwargs):
+        """return a web ui request"""
+        if rollbackfirst:
+            self.cnx.rollback()
+        req = self.requestcls(self.vreg, url=url, headers=headers, form=kwargs)
+        req.set_cnx(self.cnx)
+        return req
+
+    # server side db api #######################################################
+
+    @deprecated('[3.19] explicitly use RepoAccess object in test instead')
+    def sexecute(self, rql, args=None):
+        self.session.set_cnxset()
+        return self.session.execute(rql, args)
+
+
+    # config management ########################################################
 
     @classproperty
     def config(cls):
@@ -229,15 +501,19 @@ class CubicWebTC(TestCase):
             config.mode = 'test'
             return config
 
-    @classmethod
+    @classmethod # XXX could be turned into a regular method
     def init_config(cls, config):
         """configuration initialization hooks.
 
         You may only want to override here the configuraton logic.
 
         Otherwise, consider to use a different :class:`ApptestConfiguration`
-        defined in the `configcls` class attribute"""
-        source = config.sources()['system']
+        defined in the `configcls` class attribute.
+
+        This method will be called by the database handler once the config has
+        been properly bootstrapped.
+        """
+        source = config.system_source_config
         cls.admlogin = unicode(source['db-user'])
         cls.admpassword = source['db-password']
         # uncomment the line below if you want rql queries to be logged
@@ -259,33 +535,12 @@ class CubicWebTC(TestCase):
             config.global_set_option('embed-allowed', re.compile('.*'))
         except Exception: # not in server only configuration
             pass
+        config.set_anonymous_allowed(cls.anonymous_allowed)
 
-    #XXX this doesn't need to a be classmethod anymore
-    @classmethod
-    def _init_repo(cls):
-        """init the repository and connection to it.
-        """
-        # setup configuration for test
-        cls.init_config(cls.config)
-        # get or restore and working db.
-        db_handler = devtools.get_test_db_handler(cls.config)
-        db_handler.build_db_cache(cls.test_db_id, cls.pre_setup_database)
+    @property
+    def vreg(self):
+        return self.repo.vreg
 
-        cls.repo, cnx = db_handler.get_repo_and_cnx(cls.test_db_id)
-        # no direct assignation to cls.cnx anymore.
-        # cnx is now an instance property that use a class protected attributes.
-        cls.set_cnx(cnx)
-        cls.vreg = cls.repo.vreg
-        cls.websession = dbapi.DBAPISession(cnx, cls.admlogin)
-        cls._orig_cnx = (cnx, cls.websession)
-        cls.config.repository = lambda x=None: cls.repo
-
-    def _close_cnx(self):
-        for cnx in list(self._cnxs):
-            if not cnx._closed:
-                cnx.rollback()
-                cnx.close()
-            self._cnxs.remove(cnx)
 
     # global resources accessors ###############################################
 
@@ -294,18 +549,7 @@ class CubicWebTC(TestCase):
         """return the application schema"""
         return self.vreg.schema
 
-    @property
-    def session(self):
-        """return current server side session (using default manager account)"""
-        session = self.repo._sessions[self.cnx.sessionid]
-        session.set_cnxset()
-        return session
-
-    @property
-    def adminsession(self):
-        """return current server side session (using default manager account)"""
-        return self.repo._sessions[self._orig_cnx[0].sessionid]
-
+    @deprecated('[3.19] explicitly use RepoAccess object in test instead')
     def shell(self):
         """return a shell session object"""
         from cubicweb.server.migractions import ServerMigrationHelper
@@ -338,13 +582,22 @@ class CubicWebTC(TestCase):
         except Exception as ex:
             self.__class__._repo_init_failed = ex
             raise
+        self.addCleanup(self._close_access)
         resume_tracing()
         self.setup_database()
-        self.commit()
+        self._admin_clt_cnx.commit()
         MAILBOX[:] = [] # reset mailbox
 
     def tearDown(self):
         # XXX hack until logilab.common.testlib is fixed
+        if self._admin_clt_cnx is not None:
+            if self._admin_clt_cnx._open:
+                self._admin_clt_cnx.close()
+            self._admin_clt_cnx = None
+        if self._admin_session is not None:
+            if not self._admin_session.closed:
+                self.repo.close(self._admin_session.sessionid)
+            self._admin_session = None
         while self._cleanups:
             cleanup, args, kwargs = self._cleanups.pop(-1)
             cleanup(*args, **kwargs)
@@ -361,7 +614,7 @@ class CubicWebTC(TestCase):
         """add your database setup code by overriding this method"""
 
     @classmethod
-    def pre_setup_database(cls, session, config):
+    def pre_setup_database(cls, cnx, config):
         """add your pre database setup code by overriding this method
 
         Do not forget to set the cls.test_db_id value to enable caching of the
@@ -370,11 +623,11 @@ class CubicWebTC(TestCase):
 
     # user / session management ###############################################
 
+    @deprecated('[3.19] explicitly use RepoAccess object in test instead')
     def user(self, req=None):
         """return the application schema"""
         if req is None:
-            req = self.request()
-            return self.cnx.user(req)
+            return self.request().user
         else:
             return req.user
 
@@ -392,7 +645,7 @@ class CubicWebTC(TestCase):
                 groups = login
             login = req
             assert not isinstance(self, type)
-            req = self._orig_cnx[0].request()
+            req = self._admin_clt_cnx
         if password is None:
             password = login.encode('utf8')
         user = req.create_entity('CWUser', login=unicode(login),
@@ -411,65 +664,6 @@ class CubicWebTC(TestCase):
                 req.cnx.commit()
         return user
 
-    def login(self, login, **kwargs):
-        """return a connection for the given login/password"""
-        if login == self.admlogin:
-            self.restore_connection()
-            # definitly don't want autoclose when used as a context manager
-            return self.cnx
-        autoclose = kwargs.pop('autoclose', True)
-        if not kwargs:
-            kwargs['password'] = str(login)
-        self.set_cnx(dbapi._repo_connect(self.repo, unicode(login), **kwargs))
-        self.websession = dbapi.DBAPISession(self.cnx)
-        if login == self.vreg.config.anonymous_user()[0]:
-            self.cnx.anonymous_connection = True
-        if autoclose:
-            return TestCaseConnectionProxy(self, self.cnx)
-        return self.cnx
-
-    def restore_connection(self):
-        if not self.cnx is self._orig_cnx[0]:
-            if not self.cnx._closed:
-                self.cnx.close()
-        cnx, self.websession = self._orig_cnx
-        self.set_cnx(cnx)
-
-    # db api ##################################################################
-
-    @nocoverage
-    def cursor(self, req=None):
-        return self.cnx.cursor(req or self.request())
-
-    @nocoverage
-    def execute(self, rql, args=None, req=None):
-        """executes <rql>, builds a resultset, and returns a couple (rset, req)
-        where req is a FakeRequest
-        """
-        req = req or self.request(rql=rql)
-        return req.execute(unicode(rql), args)
-
-    @nocoverage
-    def commit(self):
-        try:
-            return self.cnx.commit()
-        finally:
-            self.session.set_cnxset() # ensure cnxset still set after commit
-
-    @nocoverage
-    def rollback(self):
-        try:
-            self.cnx.rollback()
-        except dbapi.ProgrammingError:
-            pass # connection closed
-        finally:
-            self.session.set_cnxset() # ensure cnxset still set after commit
-
-    # server side db api #######################################################
-
-    def sexecute(self, rql, args=None):
-        self.session.set_cnxset()
-        return self.session.execute(rql, args)
 
     # other utilities #########################################################
 
@@ -507,14 +701,13 @@ class CubicWebTC(TestCase):
 
           .. sourcecode:: python
 
-                rdef = self.schema['CWUser'].rdef('login')
                 with self.temporary_permissions(CWUser={'read': ()}):
                     ...
 
-        Usually the former will be prefered to override permissions on a
+        Usually the former will be preferred to override permissions on a
         relation definition, while the latter is well suited for entity types.
 
-        The allowed keys in the permission dictionary depends on the schema type
+        The allowed keys in the permission dictionary depend on the schema type
         (entity type / relation definition). Resulting permissions will be
         similar to `orig_permissions.update(partial_perms)`.
         """
@@ -634,12 +827,13 @@ class CubicWebTC(TestCase):
 
     def list_startup_views(self):
         """returns the list of startup views"""
-        req = self.request()
-        for view in self.vreg['views'].possible_views(req, None):
-            if view.category == 'startupview':
-                yield view.__regid__
-            else:
-                not_selected(self.vreg, view)
+        with self.admin_access.web_request() as req:
+            for view in self.vreg['views'].possible_views(req, None):
+                if view.category == 'startupview':
+                    yield view.__regid__
+                else:
+                    not_selected(self.vreg, view)
+
 
     # web ui testing utilities #################################################
 
@@ -647,21 +841,13 @@ class CubicWebTC(TestCase):
     @cached
     def app(self):
         """return a cubicweb publisher"""
-        publisher = application.CubicWebPublisher(self.config, vreg=self.vreg)
+        publisher = application.CubicWebPublisher(self.repo, self.config)
         def raise_error_handler(*args, **kwargs):
             raise
         publisher.error_handler = raise_error_handler
         return publisher
 
-    requestcls = fake.FakeRequest
-    def request(self, rollbackfirst=False, url=None, headers={}, **kwargs):
-        """return a web ui request"""
-        req = self.requestcls(self.vreg, url=url, headers=headers, form=kwargs)
-        if rollbackfirst:
-            self.websession.cnx.rollback()
-        req.set_session(self.websession)
-        return req
-
+    @deprecated('[3.19] use the .remote_calling method')
     def remote_call(self, fname, *args):
         """remote json call simulation"""
         dump = json.dumps
@@ -669,6 +855,14 @@ class CubicWebTC(TestCase):
         req = self.request(fname=fname, pageid='123', arg=args)
         ctrl = self.vreg['controllers'].select('ajax', req)
         return ctrl.publish(), req
+
+    @contextmanager
+    def remote_calling(self, fname, *args):
+        """remote json call simulation"""
+        args = [json.dumps(arg) for arg in args]
+        with self.admin_access.web_request(fname=fname, pageid='123', arg=args) as req:
+            ctrl = self.vreg['controllers'].select('ajax', req)
+            yield ctrl.publish(), req
 
     def app_handle_request(self, req, path='view'):
         return self.app.core_handle(req, path)
@@ -689,6 +883,7 @@ class CubicWebTC(TestCase):
             raise
         return result
 
+    @deprecated('[3.19] use .admin_request_from_url instead')
     def req_from_url(self, url):
         """parses `url` and builds the corresponding CW-web request
 
@@ -702,6 +897,20 @@ class CubicWebTC(TestCase):
         req.setup_params(params)
         return req
 
+    @contextmanager
+    def admin_request_from_url(self, url):
+        """parses `url` and builds the corresponding CW-web request
+
+        req.form will be setup using the url's query string
+        """
+        with self.admin_access.web_request(url=url) as req:
+            if isinstance(url, unicode):
+                url = url.encode(req.encoding) # req.setup_params() expects encoded strings
+            querystring = urlparse.urlparse(url)[-2]
+            params = urlparse.parse_qs(querystring)
+            req.setup_params(params)
+            yield req
+
     def url_publish(self, url, data=None):
         """takes `url`, uses application's app_resolver to find the appropriate
         controller and result set, then publishes the result.
@@ -712,22 +921,22 @@ class CubicWebTC(TestCase):
         This should pretty much correspond to what occurs in a real CW server
         except the apache-rewriter component is not called.
         """
-        req = self.req_from_url(url)
-        if data is not None:
-            req.form.update(data)
-        ctrlid, rset = self.app.url_resolver.process(req, req.relative_path(False))
-        return self.ctrl_publish(req, ctrlid, rset)
+        with self.admin_request_from_url(url) as req:
+            if data is not None:
+                req.form.update(data)
+            ctrlid, rset = self.app.url_resolver.process(req, req.relative_path(False))
+            return self.ctrl_publish(req, ctrlid, rset)
 
     def http_publish(self, url, data=None):
         """like `url_publish`, except this returns a http response, even in case
         of errors. You may give form parameters using the `data` argument.
         """
-        req = self.req_from_url(url)
-        if data is not None:
-            req.form.update(data)
-        with real_error_handling(self.app):
-            result = self.app_handle_request(req, req.relative_path(False))
-        return result, req
+        with self.admin_request_from_url(url) as req:
+            if data is not None:
+                req.form.update(data)
+            with real_error_handling(self.app):
+                result = self.app_handle_request(req, req.relative_path(False))
+            return result, req
 
     @staticmethod
     def _parse_location(req, location):
@@ -779,33 +988,29 @@ class CubicWebTC(TestCase):
 
     def init_authentication(self, authmode, anonuser=None):
         self.set_auth_mode(authmode, anonuser)
-        req = self.request(url='login')
-        origsession = req.session
-        req.session = req.cnx = None
-        del req.execute # get back to class implementation
+        req = self.requestcls(self.vreg, url='login')
         sh = self.app.session_handler
         authm = sh.session_manager.authmanager
         authm.anoninfo = self.vreg.config.anonymous_user()
         authm.anoninfo = authm.anoninfo[0], {'password': authm.anoninfo[1]}
         # not properly cleaned between tests
         self.open_sessions = sh.session_manager._sessions = {}
-        return req, origsession
+        return req, self.session
 
     def assertAuthSuccess(self, req, origsession, nbsessions=1):
         sh = self.app.session_handler
-        self.app.connect(req)
-        session = req.session
+        session = self.app.get_session(req)
+        clt_cnx = repoapi.ClientConnection(session)
+        req.set_cnx(clt_cnx)
         self.assertEqual(len(self.open_sessions), nbsessions, self.open_sessions)
         self.assertEqual(session.login, origsession.login)
         self.assertEqual(session.anonymous_session, False)
 
     def assertAuthFailure(self, req, nbsessions=0):
-        self.app.connect(req)
-        self.assertIsInstance(req.session, dbapi.DBAPISession)
-        self.assertEqual(req.session.cnx, None)
-        self.assertIsInstance(req.cnx, (dbapi._NeedAuthAccessMock, NoneType))
-        # + 1 since we should still have session without connection set
-        self.assertEqual(len(self.open_sessions), nbsessions + 1)
+        with self.assertRaises(AuthenticationError):
+            self.app.get_session(req)
+        # +0 since we do not track the opened session
+        self.assertEqual(len(self.open_sessions), nbsessions)
         clear_cache(req, 'get_authorization')
 
     # content validation #######################################################
@@ -1002,7 +1207,7 @@ from cubicweb.devtools.fill import insert_entity_queries, make_relations_queries
 
 # XXX cleanup unprotected_entities & all mess
 
-def how_many_dict(schema, cursor, how_many, skip):
+def how_many_dict(schema, cnx, how_many, skip):
     """given a schema, compute how many entities by type we need to be able to
     satisfy relations cardinality.
 
@@ -1036,7 +1241,7 @@ def how_many_dict(schema, cursor, how_many, skip):
     # step 1, compute a base number of each entity types: number of already
     # existing entities of this type + `how_many`
     for etype in unprotected_entities(schema, strict=True):
-        howmanydict[str(etype)] = cursor.execute('Any COUNT(X) WHERE X is %s' % etype)[0][0]
+        howmanydict[str(etype)] = cnx.execute('Any COUNT(X) WHERE X is %s' % etype)[0][0]
         if etype in unprotected:
             howmanydict[str(etype)] += how_many
     # step 2, augment nb entity per types to satisfy cardinality constraints,
@@ -1070,10 +1275,10 @@ class AutoPopulateTest(CubicWebTC):
     def to_test_etypes(self):
         return unprotected_entities(self.schema, strict=True)
 
-    def custom_populate(self, how_many, cursor):
+    def custom_populate(self, how_many, cnx):
         pass
 
-    def post_populate(self, cursor):
+    def post_populate(self, cnx):
         pass
 
 
@@ -1082,77 +1287,79 @@ class AutoPopulateTest(CubicWebTC):
         """this method populates the database with `how_many` entities
         of each possible type. It also inserts random relations between them
         """
-        with self.session.security_enabled(read=False, write=False):
-            self._auto_populate(how_many)
+        with self.admin_access.repo_cnx() as cnx:
+            with cnx.security_enabled(read=False, write=False):
+                self._auto_populate(cnx, how_many)
+                cnx.commit()
 
-    def _auto_populate(self, how_many):
-        cu = self.cursor()
-        self.custom_populate(how_many, cu)
+    def _auto_populate(self, cnx, how_many):
+        self.custom_populate(how_many, cnx)
         vreg = self.vreg
-        howmanydict = how_many_dict(self.schema, cu, how_many, self.no_auto_populate)
+        howmanydict = how_many_dict(self.schema, cnx, how_many, self.no_auto_populate)
         for etype in unprotected_entities(self.schema):
             if etype in self.no_auto_populate:
                 continue
             nb = howmanydict.get(etype, how_many)
             for rql, args in insert_entity_queries(etype, self.schema, vreg, nb):
-                cu.execute(rql, args)
+                cnx.execute(rql, args)
         edict = {}
         for etype in unprotected_entities(self.schema, strict=True):
-            rset = cu.execute('%s X' % etype)
+            rset = cnx.execute('%s X' % etype)
             edict[str(etype)] = set(row[0] for row in rset.rows)
         existingrels = {}
         ignored_relations = SYSTEM_RELATIONS | self.ignored_relations
         for rschema in self.schema.relations():
             if rschema.final or rschema in ignored_relations:
                 continue
-            rset = cu.execute('DISTINCT Any X,Y WHERE X %s Y' % rschema)
+            rset = cnx.execute('DISTINCT Any X,Y WHERE X %s Y' % rschema)
             existingrels.setdefault(rschema.type, set()).update((x, y) for x, y in rset)
-        q = make_relations_queries(self.schema, edict, cu, ignored_relations,
+        q = make_relations_queries(self.schema, edict, cnx, ignored_relations,
                                    existingrels=existingrels)
         for rql, args in q:
             try:
-                cu.execute(rql, args)
+                cnx.execute(rql, args)
             except ValidationError as ex:
                 # failed to satisfy some constraint
                 print 'error in automatic db population', ex
-                self.session.commit_state = None # reset uncommitable flag
-        self.post_populate(cu)
-        self.commit()
+                cnx.commit_state = None # reset uncommitable flag
+        self.post_populate(cnx)
 
     def iter_individual_rsets(self, etypes=None, limit=None):
         etypes = etypes or self.to_test_etypes()
-        for etype in etypes:
-            if limit:
-                rql = 'Any X LIMIT %s WHERE X is %s' % (limit, etype)
-            else:
-                rql = 'Any X WHERE X is %s' % etype
-            rset = self.execute(rql)
-            for row in xrange(len(rset)):
-                if limit and row > limit:
-                    break
-                # XXX iirk
-                rset2 = rset.limit(limit=1, offset=row)
-                yield rset2
+        with self.admin_access.web_request() as req:
+            for etype in etypes:
+                if limit:
+                    rql = 'Any X LIMIT %s WHERE X is %s' % (limit, etype)
+                else:
+                    rql = 'Any X WHERE X is %s' % etype
+                rset = req.execute(rql)
+                for row in xrange(len(rset)):
+                    if limit and row > limit:
+                        break
+                    # XXX iirk
+                    rset2 = rset.limit(limit=1, offset=row)
+                    yield rset2
 
     def iter_automatic_rsets(self, limit=10):
         """generates basic resultsets for each entity type"""
         etypes = self.to_test_etypes()
         if not etypes:
             return
-        for etype in etypes:
-            yield self.execute('Any X LIMIT %s WHERE X is %s' % (limit, etype))
-        etype1 = etypes.pop()
-        try:
-            etype2 = etypes.pop()
-        except KeyError:
-            etype2 = etype1
-        # test a mixed query (DISTINCT/GROUP to avoid getting duplicate
-        # X which make muledit view failing for instance (html validation fails
-        # because of some duplicate "id" attributes)
-        yield self.execute('DISTINCT Any X, MAX(Y) GROUPBY X WHERE X is %s, Y is %s' % (etype1, etype2))
-        # test some application-specific queries if defined
-        for rql in self.application_rql:
-            yield self.execute(rql)
+        with self.admin_access.web_request() as req:
+            for etype in etypes:
+                yield req.execute('Any X LIMIT %s WHERE X is %s' % (limit, etype))
+            etype1 = etypes.pop()
+            try:
+                etype2 = etypes.pop()
+            except KeyError:
+                etype2 = etype1
+            # test a mixed query (DISTINCT/GROUP to avoid getting duplicate
+            # X which make muledit view failing for instance (html validation fails
+            # because of some duplicate "id" attributes)
+            yield req.execute('DISTINCT Any X, MAX(Y) GROUPBY X WHERE X is %s, Y is %s' % (etype1, etype2))
+            # test some application-specific queries if defined
+            for rql in self.application_rql:
+                yield req.execute(rql)
 
     def _test_everything_for(self, rset):
         """this method tries to find everything that can be tested
@@ -1214,8 +1421,8 @@ class AutomaticWebTest(AutoPopulateTest):
     ## startup views
     def test_startup_views(self):
         for vid in self.list_startup_views():
-            req = self.request()
-            yield self.view, vid, None, req
+            with self.admin_access.web_request() as req:
+                yield self.view, vid, None, req
 
 
 # registry instrumentization ###################################################

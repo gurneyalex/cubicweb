@@ -100,7 +100,8 @@ jQuery.extend(cw, {
             return $node.text();
         }
         return cw.evalJSON(sortvalue);
-    }
+    },
+
 });
 
 
@@ -384,11 +385,19 @@ jQuery.extend(cw.utils, {
      */
     strFuncCall: function(fname /* ...*/) {
 	    return (fname + '(' +
-		    $.map(cw.utils.sliceList(arguments, 1), jQuery.toJSON).join(',')
+		    $.map(cw.utils.sliceList(arguments, 1), JSON.stringify).join(',')
 		    + ')'
 		    );
-    }
+    },
 
+    callAjaxFuncThenReload: function callAjaxFuncThenReload (/*...*/) {
+        var d = asyncRemoteExec.apply(null, arguments);
+        d.addCallback(function(msg) {
+            window.location.reload();
+            if (msg)
+                updateMessage(msg);
+        });
+    }
 });
 
 /** DOM factories ************************************************************/

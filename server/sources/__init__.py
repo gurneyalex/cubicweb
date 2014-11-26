@@ -61,32 +61,9 @@ def dbg_results(results):
     # return true so it can be used as assertion (and so be killed by python -O)
     return True
 
-class TimedCache(dict):
-    def __init__(self, ttl):
-        # time to live in seconds
-        if ttl <= 0:
-            raise ValueError('TimedCache initialized with a ttl of %ss' % ttl.seconds)
-        self.ttl = timedelta(seconds=ttl)
-
-    def __setitem__(self, key, value):
-        dict.__setitem__(self, key, (datetime.utcnow(), value))
-
-    def __getitem__(self, key):
-        return dict.__getitem__(self, key)[1]
-
-    def clear_expired(self):
-        now_ = datetime.utcnow()
-        ttl = self.ttl
-        for key, (timestamp, value) in self.items():
-            if now_ - timestamp > ttl:
-                del self[key]
-
 
 class AbstractSource(object):
     """an abstract class for sources"""
-    # does the source copy data into the system source, or is it a *true* source
-    # (i.e. entities are not stored physically here)
-    copy_based_source = False
 
     # boolean telling if modification hooks should be called when something is
     # modified in this source
@@ -107,10 +84,6 @@ class AbstractSource(object):
     repo = None
     # a reference to the instance'schema (may differs from the source'schema)
     schema = None
-
-    # multi-sources planning control
-    dont_cross_relations = ()
-    cross_relations = ()
 
     # force deactivation (configuration error for instance)
     disabled = False
@@ -259,29 +232,15 @@ class AbstractSource(object):
         """open and return a connection to the source"""
         raise NotImplementedError(self)
 
-    def check_connection(self, cnx):
-        """Check connection validity, return None if the connection is still
-        valid else a new connection (called when the connections set using the
-        given connection is being attached to a session). Do nothing by default.
-        """
-        pass
-
     def close_source_connections(self):
         for cnxset in self.repo.cnxsets:
-            cnxset._cursors.pop(self.uri, None)
-            cnxset.source_cnxs[self.uri][1].close()
+            cnxset.cu = None
+            cnxset.cnx.close()
 
     def open_source_connections(self):
         for cnxset in self.repo.cnxsets:
-            cnxset.source_cnxs[self.uri] = (self, self.get_connection())
-
-    def cnxset_freed(self, cnx):
-        """the connections set holding the given connection is being reseted
-        from its current attached session.
-
-        do nothing by default
-        """
-        pass
+            cnxset.cnx = self.get_connection()
+            cnxset.cu = cnxset.cnx.cursor()
 
     # cache handling ###########################################################
 
@@ -333,23 +292,7 @@ class AbstractSource(object):
             return wsupport
         return True
 
-    def may_cross_relation(self, rtype):
-        """return True if the relation may be crossed among sources. Rules are:
-
-        * if this source support the relation, can't be crossed unless explicitly
-          specified in .cross_relations
-
-        * if this source doesn't support the relation, can be crossed unless
-          explicitly specified in .dont_cross_relations
-        """
-        # XXX find a way to have relation such as state_of in dont cross
-        #     relation (eg composite relation without both end type available?
-        #     card 1 relation? ...)
-        if self.support_relation(rtype):
-            return rtype in self.cross_relations
-        return rtype not in self.dont_cross_relations
-
-    def before_entity_insertion(self, session, lid, etype, eid, sourceparams):
+    def before_entity_insertion(self, cnx, lid, etype, eid, sourceparams):
         """called by the repository when an eid has been attributed for an
         entity stored here but the entity has not been inserted in the system
         table yet.
@@ -357,12 +300,12 @@ class AbstractSource(object):
         This method must return the an Entity instance representation of this
         entity.
         """
-        entity = self.repo.vreg['etypes'].etype_class(etype)(session)
+        entity = self.repo.vreg['etypes'].etype_class(etype)(cnx)
         entity.eid = eid
         entity.cw_edited = EditedEntity(entity)
         return entity
 
-    def after_entity_insertion(self, session, lid, entity, sourceparams):
+    def after_entity_insertion(self, cnx, lid, entity, sourceparams):
         """called by the repository after an entity stored here has been
         inserted in the system table.
         """
@@ -403,7 +346,7 @@ class AbstractSource(object):
 
     # user authentication api ##################################################
 
-    def authenticate(self, session, login, **kwargs):
+    def authenticate(self, cnx, login, **kwargs):
         """if the source support CWUser entity type, it should implement
         this method which should return CWUser eid for the given login/password
         if this account is defined in this source and valid login / password is
@@ -413,7 +356,7 @@ class AbstractSource(object):
 
     # RQL query api ############################################################
 
-    def syntax_tree_search(self, session, union,
+    def syntax_tree_search(self, cnx, union,
                            args=None, cachekey=None, varmap=None, debug=0):
         """return result from this source for a rql query (actually from a rql
         syntax tree and a solution dictionary mapping each used variable to a
@@ -421,15 +364,6 @@ class AbstractSource(object):
         results (but not the results themselves) may be cached using this key.
         """
         raise NotImplementedError(self)
-
-    def flying_insert(self, table, session, union, args=None, varmap=None):
-        """similar as .syntax_tree_search, but inserts data in the temporary
-        table (on-the-fly if possible, eg for the system source whose the given
-        cursor come from). If not possible, inserts all data by calling
-        .executemany().
-        """
-        res = self.syntax_tree_search(session, union, args, varmap=varmap)
-        session.cnxset.source('system').manual_insert(res, table, session)
 
     # write modification api ###################################################
     # read-only sources don't have to implement methods below
@@ -487,22 +421,6 @@ class AbstractSource(object):
         """mark entity as being modified, fulltext reindex if needed"""
         raise NotImplementedError(self)
 
-    def delete_info_multi(self, session, entities, uri):
-        """delete system information on deletion of a list of entities with the
-        same etype and belinging to the same source
-        """
-        raise NotImplementedError(self)
-
-    def modified_entities(self, session, etypes, mtime):
-        """return a 2-uple:
-        * list of (etype, eid) of entities of the given types which have been
-          modified since the given timestamp (actually entities whose full text
-          index content has changed)
-        * list of (etype, eid) of entities of the given types which have been
-          deleted since the given timestamp
-        """
-        raise NotImplementedError(self)
-
     def index_entity(self, session, entity):
         """create an operation to [re]index textual content of the given entity
         on commit
@@ -525,90 +443,18 @@ class AbstractSource(object):
         """execute the query and return its result"""
         raise NotImplementedError(self)
 
-    def temp_table_def(self, selection, solution, table, basemap):
-        raise NotImplementedError(self)
-
     def create_index(self, session, table, column, unique=False):
         raise NotImplementedError(self)
 
     def drop_index(self, session, table, column, unique=False):
         raise NotImplementedError(self)
 
-    def create_temp_table(self, session, table, schema):
-        raise NotImplementedError(self)
-
-    def clean_temp_data(self, session, temptables):
-        """remove temporary data, usually associated to temporary tables"""
-        pass
-
-
-    @deprecated('[3.13] use repo.eid2extid(source, eid, session)')
-    def eid2extid(self, eid, session=None):
-        return self.repo.eid2extid(self, eid, session)
 
     @deprecated('[3.13] use extid2eid(source, value, etype, session, **kwargs)')
-    def extid2eid(self, value, etype, session=None, **kwargs):
+    def extid2eid(self, value, etype, session, **kwargs):
         return self.repo.extid2eid(self, value, etype, session, **kwargs)
 
 
-class TrFunc(object):
-    """lower, upper"""
-    def __init__(self, trname, index, attrname=None):
-        self._tr = trname.lower()
-        self.index = index
-        self.attrname = attrname
-
-    def apply(self, resdict):
-        value = resdict.get(self.attrname)
-        if value is not None:
-            return getattr(value, self._tr)()
-        return None
-
-
-class GlobTrFunc(TrFunc):
-    """count, sum, max, min, avg"""
-    funcs = {
-        'count': len,
-        'sum': sum,
-        'max': max,
-        'min': min,
-        # XXX avg
-        }
-    def apply(self, result):
-        """have to 'groupby' manually. For instance, if we 'count' for index 1:
-        >>> self.apply([(1, 2), (3, 4), (1, 5)])
-        [(1, 7), (3, 4)]
-        """
-        keys, values = [], {}
-        for row in result:
-            key = tuple(v for i, v in enumerate(row) if i != self.index)
-            value = row[self.index]
-            try:
-                values[key].append(value)
-            except KeyError:
-                keys.append(key)
-                values[key] = [value]
-        result = []
-        trfunc = self.funcs[self._tr]
-        for key in keys:
-            row = list(key)
-            row.insert(self.index, trfunc(values[key]))
-            result.append(row)
-        return result
-
-
-class ConnectionWrapper(object):
-    def __init__(self, cnx=None):
-        self.cnx = cnx
-    def commit(self):
-        pass
-    def rollback(self):
-        pass
-    def cursor(self):
-        return None # no actual cursor support
-    def close(self):
-        if hasattr(self.cnx, 'close'):
-            self.cnx.close()
 
 from cubicweb.server import SOURCE_TYPES
 

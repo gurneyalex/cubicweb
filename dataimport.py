@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# copyright 2003-2012 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2013 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -622,11 +622,13 @@ class RQLObjectStore(ObjectStore):
         self.rql('SET X %s Y WHERE X eid %%(x)s, Y eid %%(y)s' % rtype,
                  {'x': int(eid_from), 'y': int(eid_to)})
 
+    @deprecated("[3.19] use session.find(*args, **kwargs).entities() instead")
     def find_entities(self, *args, **kwargs):
-        return self.session.find_entities(*args, **kwargs)
+        return self.session.find(*args, **kwargs).entities()
 
+    @deprecated("[3.19] use session.find(*args, **kwargs).one() instead")
     def find_one_entity(self, *args, **kwargs):
-        return self.session.find_one_entity(*args, **kwargs)
+        return self.session.find(*args, **kwargs).one()
 
 # the import controller ########################################################
 
@@ -948,7 +950,7 @@ class SQLGenObjectStore(NoHookRQLObjectStore):
     def drop_indexes(self, etype):
         """Drop indexes for a given entity type"""
         if etype not in self.indexes_etypes:
-            cu = self.session.cnxset['system']
+            cu = self.session.cnxset.cu
             def index_to_attr(index):
                 """turn an index name to (database) attribute name"""
                 return index.replace(etype.lower(), '').replace('idx', '').strip('_')
@@ -981,7 +983,6 @@ class SQLGenSourceWrapper(object):
         self._storage_handler = self.system_source._storage_handler
         self.preprocess_entity = self.system_source.preprocess_entity
         self.sqlgen = self.system_source.sqlgen
-        self.copy_based_source = self.system_source.copy_based_source
         self.uri = self.system_source.uri
         self.eid = self.system_source.eid
         # Directory to write temporary files
@@ -1113,7 +1114,6 @@ class SQLGenSourceWrapper(object):
     def _handle_insert_entity_sql(self, session, sql, attrs):
         # We have to overwrite the source given in parameters
         # as here, we directly use the system source
-        attrs['source'] = 'system'
         attrs['asource'] = self.system_source.uri
         self._append_to_entities(sql, attrs)
 
@@ -1135,9 +1135,8 @@ class SQLGenSourceWrapper(object):
         if extid is not None:
             assert isinstance(extid, str)
             extid = b64encode(extid)
-        uri = 'system' if source.copy_based_source else source.uri
         attrs = {'type': entity.cw_etype, 'eid': entity.eid, 'extid': extid,
-                 'source': uri, 'asource': source.uri, 'mtime': datetime.utcnow()}
+                 'asource': source.uri}
         self._handle_insert_entity_sql(session, self.sqlgen.insert('entities', attrs), attrs)
         # insert core relations: is, is_instance_of and cw_source
         try:

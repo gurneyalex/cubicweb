@@ -1,4 +1,4 @@
-/* copyright 2003-2011 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+/* copyright 2003-2014 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
  * contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
  *
  * This file is part of CubicWeb.
@@ -312,7 +312,7 @@ function ajaxFuncArgs(fname, form /* ... */) {
     $.extend(form, {
         'fname': fname,
         'pageid': pageid,
-        'arg': $.map(cw.utils.sliceList(arguments, 2), jQuery.toJSON)
+        'arg': $.map(cw.utils.sliceList(arguments, 2), JSON.stringify)
     });
     return form;
 }
@@ -338,7 +338,6 @@ jQuery.fn.loadxhtml = function(url, form, reqtype, mode, cursor) {
     } else if (this.size() < 1) {
         cw.log('loadxhtml called without an element');
     }
-    var callback = null;
     var node = this.get(0); // only consider the first element
     if (cursor) {
         setProgressCursor();
@@ -362,9 +361,6 @@ jQuery.fn.loadxhtml = function(url, form, reqtype, mode, cursor) {
             jQuery(node).append(domnode);
         }
         _postAjaxLoad(node);
-        while (jQuery.isFunction(callback)) {
-            callback = callback.apply(this, [domnode]);
-        }
     });
     d.addErrback(remoteCallFailed);
     if (cursor) {
@@ -439,13 +435,21 @@ function loadRemote(url, form, reqtype, sync) {
 }
 
 //============= higher level AJAX functions using remote calls ===============//
+
+var _i18ncache = {};
+
 /**
  * .. function:: _(message)
  *
  * emulation of gettext's _ shortcut
  */
 function _(message) {
-    return loadRemote(AJAX_BASE_URL, ajaxFuncArgs('i18n', null, [message]), 'GET', true)[0];
+    var form;
+    if (!(message in _i18ncache)) {
+        form = ajaxFuncArgs('i18n', null, [message]);
+        _i18ncache[message] = loadRemote(AJAX_BASE_URL, form, 'GET', true)[0];
+    }
+    return _i18ncache[message];
 }
 
 /**
@@ -521,16 +525,20 @@ function removeBookmark(beid) {
     });
 }
 
-function userCallback(cbname) {
+userCallback = cw.utils.deprecatedFunction(
+    '[3.19] use a plain ajaxfunc instead of user callbacks',
+    function userCallback(cbname) {
     setProgressCursor();
     var d = loadRemote(AJAX_BASE_URL, ajaxFuncArgs('user_callback', null, cbname));
     d.addCallback(resetCursor);
     d.addErrback(resetCursor);
     d.addErrback(remoteCallFailed);
     return d;
-}
+});
 
-function userCallbackThenUpdateUI(cbname, compid, rql, msg, registry, nodeid) {
+userCallbackThenUpdateUI = cw.utils.deprecatedFunction(
+    '[3.19] use a plain ajaxfunc instead of user callbacks',
+    function userCallbackThenUpdateUI(cbname, compid, rql, msg, registry, nodeid) {
     var d = userCallback(cbname);
     d.addCallback(function() {
         $('#' + nodeid).loadxhtml(AJAX_BASE_URL, ajaxFuncArgs('render', {'rql': rql},
@@ -539,9 +547,11 @@ function userCallbackThenUpdateUI(cbname, compid, rql, msg, registry, nodeid) {
             updateMessage(msg);
         }
     });
-}
+});
 
-function userCallbackThenReloadPage(cbname, msg) {
+userCallbackThenReloadPage = cw.utils.deprecatedFunction(
+    '[3.19] use a plain ajaxfunc instead of user callbacks',
+    function userCallbackThenReloadPage(cbname, msg) {
     var d = userCallback(cbname);
     d.addCallback(function() {
         window.location.reload();
@@ -549,7 +559,7 @@ function userCallbackThenReloadPage(cbname, msg) {
             updateMessage(msg);
         }
     });
-}
+});
 
 /**
  * .. function:: unregisterUserCallback(cbname)
@@ -557,14 +567,17 @@ function userCallbackThenReloadPage(cbname, msg) {
  * unregisters the python function registered on the server's side
  * while the page was generated.
  */
-function unregisterUserCallback(cbname) {
+unregisterUserCallback = cw.utils.deprecatedFunction(
+    '[3.19] use a plain ajaxfunc instead of user callbacks',
+    function unregisterUserCallback(cbname) {
     setProgressCursor();
     var d = loadRemote(AJAX_BASE_URL, ajaxFuncArgs('unregister_user_callback',
                                             null, cbname));
     d.addCallback(resetCursor);
     d.addErrback(resetCursor);
     d.addErrback(remoteCallFailed);
-}
+});
+
 
 //============= XXX move those functions? ====================================//
 function openHash() {
@@ -749,7 +762,7 @@ function remoteExec(fname /* ... */) {
     var props = {
         fname: fname,
         pageid: pageid,
-        arg: $.map(cw.utils.sliceList(arguments, 1), jQuery.toJSON)
+        arg: $.map(cw.utils.sliceList(arguments, 1), JSON.stringify)
     };
     var result = jQuery.ajax({
         url: AJAX_BASE_URL,
@@ -769,7 +782,7 @@ function asyncRemoteExec(fname /* ... */) {
     var props = {
         fname: fname,
         pageid: pageid,
-        arg: $.map(cw.utils.sliceList(arguments, 1), jQuery.toJSON)
+        arg: $.map(cw.utils.sliceList(arguments, 1), JSON.stringify)
     };
     // XXX we should inline the content of loadRemote here
     var deferred = loadRemote(AJAX_BASE_URL, props, 'POST');

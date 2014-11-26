@@ -1,4 +1,4 @@
-# copyright 2003-2012 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2013 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -46,7 +46,7 @@ class InitMetaAttrsHook(MetaDataHook):
             edited['creation_date'] = timestamp
         if not edited.get('modification_date'):
             edited['modification_date'] = timestamp
-        if not self._cw.get_shared_data('do-not-insert-cwuri'):
+        if not self._cw.transaction_data.get('do-not-insert-cwuri'):
             cwuri = u'%s%s' % (self._cw.base_url(), self.entity.eid)
             edited.setdefault('cwuri', cwuri)
 
@@ -69,14 +69,14 @@ class UpdateMetaAttrsHook(MetaDataHook):
 class SetCreatorOp(hook.DataOperationMixIn, hook.Operation):
 
     def precommit_event(self):
-        session = self.session
-        relations = [(eid, session.user.eid) for eid in self.get_data()
+        cnx = self.cnx
+        relations = [(eid, cnx.user.eid) for eid in self.get_data()
                 # don't consider entities that have been created and deleted in
                 # the same transaction, nor ones where created_by has been
                 # explicitly set
-                if not session.deleted_in_transaction(eid) and \
-                   not session.entity_from_eid(eid).created_by]
-        session.add_relations([('created_by', relations)])
+                if not cnx.deleted_in_transaction(eid) and \
+                   not cnx.entity_from_eid(eid).created_by]
+        cnx.add_relations([('created_by', relations)])
 
 
 class SetOwnershipHook(MetaDataHook):
@@ -93,7 +93,7 @@ class SetOwnershipHook(MetaDataHook):
 class SyncOwnersOp(hook.DataOperationMixIn, hook.Operation):
     def precommit_event(self):
         for compositeeid, composedeid in self.get_data():
-            self.session.execute('SET X owned_by U WHERE C owned_by U, C eid %(c)s,'
+            self.cnx.execute('SET X owned_by U WHERE C owned_by U, C eid %(c)s,'
                                  'NOT EXISTS(X owned_by U, X eid %(x)s)',
                                  {'c': compositeeid, 'x': composedeid})
 
@@ -136,14 +136,14 @@ class UpdateFTIHook(MetaDataHook):
 
     def __call__(self):
         rtype = self.rtype
-        session = self._cw
-        ftcontainer = session.vreg.schema.rschema(rtype).fulltext_container
+        cnx = self._cw
+        ftcontainer = cnx.vreg.schema.rschema(rtype).fulltext_container
         if ftcontainer == 'subject':
-            session.repo.system_source.index_entity(
-                session, session.entity_from_eid(self.eidfrom))
+            cnx.repo.system_source.index_entity(
+                cnx, cnx.entity_from_eid(self.eidfrom))
         elif ftcontainer == 'object':
-            session.repo.system_source.index_entity(
-                session, session.entity_from_eid(self.eidto))
+            cnx.repo.system_source.index_entity(
+                cnx, cnx.entity_from_eid(self.eidto))
 
 
 
@@ -154,16 +154,13 @@ class ChangeEntitySourceUpdateCaches(hook.Operation):
 
     def postcommit_event(self):
         self.oldsource.reset_caches()
-        repo = self.session.repo
+        repo = self.cnx.repo
         entity = self.entity
         extid = entity.cw_metainformation()['extid']
         repo._type_source_cache[entity.eid] = (
-            entity.cw_etype, self.newsource.uri, None, self.newsource.uri)
-        if self.oldsource.copy_based_source:
-            uri = 'system'
-        else:
-            uri = self.oldsource.uri
-        repo._extid_cache[(extid, uri)] = -entity.eid
+            entity.cw_etype, None, self.newsource.uri)
+        repo._extid_cache[extid] = -entity.eid
+
 
 class ChangeEntitySourceDeleteHook(MetaDataHook):
     """support for moving an entity from an external source by watching 'Any
@@ -197,16 +194,6 @@ class ChangeEntitySourceAddHook(MetaDataHook):
             syssource = newsource.repo_source
             oldsource = self._cw.entity_from_eid(schange[self.eidfrom])
             entity = self._cw.entity_from_eid(self.eidfrom)
-            # copy entity if necessary
-            if not oldsource.repo_source.copy_based_source:
-                entity.complete(skip_bytes=False, skip_pwd=False)
-                if not entity.creation_date:
-                    entity.cw_attr_cache['creation_date'] = datetime.now()
-                if not entity.modification_date:
-                    entity.cw_attr_cache['modification_date'] = datetime.now()
-                entity.cw_attr_cache['cwuri'] = u'%s%s' % (self._cw.base_url(), entity.eid)
-                entity.cw_edited = EditedEntity(entity, **entity.cw_attr_cache)
-                syssource.add_entity(self._cw, entity)
             # we don't want the moved entity to be reimported later.  To
             # distinguish this state, the trick is to change the associated
             # record in the 'entities' system table with eid=-eid while leaving
@@ -217,8 +204,7 @@ class ChangeEntitySourceAddHook(MetaDataHook):
             self._cw.system_sql('UPDATE entities SET eid=-eid WHERE eid=%(eid)s',
                                 {'eid': self.eidfrom})
             attrs = {'type': entity.cw_etype, 'eid': entity.eid, 'extid': None,
-                     'source': 'system', 'asource': 'system',
-                     'mtime': datetime.now()}
+                     'asource': 'system'}
             self._cw.system_sql(syssource.sqlgen.insert('entities', attrs), attrs)
             # register an operation to update repository/sources caches
             ChangeEntitySourceUpdateCaches(self._cw, entity=entity,
