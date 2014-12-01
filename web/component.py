@@ -218,6 +218,10 @@ class Link(object):
     def render(self, w):
         w(tags.a(self.label, href=self.href, **self.attrs))
 
+    def __repr__(self):
+        return '<%s: href=%r label=%r %r>' % (self.__class__.__name__,
+                                              self.href, self.label, self.attrs)
+
 
 class Separator(object):
     """a menu separator.
@@ -270,7 +274,7 @@ class LayoutableMixIn(object):
     layout_id = None # to be defined in concret class
     layout_args = {}
 
-    def layout_render(self, w):
+    def layout_render(self, w, **kwargs):
         getlayout = self._cw.vreg['components'].select
         layout = getlayout(self.layout_id, self._cw, **self.layout_select_args())
         layout.render(w)
@@ -331,19 +335,8 @@ class CtxComponent(LayoutableMixIn, AppObject):
     title = None
     layout_id = 'component_layout'
 
-    # XXX support kwargs for compat with old boxes which gets the view as
-    # argument
     def render(self, w, **kwargs):
-        if hasattr(self, 'call'):
-            warn('[3.10] should not anymore implement call on %s, see new CtxComponent api'
-                 % self.__class__, DeprecationWarning)
-            self.w = w
-            def wview(__vid, rset=None, __fallback_vid=None, **kwargs):
-                self._cw.view(__vid, rset, __fallback_vid, w=self.w, **kwargs)
-            self.wview = wview
-            self.call(**kwargs) # pylint: disable=E1101
-            return
-        self.layout_render(w)
+        self.layout_render(w, **kwargs)
 
     def layout_select_args(self):
         args = super(CtxComponent, self).layout_select_args()
@@ -409,19 +402,6 @@ class CtxComponent(LayoutableMixIn, AppObject):
 
     def separator(self):
         return Separator()
-
-    @deprecated('[3.10] use action_link() / link()')
-    def box_action(self, action): # XXX action_link
-        return self.build_link(self._cw._(action.title), action.url())
-
-    @deprecated('[3.10] use action_link() / link()')
-    def build_link(self, title, url, **kwargs):
-        if self._cw.selected(url):
-            try:
-                kwargs['klass'] += ' selected'
-            except KeyError:
-                kwargs['klass'] = 'selected'
-        return tags.a(title, href=url, **kwargs)
 
 
 class EntityCtxComponent(CtxComponent):
@@ -724,7 +704,6 @@ class EntityVComponent(Component):
 
     def entity_call(self, entity, view=None):
         raise NotImplementedError()
-
 
 class RelatedObjectsVComponent(EntityVComponent):
     """a section to display some related entities"""

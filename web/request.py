@@ -139,6 +139,11 @@ class _CubicWebRequestBase(RequestSessionBase):
         self.setup_params(form)
         #: received body
         self.content = StringIO()
+        # prepare output header
+        #: Header used for the final response
+        self.headers_out = Headers()
+        #: HTTP status use by the final response
+        self.status_out  = 200
         # set up language based on request headers or site default (we don't
         # have a user yet, and might not get one)
         self.set_user_language(None)
@@ -152,11 +157,6 @@ class _CubicWebRequestBase(RequestSessionBase):
         #: page id, set by htmlheader template
         self.pageid = None
         self._set_pageid()
-        # prepare output header
-        #: Header used for the final response
-        self.headers_out = Headers()
-        #: HTTP status use by the final response
-        self.status_out  = 200
 
     def _set_pageid(self):
         """initialize self.pageid
@@ -179,7 +179,7 @@ class _CubicWebRequestBase(RequestSessionBase):
         self.ajax_request = value
     json_request = property(_get_json_request, _set_json_request)
 
-    def base_url(self, secure=None):
+    def _base_url(self, secure=None):
         """return the root url of the instance
 
         secure = False -> base-url
@@ -192,7 +192,7 @@ class _CubicWebRequestBase(RequestSessionBase):
         if secure:
             base_url = self.vreg.config.get('https-url')
         if base_url is None:
-            base_url = super(_CubicWebRequestBase, self).base_url()
+            base_url = super(_CubicWebRequestBase, self)._base_url()
         return base_url
 
     @property
@@ -439,10 +439,6 @@ class _CubicWebRequestBase(RequestSessionBase):
         """
         self.add_js('cubicweb.ajax.js')
         jsfunc = kwargs.pop('jsfunc', 'userCallbackThenReloadPage')
-        if 'msg' in kwargs:
-            warn('[3.10] msg should be given as positional argument',
-                 DeprecationWarning, stacklevel=2)
-            args = (kwargs.pop('msg'),) + args
         assert not kwargs, 'dunno what to do with remaining kwargs: %s' % kwargs
         cbname = self.register_onetime_callback(cb, *cbargs)
         return "javascript: %s" % getattr(js, jsfunc)(cbname, *args)
@@ -569,7 +565,7 @@ class _CubicWebRequestBase(RequestSessionBase):
         except KeyError:
             return SimpleCookie()
 
-    def set_cookie(self, name, value, maxage=300, expires=None, secure=False):
+    def set_cookie(self, name, value, maxage=300, expires=None, secure=False, httponly=False):
         """set / update a cookie
 
         by default, cookie will be available for the next 5 minutes.
@@ -595,7 +591,7 @@ class _CubicWebRequestBase(RequestSessionBase):
             expires = None
         # make sure cookie is set on the correct path
         cookie = Cookie(str(name), str(value), self.base_url_path(),
-                        expires=expires, secure=secure)
+                        expires=expires, secure=secure, httponly=httponly)
         self.headers_out.addHeader('Set-cookie', cookie)
 
     def remove_cookie(self, name, bwcompat=None):
@@ -786,10 +782,6 @@ class _CubicWebRequestBase(RequestSessionBase):
             if 'Expires' not in self.headers_out:
                 # Expires header seems to be required by IE7 -- Are you sure ?
                 self.add_header('Expires', 'Sat, 01 Jan 2000 00:00:00 GMT')
-            if self.http_method() == 'HEAD':
-                self.status_out = 200
-                # XXX replace by True once validate_cache bw compat method is dropped
-                return 200
             # /!\ no raise, the function returns and we keep processing the request
         else:
             # overwrite headers_out to forge a brand new not-modified response
@@ -1005,6 +997,7 @@ class _CubicWebRequestBase(RequestSessionBase):
                 pass
         if vreg.config.get('language-negociation', False):
             # 2. http accept-language
+            self.headers_out.addHeader('Vary', 'Accept-Language')
             for lang in self.header_accept_language():
                 if lang in self.translations:
                     self.set_language(lang)

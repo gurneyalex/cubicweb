@@ -20,7 +20,6 @@
 __docformat__ = "restructuredtext en"
 _ = unicode
 
-import types, new
 from cStringIO import StringIO
 from warnings import warn
 from functools import partial
@@ -290,12 +289,6 @@ class View(AppObject):
             clabel = vtitle
         return u'%s (%s)' % (clabel, self._cw.property_value('ui.site-title'))
 
-    @deprecated('[3.10] use vreg["etypes"].etype_class(etype).cw_create_url(req)')
-    def create_url(self, etype, **kwargs):
-        """ return the url of the entity creation form for a given entity type"""
-        return self._cw.vreg["etypes"].etype_class(etype).cw_create_url(
-            self._cw, **kwargs)
-
     def field(self, label, value, row=True, show_label=True, w=None, tr=True,
               table=False):
         """read-only field"""
@@ -501,35 +494,9 @@ class MainTemplate(View):
 class ReloadableMixIn(object):
     """simple mixin for reloadable parts of UI"""
 
-    def user_callback(self, cb, args, msg=None, nonify=False):
-        """register the given user callback and return a URL to call it ready to be
-        inserted in html
-        """
-        self._cw.add_js('cubicweb.ajax.js')
-        if nonify:
-            _cb = cb
-            def cb(*args):
-                _cb(*args)
-        cbname = self._cw.register_onetime_callback(cb, *args)
-        return self.build_js(cbname, xml_escape(msg or ''))
-
-    def build_update_js_call(self, cbname, msg):
-        rql = self.cw_rset.printable_rql()
-        return "javascript: %s" % js.userCallbackThenUpdateUI(
-            cbname, self.__regid__, rql, msg, self.__registry__, self.domid)
-
-    def build_reload_js_call(self, cbname, msg):
-        return "javascript: %s" % js.userCallbackThenReloadPage(cbname, msg)
-
-    build_js = build_update_js_call # expect updatable component by default
-
     @property
     def domid(self):
         return domid(self.__regid__)
-
-    @deprecated('[3.10] use .domid property')
-    def div_id(self):
-        return self.domid
 
 
 class Component(ReloadableMixIn, View):
@@ -547,10 +514,6 @@ class Component(ReloadableMixIn, View):
     @property
     def domid(self):
         return '%sComponent' % domid(self.__regid__)
-
-    @deprecated('[3.10] use .cssclass property')
-    def div_class(self):
-        return self.cssclass
 
 
 class Adapter(AppObject):

@@ -25,6 +25,7 @@ from logilab.common.testlib import TestCase, unittest_main
 from cubicweb import Binary
 from cubicweb.schema import CubicWebSchemaLoader
 from cubicweb.devtools import TestServerConfiguration
+from cubicweb.devtools.testlib import CubicWebTC
 
 from cubicweb.server.schemaserial import (updateeschema2rql, updaterschema2rql, rschema2rql,
                                           eschema2rql, rdef2rql, specialize2rql,
@@ -221,7 +222,7 @@ class Schema2RQLTC(TestCase):
               'inlined': False}),
 
             ('INSERT CWAttribute X: X cardinality %(cardinality)s,X defaultval %(defaultval)s,'
-             'X description %(description)s,X fulltextindexed %(fulltextindexed)s,'
+             'X description %(description)s,X formula %(formula)s,X fulltextindexed %(fulltextindexed)s,'
              'X indexed %(indexed)s,X internationalizable %(internationalizable)s,'
              'X ordernum %(ordernum)s,X relation_type ER,X from_entity SE,'
              'X to_entity OE WHERE SE eid %(se)s,ER eid %(rt)s,OE eid %(oe)s',
@@ -234,6 +235,7 @@ class Schema2RQLTC(TestCase):
               'ordernum': 5,
               'defaultval': None,
               'indexed': False,
+              'formula': None,
               'cardinality': u'?1'}),
             ('INSERT CWConstraint X: X value %(value)s, X cstrtype CT, EDEF constrained_by X '
              'WHERE CT eid %(ct)s, EDEF eid %(x)s',
@@ -247,7 +249,7 @@ class Schema2RQLTC(TestCase):
               'value': u"u'?1', u'11'"}),
 
             ('INSERT CWAttribute X: X cardinality %(cardinality)s,X defaultval %(defaultval)s,'
-             'X description %(description)s,X fulltextindexed %(fulltextindexed)s,'
+             'X description %(description)s,X formula %(formula)s,X fulltextindexed %(fulltextindexed)s,'
              'X indexed %(indexed)s,X internationalizable %(internationalizable)s,'
              'X ordernum %(ordernum)s,X relation_type ER,X from_entity SE,X to_entity OE '
              'WHERE SE eid %(se)s,ER eid %(rt)s,OE eid %(oe)s',
@@ -260,6 +262,7 @@ class Schema2RQLTC(TestCase):
               'ordernum': 5,
               'defaultval': None,
               'indexed': False,
+              'formula': None,
               'cardinality': u'?1'}),
             ('INSERT CWConstraint X: X value %(value)s, X cstrtype CT, EDEF constrained_by X '
              'WHERE CT eid %(ct)s, EDEF eid %(x)s',
@@ -272,7 +275,7 @@ class Schema2RQLTC(TestCase):
               'ct': u'StaticVocabularyConstraint_eid',
               'value': (u"u'?*', u'1*', u'+*', u'**', u'?+', u'1+', u'++', u'*+', u'?1', "
                         "u'11', u'+1', u'*1', u'??', u'1?', u'+?', u'*?'")})],
-                             list(rschema2rql(schema.rschema('cardinality'), cstrtypemap)))
+              list(rschema2rql(schema.rschema('cardinality'), cstrtypemap)))
 
     def test_rschema2rql_custom_type(self):
         expected = [('INSERT CWRType X: X description %(description)s,X final %(final)s,'
@@ -286,13 +289,14 @@ class Schema2RQLTC(TestCase):
                       'symmetric': False}),
                      ('INSERT CWAttribute X: X cardinality %(cardinality)s,'
                       'X defaultval %(defaultval)s,X description %(description)s,'
-                      'X extra_props %(extra_props)s,X indexed %(indexed)s,'
+                      'X extra_props %(extra_props)s,X formula %(formula)s,X indexed %(indexed)s,'
                       'X ordernum %(ordernum)s,X relation_type ER,X from_entity SE,'
                       'X to_entity OE WHERE SE eid %(se)s,ER eid %(rt)s,OE eid %(oe)s',
                       {'cardinality': u'?1',
                        'defaultval': None,
                        'description': u'',
                        'extra_props': '{"jungle_speed": 42}',
+                       'formula': None,
                        'indexed': False,
                        'oe': None,
                        'ordernum': 4,
@@ -312,7 +316,7 @@ class Schema2RQLTC(TestCase):
     def test_rdef2rql(self):
         self.assertListEqual([
             ('INSERT CWAttribute X: X cardinality %(cardinality)s,X defaultval %(defaultval)s,'
-             'X description %(description)s,X fulltextindexed %(fulltextindexed)s,'
+             'X description %(description)s,X formula %(formula)s,X fulltextindexed %(fulltextindexed)s,'
              'X indexed %(indexed)s,X internationalizable %(internationalizable)s,'
              'X ordernum %(ordernum)s,X relation_type ER,X from_entity SE,'
              'X to_entity OE WHERE SE eid %(se)s,ER eid %(rt)s,OE eid %(oe)s',
@@ -325,6 +329,7 @@ class Schema2RQLTC(TestCase):
               'ordernum': 3,
               'defaultval': Binary.zpickle(u'text/plain'),
               'indexed': False,
+              'formula': None,
               'cardinality': u'?1'}),
             ('INSERT CWConstraint X: X value %(value)s, X cstrtype CT, EDEF constrained_by X '
              'WHERE CT eid %(ct)s, EDEF eid %(x)s',
@@ -424,7 +429,19 @@ class Perms2RQLTC(TestCase):
     #    self.assertListEqual(perms2rql(schema, self.GROUP_MAPPING),
     #                         ['INSERT CWEType X: X name 'Societe', X final FALSE'])
 
+class ComputedAttributeAndRelationTC(CubicWebTC):
+    appid = 'data-cwep002'
 
+    def test(self):
+        # force to read schema from the database
+        self.repo.set_schema(self.repo.deserialize_schema(), resetvreg=False)
+        schema = self.repo.schema
+        self.assertEqual([('Company', 'Person')], list(schema['has_employee'].rdefs))
+        self.assertEqual('O works_for S',
+                         schema['has_employee'].rule)
+        self.assertEqual([('Company', 'Int')], list(schema['total_salary'].rdefs))
+        self.assertEqual('Any SUM(SA) GROUPBY X WHERE P works_for X, P salary SA',
+                         schema['total_salary'].rdefs['Company', 'Int'].formula)
 
 if __name__ == '__main__':
     unittest_main()
