@@ -88,8 +88,8 @@ jQuery.extend(Deferred.prototype, {
 });
 
 var AJAX_PREFIX_URL = 'ajax';
-var JSON_BASE_URL = baseuri() + 'json?';
-var AJAX_BASE_URL = baseuri() + AJAX_PREFIX_URL + '?';
+var JSON_BASE_URL = BASE_URL + 'json?';
+var AJAX_BASE_URL = BASE_URL + AJAX_PREFIX_URL + '?';
 
 
 jQuery.extend(cw.ajax, {
@@ -122,9 +122,7 @@ jQuery.extend(cw.ajax, {
      * (e.g. http://..../data??resource1.js,resource2.js)
      */
     _modconcatLikeUrl: function(url) {
-        var base = baseuri();
-        if (!base.endswith('/')) { base += '/'; }
-        var modconcat_rgx = new RegExp('(' + base + 'data/([a-z0-9]+/)?)\\?\\?(.+)');
+        var modconcat_rgx = new RegExp('(' + BASE_URL + 'data/([a-z0-9]+/)?)\\?\\?(.+)');
         return modconcat_rgx.exec(url);
     },
 
@@ -285,8 +283,6 @@ function _postAjaxLoad(node) {
         setFormsTarget(node);
     }
     _loadDynamicFragments(node);
-    // XXX [3.7] jQuery.one is now used instead jQuery.bind,
-    // jquery.treeview.js can be unpatched accordingly.
     jQuery(cw).trigger('server-response', [true, node]);
     jQuery(node).trigger('server-response', [true, node]);
 }
@@ -379,8 +375,8 @@ jQuery.fn.loadxhtml = function(url, form, reqtype, mode, cursor) {
  * dictionary, `reqtype` the HTTP request type (get 'GET' or 'POST').
  */
 function loadRemote(url, form, reqtype, sync) {
-    if (!url.toLowerCase().startswith(baseuri().toLowerCase())) {
-        url = baseuri() + url;
+    if (!url.toLowerCase().startswith(BASE_URL.toLowerCase())) {
+        url = BASE_URL + url;
     }
     if (!sync) {
         var deferred = new Deferred();
@@ -609,7 +605,7 @@ function buildWysiwygEditors(parent) {
                 var fck = new FCKeditor(this.id);
                 fck.Config['CustomConfigurationsPath'] = fckconfigpath;
                 fck.Config['DefaultLanguage'] = fcklang;
-                fck.BasePath = baseuri() + "fckeditor/";
+                fck.BasePath = BASE_URL + "fckeditor/";
                 fck.ReplaceTextarea();
             } else {
                 cw.log('fckeditor could not be found.');

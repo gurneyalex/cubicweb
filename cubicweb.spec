@@ -7,7 +7,7 @@
 %endif
 
 Name:           cubicweb
-Version:        3.19.7
+Version:        3.20.0
 Release:        logilab.1%{?dist}
 Summary:        CubicWeb is a semantic web application framework
 Source0:        http://download.logilab.org/pub/cubicweb/cubicweb-%{version}.tar.gz
@@ -20,14 +20,15 @@ BuildRoot:      %{_tmppath}/%{name}-%{version}-%{release}-buildroot
 BuildArch:      noarch
 
 Requires:       %{python}
-Requires:       %{python}-logilab-common >= 0.62.0
+Requires:       %{python}-logilab-common >= 0.63.1
 Requires:       %{python}-logilab-mtconverter >= 0.8.0
 Requires:       %{python}-rql >= 0.31.2
-Requires:       %{python}-yams >= 0.39.1
-Requires:       %{python}-logilab-database >= 1.12.1
+Requires:       %{python}-yams >= 0.40.0
+Requires:       %{python}-logilab-database >= 1.13.0
 Requires:       %{python}-passlib
 Requires:       %{python}-lxml
 Requires:       %{python}-twisted-web
+Requires:       %{python}-markdown
 # the schema view uses `dot'; at least on el5, png output requires graphviz-gd
 Requires:       graphviz-gd
 Requires:       gettext

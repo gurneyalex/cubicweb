@@ -42,12 +42,10 @@ from StringIO import StringIO
 
 from logilab.common.deprecation import deprecated
 from logilab.common.logging_ext import set_log_methods
-from yams.constraints import BASE_CONVERTERS
+from yams.constraints import BASE_CONVERTERS, BASE_CHECKERS
 
-if os.environ.get('APYCOT_ROOT'):
-    logging.basicConfig(level=logging.CRITICAL)
-else:
-    logging.basicConfig()
+# pre python 2.7.2 safety
+logging.basicConfig()
 
 from cubicweb.__pkginfo__ import version as __version__
 
@@ -141,6 +139,10 @@ class Binary(StringIO):
         """ decompress and loads the stream before returning it """
         return cPickle.loads(zlib.decompress(self.getvalue()))
 
+
+def check_password(eschema, value):
+    return isinstance(value, (str, Binary))
+BASE_CHECKERS['Password'] = check_password
 
 def str_or_binary(value):
     if isinstance(value, Binary):

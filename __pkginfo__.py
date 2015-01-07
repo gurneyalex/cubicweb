@@ -22,7 +22,7 @@ software
 
 modname = distname = "cubicweb"
 
-numversion = (3, 19, 7)
+numversion = (3, 20, 0)
 version = '.'.join(str(num) for num in numversion)
 
 description = "a repository of entities / relations for knowledge management"
@@ -39,18 +39,18 @@ classifiers = [
 ]
 
 __depends__ = {
-    'logilab-common': '>= 0.62.0',
+    'logilab-common': '>= 0.63.1',
     'logilab-mtconverter': '>= 0.8.0',
     'rql': '>= 0.31.2',
-    'yams': '>= 0.39.1, < 0.39.99',  # CW 3.19 is not compatible with yams 0.40
+    'yams': '>= 0.40.0',
     #gettext                    # for xgettext, msgcat, etc...
     # web dependencies
     'lxml': '',
-    'Twisted': '',
     # XXX graphviz
     # server dependencies
-    'logilab-database': '>= 1.12.1',
+    'logilab-database': '>= 1.13.0',
     'passlib': '',
+    'Markdown': ''
     }
 
 __recommends__ = {
@@ -62,6 +62,7 @@ __recommends__ = {
     'vobject': '>= 0.6.0',      # for ical view
     'rdflib': None,             #
     'pyzmq': None,
+    'Twisted': '',
     #'Products.FCKeditor':'',
     #'SimpleTAL':'>= 4.1.6',
     }

@@ -32,7 +32,7 @@ from itertools import chain
 import yams.schema
 
 from logilab.common.testlib import TestCase, InnerTest, Tags
-from logilab.common.pytest import nocoverage, pause_tracing, resume_tracing
+from logilab.common.pytest import nocoverage, pause_trace
 from logilab.common.debugger import Debugger
 from logilab.common.umessage import message_from_string
 from logilab.common.decorators import cached, classproperty, clear_cache, iclassmethod
@@ -513,9 +513,9 @@ class CubicWebTC(TestCase):
         This method will be called by the database handler once the config has
         been properly bootstrapped.
         """
-        source = config.system_source_config
-        cls.admlogin = unicode(source['db-user'])
-        cls.admpassword = source['db-password']
+        admincfg = config.default_admin_config
+        cls.admlogin = unicode(admincfg['login'])
+        cls.admpassword = admincfg['password']
         # uncomment the line below if you want rql queries to be logged
         #config.global_set_option('query-log-file',
         #                         '/tmp/test_rql_log.' + `os.getpid()`)
@@ -572,18 +572,17 @@ class CubicWebTC(TestCase):
     def setUp(self):
         # monkey patch send mail operation so emails are sent synchronously
         self._patch_SendMailOp()
-        pause_tracing()
-        previous_failure = self.__class__.__dict__.get('_repo_init_failed')
-        if previous_failure is not None:
-            self.skipTest('repository is not initialised: %r' % previous_failure)
-        try:
-            self._init_repo()
-            self.addCleanup(self._close_cnx)
-        except Exception as ex:
-            self.__class__._repo_init_failed = ex
-            raise
-        self.addCleanup(self._close_access)
-        resume_tracing()
+        with pause_trace():
+            previous_failure = self.__class__.__dict__.get('_repo_init_failed')
+            if previous_failure is not None:
+                self.skipTest('repository is not initialised: %r' % previous_failure)
+            try:
+                self._init_repo()
+                self.addCleanup(self._close_cnx)
+            except Exception as ex:
+                self.__class__._repo_init_failed = ex
+                raise
+            self.addCleanup(self._close_access)
         self.setup_database()
         self._admin_clt_cnx.commit()
         MAILBOX[:] = [] # reset mailbox
@@ -601,6 +600,7 @@ class CubicWebTC(TestCase):
         while self._cleanups:
             cleanup, args, kwargs = self._cleanups.pop(-1)
             cleanup(*args, **kwargs)
+        self.repo.turn_repo_off()
 
     def _patch_SendMailOp(self):
         # monkey patch send mail operation so emails are sent synchronously

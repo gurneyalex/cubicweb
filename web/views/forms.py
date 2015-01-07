@@ -1,4 +1,4 @@
-# copyright 2003-2011 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2014 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -41,16 +41,20 @@ Actually there exists a third form class:
 
 but you'll use this one rarely.
 """
+
 __docformat__ = "restructuredtext en"
 
+
 from warnings import warn
+
+import time
 
 from logilab.common import dictattr, tempattr
 from logilab.common.decorators import iclassmethod, cached
 from logilab.common.textutils import splitstrip
 from logilab.common.deprecation import deprecated
 
-from cubicweb import ValidationError
+from cubicweb import ValidationError, neg_role
 from cubicweb.utils import support_args
 from cubicweb.predicates import non_final_entity, match_kwargs, one_line_rset
 from cubicweb.web import RequestError, ProcessFormError
@@ -196,24 +200,10 @@ class FieldsForm(form.Form):
         Extra keyword arguments will be given to renderer's :meth:`render` method.
         """
         w = kwargs.pop('w', None)
-        if w is None:
-            warn('[3.10] you should specify "w" to form.render() named arguments',
-                 DeprecationWarning, stacklevel=2)
-            data = []
-            w = data.append
-        else:
-            data = None
         self.build_context(formvalues)
         if renderer is None:
             renderer = self.default_renderer()
-        if support_args(renderer.render, 'w'):
-            renderer.render(w, self, kwargs)
-        else:
-            warn('[3.10] you should add "w" as first argument o %s.render()'
-                 % renderer.__class__, DeprecationWarning)
-            w(renderer.render(self, kwargs))
-        if data is not None:
-            return '\n'.join(data)
+        renderer.render(w, self, kwargs)
 
     def default_renderer(self):
         return self._cw.vreg['formrenderers'].select(
@@ -362,7 +352,9 @@ class EntityFieldsForm(FieldsForm):
         self.uicfg_affk = self._cw.vreg['uicfg'].select(
             'autoform_field_kwargs', self._cw, entity=self.edited_entity)
         self.add_hidden('__type', self.edited_entity.cw_etype, eidparam=True)
+
         self.add_hidden('eid', self.edited_entity.eid)
+        self.add_generation_time()
         # mainform default to true in parent, hence default to True
         if kwargs.get('mainform', True) or kwargs.get('mainentity', False):
             self.add_hidden(u'__maineid', self.edited_entity.eid)
@@ -375,6 +367,11 @@ class EntityFieldsForm(FieldsForm):
         if msg:
             msgid = self._cw.set_redirect_message(msg)
             self.add_hidden('_cwmsgid', msgid)
+
+    def add_generation_time(self):
+        # NB repr is critical to avoid truncation of the timestamp
+        self.add_hidden('__form_generation_time', repr(time.time()),
+                        eidparam=True)
 
     def add_linkto_hidden(self):
         """add the __linkto hidden field used to directly attach the new object
@@ -399,12 +396,21 @@ class EntityFieldsForm(FieldsForm):
     @property
     @cached
     def linked_to(self):
-        # if current form is not the main form, exit immediately
+        linked_to = {}
+        # case where this is an embeded creation form
+        try:
+            eid = int(self.cw_extra_kwargs['peid'])
+        except KeyError:
+            pass
+        else:
+            ltrtype = self.cw_extra_kwargs['rtype']
+            ltrole = neg_role(self.cw_extra_kwargs['role'])
+            linked_to[(ltrtype, ltrole)] = [eid]
+        # now consider __linkto if the current form is the main form
         try:
             self.field_by_name('__maineid')
         except form.FieldNotFound:
-            return {}
-        linked_to = {}
+            return linked_to
         for linkto in self._cw.list_form_param('__linkto'):
             ltrtype, eid, ltrole = linkto.split(':')
             linked_to.setdefault((ltrtype, ltrole), []).append(int(eid))
