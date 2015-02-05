@@ -47,7 +47,7 @@ def _run_command(cmd):
     return subprocess.call(cmd)
 
 
-def sqlexec(sqlstmts, cursor_or_execute, withpb=not os.environ.get('APYCOT_ROOT'),
+def sqlexec(sqlstmts, cursor_or_execute, withpb=True,
             pbtitle='', delimiter=';', cnx=None):
     """execute sql statements ignoring DROP/ CREATE GROUP or USER statements
     error.
@@ -299,7 +299,7 @@ class SQLAdapterMixIn(object):
     """
     cnx_wrap = ConnectionWrapper
 
-    def __init__(self, source_config):
+    def __init__(self, source_config, repairing=False):
         try:
             self.dbdriver = source_config['db-driver'].lower()
             dbname = source_config['db-name']
@@ -312,10 +312,11 @@ class SQLAdapterMixIn(object):
         dbpassword = source_config.get('db-password')
         dbencoding = source_config.get('db-encoding', 'UTF-8')
         dbextraargs = source_config.get('db-extra-arguments')
+        dbnamespace = source_config.get('db-namespace')
         self.dbhelper = db.get_db_helper(self.dbdriver)
         self.dbhelper.record_connection_info(dbname, dbhost, dbport, dbuser,
                                              dbpassword, dbextraargs,
-                                             dbencoding)
+                                             dbencoding, dbnamespace)
         self.sqlgen = SQLGenerator()
         # copy back some commonly accessed attributes
         dbapi_module = self.dbhelper.dbapi_module
@@ -328,6 +329,14 @@ class SQLAdapterMixIn(object):
         if self.dbdriver == 'sqlite':
             self.cnx_wrap = SqliteConnectionWrapper
             self.dbhelper.dbname = abspath(self.dbhelper.dbname)
+        if not repairing:
+            statement_timeout = int(source_config.get('db-statement-timeout', 0))
+            if statement_timeout > 0:
+                def set_postgres_timeout(cnx):
+                    cnx.cursor().execute('SET statement_timeout to %d' % statement_timeout)
+                    cnx.commit()
+                postgres_hooks = SQL_CONNECT_HOOKS['postgres']
+                postgres_hooks.append(set_postgres_timeout)
 
     def wrapped_connection(self):
         """open and return a connection to the database, wrapped into a class
@@ -367,12 +376,12 @@ class SQLAdapterMixIn(object):
             return newargs
         return query_args
 
-    def process_result(self, cursor, column_callbacks=None, session=None):
+    def process_result(self, cursor, cnx=None, column_callbacks=None):
         """return a list of CubicWeb compliant values from data in the given cursor
         """
-        return list(self.iter_process_result(cursor, column_callbacks, session))
+        return list(self.iter_process_result(cursor, cnx, column_callbacks))
 
-    def iter_process_result(self, cursor, column_callbacks=None, session=None):
+    def iter_process_result(self, cursor, cnx, column_callbacks=None):
         """return a iterator on tuples of CubicWeb compliant values from data
         in the given cursor
         """
@@ -382,10 +391,10 @@ class SQLAdapterMixIn(object):
         if not column_callbacks:
             return self.dbhelper.dbapi_module.process_cursor(cursor, self._dbencoding,
                                                              Binary)
-        assert session
-        return self._cb_process_result(cursor, column_callbacks, session)
+        assert cnx
+        return self._cb_process_result(cursor, column_callbacks, cnx)
 
-    def _cb_process_result(self, cursor, column_callbacks, session):
+    def _cb_process_result(self, cursor, column_callbacks, cnx):
         # begin bind to locals for optimization
         descr = cursor.description
         encoding = self._dbencoding
@@ -408,7 +417,7 @@ class SQLAdapterMixIn(object):
                         value = process_value(value, descr[col], encoding, binary)
                     else:
                         for cb in cbstack:
-                            value = cb(self, session, value)
+                            value = cb(self, cnx, value)
                     result.append(value)
                 yield result
 

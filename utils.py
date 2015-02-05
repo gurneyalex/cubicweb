@@ -1,4 +1,4 @@
-# copyright 2003-2011 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2014 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -17,7 +17,7 @@
 # with CubicWeb.  If not, see <http://www.gnu.org/licenses/>.
 """Some utilities for CubicWeb server/clients."""
 
-from __future__ import division, with_statement
+from __future__ import division
 
 __docformat__ = "restructuredtext en"
 
@@ -46,6 +46,20 @@ _MARKER = object()
 
 # initialize random seed from current time
 random.seed()
+
+def admincnx(appid):
+    from cubicweb.cwconfig import CubicWebConfiguration
+    from cubicweb.server.repository import Repository
+    from cubicweb.server.utils import TasksManager
+    config = CubicWebConfiguration.config_for(appid)
+
+    login = config.default_admin_config['login']
+    password = config.default_admin_config['password']
+
+    repo = Repository(config, TasksManager())
+    session = repo.new_session(login, password=password)
+    return session.new_cnx()
+
 
 def make_uid(key=None):
     """Return a unique identifier string.
@@ -206,12 +220,23 @@ class UStringIO(list):
     specifed in the constructor
     """
 
+    def __init__(self, tracewrites=False, *args, **kwargs):
+        self.tracewrites = tracewrites
+        super(UStringIO, self).__init__(*args, **kwargs)
+
     def __nonzero__(self):
         return True
 
     def write(self, value):
         assert isinstance(value, unicode), u"unicode required not %s : %s"\
                                      % (type(value).__name__, repr(value))
+        if self.tracewrites:
+            from traceback import format_stack
+            stack = format_stack(None)[:-1]
+            escaped_stack = xml_escape(json_dumps(u'\n'.join(stack)))
+            escaped_html = xml_escape(value).replace('\n', '<br/>\n')
+            tpl = u'<span onclick="alert(%s)">%s</span>'
+            value = tpl % (escaped_stack, escaped_html)
         self.append(value)
 
     def getvalue(self):
@@ -234,8 +259,8 @@ class HTMLHead(UStringIO):
     script_opening = u'<script type="text/javascript">\n'
     script_closing = u'\n</script>'
 
-    def __init__(self, req):
-        super(HTMLHead, self).__init__()
+    def __init__(self, req, *args, **kwargs):
+        super(HTMLHead, self).__init__(*args, **kwargs)
         self.jsvars = []
         self.jsfiles = []
         self.cssfiles = []
@@ -343,14 +368,20 @@ class HTMLHead(UStringIO):
         w = self.write
         # 1/ variable declaration if any
         if self.jsvars:
-            w(self.script_opening)
+            if skiphead:
+                w(u'<cubicweb:script>')
+            else:
+                w(self.script_opening)
             for var, value, override in self.jsvars:
                 vardecl = u'%s = %s;' % (var, json.dumps(value))
                 if not override:
                     vardecl = (u'if (typeof %s == "undefined") {%s}' %
                                (var, vardecl))
                 w(vardecl + u'\n')
-            w(self.script_closing)
+            if skiphead:
+                w(u'</cubicweb:script>')
+            else:
+                w(self.script_closing)
         # 2/ css files
         ie_cssfiles = ((x, (y, z)) for x, y, z in self.ie_cssfiles)
         if self.datadir_url and self._cw.vreg.config['concat-resources']:
@@ -399,10 +430,15 @@ class HTMLHead(UStringIO):
                 w(self.script_opening)
                 w(u'\n\n'.join(self.post_inlined_scripts))
                 w(self.script_closing)
-        header = super(HTMLHead, self).getvalue()
-        if skiphead:
-            return header
-        return u'<head>\n%s</head>\n' % header
+        # at the start of this function, the parent UStringIO may already have
+        # data in it, so we can't w(u'<head>\n') at the top. Instead, we create
+        # a temporary UStringIO to get the same debugging output formatting
+        # if debugging is enabled.
+        headtag = UStringIO(tracewrites=self.tracewrites)
+        if not skiphead:
+            headtag.write(u'<head>\n')
+            w(u'</head>\n')
+        return headtag.getvalue() + super(HTMLHead, self).getvalue()
 
 
 class HTMLStream(object):
@@ -416,10 +452,13 @@ class HTMLStream(object):
     """
 
     def __init__(self, req):
+        self.tracehtml = req.tracehtml
         # stream for <head>
         self.head = req.html_headers
         # main stream
-        self.body = UStringIO()
+        self.body = UStringIO(tracewrites=req.tracehtml)
+        # this method will be assigned to self.w in views
+        self.write = self.body.write
         self.doctype = u''
         self._htmlattrs = [('lang', req.lang)]
         # keep main_stream's reference on req for easier text/html demoting
@@ -445,11 +484,6 @@ class HTMLStream(object):
             warn('[3.17] xhtml is no more supported',
                  DeprecationWarning, stacklevel=2)
 
-    def write(self, data):
-        """StringIO interface: this method will be assigned to self.w
-        """
-        self.body.write(data)
-
     @property
     def htmltag(self):
         attrs = ' '.join('%s="%s"' % (attr, xml_escape(value))
@@ -460,6 +494,26 @@ class HTMLStream(object):
 
     def getvalue(self):
         """writes HTML headers, closes </head> tag and writes HTML body"""
+        if self.tracehtml:
+            css = u'\n'.join((u'span {',
+                              u'  font-family: monospace;',
+                              u'  word-break: break-all;',
+                              u'  word-wrap: break-word;',
+                              u'}',
+                              u'span:hover {',
+                              u'  color: red;',
+                              u'  text-decoration: underline;',
+                              u'}'))
+            style = u'<style type="text/css">\n%s\n</style>\n' % css
+            return (u'<!DOCTYPE html>\n'
+                    + u'<html>\n<head>\n%s\n</head>\n' % style
+                    + u'<body>\n'
+                    + u'<span>' + xml_escape(self.doctype) + u'</span><br/>'
+                    + u'<span>' + xml_escape(self.htmltag) + u'</span><br/>'
+                    + self.head.getvalue()
+                    + self.body.getvalue()
+                    + u'<span>' + xml_escape(u'</html>') + u'</span>'
+                    + u'</body>\n</html>')
         return u'%s\n%s\n%s\n%s\n</html>' % (self.doctype,
                                              self.htmltag,
                                              self.head.getvalue(),

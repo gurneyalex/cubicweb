@@ -63,6 +63,14 @@ if applcubicwebversion < (3, 19, 0) and cubicwebversion >= (3, 19, 0):
 
     replace_eid_sequence_with_eid_numrange(session)
 
+if applcubicwebversion < (3, 20, 0) and cubicwebversion >= (3, 20, 0):
+    ss._IGNORED_PROPS.append('formula')
+    add_attribute('CWAttribute', 'formula', commit=False)
+    ss._IGNORED_PROPS.remove('formula')
+    commit()
+    add_entity_type('CWComputedRType')
+    commit()
+
 if applcubicwebversion < (3, 17, 0) and cubicwebversion >= (3, 17, 0):
     try:
         add_cube('sioc', update_database=False)
@@ -260,3 +268,18 @@ if applcubicwebversion < (3, 2, 2) and cubicwebversion >= (3, 2, 1):
 
 if applcubicwebversion < (3, 2, 0) and cubicwebversion >= (3, 2, 0):
     add_cube('card', update_database=False)
+
+def sync_constraint_types():
+    """Make sure the repository knows about all constraint types defined in the code"""
+    from cubicweb.schema import CONSTRAINTS
+    repo_constraints = set(row[0] for row in rql('Any N WHERE X is CWConstraintType, X name N'))
+
+    for cstrtype in set(CONSTRAINTS) - repo_constraints:
+        if cstrtype == 'BoundConstraint':
+            # was renamed to BoundaryConstraint, we don't need the old name
+            continue
+        rql('INSERT CWConstraintType X: X name %(name)s', {'name': cstrtype})
+
+    commit()
+
+sync_constraint_types()
