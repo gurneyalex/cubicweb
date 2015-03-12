@@ -18,19 +18,22 @@
 """unit tests for module cubicweb.server.migractions"""
 
 from datetime import date
-from os.path import join
+import os.path as osp
 from contextlib import contextmanager
 
 from logilab.common.testlib import unittest_main, Tags, tag
 
 from yams.constraints import UniqueConstraint
 
-from cubicweb import ConfigurationError, ValidationError
+from cubicweb import ConfigurationError, ValidationError, ExecutionError
 from cubicweb.devtools.testlib import CubicWebTC
 from cubicweb.server.sqlutils import SQL_PREFIX
 from cubicweb.server.migractions import ServerMigrationHelper
 
 import cubicweb.devtools
+
+
+HERE = osp.dirname(osp.abspath(__file__))
 
 migrschema = None
 def tearDownModule(*args):
@@ -38,26 +41,27 @@ def tearDownModule(*args):
     del migrschema
     if hasattr(MigrationCommandsTC, 'origschema'):
         del MigrationCommandsTC.origschema
+    if hasattr(MigrationCommandsComputedTC, 'origschema'):
+        del MigrationCommandsComputedTC.origschema
 
-class MigrationCommandsTC(CubicWebTC):
+class MigrationTC(CubicWebTC):
 
     configcls = cubicweb.devtools.TestServerConfiguration
 
     tags = CubicWebTC.tags | Tags(('server', 'migration', 'migractions'))
 
     def _init_repo(self):
-        super(MigrationCommandsTC, self)._init_repo()
+        super(MigrationTC, self)._init_repo()
         # we have to read schema from the database to get eid for schema entities
         self.repo.set_schema(self.repo.deserialize_schema(), resetvreg=False)
         # hack to read the schema from data/migrschema
         config = self.config
-        config.appid = join('data', 'migratedapp')
-        config._apphome = self.datapath('migratedapp')
+        config.appid = osp.join(self.appid, 'migratedapp')
+        config._apphome = osp.join(HERE, config.appid)
         global migrschema
         migrschema = config.load_schema()
-        config.appid = 'data'
-        config._apphome = self.datadir
-        assert 'Folder' in migrschema
+        config.appid = self.appid
+        config._apphome = osp.join(HERE, self.appid)
 
     def setUp(self):
         CubicWebTC.setUp(self)
@@ -72,6 +76,26 @@ class MigrationCommandsTC(CubicWebTC):
             yield cnx, ServerMigrationHelper(self.repo.config, migrschema,
                                              repo=self.repo, cnx=cnx,
                                              interactive=False)
+
+    def table_sql(self, mh, tablename):
+        result = mh.sqlexec("SELECT sql FROM sqlite_master WHERE type='table' "
+                            "and name=%(table)s", {'table': tablename})
+        if result:
+            return result[0][0]
+        return None # no such table
+
+    def table_schema(self, mh, tablename):
+        sql = self.table_sql(mh, tablename)
+        assert sql, 'no table %s' % tablename
+        return dict(x.split()[:2]
+                    for x in sql.split('(', 1)[1].rsplit(')', 1)[0].split(','))
+
+
+class MigrationCommandsTC(MigrationTC):
+
+    def _init_repo(self):
+        super(MigrationCommandsTC, self)._init_repo()
+        assert 'Folder' in migrschema
 
     def test_add_attribute_bool(self):
         with self.mh() as (cnx, mh):
@@ -135,8 +159,7 @@ class MigrationCommandsTC(CubicWebTC):
             self.assertEqual(self.schema['shortpara'].subjects(), ('Note', ))
             self.assertEqual(self.schema['shortpara'].objects(), ('String', ))
             # test created column is actually a varchar(64)
-            notesql = mh.sqlexec("SELECT sql FROM sqlite_master WHERE type='table' and name='%sNote'" % SQL_PREFIX)[0][0]
-            fields = dict(x.strip().split()[:2] for x in notesql.split('(', 1)[1].rsplit(')', 1)[0].split(','))
+            fields = self.table_schema(mh, '%sNote' % SQL_PREFIX)
             self.assertEqual(fields['%sshortpara' % SQL_PREFIX], 'varchar(64)')
             # test default value set on existing entities
             self.assertEqual(cnx.execute('Note X').get_entity(0, 0).shortpara, 'hop')
@@ -286,6 +309,8 @@ class MigrationCommandsTC(CubicWebTC):
             self.assertEqual(self.schema['filed_under2'].objects(), ('Folder2',))
             mh.cmd_drop_relation_type('filed_under2')
             self.assertNotIn('filed_under2', self.schema)
+            # this should not crash
+            mh.cmd_drop_relation_type('filed_under2')
 
     def test_add_relation_definition_nortype(self):
         with self.mh() as (cnx, mh):
@@ -531,7 +556,7 @@ class MigrationCommandsTC(CubicWebTC):
                 mh.cmd_set_size_constraint('CWEType', 'description', None)
 
     @tag('longrun')
-    def test_add_remove_cube_and_deps(self):
+    def test_add_drop_cube_and_deps(self):
         with self.mh() as (cnx, mh):
             schema = self.repo.schema
             self.assertEqual(sorted((str(s), str(o)) for s, o in schema['see_also'].rdefs.iterkeys()),
@@ -539,7 +564,7 @@ class MigrationCommandsTC(CubicWebTC):
                                      ('Bookmark', 'Bookmark'), ('Bookmark', 'Note'),
                                      ('Note', 'Note'), ('Note', 'Bookmark')]))
             try:
-                mh.cmd_remove_cube('email', removedeps=True)
+                mh.cmd_drop_cube('email', removedeps=True)
                 # file was there because it's an email dependancy, should have been removed
                 self.assertNotIn('email', self.config.cubes())
                 self.assertNotIn(self.config.cube_dir('email'), self.config.cubes_path())
@@ -590,12 +615,12 @@ class MigrationCommandsTC(CubicWebTC):
 
 
     @tag('longrun')
-    def test_add_remove_cube_no_deps(self):
+    def test_add_drop_cube_no_deps(self):
         with self.mh() as (cnx, mh):
             cubes = set(self.config.cubes())
             schema = self.repo.schema
             try:
-                mh.cmd_remove_cube('email')
+                mh.cmd_drop_cube('email')
                 cubes.remove('email')
                 self.assertNotIn('email', self.config.cubes())
                 self.assertIn('file', self.config.cubes())
@@ -612,10 +637,10 @@ class MigrationCommandsTC(CubicWebTC):
                 # next test may fail complaining of missing tables
                 cnx.commit()
 
-    def test_remove_dep_cube(self):
+    def test_drop_dep_cube(self):
         with self.mh() as (cnx, mh):
             with self.assertRaises(ConfigurationError) as cm:
-                mh.cmd_remove_cube('file')
+                mh.cmd_drop_cube('file')
             self.assertEqual(str(cm.exception), "can't remove cube file, used as a dependency")
 
     @tag('longrun')
@@ -656,16 +681,167 @@ class MigrationCommandsTC(CubicWebTC):
             self.assertEqual(self.schema['Note'].specializes(), None)
             self.assertEqual(self.schema['Text'].specializes(), None)
 
-
     def test_add_symmetric_relation_type(self):
         with self.mh() as (cnx, mh):
-            same_as_sql = mh.sqlexec("SELECT sql FROM sqlite_master WHERE type='table' "
-                                     "and name='same_as_relation'")
-            self.assertFalse(same_as_sql)
+            self.assertFalse(self.table_sql(mh, 'same_as_relation'))
             mh.cmd_add_relation_type('same_as')
-            same_as_sql = mh.sqlexec("SELECT sql FROM sqlite_master WHERE type='table' "
-                                     "and name='same_as_relation'")
-            self.assertTrue(same_as_sql)
+            self.assertTrue(self.table_sql(mh, 'same_as_relation'))
+
+
+class MigrationCommandsComputedTC(MigrationTC):
+    """ Unit tests for computed relations and attributes
+    """
+    appid = 'datacomputed'
+
+    def setUp(self):
+        MigrationTC.setUp(self)
+        # ensure vregistry is reloaded, needed by generated hooks for computed
+        # attributes
+        self.repo.vreg.set_schema(self.repo.schema)
+
+    def test_computed_relation_add_relation_definition(self):
+        self.assertNotIn('works_for', self.schema)
+        with self.mh() as (cnx, mh):
+            with self.assertRaises(ExecutionError) as exc:
+                mh.cmd_add_relation_definition('Employee', 'works_for',
+                                                    'Company')
+        self.assertEqual(str(exc.exception),
+                         'Cannot add a relation definition for a computed '
+                         'relation (works_for)')
+
+    def test_computed_relation_drop_relation_definition(self):
+        self.assertIn('notes', self.schema)
+        with self.mh() as (cnx, mh):
+            with self.assertRaises(ExecutionError) as exc:
+                mh.cmd_drop_relation_definition('Company', 'notes', 'Note')
+        self.assertEqual(str(exc.exception),
+                         'Cannot drop a relation definition for a computed '
+                         'relation (notes)')
+
+    def test_computed_relation_add_relation_type(self):
+        self.assertNotIn('works_for', self.schema)
+        with self.mh() as (cnx, mh):
+            mh.cmd_add_relation_type('works_for')
+            self.assertIn('works_for', self.schema)
+            self.assertEqual(self.schema['works_for'].rule,
+                             'O employees S, NOT EXISTS (O associates S)')
+            self.assertEqual(self.schema['works_for'].objects(), ('Company',))
+            self.assertEqual(self.schema['works_for'].subjects(), ('Employee',))
+            self.assertFalse(self.table_sql(mh, 'works_for_relation'))
+            e = cnx.create_entity('Employee')
+            a = cnx.create_entity('Employee')
+            cnx.create_entity('Company', employees=e, associates=a)
+            cnx.commit()
+            company = cnx.execute('Company X').get_entity(0, 0)
+            self.assertEqual([e.eid],
+                             [x.eid for x in company.reverse_works_for])
+            mh.rollback()
+
+    def test_computed_relation_drop_relation_type(self):
+        self.assertIn('notes', self.schema)
+        with self.mh() as (cnx, mh):
+            mh.cmd_drop_relation_type('notes')
+        self.assertNotIn('notes', self.schema)
+
+    def test_computed_relation_sync_schema_props_perms(self):
+        self.assertIn('whatever', self.schema)
+        with self.mh() as (cnx, mh):
+            mh.cmd_sync_schema_props_perms('whatever')
+            self.assertEqual(self.schema['whatever'].rule,
+                             'S employees E, O associates E')
+            self.assertEqual(self.schema['whatever'].objects(), ('Company',))
+            self.assertEqual(self.schema['whatever'].subjects(), ('Company',))
+            self.assertFalse(self.table_sql(mh, 'whatever_relation'))
+
+    def test_computed_relation_sync_schema_props_perms_on_rdef(self):
+        self.assertIn('whatever', self.schema)
+        with self.mh() as (cnx, mh):
+            with self.assertRaises(ExecutionError) as exc:
+                mh.cmd_sync_schema_props_perms(
+                    ('Company', 'whatever', 'Person'))
+        self.assertEqual(str(exc.exception),
+                         'Cannot synchronize a relation definition for a computed '
+                         'relation (whatever)')
+
+    # computed attributes migration ############################################
+
+    def setup_add_score(self):
+        with self.admin_access.client_cnx() as cnx:
+            assert not cnx.execute('Company X')
+            c = cnx.create_entity('Company')
+            e1 = cnx.create_entity('Employee', reverse_employees=c)
+            n1 = cnx.create_entity('Note', note=2, concerns=e1)
+            e2 = cnx.create_entity('Employee', reverse_employees=c)
+            n2 = cnx.create_entity('Note', note=4, concerns=e2)
+            cnx.commit()
+
+    def assert_score_initialized(self, mh):
+        self.assertEqual(self.schema['score'].rdefs['Company', 'Float'].formula,
+                         'Any AVG(NN) WHERE X employees E, N concerns E, N note NN')
+        fields = self.table_schema(mh, '%sCompany' % SQL_PREFIX)
+        self.assertEqual(fields['%sscore' % SQL_PREFIX], 'float')
+        self.assertEqual([[3.0]],
+                         mh.rqlexec('Any CS WHERE C score CS, C is Company').rows)
+
+    def test_computed_attribute_add_relation_type(self):
+        self.assertNotIn('score', self.schema)
+        self.setup_add_score()
+        with self.mh() as (cnx, mh):
+            mh.cmd_add_relation_type('score')
+            self.assertIn('score', self.schema)
+            self.assertEqual(self.schema['score'].objects(), ('Float',))
+            self.assertEqual(self.schema['score'].subjects(), ('Company',))
+            self.assert_score_initialized(mh)
+
+    def test_computed_attribute_add_attribute(self):
+        self.assertNotIn('score', self.schema)
+        self.setup_add_score()
+        with self.mh() as (cnx, mh):
+            mh.cmd_add_attribute('Company', 'score')
+            self.assertIn('score', self.schema)
+            self.assert_score_initialized(mh)
+
+    def assert_computed_attribute_dropped(self):
+        self.assertNotIn('note20', self.schema)
+        # DROP COLUMN not supported by sqlite
+        #with self.mh() as (cnx, mh):
+        #    fields = self.table_schema(mh, '%sNote' % SQL_PREFIX)
+        #self.assertNotIn('%snote20' % SQL_PREFIX, fields)
+
+    def test_computed_attribute_drop_type(self):
+        self.assertIn('note20', self.schema)
+        with self.mh() as (cnx, mh):
+            mh.cmd_drop_relation_type('note20')
+        self.assert_computed_attribute_dropped()
+
+    def test_computed_attribute_drop_relation_definition(self):
+        self.assertIn('note20', self.schema)
+        with self.mh() as (cnx, mh):
+            mh.cmd_drop_relation_definition('Note', 'note20', 'Int')
+        self.assert_computed_attribute_dropped()
+
+    def test_computed_attribute_drop_attribute(self):
+        self.assertIn('note20', self.schema)
+        with self.mh() as (cnx, mh):
+            mh.cmd_drop_attribute('Note', 'note20')
+        self.assert_computed_attribute_dropped()
+
+    def test_computed_attribute_sync_schema_props_perms_rtype(self):
+        self.assertIn('note100', self.schema)
+        with self.mh() as (cnx, mh):
+            mh.cmd_sync_schema_props_perms('note100')
+        self.assertEqual(self.schema['note100'].rdefs['Note', 'Int'].formula,
+                         'Any N*100 WHERE X note N')
+
+    def test_computed_attribute_sync_schema_props_perms_rdef(self):
+        self.setup_add_score()
+        with self.mh() as (cnx, mh):
+            mh.cmd_sync_schema_props_perms(('Note', 'note100', 'Int'))
+            self.assertEqual([[200], [400]],
+                             cnx.execute('Any N ORDERBY N WHERE X note100 N').rows)
+            self.assertEqual([[300]],
+                             cnx.execute('Any CS WHERE C score100 CS, C is Company').rows)
+
 
 if __name__ == '__main__':
     unittest_main()
