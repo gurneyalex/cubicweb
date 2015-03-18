@@ -14,8 +14,9 @@ Build-Depends:
  python-logilab-common,
  python-unittest2 | python (>= 2.7),
  python-logilab-mtconverter,
+ python-markdown,
  python-rql,
- python-yams (>= 0.39.1),
+ python-yams (>= 0.40.0),
  python-lxml,
 Standards-Version: 3.9.1
 Homepage: http://www.cubicweb.org
@@ -35,11 +36,10 @@ Recommends:
 Description: the complete CubicWeb framework
  CubicWeb is a semantic web application framework.
  .
- This package will install all the components you need to run cubicweb on
- a single machine. You can also deploy cubicweb by running the different
- process on different computers, in which case you need to install the
- corresponding packages on the different hosts.
-
+ This metapackage will install all the components you need to run cubicweb on a
+ single machine. You can also deploy cubicweb by running the different process
+ on different computers, in which case you need to install the corresponding
+ packages on the different hosts.
 
 Package: cubicweb-server
 Architecture: all
@@ -52,7 +52,7 @@ Depends:
  ${python:Depends},
  cubicweb-common (= ${source:Version}),
  cubicweb-ctl (= ${source:Version}),
- python-logilab-database (>= 1.12.1),
+ python-logilab-database (>= 1.13.0),
  cubicweb-postgresql-support
  | cubicweb-mysql-support
  | python-pysqlite2,
@@ -75,6 +75,7 @@ Architecture: all
 # postgresql-client packages for backup/restore of non local database
 Depends:
  ${misc:Depends},
+ ${python:Depends},
  python-psycopg2,
  postgresql-client
 Description: postgres support for the CubicWeb framework
@@ -88,6 +89,7 @@ Architecture: all
 # mysql-client packages for backup/restore of non local database
 Depends:
  ${misc:Depends},
+ ${python:Depends},
  python-mysqldb,
  mysql-client
 Description: mysql support for the CubicWeb framework
@@ -134,6 +136,7 @@ Recommends:
  python-werkzeug,
 Breaks:
  cubicweb-inlinedit (<< 1.1.1),
+ cubicweb-bootstrap (<< 0.6.6),
 Description: web interface library for the CubicWeb framework
  CubicWeb is a semantic web application framework.
  .
@@ -153,8 +156,9 @@ Depends:
  graphviz,
  gettext,
  python-logilab-mtconverter (>= 0.8.0),
- python-logilab-common (>= 0.62.0),
- python-yams (>= 0.39.1),
+ python-logilab-common (>= 0.63.1),
+ python-markdown,
+ python-yams (>= 0.40.0),
  python-rql (>= 0.31.2),
  python-lxml
 Recommends:
@@ -214,6 +218,8 @@ Description: tests suite and development tools for the CubicWeb framework
 
 Package: cubicweb-documentation
 Architecture: all
+Depends:
+ ${misc:Depends},
 Recommends:
  doc-base
 Description: documentation for the CubicWeb framework

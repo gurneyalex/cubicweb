@@ -247,9 +247,6 @@ msgstr "bound constraint"
 msgid "BoundaryConstraint"
 msgstr ""
 
-msgid "Browse by category"
-msgstr ""
-
 msgid "Browse by entity type"
 msgstr ""
 
@@ -274,6 +271,12 @@ msgstr "CubicWeb Cache"
 
 msgid "CWCache_plural"
 msgstr "CubicWeb Caches"
+
+msgid "CWComputedRType"
+msgstr "Virtual relation"
+
+msgid "CWComputedRType_plural"
+msgstr "Virtual relations"
 
 msgid "CWConstraint"
 msgstr "Constraint"
@@ -461,6 +464,12 @@ msgstr "Email addresses"
 msgid "Entities"
 msgstr ""
 
+#, python-format
+msgid ""
+"Entity %(eid)s has changed since you started to edit it. Reload the page and "
+"reapply your changes."
+msgstr ""
+
 msgid "Entity and relation supported by this source"
 msgstr ""
 
@@ -541,6 +550,9 @@ msgstr "New attribute"
 
 msgid "New CWCache"
 msgstr "New cache"
+
+msgid "New CWComputedRType"
+msgstr "New virtual relation"
 
 msgid "New CWConstraint"
 msgstr "New constraint"
@@ -744,83 +756,86 @@ msgstr ""
 msgid "There is no default workflow"
 msgstr ""
 
-msgid "This BaseTransition"
-msgstr "This abstract transition"
+msgid "This BaseTransition:"
+msgstr "This abstract transition:"
 
-msgid "This Bookmark"
-msgstr "This bookmark"
+msgid "This Bookmark:"
+msgstr "This bookmark:"
 
-msgid "This CWAttribute"
-msgstr "This attribute"
+msgid "This CWAttribute:"
+msgstr "This attribute:"
 
-msgid "This CWCache"
-msgstr "This cache"
+msgid "This CWCache:"
+msgstr "This cache:"
 
-msgid "This CWConstraint"
-msgstr "This constraint"
+msgid "This CWComputedRType:"
+msgstr "This virtual relation:"
 
-msgid "This CWConstraintType"
-msgstr "This constraint type"
+msgid "This CWConstraint:"
+msgstr "This constraint:"
 
-msgid "This CWDataImport"
-msgstr "This data import"
+msgid "This CWConstraintType:"
+msgstr "This constraint type:"
 
-msgid "This CWEType"
-msgstr "This entity type"
+msgid "This CWDataImport:"
+msgstr "This data import:"
 
-msgid "This CWGroup"
-msgstr "This group"
+msgid "This CWEType:"
+msgstr "This entity type:"
 
-msgid "This CWProperty"
-msgstr "This property"
+msgid "This CWGroup:"
+msgstr "This group:"
 
-msgid "This CWRType"
-msgstr "This relation type"
+msgid "This CWProperty:"
+msgstr "This property:"
 
-msgid "This CWRelation"
-msgstr "This relation"
+msgid "This CWRType:"
+msgstr "This relation type:"
 
-msgid "This CWSource"
-msgstr "This data source"
+msgid "This CWRelation:"
+msgstr "This relation:"
 
-msgid "This CWSourceHostConfig"
-msgstr "This source host configuration"
+msgid "This CWSource:"
+msgstr "This data source:"
 
-msgid "This CWSourceSchemaConfig"
-msgstr "This source schema configuration"
+msgid "This CWSourceHostConfig:"
+msgstr "This source host configuration:"
 
-msgid "This CWUniqueTogetherConstraint"
-msgstr "This unicity constraint"
+msgid "This CWSourceSchemaConfig:"
+msgstr "This source schema configuration:"
 
-msgid "This CWUser"
-msgstr "This user"
+msgid "This CWUniqueTogetherConstraint:"
+msgstr "This unicity constraint:"
 
-msgid "This EmailAddress"
-msgstr "This email address"
+msgid "This CWUser:"
+msgstr "This user:"
 
-msgid "This ExternalUri"
-msgstr "This external URI"
+msgid "This EmailAddress:"
+msgstr "This email address:"
 
-msgid "This RQLExpression"
-msgstr "This RQL expression"
+msgid "This ExternalUri:"
+msgstr "This external URI:"
 
-msgid "This State"
-msgstr "This state"
+msgid "This RQLExpression:"
+msgstr "This RQL expression:"
 
-msgid "This SubWorkflowExitPoint"
-msgstr "This subworkflow exit-point"
+msgid "This State:"
+msgstr "This state:"
 
-msgid "This TrInfo"
-msgstr "This transition information"
+msgid "This SubWorkflowExitPoint:"
+msgstr "This subworkflow exit-point:"
 
-msgid "This Transition"
-msgstr "This transition"
+msgid "This TrInfo:"
+msgstr "This transition information:"
 
-msgid "This Workflow"
-msgstr "This workflow"
+msgid "This Transition:"
+msgstr "This transition:"
 
-msgid "This WorkflowTransition"
-msgstr "This workflow-transition"
+msgid "This Workflow:"
+msgstr "This workflow:"
+
+msgid "This WorkflowTransition:"
+msgstr "This workflow-transition:"
 
 msgid ""
 "This action is forbidden. If you think it should be allowed, please contact "
@@ -1278,9 +1293,6 @@ msgid "and linked"
 msgstr ""
 
 msgid "and/or between different values"
-msgstr ""
-
-msgid "anonymous"
 msgstr ""
 
 msgid "anyrsetview"
@@ -2155,6 +2167,9 @@ msgstr ""
 msgid "define a schema constraint type"
 msgstr ""
 
+msgid "define a virtual relation type, used to build the instance schema"
+msgstr ""
+
 msgid "define an entity type, used to build the instance schema"
 msgstr ""
 
@@ -2224,6 +2239,10 @@ msgctxt "CWAttribute"
 msgid "description"
 msgstr "description"
 
+msgctxt "CWComputedRType"
+msgid "description"
+msgstr "description"
+
 msgctxt "CWEType"
 msgid "description"
 msgstr "description"
@@ -2260,6 +2279,10 @@ msgid "description_format"
 msgstr "format"
 
 msgctxt "CWAttribute"
+msgid "description_format"
+msgstr "format"
+
+msgctxt "CWComputedRType"
 msgid "description_format"
 msgstr "format"
 
@@ -2578,6 +2601,13 @@ msgstr "use properties"
 msgctxt "CWUser"
 msgid "for_user_object"
 msgstr "property of"
+
+msgid "formula"
+msgstr "formula"
+
+msgctxt "CWAttribute"
+msgid "formula"
+msgstr "formula"
 
 msgid "friday"
 msgstr ""
@@ -3158,6 +3188,10 @@ msgctxt "CWCache"
 msgid "name"
 msgstr "name"
 
+msgctxt "CWComputedRType"
+msgid "name"
+msgstr "name"
+
 msgctxt "CWConstraintType"
 msgid "name"
 msgstr "name"
@@ -3648,6 +3682,13 @@ msgstr ""
 msgid "rss export"
 msgstr "RSS export"
 
+msgid "rule"
+msgstr "rule"
+
+msgctxt "CWComputedRType"
+msgid "rule"
+msgstr "rule"
+
 msgid "same_as"
 msgstr "same as"
 
@@ -3968,6 +4009,9 @@ msgstr "cubicweb page template"
 
 msgid "text/html"
 msgstr "html"
+
+msgid "text/markdown"
+msgstr "markdown formatted text"
 
 msgid "text/plain"
 msgstr "plain text"
@@ -4445,12 +4489,6 @@ msgid ""
 msgstr ""
 
 msgid "workflow"
-msgstr ""
-
-msgid "workflow already has a state of that name"
-msgstr ""
-
-msgid "workflow already has a transition of that name"
 msgstr ""
 
 #, python-format

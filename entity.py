@@ -22,7 +22,6 @@ __docformat__ = "restructuredtext en"
 from warnings import warn
 from functools import partial
 
-from logilab.common import interface
 from logilab.common.decorators import cached
 from logilab.common.deprecation import deprecated
 from logilab.common.registry import yes
@@ -520,7 +519,11 @@ class Entity(AppObject):
             rql = 'INSERT %s X: %s' % (cls.__regid__, rql)
         else:
             rql = 'INSERT %s X' % (cls.__regid__)
-        created = execute(rql, qargs).get_entity(0, 0)
+        try:
+            created = execute(rql, qargs).get_entity(0, 0)
+        except IndexError:
+            raise Exception('could not create a %r with %r (%r)' %
+                            (cls.__regid__, rql, qargs))
         created._cw_update_attr_cache(attrcache)
         cls._cw_handle_pending_relations(created.eid, pendingrels, execute)
         return created
@@ -1366,100 +1369,6 @@ class Entity(AppObject):
     @deprecated('[3.13] use entity.cw_clear_all_caches()')
     def clear_all_caches(self):
         return self.cw_clear_all_caches()
-
-    @property
-    @deprecated('[3.10] use entity.cw_edited')
-    def edited_attributes(self):
-        return self.cw_edited
-
-    @property
-    @deprecated('[3.10] use entity.cw_edited.skip_security')
-    def skip_security_attributes(self):
-        return self.cw_edited.skip_security
-
-    @property
-    @deprecated('[3.10] use entity.cw_edited.skip_security')
-    def _cw_skip_security_attributes(self):
-        return self.cw_edited.skip_security
-
-    @property
-    @deprecated('[3.10] use entity.cw_edited.querier_pending_relations')
-    def querier_pending_relations(self):
-        return self.cw_edited.querier_pending_relations
-
-    @deprecated('[3.10] use key in entity.cw_attr_cache')
-    def __contains__(self, key):
-        return key in self.cw_attr_cache
-
-    @deprecated('[3.10] iter on entity.cw_attr_cache')
-    def __iter__(self):
-        return iter(self.cw_attr_cache)
-
-    @deprecated('[3.10] use entity.cw_attr_cache[attr]')
-    def __getitem__(self, key):
-        return self.cw_attr_cache[key]
-
-    @deprecated('[3.10] use entity.cw_attr_cache.get(attr[, default])')
-    def get(self, key, default=None):
-        return self.cw_attr_cache.get(key, default)
-
-    @deprecated('[3.10] use entity.cw_attr_cache.clear()')
-    def clear(self):
-        self.cw_attr_cache.clear()
-        # XXX clear cw_edited ?
-
-    @deprecated('[3.10] use entity.cw_edited[attr] = value or entity.cw_attr_cache[attr] = value')
-    def __setitem__(self, attr, value):
-        """override __setitem__ to update self.cw_edited.
-
-        Typically, a before_[update|add]_hook could do::
-
-            entity['generated_attr'] = generated_value
-
-        and this way, cw_edited will be updated accordingly. Also, add
-        the attribute to skip_security since we don't want to check security
-        for such attributes set by hooks.
-        """
-        try:
-            self.cw_edited[attr] = value
-        except AttributeError:
-            self.cw_attr_cache[attr] = value
-
-    @deprecated('[3.10] use del entity.cw_edited[attr]')
-    def __delitem__(self, attr):
-        """override __delitem__ to update self.cw_edited on cleanup of
-        undesired changes introduced in the entity's dict. For example, see the
-        code snippet below from the `forge` cube:
-
-        .. sourcecode:: python
-
-            edited = self.entity.cw_edited
-            has_load_left = 'load_left' in edited
-            if 'load' in edited and self.entity.load_left is None:
-                self.entity.load_left = self.entity['load']
-            elif not has_load_left and edited:
-                # cleanup, this may cause undesired changes
-                del self.entity['load_left']
-        """
-        del self.cw_edited[attr]
-
-    @deprecated('[3.10] use entity.cw_edited.setdefault(attr, default)')
-    def setdefault(self, attr, default):
-        """override setdefault to update self.cw_edited"""
-        return self.cw_edited.setdefault(attr, default)
-
-    @deprecated('[3.10] use entity.cw_edited.pop(attr[, default])')
-    def pop(self, attr, *args):
-        """override pop to update self.cw_edited on cleanup of
-        undesired changes introduced in the entity's dict. See `__delitem__`
-        """
-        return self.cw_edited.pop(attr, *args)
-
-    @deprecated('[3.10] use entity.cw_edited.update(values)')
-    def update(self, values):
-        """override update to update self.cw_edited. See `__setitem__`
-        """
-        self.cw_edited.update(values)
 
 
 # attribute and relation descriptors ##########################################

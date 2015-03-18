@@ -1,4 +1,4 @@
- .. -*- coding: utf-8 -*-
+.. -*- coding: utf-8 -*-
 
 .. _datamodel_definition:
 
@@ -91,6 +91,19 @@ type.
 There is also a `RichString` kindof type:
 
  .. autoclass:: yams.buildobjs.RichString
+
+The ``__unique_together__`` class attribute is a list of tuples of names of
+attributes or inlined relations.  For each tuple, CubicWeb ensures the unicity
+of the combination.  For example:
+
+.. sourcecode:: python
+
+  class State(EntityType):
+      __unique_together__ = [('name', 'state_of')]
+
+      name = String(required=True)
+      state_of = SubjectRelation('Workflow', cardinality='1*',
+                                 composite='object', inlined=True)
 
 
 You can find more base entity types in
@@ -273,20 +286,8 @@ third argument is not available.
   attribute is unique in a specific context. The Query must **never** return more
   than a single result to be satisfied. In this query the variables `S` is
   reserved for the relation subject entity. The other variables should be
-  specified with the second constructor argument (mainvars). This constraints
-  should be used when UniqueConstraint doesn't fit. Here is a simple example.
-
-.. sourcecode:: python
-
-    # Check that in the same Workflow each state's name is unique.  Using
-    # UniqueConstraint (or unique=True) here would prevent states in different
-    # workflows to have the same name.
-
-    # With: State S, Workflow W, String N ; S state_of W, S name N
-
-    RQLUniqueConstraint('S name N, S state_of WF, Y state_of WF, Y name N',
-                        mainvars='Y',
-                        msg=_('workflow already has a state of that name'))
+  specified with the second constructor argument (mainvars). This constraint type
+  should be used when __unique_together__ doesn't fit.
 
 .. XXX note about how to add new constraint
 
@@ -522,6 +523,202 @@ See :mod:`cubicweb.hooks.security` for more details.
 
 
 .. _yams_example:
+
+
+Derived attributes and relations
+--------------------------------
+
+.. note:: **TODO** Check organisation of the whole chapter of the documentation
+
+Cubicweb offers the possibility to *query* data using so called
+*computed* relations and attributes. Those are *seen* by RQL requests
+as normal attributes and relations but are actually derived from other
+attributes and relations. In a first section we'll informally review
+two typical use cases. Then we see how to use computed attributes and
+relations in your schema. Last we will consider various significant
+aspects of their implementation and the impact on their usage.
+
+Motivating use cases
+~~~~~~~~~~~~~~~~~~~~
+
+Computed (or reified) relations
+```````````````````````````````
+
+It often arises that one must represent a ternary relation, or a
+family of relations. For example, in the context of an exhibition
+catalog you might want to link all *contributors* to the *work* they
+contributed to, but this contribution can be as *illustrator*,
+*author*, *performer*, ...
+
+The classical way to describe this kind of information within an
+entity-relationship schema is to *reify* the relation, that is turn
+the relation into a entity. In our example the schema will have a
+*Contribution* entity type used to represent the family of the
+contribution relations.
+
+
+.. sourcecode:: python
+
+    class ArtWork(EntityType):
+        name = String()
+        ...
+
+    class Person(EntityType):
+        name = String()
+        ...
+
+    class Contribution(EntityType):
+        contributor = SubjectRelation('Person', cardinality='1*', inlined=True)
+        manifestation = SubjectRelation('ArtWork')
+        role = SubjectRelation('Role')
+
+    class Role(EntityType):
+        name = String()
+
+But then, in order to query the illustrator(s) ``I`` of a work ``W``,
+one has to write::
+
+    Any I, W WHERE C is Contribution, C contributor I, C manifestation W,
+                   C role R, R name 'illustrator'
+
+whereas we would like to be able to simply write::
+
+    Any I, W WHERE I illustrator_of W
+
+This is precisely what the computed relations allow.
+
+
+Computed (or synthesized) attribute
+```````````````````````````````````
+
+Assuming a trivial schema for describing employees in companies, one
+can be interested in the total of salaries payed by a company for
+all its employees. One has to write::
+
+    Any C, SUM(SA) GROUPBY S WHERE E works_for C, E salary SA
+
+whereas it would be most convenient to simply write::
+
+    Any C, TS WHERE C total_salary TS
+
+And this is again what computed attributes provide.
+
+
+Using computed attributes and relations
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Computed (or reified) relations
+```````````````````````````````
+
+In the above case we would define the *computed relation*
+``illustrator_of`` in the schema by:
+
+.. sourcecode:: python
+
+    class illustrator_of(ComputedRelation):
+        rule  = ('C is Contribution, C contributor S, C manifestation O,'
+                 'C role R, R name "illustrator"')
+
+You will note that:
+
+* the ``S`` and ``O`` RQL variables implicitly identify the subject and
+  object of the defined computed relation, akin to what happens in
+  RRQLExpression
+* the possible subject and object entity types are inferred from the rule;
+* computed relation definitions always have empty *add* and *delete* permissions
+* *read* permissions can be defined, permissions from the relations used in the
+  rewrite rule **are not considered** ;
+* nothing else may be defined on the `ComputedRelation` subclass beside
+  description, permissions and rule (e.g. no cardinality, composite, etc.,).
+  `BadSchemaDefinition` is raised on attempt to specify other attributes;
+* computed relations can not be used in 'SET' and 'DELETE' rql queries
+  (`BadQuery` exception raised).
+
+
+NB: The fact that the *add* and *delete* permissions are *empty* even
+for managers is expected to make the automatic UI not attempt to edit
+them.
+
+Computed (or synthesized) attributes
+````````````````````````````````````
+
+In the above case we would define the *computed attribute*
+``total_salary`` on the ``Company`` entity type in the schema by:
+
+.. sourcecode:: python
+
+    class Company(EntityType):
+        name = String()
+        total_salary = Int(formula='Any SUM(SA) GROUPBY E WHERE P works_for X, E salary SA')
+
+* the ``X`` RQL variable implicitly identifies the entity holding the
+  computed attribute, akin to what happens in ERQLExpression;
+* the type inferred from the formula is checked against the declared type, and
+  `BadSchemaDefinition` is raised if they don't match;
+* the computed attributes always have empty *update* permissions
+* `BadSchemaDefinition` is raised on attempt to set 'update' permissions;
+* 'read' permissions can be defined, permissions regarding the formula
+  **are not considered**;
+* other attribute's property (inlined, ...) can be defined as for normal attributes;
+* Similarly to computed relation, computed attribute can't be used in 'SET' and
+  'DELETE' rql queries (`BadQuery` exception raised).
+
+
+API and implementation
+~~~~~~~~~~~~~~~~~~~~~~
+
+Representation in the data backend
+``````````````````````````````````
+
+Computed relations have no direct representation at the SQL table
+level.  Instead, each time a query is issued the query is rewritten to
+replace the computed relation by its equivalent definition and the
+resulting rewritten query is performed in the usual way.
+
+On the contrary, computed attributes are represented as a column in the
+table for their host entity type, just like normal attributes. Their
+value is kept up-to-date with respect to their defintion by a system
+of hooks (also called triggers in most RDBMS) which recomputes them
+when the relations and attributes they depend on are modified.
+
+Yams API
+````````
+
+When accessing the schema through the *yams API* (not when defining a
+schema in a ``schema.py`` file) the computed attributes and relations
+are represented as follows:
+
+relations
+    The ``yams.RelationSchema`` class has a new ``rule`` attribute
+    holding the rule as a string. If this attribute is set all others
+    must not be set.
+attributes
+    A new property ``formula`` is added on class
+    ``yams.RelationDefinitionSchema`` alomng with a new keyword
+    argument ``formula`` on the initializer.
+
+Migration
+`````````
+
+The migrations are to be handled as summarized in the array below.
+
++------------+---------------------------------------------------+---------------------------------------+
+|            | Computed rtype                                    | Computed attribute                    |
++============+===================================================+=======================================+
+| add        | * add_relation_type                               | * add_attribute                       |
+|            | * add_relation_definition should trigger an error | * add_relation_definition             |
++------------+---------------------------------------------------+---------------------------------------+
+| modify     | * sync_schema_prop_perms:                         | * sync_schema_prop_perms:             |
+|            |   checks the rule is                              |                                       |
+| (rule or   |   synchronized with the database                  |   - empty the cache,                  |
+| formula)   |                                                   |   - check formula,                    |
+|            |                                                   |   - make sure all the values get      |
+|            |                                                   |     updated                           |
++------------+---------------------------------------------------+---------------------------------------+
+| del        | * drop_relation_type                              | * drop_attribute                      |
+|            | * drop_relation_definition should trigger an error| * drop_relation_definition            |
++------------+---------------------------------------------------+---------------------------------------+
+
 
 Defining your schema using yams
 -------------------------------

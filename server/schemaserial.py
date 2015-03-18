@@ -87,6 +87,27 @@ def deserialize_schema(schema, cnx):
     """
     repo = cnx.repo
     dbhelper = repo.system_source.dbhelper
+
+    # Computed Rtype
+    with cnx.ensure_cnx_set:
+        tables = set(t.lower() for t in dbhelper.list_tables(cnx.cnxset.cu))
+        has_computed_relations = 'cw_cwcomputedrtype' in tables
+    if has_computed_relations:
+        rset = cnx.execute(
+            'Any X, N, R, D WHERE X is CWComputedRType, X name N, '
+            'X rule R, X description D')
+        for eid, rule_name, rule, description in rset.rows:
+            rtype = ybo.ComputedRelation(name=rule_name, rule=rule, eid=eid,
+                                         description=description)
+            schema.add_relation_type(rtype)
+    # computed attribute
+    try:
+        cnx.system_sql("SELECT cw_formula FROM cw_CWAttribute")
+        has_computed_attributes = True
+    except Exception:
+        cnx.rollback()
+        has_computed_attributes = False
+
     # XXX bw compat (3.6 migration)
     with cnx.ensure_cnx_set:
         sqlcu = cnx.system_sql("SELECT * FROM cw_CWRType WHERE cw_name='symetric'")
@@ -100,6 +121,7 @@ def deserialize_schema(schema, cnx):
     copiedeids = set()
     permsidx = deserialize_ertype_permissions(cnx)
     schema.reading_from_database = True
+    # load every entity types
     for eid, etype, desc in cnx.execute(
         'Any X, N, D WHERE X is CWEType, X name N, X description D',
         build_descr=False):
@@ -148,6 +170,7 @@ def deserialize_schema(schema, cnx):
         eschema = schema.add_entity_type(
             ybo.EntityType(name=etype, description=desc, eid=eid))
         set_perms(eschema, permsidx)
+    # load inheritance relations
     for etype, stype in cnx.execute(
         'Any XN, ETN WHERE X is CWEType, X name XN, X specializes ET, ET name ETN',
         build_descr=False):
@@ -155,6 +178,7 @@ def deserialize_schema(schema, cnx):
         stype = ETYPE_NAME_MAP.get(stype, stype)
         schema.eschema(etype)._specialized_type = stype
         schema.eschema(stype)._specialized_by.append(etype)
+    # load every relation types
     for eid, rtype, desc, sym, il, ftc in cnx.execute(
         'Any X,N,D,S,I,FTC WHERE X is CWRType, X name N, X description D, '
         'X symmetric S, X inlined I, X fulltext_container FTC', build_descr=False):
@@ -163,6 +187,7 @@ def deserialize_schema(schema, cnx):
             ybo.RelationType(name=rtype, description=desc,
                              symmetric=bool(sym), inlined=bool(il),
                              fulltext_container=ftc, eid=eid))
+    # remains to load every relation definitions (ie relations and attributes)
     cstrsidx = deserialize_rdef_constraints(cnx)
     pendingrdefs = []
     # closure to factorize common code of attribute/relation rdef addition
@@ -193,29 +218,37 @@ def deserialize_schema(schema, cnx):
     # Get the type parameters for additional base types.
     try:
         extra_props = dict(cnx.execute('Any X, XTP WHERE X is CWAttribute, '
-                                           'X extra_props XTP'))
+                                       'X extra_props XTP'))
     except Exception:
         cnx.critical('Previous CRITICAL notification about extra_props is not '
-                         'a problem if you are migrating to cubicweb 3.17')
+                     'a problem if you are migrating to cubicweb 3.17')
         extra_props = {} # not yet in the schema (introduced by 3.17 migration)
-    for values in cnx.execute(
-        'Any X,SE,RT,OE,CARD,ORD,DESC,IDX,FTIDX,I18N,DFLT WHERE X is CWAttribute,'
-        'X relation_type RT, X cardinality CARD, X ordernum ORD, X indexed IDX,'
-        'X description DESC, X internationalizable I18N, X defaultval DFLT,'
-        'X fulltextindexed FTIDX, X from_entity SE, X to_entity OE',
-        build_descr=False):
-        rdefeid, seid, reid, oeid, card, ord, desc, idx, ftidx, i18n, default = values
-        typeparams = extra_props.get(rdefeid)
-        typeparams = json.load(typeparams) if typeparams else {}
+
+    # load attributes
+    rql = ('Any X,SE,RT,OE,CARD,ORD,DESC,IDX,FTIDX,I18N,DFLT%(fm)s '
+           'WHERE X is CWAttribute, X relation_type RT, X cardinality CARD,'
+           '      X ordernum ORD, X indexed IDX, X description DESC, '
+           '      X internationalizable I18N, X defaultval DFLT,%(fmsnip)s'
+           '      X fulltextindexed FTIDX, X from_entity SE, X to_entity OE')
+    if has_computed_attributes:
+        rql = rql % {'fm': ',FM', 'fmsnip': 'X formula FM,'}
+    else:
+        rql = rql % {'fm': '', 'fmsnip': ''}
+    for values in cnx.execute(rql, build_descr=False):
+        attrs = dict(zip(
+            ('rdefeid', 'seid', 'reid', 'oeid', 'cardinality',
+             'order', 'description', 'indexed', 'fulltextindexed',
+             'internationalizable', 'default', 'formula'), values))
+        typeparams = extra_props.get(attrs['rdefeid'])
+        attrs.update(json.load(typeparams) if typeparams else {})
+        default = attrs['default']
         if default is not None:
             if isinstance(default, Binary):
                 # while migrating from 3.17 to 3.18, we still have to
                 # handle String defaults
-                default = default.unzpickle()
-        _add_rdef(rdefeid, seid, reid, oeid,
-                  cardinality=card, description=desc, order=ord,
-                  indexed=idx, fulltextindexed=ftidx, internationalizable=i18n,
-                  default=default, **typeparams)
+                attrs['default'] = default.unzpickle()
+        _add_rdef(**attrs)
+    # load relations
     for values in cnx.execute(
         'Any X,SE,RT,OE,CARD,ORD,DESC,C WHERE X is CWRelation, X relation_type RT,'
         'X cardinality CARD, X ordernum ORD, X description DESC, '
@@ -252,6 +285,7 @@ def deserialize_schema(schema, cnx):
         eschema._unique_together.append(tuple(sorted(unique_together)))
     schema.infer_specialization_rules()
     cnx.commit()
+    schema.finalize()
     schema.reading_from_database = False
 
 
@@ -309,19 +343,14 @@ def serialize_schema(cnx, schema):
     """synchronize schema and permissions in the database according to
     current schema
     """
-    quiet = os.environ.get('APYCOT_ROOT')
-    if not quiet:
-        _title = '-> storing the schema in the database '
-        print _title,
+    _title = '-> storing the schema in the database '
+    print _title,
     execute = cnx.execute
     eschemas = schema.entities()
-    if not quiet:
-        pb_size = (len(eschemas + schema.relations())
-                   + len(CONSTRAINTS)
-                   + len([x for x in eschemas if x.specializes()]))
-        pb = ProgressBar(pb_size, title=_title)
-    else:
-        pb = None
+    pb_size = (len(eschemas + schema.relations())
+               + len(CONSTRAINTS)
+               + len([x for x in eschemas if x.specializes()]))
+    pb = ProgressBar(pb_size, title=_title)
     groupmap = group_mapping(cnx, interactive=False)
     # serialize all entity types, assuring CWEType is serialized first for proper
     # is / is_instance_of insertion
@@ -329,22 +358,23 @@ def serialize_schema(cnx, schema):
     eschemas.insert(0, schema.eschema('CWEType'))
     for eschema in eschemas:
         execschemarql(execute, eschema, eschema2rql(eschema, groupmap))
-        if pb is not None:
-            pb.update()
+        pb.update()
     # serialize constraint types
     cstrtypemap = {}
     rql = 'INSERT CWConstraintType X: X name %(ct)s'
     for cstrtype in CONSTRAINTS:
         cstrtypemap[cstrtype] = execute(rql, {'ct': unicode(cstrtype)},
                                         build_descr=False)[0][0]
-        if pb is not None:
-            pb.update()
+        pb.update()
     # serialize relations
     for rschema in schema.relations():
         # skip virtual relations such as eid, has_text and identity
         if rschema in VIRTUAL_RTYPES:
-            if pb is not None:
-                pb.update()
+            pb.update()
+            continue
+        if rschema.rule:
+            execschemarql(execute, rschema, crschema2rql(rschema))
+            pb.update()
             continue
         execschemarql(execute, rschema, rschema2rql(rschema, addrdef=False))
         if rschema.symmetric:
@@ -355,8 +385,7 @@ def serialize_schema(cnx, schema):
         for rdef in rdefs:
             execschemarql(execute, rdef,
                           rdef2rql(rdef, cstrtypemap, groupmap))
-        if pb is not None:
-            pb.update()
+        pb.update()
     # serialize unique_together constraints
     for eschema in eschemas:
         if eschema._unique_together:
@@ -364,10 +393,8 @@ def serialize_schema(cnx, schema):
     # serialize yams inheritance relationships
     for rql, kwargs in specialize2rql(schema):
         execute(rql, kwargs, build_descr=False)
-        if pb is not None:
-            pb.update()
-    if not quiet:
-        print
+        pb.update()
+    print
 
 
 # high level serialization functions
@@ -441,7 +468,7 @@ def _uniquetogether2rql(eschema, unique_together):
     for i, name in enumerate(unique_together):
         rschema = eschema.schema.rschema(name)
         rtype = 'T%d' % i
-        substs[rtype] = rschema.type
+        substs[rtype] = unicode(rschema.type)
         relations.append('C relations %s' % rtype)
         restrictions.append('%(rtype)s name %%(%(rtype)s)s' % {'rtype': rtype})
     relations = ', '.join(relations)
@@ -469,7 +496,7 @@ def _ervalues(erschema):
 # rtype serialization
 
 def rschema2rql(rschema, cstrtypemap=None, addrdef=True, groupmap=None):
-    """return a list of rql insert statements to enter a relation schema
+    """generate rql insert statements to enter a relation schema
     in the database as an CWRType entity
     """
     if rschema.type == 'has_text':
@@ -496,10 +523,22 @@ def rschema_relations_values(rschema):
     relations = ['X %s %%(%s)s' % (attr, attr) for attr in sorted(values)]
     return relations, values
 
+def crschema2rql(crschema):
+    relations, values = crschema_relations_values(crschema)
+    yield 'INSERT CWComputedRType X: %s' % ','.join(relations), values
+
+def crschema_relations_values(crschema):
+    values = _ervalues(crschema)
+    values['rule'] = unicode(crschema.rule)
+    # XXX why oh why?
+    del values['final']
+    relations = ['X %s %%(%s)s' % (attr, attr) for attr in sorted(values)]
+    return relations, values
+
 # rdef serialization
 
 def rdef2rql(rdef, cstrtypemap, groupmap=None):
-    # don't serialize infered relations
+    # don't serialize inferred relations
     if rdef.infered:
         return
     relations, values = _rdef_values(rdef)
@@ -518,12 +557,14 @@ def rdef2rql(rdef, cstrtypemap, groupmap=None):
         for rql, args in _erperms2rql(rdef, groupmap):
             yield rql, args
 
+_IGNORED_PROPS = ['eid', 'constraints', 'uid', 'infered', 'permissions']
+
 def _rdef_values(rdef):
     amap = {'order': 'ordernum', 'default': 'defaultval'}
     values = {}
     extra = {}
     for prop in rdef.rproperty_defs(rdef.object):
-        if prop in ('eid', 'constraints', 'uid', 'infered', 'permissions'):
+        if prop in _IGNORED_PROPS:
             continue
         value = getattr(rdef, prop)
         if prop not in KNOWN_RPROPERTIES:
@@ -592,9 +633,13 @@ def updateeschema2rql(eschema, eid):
     yield 'SET %s WHERE X eid %%(x)s' % ','.join(relations), values
 
 def updaterschema2rql(rschema, eid):
-    relations, values = rschema_relations_values(rschema)
-    values['x'] = eid
-    yield 'SET %s WHERE X eid %%(x)s' % ','.join(relations), values
+    if rschema.rule:
+        yield ('SET X rule %(r)s WHERE X eid %(x)s',
+               {'x': eid, 'r': unicode(rschema.rule)})
+    else:
+        relations, values = rschema_relations_values(rschema)
+        values['x'] = eid
+        yield 'SET %s WHERE X eid %%(x)s' % ','.join(relations), values
 
 def updaterdef2rql(rdef, eid):
     relations, values = _rdef_values(rdef)
