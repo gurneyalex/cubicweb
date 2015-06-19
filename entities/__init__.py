@@ -31,12 +31,11 @@ class AnyEntity(Entity):
     instances have access to their issuing cursor
     """
     __regid__ = 'Any'
-    __implements__ = ()
 
     @classproperty
     def cw_etype(cls):
-        """entity type as a string"""
-        return cls.__regid__
+        """entity type as a unicode string"""
+        return unicode(cls.__regid__)
 
     @classmethod
     def cw_create_url(cls, req, **kwargs):

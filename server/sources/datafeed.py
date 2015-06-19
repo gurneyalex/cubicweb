@@ -83,6 +83,13 @@ class DataFeedSource(AbstractSource):
           'help': ('Timeout of HTTP GET requests, when synchronizing a source.'),
           'group': 'datafeed-source', 'level': 2,
           }),
+        ('use-cwuri-as-url',
+         {'type': 'yn',
+          'default': None, # explicitly unset
+          'help': ('Use cwuri (i.e. external URL) for link to the entity '
+                   'instead of its local URL.'),
+          'group': 'datafeed-source', 'level': 1,
+          }),
         )
 
     def check_config(self, source_entity):
@@ -107,6 +114,12 @@ class DataFeedSource(AbstractSource):
         self.synchro_interval = timedelta(seconds=typed_config['synchronization-interval'])
         self.max_lock_lifetime = timedelta(seconds=typed_config['max-lock-lifetime'])
         self.http_timeout = typed_config['http-timeout']
+        # if typed_config['use-cwuri-as-url'] is set, we have to update
+        # use_cwuri_as_url attribute and public configuration dictionary
+        # accordingly
+        if typed_config['use-cwuri-as-url'] is not None:
+            self.use_cwuri_as_url = typed_config['use-cwuri-as-url']
+            self.public_config['use-cwuri-as-url'] = self.use_cwuri_as_url
 
     def init(self, activated, source_entity):
         super(DataFeedSource, self).init(activated, source_entity)
@@ -285,11 +298,40 @@ class DataFeedParser(AppObject):
         self.stats = {'created': set(), 'updated': set(), 'checked': set()}
 
     def normalize_url(self, url):
-        from cubicweb.sobjects import URL_MAPPING # available after registration
+        """Normalize an url by looking if there is a replacement for it in
+        `cubicweb.sobjects.URL_MAPPING`.
+
+        This dictionary allow to redirect from one host to another, which may be
+        useful for example in case of test instance using production data, while
+        you don't want to load the external source nor to hack your `/etc/hosts`
+        file.
+        """
+        # local import mandatory, it's available after registration
+        from cubicweb.sobjects import URL_MAPPING
         for mappedurl in URL_MAPPING:
             if url.startswith(mappedurl):
                 return url.replace(mappedurl, URL_MAPPING[mappedurl], 1)
         return url
+
+    def retrieve_url(self, url, data=None, headers=None):
+        """Return stream linked by the given url:
+        * HTTP urls will be normalized (see :meth:`normalize_url`)
+        * handle file:// URL
+        * other will be considered as plain content, useful for testing purpose
+        """
+        if headers is None:
+            headers = {}
+        if url.startswith('http'):
+            url = self.normalize_url(url)
+            if data:
+                self.source.info('POST %s %s', url, data)
+            else:
+                self.source.info('GET %s', url)
+            req = urllib2.Request(url, data, headers)
+            return _OPENER.open(req, timeout=self.source.http_timeout)
+        if url.startswith('file://'):
+            return URLLibResponseAdapter(open(url[7:]), url)
+        return URLLibResponseAdapter(StringIO.StringIO(url), url)
 
     def add_schema_config(self, schemacfg, checkonly=False):
         """added CWSourceSchemaConfig, modify mapping accordingly"""
@@ -302,9 +344,13 @@ class DataFeedParser(AppObject):
         raise ValidationError(schemacfg.eid, {None: msg})
 
     def extid2entity(self, uri, etype, **sourceparams):
-        """return an entity for the given uri. May return None if it should be
-        skipped
+        """Return an entity for the given uri. May return None if it should be
+        skipped.
+
+        If a `raise_on_error` keyword parameter is passed, a ValidationError
+        exception may be raised.
         """
+        raise_on_error = sourceparams.pop('raise_on_error', False)
         cnx = self._cw
         # if cwsource is specified and repository has a source with the same
         # name, call extid2eid on that source so entity will be properly seen as
@@ -321,8 +367,8 @@ class DataFeedParser(AppObject):
             eid = cnx.repo.extid2eid(source, str(uri), etype, cnx,
                                          sourceparams=sourceparams)
         except ValidationError as ex:
-            # XXX use critical so they are seen during tests. Should consider
-            # raise_on_error instead?
+            if raise_on_error:
+                raise
             self.source.critical('error while creating %s: %s', etype, ex)
             self.import_log.record_error('error while creating %s: %s'
                                          % (etype, ex))
@@ -413,7 +459,7 @@ class DataFeedXMLParser(DataFeedParser):
         rollback = self._cw.rollback
         for args in parsed:
             try:
-                self.process_item(*args)
+                self.process_item(*args, raise_on_error=raise_on_error)
                 # commit+set_cnxset instead of commit(free_cnxset=False) to let
                 # other a chance to get our connections set
                 commit()
@@ -427,20 +473,13 @@ class DataFeedXMLParser(DataFeedParser):
         return error
 
     def parse(self, url):
-        if url.startswith('http'):
-            url = self.normalize_url(url)
-            self.source.info('GET %s', url)
-            stream = _OPENER.open(url, timeout=self.source.http_timeout)
-        elif url.startswith('file://'):
-            stream = open(url[7:])
-        else:
-            stream = StringIO.StringIO(url)
+        stream = self.retrieve_url(url)
         return self.parse_etree(etree.parse(stream).getroot())
 
     def parse_etree(self, document):
         return [(document,)]
 
-    def process_item(self, *args):
+    def process_item(self, *args, **kwargs):
         raise NotImplementedError
 
     def is_deleted(self, extid, etype, eid):
@@ -454,6 +493,27 @@ class DataFeedXMLParser(DataFeedParser):
         elif extid.startswith('file://'):
             return exists(extid[7:])
         return False
+
+
+class URLLibResponseAdapter(object):
+    """Thin wrapper to be used to fake a value returned by urllib2.urlopen"""
+    def __init__(self, stream, url, code=200):
+        self._stream = stream
+        self._url = url
+        self.code = code
+
+    def read(self, *args):
+        return self._stream.read(*args)
+
+    def geturl(self):
+        return self._url
+
+    def getcode(self):
+        return self.code
+
+    def info(self):
+        from mimetools import Message
+        return Message(StringIO.StringIO())
 
 # use a cookie enabled opener to use session cookie if any
 _OPENER = urllib2.build_opener()

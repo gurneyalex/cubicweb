@@ -548,7 +548,7 @@ class Connection(RequestSessionBase):
         return self._rewriter
 
     @_open_only
-    @deprecated('[3.19] use session or transaction data')
+    @deprecated('[3.19] use session or transaction data', stacklevel=3)
     def get_shared_data(self, key, default=None, pop=False, txdata=False):
         """return value associated to `key` in session data"""
         if txdata:
@@ -561,7 +561,7 @@ class Connection(RequestSessionBase):
             return data.get(key, default)
 
     @_open_only
-    @deprecated('[3.19] use session or transaction data')
+    @deprecated('[3.19] use session or transaction data', stacklevel=3)
     def set_shared_data(self, key, value, txdata=False):
         """set value associated to `key` in session data"""
         if txdata:
@@ -1010,15 +1010,12 @@ class Connection(RequestSessionBase):
 
     @_with_cnx_set
     @_open_only
-    def execute(self, rql, kwargs=None, eid_key=None, build_descr=True):
+    def execute(self, rql, kwargs=None, build_descr=True):
         """db-api like method directly linked to the querier execute method.
 
         See :meth:`cubicweb.dbapi.Cursor.execute` documentation.
         """
         self._session_timestamp.touch()
-        if eid_key is not None:
-            warn('[3.8] eid_key is deprecated, you can safely remove this argument',
-                 DeprecationWarning, stacklevel=2)
         rset = self._execute(self, rql, kwargs, build_descr)
         rset.req = self
         self._session_timestamp.touch()

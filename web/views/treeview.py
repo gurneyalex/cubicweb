@@ -61,7 +61,7 @@ class BaseTreeView(baseviews.ListView):
             done = set()
         super(BaseTreeView, self).call(done=done, **kwargs)
 
-    def cell_call(self, row, col=0, vid=None, done=None, maxlevel=None, **kwargs):
+    def cell_call(self, row, col=0, vid=None, done=None, maxlevel=None, klass=None, **kwargs):
         assert maxlevel is None or maxlevel > 0
         done, entity = _done_init(done, self, row, col)
         if done is None:
@@ -77,7 +77,7 @@ class BaseTreeView(baseviews.ListView):
                 return
         relatedrset = entity.cw_adapt_to('ITree').children(entities=False)
         self.wview(self.__regid__, relatedrset, 'null', done=done,
-                   maxlevel=maxlevel, **kwargs)
+                   maxlevel=maxlevel, klass=klass, **kwargs)
         self.close_item(entity)
 
     def open_item(self, entity):
@@ -145,9 +145,9 @@ class TreeView(EntityView):
         toplevel = toplevel_thru_ajax or (initial_load and not form.get('fname'))
         return subvid, treeid, toplevel_thru_ajax, toplevel
 
-    def _init_headers(self, treeid, toplevel_thru_ajax):
-        self._cw.add_css('jquery.treeview.css')
-        self._cw.add_js(('cubicweb.ajax.js', 'cubicweb.widgets.js', 'jquery.treeview.js'))
+    def _init_headers(self, treeid):
+        self._cw.add_css(('jquery-treeview/jquery.treeview.css', 'cubicweb.treeview.css'))
+        self._cw.add_js(('cubicweb.ajax.js', 'cubicweb.widgets.js', 'jquery-treeview/jquery.treeview.js'))
         self._cw.html_headers.add_onload(u"""
 jQuery("#tree-%s").treeview({toggle: toggleTree, prerendered: true});""" % treeid)
 
@@ -157,7 +157,7 @@ jQuery("#tree-%s").treeview({toggle: toggleTree, prerendered: true});""" % treei
             subvid, treeid, initial_load, initial_thru_ajax, morekwargs)
         ulid = ' '
         if toplevel:
-            self._init_headers(treeid, toplevel_thru_ajax)
+            self._init_headers(treeid)
             ulid = ' id="tree-%s"' % treeid
         self.w(u'<ul%s class="%s">' % (ulid, self.cssclass))
         # XXX force sorting on x.sortvalue() (which return dc_title by default)
@@ -244,6 +244,8 @@ class TreeViewItemView(EntityView):
         entity = self.cw_rset.get_entity(row, col)
         itree = entity.cw_adapt_to('ITree')
         liclasses = []
+        if self._cw.url(includeparams=False) == entity.absolute_url():
+            liclasses.append(u'selected')
         is_open = self.open_state(entity.eid, treeid)
         is_leaf = itree is None or itree.is_leaf()
         if is_leaf:

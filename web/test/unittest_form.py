@@ -16,7 +16,10 @@
 # You should have received a copy of the GNU Lesser General Public License along
 # with CubicWeb.  If not, see <http://www.gnu.org/licenses/>.
 
+import time
+
 from xml.etree.ElementTree import fromstring
+from lxml import html
 
 from logilab.common.testlib import unittest_main, mock_object
 
@@ -104,7 +107,9 @@ class EntityFieldsFormTC(CubicWebTC):
             req.form['__linkto'] = 'in_group:%s:subject' % geid
             form = self.vreg['forms'].select('edition', req, entity=e)
             form.content_type = 'text/html'
-            pageinfo = self._check_html(form.render(), form, template=None)
+            data = []
+            form.render(w=data.append)
+            pageinfo = self._check_html(u'\n'.join(data), form, template=None)
             inputs = pageinfo.find_tag('select', False)
             ok = False
             for selectnode in pageinfo.matching_nodes('select', name='from_in_group-subject:A'):
@@ -124,6 +129,24 @@ class EntityFieldsFormTC(CubicWebTC):
             self.assertIn('content_format', data)
 
 
+    def test_form_generation_time(self):
+        with self.admin_access.web_request() as req:
+            e = req.create_entity('BlogEntry', title=u'cubicweb.org', content=u"hop")
+            expected_field_name = '__form_generation_time:%d' % e.eid
+
+            ts_before = time.time()
+            form = self.vreg['forms'].select('edition', req, entity=e)
+            ts_after = time.time()
+
+            data = []
+            form.render(action='edit', w=data.append)
+            html_form = html.fromstring(''.join(data)).forms[0]
+            fields = dict(html_form.form_values())
+            self.assertIn(expected_field_name, fields)
+            ts = float(fields[expected_field_name])
+            self.assertTrue(ts_before < ts  < ts_after)
+
+
     # form tests ##############################################################
 
     def test_form_inheritance(self):
@@ -133,14 +156,18 @@ class EntityFieldsFormTC(CubicWebTC):
                 creation_date = DateTimeField(widget=DateTimePicker)
             form = CustomChangeStateForm(req, redirect_path='perdu.com',
                                          entity=req.user)
-            form.render(formvalues=dict(state=123, trcomment=u'',
+            data = []
+            form.render(w=data.append,
+                        formvalues=dict(state=123, trcomment=u'',
                                         trcomment_format=u'text/plain'))
 
     def test_change_state_form(self):
         with self.admin_access.web_request() as req:
             form = ChangeStateForm(req, redirect_path='perdu.com',
                                    entity=req.user)
-            form.render(formvalues=dict(state=123, trcomment=u'',
+            data = []
+            form.render(w=data.append,
+                        formvalues=dict(state=123, trcomment=u'',
                                         trcomment_format=u'text/plain'))
 
     # fields tests ############################################################
@@ -168,6 +195,7 @@ class EntityFieldsFormTC(CubicWebTC):
             self._test_richtextfield(req, '''<select id="description_format-subject:%(eid)s" name="description_format-subject:%(eid)s" size="1" style="display: block" tabindex="1">
 <option value="text/cubicweb-page-template">text/cubicweb-page-template</option>
 <option selected="selected" value="text/html">text/html</option>
+<option value="text/markdown">text/markdown</option>
 <option value="text/plain">text/plain</option>
 <option value="text/rest">text/rest</option>
 </select><textarea cols="80" id="description-subject:%(eid)s" name="description-subject:%(eid)s" onkeyup="autogrow(this)" rows="2" tabindex="2"></textarea>''')

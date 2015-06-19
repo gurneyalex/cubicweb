@@ -50,7 +50,7 @@ class AjaxReplaceUrlTC(TestCase):
         cbname = url.split()[1][:-2]
         self.assertMultiLineEqual(
             'function %s() { $("#foo").loadxhtml("http://testing.fr/cubicweb/ajax?%s",'
-            '{"pageid": "%s"},"get","replace"); }' %
+            '{pageid: "%s"},"get","replace"); }' %
             (cbname, qs, req.pageid),
             req.html_headers.post_inlined_scripts[0])
 
@@ -94,15 +94,37 @@ class FileUploadTC(CubicWebServerTC):
         self.assertEqual(webreq.status_code, 200)
         self.assertDictEqual(expect, loads(webreq.content))
 
+
 class LanguageTC(CubicWebServerTC):
 
     def test_language_neg(self):
         headers = {'Accept-Language': 'fr'}
         webreq = self.web_request(headers=headers)
         self.assertIn('lang="fr"', webreq.read())
+        vary = [h.lower().strip() for h in webreq.getheader('Vary').split(',')]
+        self.assertIn('accept-language', vary)
         headers = {'Accept-Language': 'en'}
         webreq = self.web_request(headers=headers)
         self.assertIn('lang="en"', webreq.read())
+        vary = [h.lower().strip() for h in webreq.getheader('Vary').split(',')]
+        self.assertIn('accept-language', vary)
+
+    def test_response_codes(self):
+        with self.admin_access.client_cnx() as cnx:
+            admin_eid = cnx.user.eid
+        # guest can't see admin
+        webreq = self.web_request('/%d' % admin_eid)
+        self.assertEqual(webreq.status, 403)
+
+        # but admin can
+        self.web_login()
+        webreq = self.web_request('/%d' % admin_eid)
+        self.assertEqual(webreq.status, 200)
+
+    def test_session_cookie_httponly(self):
+        webreq = self.web_request()
+        self.assertIn('HttpOnly', webreq.getheader('set-cookie'))
+
 
 class LogQueriesTC(CubicWebServerTC):
     @classmethod

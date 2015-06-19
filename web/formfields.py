@@ -349,13 +349,7 @@ class Field(object):
     def initial_typed_value(self, form, load_bytes):
         if self.value is not _MARKER:
             if callable(self.value):
-                # pylint: disable=E1102
-                if support_args(self.value, 'form', 'field'):
-                    return self.value(form, self)
-                else:
-                    warn("[3.10] field's value callback must now take form and "
-                         "field as argument (%s)" % self, DeprecationWarning)
-                    return self.value(form)
+                return self.value(form, self)
             return self.value
         formattr = '%s_%s_default' % (self.role, self.name)
         if self.eidparam and self.role is not None:
@@ -529,6 +523,7 @@ class StringField(Field):
     """
     widget = fw.TextArea
     size = 45
+    placeholder = None
 
     def __init__(self, name=None, max_length=None, **kwargs):
         self.max_length = max_length # must be set before super call
@@ -547,6 +542,9 @@ class StringField(Field):
         elif isinstance(self.widget, fw.TextInput):
             self.init_text_input(self.widget)
 
+        if self.placeholder:
+            self.widget.attrs.setdefault('placeholder', self.placeholder)
+
     def init_text_input(self, widget):
         if self.max_length:
             widget.attrs.setdefault('size', min(self.size, self.max_length))
@@ -556,6 +554,11 @@ class StringField(Field):
         if self.max_length and self.max_length < 513:
             widget.attrs.setdefault('cols', 60)
             widget.attrs.setdefault('rows', 5)
+
+    def set_placeholder(self, placeholder):
+        self.placeholder = placeholder
+        if self.widget and self.placeholder:
+            self.widget.attrs.setdefault('placeholder', self.placeholder)
 
 
 class PasswordField(StringField):
@@ -776,11 +779,13 @@ class EditableFileField(FileField):
     actually contains some text.
 
     If the stream format is one of text/plain, text/html, text/rest,
+    text/markdown
     then a :class:`~cubicweb.web.formwidgets.TextArea` will be additionaly
     displayed, allowing to directly the file's content when desired, instead
     of choosing a file from user's file system.
     """
-    editable_formats = ('text/plain', 'text/html', 'text/rest')
+    editable_formats = (
+        'text/plain', 'text/html', 'text/rest', 'text/markdown')
 
     def render(self, form, renderer):
         wdgs = [super(EditableFileField, self).render(form, renderer)]

@@ -524,6 +524,15 @@ running.'}),
 
     def start_instance(self, appid):
         """start the instance's server"""
+        try:
+            import twisted  # noqa
+        except ImportError:
+            msg = (
+                "Twisted is required by the 'start' command\n"
+                "Either install it, or use one of the alternative commands:\n"
+                "- '{ctl} wsgi {appid}'\n"
+                "- '{ctl} pyramid {appid}' (requires the pyramid cube)\n")
+            raise ExecutionError(msg.format(ctl='cubicweb-ctl', appid=appid))
         config = cwcfg.config_for(appid, debugmode=self['debug'])
         init_cmdline_log_threshold(config, self['loglevel'])
         if self['profile']:
@@ -836,6 +845,8 @@ class ListVersionsInstanceCommand(InstanceCommand):
         config = cwcfg.config_for(appid)
         # should not raise error if db versions don't match fs versions
         config.repairing = True
+        # no need to load all appobjects and schema
+        config.quick_start = True
         if hasattr(config, 'set_sources_mode'):
             config.set_sources_mode(('migration',))
         repo = config.migration_handler().repo_connect()
@@ -1042,19 +1053,36 @@ class ConfigureInstanceCommand(InstanceCommand):
 
 # WSGI #########
 
+WSGI_CHOICES = {}
+from cubicweb.wsgi import server as stdlib_server
+WSGI_CHOICES['stdlib'] = stdlib_server
+try:
+    from cubicweb.wsgi import wz
+except ImportError:
+    pass
+else:
+    WSGI_CHOICES['werkzeug'] = wz
+try:
+    from cubicweb.wsgi import tnd
+except ImportError:
+    pass
+else:
+    WSGI_CHOICES['tornado'] = tnd
+
+
 def wsgichoices():
-    try:
-        from werkzeug import serving
-    except ImportError:
-        return ('stdlib',)
-    return ('stdlib', 'werkzeug')
+    return tuple(WSGI_CHOICES)
+
 
 class WSGIStartHandler(InstanceCommand):
     """Start an interactive wsgi server """
     name = 'wsgi'
     actionverb = 'started'
     arguments = '<instance>'
-    options = (
+
+    @property
+    def options(self):
+        return (
         ("debug",
          {'short': 'D', 'action': 'store_true',
           'default': False,
@@ -1081,10 +1109,7 @@ class WSGIStartHandler(InstanceCommand):
         init_cmdline_log_threshold(config, self['loglevel'])
         assert config.name == 'all-in-one'
         meth = self['method']
-        if meth == 'stdlib':
-            from cubicweb.wsgi import server
-        else:
-            from cubicweb.wsgi import wz as server
+        server = WSGI_CHOICES[meth]
         return server.run(config)
 
 

@@ -32,6 +32,16 @@ from cubicweb.entities import AnyEntity, fetch_config
 from cubicweb.view import EntityAdapter
 from cubicweb.predicates import relation_possible
 
+
+try:
+    from cubicweb import server
+except ImportError:
+    # We need to lookup DEBUG from there,
+    # however a pure dbapi client may not have it.
+    class server(object): pass
+    server.DEBUG = False
+
+
 class WorkflowException(Exception): pass
 
 class Workflow(AnyEntity):
@@ -87,7 +97,7 @@ class Workflow(AnyEntity):
     def transition_by_name(self, trname):
         rset = self._cw.execute('Any T, TN WHERE T name TN, T name %(n)s, '
                                 'T transition_of WF, WF eid %(wf)s',
-                                {'n': trname, 'wf': self.eid})
+                                {'n': unicode(trname), 'wf': self.eid})
         if rset:
             return rset.get_entity(0, 0)
         return None
@@ -201,17 +211,30 @@ class BaseTransition(AnyEntity):
 
         `eid` is the eid of the object on which we may fire the transition
         """
+        DBG = False
+        if server.DEBUG & server.DBG_SEC:
+            if 'transition' in server._SECURITY_CAPS:
+                DBG = True
         user = self._cw.user
         # check user is at least in one of the required groups if any
         groups = frozenset(g.name for g in self.require_group)
         if groups:
             matches = user.matching_groups(groups)
             if matches:
+                if DBG:
+                    print 'may_be_fired: %r may fire: user matches %s' % (self.name, groups)
                 return matches
             if 'owners' in groups and user.owns(eid):
+                if DBG:
+                    print 'may_be_fired: %r may fire: user is owner' % self.name
                 return True
         # check one of the rql expression conditions matches if any
         if self.condition:
+            if DBG:
+                print ('my_be_fired: %r: %s' %
+                       (self.name, [(rqlexpr.expression,
+                                    rqlexpr.check_expression(self._cw, eid))
+                                   for rqlexpr in self.condition]))
             for rqlexpr in self.condition:
                 if rqlexpr.check_expression(self._cw, eid):
                     return True
@@ -231,7 +254,7 @@ class BaseTransition(AnyEntity):
         for gname in requiredgroups:
             rset = self._cw.execute('SET T require_group G '
                                     'WHERE T eid %(x)s, G name %(gn)s',
-                                    {'x': self.eid, 'gn': gname})
+                                    {'x': self.eid, 'gn': unicode(gname)})
             assert rset, '%s is not a known group' % gname
         if isinstance(conditions, basestring):
             conditions = (conditions,)
@@ -454,7 +477,7 @@ class IWorkflowableAdapter(EntityAdapter):
             'Any T,TT, TN WHERE S allowed_transition T, S eid %(x)s, '
             'T type TT, T type %(type)s, '
             'T name TN, T transition_of WF, WF eid %(wfeid)s',
-            {'x': self.current_state.eid, 'type': type,
+            {'x': self.current_state.eid, 'type': unicode(type),
              'wfeid': self.current_workflow.eid})
         for tr in rset.entities():
             if tr.may_be_fired(self.entity.eid):

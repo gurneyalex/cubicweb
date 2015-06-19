@@ -1,4 +1,4 @@
-# copyright 2003-2012 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2014 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -142,12 +142,7 @@ class FormRenderer(AppObject):
         help = []
         descr = field.help
         if callable(descr):
-            if support_args(descr, 'form', 'field'):
-                descr = descr(form, field)
-            else:
-                warn("[3.10] field's help callback must now take form and field as argument (%s)"
-                     % field, DeprecationWarning)
-                descr = descr(form)
+            descr = descr(form, field)
         if descr:
             help.append('<div class="helper">%s</div>' % self._cw._(descr))
         example = field.example_format(self._cw)
@@ -247,9 +242,9 @@ class FormRenderer(AppObject):
             except KeyError:
                 self.warning('no such fieldset: %s (%s)', fieldset, form)
                 continue
-            w(u'<fieldset class="%s">\n' % (fieldset or u'default'))
+            w(u'<fieldset>\n')
             if fieldset:
-                w(u'<legend>%s</legend>' % self._cw._(fieldset))
+                w(u'<legend>%s</legend>' % self._cw.__(fieldset))
             w(u'<table class="%s">\n' % self.table_class)
             for field in fields:
                 w(u'<tr class="%s_%s_row">\n' % (field.name, field.role))

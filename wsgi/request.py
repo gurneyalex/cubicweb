@@ -70,7 +70,7 @@ class CubicWebWsgiRequest(CubicWebRequestBase):
                           if k.startswith('HTTP_'))
         if 'CONTENT_TYPE' in environ:
             headers_in['Content-Type'] = environ['CONTENT_TYPE']
-        https = environ["wsgi.url_scheme"] == 'https'
+        https = self.is_secure()
         if self.path.startswith('/https/'):
             self.path = self.path[6:]
             self.environ['PATH_INFO'] = self.path
@@ -118,32 +118,8 @@ class CubicWebWsgiRequest(CubicWebRequestBase):
 
     ## wsgi request helpers ###################################################
 
-    def instance_uri(self):
-        """Return the instance's base URI (no PATH_INFO or QUERY_STRING)
-
-        see python2.5's wsgiref.util.instance_uri code
-        """
-        environ = self.environ
-        url = environ['wsgi.url_scheme'] + '://'
-        if environ.get('HTTP_HOST'):
-            url += environ['HTTP_HOST']
-        else:
-            url += environ['SERVER_NAME']
-            if environ['wsgi.url_scheme'] == 'https':
-                if environ['SERVER_PORT'] != '443':
-                    url += ':' + environ['SERVER_PORT']
-            else:
-                if environ['SERVER_PORT'] != '80':
-                    url += ':' + environ['SERVER_PORT']
-        url += quote(environ.get('SCRIPT_NAME') or '/')
-        return url
-
-    def get_full_path(self):
-        return '%s%s' % (self.path, self.environ.get('QUERY_STRING', '') and ('?' + self.environ.get('QUERY_STRING', '')) or '')
-
     def is_secure(self):
-        return 'wsgi.url_scheme' in self.environ \
-            and self.environ['wsgi.url_scheme'] == 'https'
+        return self.environ['wsgi.url_scheme'] == 'https'
 
     def get_posted_data(self):
         # The WSGI spec says 'QUERY_STRING' may be absent.
@@ -186,13 +162,5 @@ class CubicWebWsgiRequest(CubicWebRequestBase):
                 val = self.no_script_form_param(param, val)
             if param == '_cwmsgid':
                 self.set_message_id(val)
-            elif param == '__message':
-                warn('[3.13] __message in request parameter is deprecated (may '
-                     'only be given to .build_url). Seeing this message usualy '
-                     'means your application hold some <form> where you should '
-                     'replace use of __message hidden input by form.set_message, '
-                     'so new _cwmsgid mechanism is properly used',
-                     DeprecationWarning)
-                self.set_message(val)
             else:
                 self.form[param] = val
