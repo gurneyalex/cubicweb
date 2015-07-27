@@ -1,0 +1,86 @@
+#!/usr/bin/make -f
+# Sample debian/rules that uses debhelper.
+# GNU copyright 1997 to 1999 by Joey Hess.
+
+# Uncomment this to turn on verbose mode.
+#export DH_VERBOSE=1
+
+PY_VERSION:=$(shell pyversions -d)
+
+build: build-stamp
+build-stamp:
+	dh_testdir
+	NO_SETUPTOOLS=1 python setup.py build
+	# cubicweb.foo needs to be importable by sphinx, so create a cubicweb symlink to the source dir
+	mkdir -p debian/pythonpath
+	ln -sf $(CURDIR) debian/pythonpath/cubicweb
+	# documentation build is now made optional since it can break for old
+	# distributions and we don't want to block a new release of Cubicweb
+	# because of documentation issues.
+	-PYTHONPATH=$${PYTHONPATH:+$${PYTHONPATH}:}$(CURDIR)/debian/pythonpath $(MAKE) -C doc/book/en all
+	rm -rf debian/pythonpath
+	touch build-stamp
+
+clean:
+	dh_testdir
+	rm -f build-stamp configure-stamp
+	rm -rf build
+	#rm -rf debian/cubicweb-*/
+	find . -name "*.pyc" -delete
+	rm -f $(basename $(wildcard debian/*.in))
+	dh_clean
+
+install: build $(basename $(wildcard debian/*.in))
+	dh_testdir
+	dh_testroot
+	dh_clean
+	dh_installdirs
+
+	NO_SETUPTOOLS=1 python setup.py -q install --no-compile --prefix=debian/tmp/usr
+
+	# Put all the python library and data in cubicweb-common
+	# and scripts in cubicweb-server
+	dh_install -vi --sourcedir=debian/tmp
+	# cwctl in the cubicweb-ctl package
+	rm -f debian/cubicweb-common/usr/lib/python*/*/cubicweb/cwctl.py
+        # wdoc in the cubicweb-web package
+	rm -rf debian/cubicweb-common/usr/share/cubicweb/cubes/shared/wdoc
+	rm -rf debian/cubicweb-common/usr/share/cubicweb/cubes/shared/data
+	dh_lintian
+
+	# Remove unittests directory (should be available in cubicweb-dev only)
+	rm -rf debian/cubicweb-server/usr/lib/${PY_VERSION}/*-packages/cubicweb/server/test
+	rm -rf debian/cubicweb-server/usr/lib/${PY_VERSION}/*-packages/cubicweb/hooks/test
+	rm -rf debian/cubicweb-server/usr/lib/${PY_VERSION}/*-packages/cubicweb/sobjects/test
+	rm -rf debian/cubicweb-web/usr/lib/${PY_VERSION}/*-packages/cubicweb/web/test
+	rm -rf debian/cubicweb-twisted/usr/lib/${PY_VERSION}/*-packages/cubicweb/etwist/test
+	rm -rf debian/cubicweb-common/usr/lib/${PY_VERSION}/*-packages/cubicweb/ext/test
+	rm -rf debian/cubicweb-common/usr/lib/${PY_VERSION}/*-packages/cubicweb/entities/test
+
+
+%: %.in
+	sed "s/PY_VERSION/${PY_VERSION}/g" < $< > $@
+
+# Build architecture-independent files here.
+binary-indep: build install
+	dh_testdir
+	dh_testroot -i
+	dh_python2 -i
+	dh_installinit -i -n --name cubicweb -u"defaults 99"
+	dh_installlogrotate -i
+	dh_installdocs -i -A README
+	dh_installman -i
+	dh_installchangelogs -i
+	dh_link -i
+	dh_compress -i -X.py -X.ini -X.xml -X.js -X.rst -X.txt
+	dh_fixperms -i
+	dh_installdeb -i
+	dh_gencontrol  -i
+	dh_md5sums -i
+	dh_builddeb -i
+
+binary-arch:
+
+binary: binary-indep
+.PHONY: build clean binary binary-indep binary-arch
+

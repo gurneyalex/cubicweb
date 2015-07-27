@@ -1,0 +1,5 @@
+usr/lib/PY_VERSION/*-packages/cubicweb/server/
+usr/lib/PY_VERSION/*-packages/cubicweb/hooks/
+usr/lib/PY_VERSION/*-packages/cubicweb/sobjects/
+usr/lib/PY_VERSION/*-packages/cubicweb/schemas/
+usr/share/cubicweb/migration/

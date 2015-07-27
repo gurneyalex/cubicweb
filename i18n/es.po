@@ -1,0 +1,4737 @@
+# cubicweb i18n catalog
+# Copyright 2003-2014 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# Logilab <contact@logilab.fr>
+# Translators:
+# CreaLibre <info@crealibre.com>, 2014
+msgid ""
+msgstr ""
+"Project-Id-Version: Cubicweb\n"
+"POT-Creation-Date: 2006-01-12 17:35+CET\n"
+"PO-Revision-Date: 2014-03-04 08:10+0000\n"
+"Last-Translator: CreaLibre <info@crealibre.com>\n"
+"Language-Team: Spanish (http://www.transifex.com/projects/p/cubicweb/"
+"language/es/)\n"
+"Language: es\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: pygettext.py 1.5\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+#, python-format
+msgid ""
+"\n"
+"%(user)s changed status from <%(previous_state)s> to <%(current_state)s> for "
+"entity\n"
+"'%(title)s'\n"
+"\n"
+"%(comment)s\n"
+"\n"
+"url: %(url)s\n"
+msgstr ""
+"\n"
+"%(user)s ha cambiado su estado de <%(previous_state)s> hacia <"
+"%(current_state)s> en la entidad\n"
+"'%(title)s'\n"
+"\n"
+"%(comment)s\n"
+"\n"
+"url: %(url)s\n"
+
+#, python-format
+msgid "  from state %(fromstate)s to state %(tostate)s\n"
+msgstr "  del estado %(fromstate)s hacia el estado %(tostate)s\n"
+
+msgid " :"
+msgstr ":"
+
+#, python-format
+msgid "\"action\" must be specified in options; allowed values are %s"
+msgstr ""
+"\"action\" debe estar especificada en opciones; los valores permitidos son : "
+"%s"
+
+msgid "\"role=subject\" or \"role=object\" must be specified in options"
+msgstr ""
+"\"role=subject\" o \"role=object\" debe ser especificado en las opciones"
+
+#, python-format
+msgid "%(KEY-cstr)s constraint failed for value %(KEY-value)r"
+msgstr "%(KEY-cstr)s restricción errónea para el valor %(KEY-value)r"
+
+#, python-format
+msgid "%(KEY-value)r doesn't match the %(KEY-regexp)r regular expression"
+msgstr "%(KEY-value)r no corresponde a la expresión regular %(KEY-regexp)r"
+
+#, python-format
+msgid "%(attr)s set to %(newvalue)s"
+msgstr "%(attr)s modificado a %(newvalue)s"
+
+#, python-format
+msgid "%(attr)s updated from %(oldvalue)s to %(newvalue)s"
+msgstr "%(attr)s modificado de %(oldvalue)s a %(newvalue)s"
+
+#, python-format
+msgid "%(etype)s by %(author)s"
+msgstr "%(etype)s por %(author)s"
+
+#, python-format
+msgid "%(firstname)s %(surname)s"
+msgstr "%(firstname)s %(surname)s"
+
+#, python-format
+msgid "%(subject)s %(etype)s #%(eid)s (%(login)s)"
+msgstr "%(subject)s %(etype)s #%(eid)s (%(login)s)"
+
+#, python-format
+msgid "%d days"
+msgstr "%d días"
+
+#, python-format
+msgid "%d hours"
+msgstr "%d horas"
+
+#, python-format
+msgid "%d minutes"
+msgstr "%d minutos"
+
+#, python-format
+msgid "%d months"
+msgstr "%d meses"
+
+#, python-format
+msgid "%d seconds"
+msgstr "%d segundos"
+
+#, python-format
+msgid "%d weeks"
+msgstr "%d semanas"
+
+#, python-format
+msgid "%d years"
+msgstr "%d años"
+
+#, python-format
+msgid "%s could be supported"
+msgstr "%s podría ser mantenido"
+
+#, python-format
+msgid "%s error report"
+msgstr "%s reporte de errores"
+
+#, python-format
+msgid "%s is part of violated unicity constraint"
+msgstr "%s pertenece a una restricción de unidad no respectada"
+
+#, python-format
+msgid "%s software version of the database"
+msgstr "versión sistema de la base para %s"
+
+#, python-format
+msgid "%s updated"
+msgstr "%s actualizado"
+
+#, python-format
+msgid "'%s' action doesn't take any options"
+msgstr "la acción '%s'  no acepta opciones"
+
+#, python-format
+msgid ""
+"'%s' action for in_state relation should at least have 'linkattr=name' option"
+msgstr ""
+"'%s' acción en la relación in_state debe por lo menos tener la opción "
+"'linkattr=name'"
+
+#, python-format
+msgid "'%s' action requires 'linkattr' option"
+msgstr "la acción '%s' requiere una opción 'linkattr'"
+
+msgid "(UNEXISTANT EID)"
+msgstr "(EID INEXISTENTE"
+
+#, python-format
+msgid "(suppressed) entity #%d"
+msgstr "(eliminada) entidad #%d"
+
+msgid "**"
+msgstr "0..n 0..n"
+
+msgid "*+"
+msgstr "0..n 1..n"
+
+msgid "*1"
+msgstr "0..n 1"
+
+msgid "*?"
+msgstr "0..n 0..1"
+
+msgid "+*"
+msgstr "1..n 0..n"
+
+msgid "++"
+msgstr "1..n 1..n"
+
+msgid "+1"
+msgstr "1..n 1"
+
+msgid "+?"
+msgstr "1..n 0..1"
+
+msgid "1*"
+msgstr "1 0..n"
+
+msgid "1+"
+msgstr "1 1..n"
+
+msgid "11"
+msgstr "1 1"
+
+msgid "1?"
+msgstr "1 0..1"
+
+#, python-format
+msgid "<%s not specified>"
+msgstr "<%s no especificado>"
+
+#, python-format
+msgid ""
+"<div>This schema of the data model <em>excludes</em> the meta-data, but you "
+"can also display a <a href=\"%s\">complete schema with meta-data</a>.</div>"
+msgstr ""
+"<div>Este esquema del modelo de datos <em>no incluye</em> los meta-datos, "
+"pero se puede ver a un <a href=\"%s\">modelo completo con meta-datos</a>.</"
+"div>"
+
+msgid "<no relation>"
+msgstr "<sin relación>"
+
+msgid "<not specified>"
+msgstr "<no especificado>"
+
+msgid "?*"
+msgstr "0..1 0..n"
+
+msgid "?+"
+msgstr "0..1 1..n"
+
+msgid "?1"
+msgstr "0..1 1"
+
+msgid "??"
+msgstr "0..1 0..1"
+
+msgid "AND"
+msgstr "Y"
+
+msgid "About this site"
+msgstr "Información del Sistema"
+
+#, python-format
+msgid "Added relation : %(entity_from)s %(rtype)s %(entity_to)s"
+msgstr "Relación agregada : %(entity_from)s %(rtype)s %(entity_to)s"
+
+msgid "Attributes permissions:"
+msgstr "Permisos de atributos:"
+
+# schema pot file, generated on 2009-09-16 16:46:55
+#
+# singular and plural forms for each entity type
+msgid "BaseTransition"
+msgstr "Transición (abstracta)"
+
+msgid "BaseTransition_plural"
+msgstr "Transiciones (abstractas)"
+
+msgid "BigInt"
+msgstr "Big integer"
+
+msgid "BigInt_plural"
+msgstr "Big integers"
+
+msgid "Bookmark"
+msgstr "Favorito"
+
+msgid "Bookmark_plural"
+msgstr "Favoritos"
+
+msgid "Boolean"
+msgstr "Booleano"
+
+msgid "Boolean_plural"
+msgstr "Booleanos"
+
+msgid "BoundConstraint"
+msgstr "Restricción de límite"
+
+msgid "BoundaryConstraint"
+msgstr "Restricción de límite"
+
+msgid "Browse by category"
+msgstr "Busca por categoría"
+
+msgid "Browse by entity type"
+msgstr "Busca por tipo de entidad"
+
+#, python-format
+msgid "By %(user)s on %(dt)s [%(undo_link)s]"
+msgstr "Por %(user)s en %(dt)s [%(undo_link)s]"
+
+msgid "Bytes"
+msgstr "Bytes"
+
+msgid "Bytes_plural"
+msgstr "Bytes"
+
+msgid "CWAttribute"
+msgstr "Atributo"
+
+msgid "CWAttribute_plural"
+msgstr "Atributos"
+
+msgid "CWCache"
+msgstr "Cache"
+
+msgid "CWCache_plural"
+msgstr "Caches"
+
+msgid "CWConstraint"
+msgstr "Restricción"
+
+msgid "CWConstraintType"
+msgstr "Tipo de Restricción"
+
+msgid "CWConstraintType_plural"
+msgstr "Tipos de Restricción"
+
+msgid "CWConstraint_plural"
+msgstr "Restricciones"
+
+msgid "CWDataImport"
+msgstr "Importación de Datos"
+
+msgid "CWDataImport_plural"
+msgstr "Importaciones de Datos"
+
+msgid "CWEType"
+msgstr "Tipo de entidad"
+
+msgctxt "inlined:CWRelation.from_entity.subject"
+msgid "CWEType"
+msgstr "Tipo de entidad"
+
+msgctxt "inlined:CWRelation.to_entity.subject"
+msgid "CWEType"
+msgstr "Tipo de entidad"
+
+msgid "CWEType_plural"
+msgstr "Tipos de entidades"
+
+msgid "CWGroup"
+msgstr "Groupo"
+
+msgid "CWGroup_plural"
+msgstr "Grupos"
+
+msgid "CWProperty"
+msgstr "Propiedad"
+
+msgid "CWProperty_plural"
+msgstr "Propiedades"
+
+msgid "CWRType"
+msgstr "Tipo de relación"
+
+msgctxt "inlined:CWRelation.relation_type.subject"
+msgid "CWRType"
+msgstr "Tipo de relación"
+
+msgid "CWRType_plural"
+msgstr "Tipos de relación"
+
+msgid "CWRelation"
+msgstr "Relación"
+
+msgid "CWRelation_plural"
+msgstr "Relaciones"
+
+msgid "CWSource"
+msgstr "Fuente de datos"
+
+msgid "CWSourceHostConfig"
+msgstr "Configuración de Fuente"
+
+msgid "CWSourceHostConfig_plural"
+msgstr "Configuraciones de fuente"
+
+msgid "CWSourceSchemaConfig"
+msgstr "Configuraciones de Esquema de Fuente"
+
+msgid "CWSourceSchemaConfig_plural"
+msgstr "Configuraciones de Esquema de Fuente"
+
+msgid "CWSource_plural"
+msgstr "Fuentes de Datos"
+
+msgid "CWUniqueTogetherConstraint"
+msgstr "Restricción de Singularidad"
+
+msgid "CWUniqueTogetherConstraint_plural"
+msgstr "Restricciones de Singularidad"
+
+msgid "CWUser"
+msgstr "Usuario"
+
+msgid "CWUser_plural"
+msgstr "Usuarios"
+
+#, python-format
+msgid ""
+"Can't restore %(role)s relation %(rtype)s to entity %(eid)s which is already "
+"linked using this relation."
+msgstr ""
+"No puede restaurar la relación %(role)s %(rtype)s en la entidad %(eid)s pues "
+"ya esta ligada a otra entidad usando esa relación."
+
+#, python-format
+msgid ""
+"Can't restore relation %(rtype)s between %(subj)s and %(obj)s, that relation "
+"does not exists anymore in the schema."
+msgstr ""
+"No puede restaurar la relación %(rtype)s entre %(subj)s y  %(obj)s, esta "
+"relación ya no existe en el esquema."
+
+#, python-format
+msgid ""
+"Can't restore relation %(rtype)s, %(role)s entity %(eid)s doesn't exist "
+"anymore."
+msgstr ""
+"No puede restaurar la relación %(rtype)s, la entidad %(role)s %(eid)s ya no "
+"existe."
+
+#, python-format
+msgid ""
+"Can't undo addition of relation %(rtype)s from %(subj)s to %(obj)s, doesn't "
+"exist anymore"
+msgstr ""
+"No puede anular el agregar la relación %(rtype)s de %(subj)s a %(obj)s, esta "
+"relación ya no existe"
+
+#, python-format
+msgid ""
+"Can't undo creation of entity %(eid)s of type %(etype)s, type no more "
+"supported"
+msgstr ""
+"No puede anular la creación de la entidad %(eid)s de tipo %(etype)s, este "
+"tipo ya no existe"
+
+msgid "Click to sort on this column"
+msgstr "Seleccione para ordenar columna"
+
+msgid ""
+"Configuration of the system source goes to the 'sources' file, not in the "
+"database"
+msgstr ""
+"La configuración de la fuente sistema va en el archivo \"Sources\"/Fuentes, "
+"y no en la base de datos."
+
+#, python-format
+msgid "Created %(etype)s : %(entity)s"
+msgstr "Se creó %(etype)s : %(entity)s"
+
+msgid "DEBUG"
+msgstr "DEPURAR"
+
+msgid "Date"
+msgstr "Fecha"
+
+msgid "Date_plural"
+msgstr "Fechas"
+
+msgid "Datetime"
+msgstr "Fecha y hora"
+
+msgid "Datetime_plural"
+msgstr "Fechas y horas"
+
+msgid "Decimal"
+msgstr "Decimal"
+
+msgid "Decimal_plural"
+msgstr "Decimales"
+
+#, python-format
+msgid "Delete relation : %(entity_from)s %(rtype)s %(entity_to)s"
+msgstr "Eliminar relación : %(entity_from)s %(rtype)s %(entity_to)s"
+
+#, python-format
+msgid "Deleted %(etype)s : %(entity)s"
+msgstr "Se eliminó %(etype)s : %(entity)s"
+
+msgid "Detected problems"
+msgstr "Problemas detectados"
+
+msgid "Do you want to delete the following element(s)?"
+msgstr "Desea eliminar el/los elemento(s) a continuación?"
+
+msgid "Download schema as OWL"
+msgstr "Descargar el esquema en formato OWL"
+
+msgid "ERROR"
+msgstr "ERROR"
+
+msgid "EmailAddress"
+msgstr "Correo Electrónico"
+
+msgctxt "inlined:CWUser.use_email.subject"
+msgid "EmailAddress"
+msgstr "Correo Electrónico"
+
+msgid "EmailAddress_plural"
+msgstr "Direcciones de Correo Electrónico"
+
+msgid "Entities"
+msgstr "Entidades"
+
+msgid "Entity and relation supported by this source"
+msgstr "Entidades y relaciones aceptadas por esta fuente"
+
+msgid "ExternalUri"
+msgstr "Uri externo"
+
+msgid "ExternalUri_plural"
+msgstr "Uris externos"
+
+msgid "FATAL"
+msgstr "FATAL"
+
+msgid "Float"
+msgstr "Número flotante"
+
+msgid "Float_plural"
+msgstr "Números flotantes"
+
+# schema pot file, generated on 2009-12-03 09:22:35
+#
+# singular and plural forms for each entity type
+msgid "FormatConstraint"
+msgstr "Restricción de Formato"
+
+msgid "Garbage collection information"
+msgstr "Recolector de basura en memoria"
+
+msgid "Help"
+msgstr "Ayuda"
+
+msgid "INFO"
+msgstr "INFO"
+
+msgid "Instance"
+msgstr "Instancia"
+
+msgid "Int"
+msgstr "Número entero"
+
+msgid "Int_plural"
+msgstr "Números enteros"
+
+msgid "Interval"
+msgstr "Duración"
+
+msgid "IntervalBoundConstraint"
+msgstr "Restricción de intervalo"
+
+msgid "Interval_plural"
+msgstr "Duraciones"
+
+msgid "Link:"
+msgstr "Liga:"
+
+msgid "Looked up classes"
+msgstr "Clases buscadas"
+
+msgid "Manage"
+msgstr "Administración"
+
+msgid "Manage security"
+msgstr "Gestión de seguridad"
+
+msgid "Message threshold"
+msgstr "Límite de mensajes"
+
+msgid "Most referenced classes"
+msgstr "Clases más referenciadas"
+
+msgid "New BaseTransition"
+msgstr "XXX"
+
+msgid "New Bookmark"
+msgstr "Agregar a Favoritos"
+
+msgid "New CWAttribute"
+msgstr "Nueva definición de relación final"
+
+msgid "New CWCache"
+msgstr "Agregar Caché"
+
+msgid "New CWConstraint"
+msgstr "Agregar Restricción"
+
+msgid "New CWConstraintType"
+msgstr "Agregar tipo de Restricción"
+
+msgid "New CWDataImport"
+msgstr "Nueva importación de datos"
+
+msgid "New CWEType"
+msgstr "Agregar tipo de entidad"
+
+msgid "New CWGroup"
+msgstr "Nuevo grupo"
+
+msgid "New CWProperty"
+msgstr "Agregar Propiedad"
+
+msgid "New CWRType"
+msgstr "Agregar tipo de relación"
+
+msgid "New CWRelation"
+msgstr "Nueva definición de relación final"
+
+msgid "New CWSource"
+msgstr "Nueva fuente"
+
+msgid "New CWSourceHostConfig"
+msgstr "Nueva configuración de fuente"
+
+msgid "New CWSourceSchemaConfig"
+msgstr "Nueva parte de mapeo de fuente"
+
+msgid "New CWUniqueTogetherConstraint"
+msgstr "Nueva restricción de singularidad"
+
+msgid "New CWUser"
+msgstr "Agregar usuario"
+
+msgid "New EmailAddress"
+msgstr "Agregar Email"
+
+msgid "New ExternalUri"
+msgstr "Agregar Uri externa"
+
+msgid "New RQLExpression"
+msgstr "Agregar expresión rql"
+
+msgid "New State"
+msgstr "Agregar Estado"
+
+msgid "New SubWorkflowExitPoint"
+msgstr "Agregar salida de sub-Workflow"
+
+msgid "New TrInfo"
+msgstr "Agregar Información de Transición"
+
+msgid "New Transition"
+msgstr "Agregar transición"
+
+msgid "New Workflow"
+msgstr "Agregar Workflow"
+
+msgid "New WorkflowTransition"
+msgstr "Agregar transición de Workflow"
+
+#, python-format
+msgid "No account? Try public access at %s"
+msgstr "No esta registrado? Use el acceso público en %s"
+
+msgid "No result matching query"
+msgstr "Ningún resultado corresponde a su búsqueda"
+
+msgid "Non exhaustive list of views that may apply to entities of this type"
+msgstr "Lista no exhaustiva de vistas aplicables a este tipo de entidad"
+
+msgid "OR"
+msgstr "O"
+
+msgid "Ownership"
+msgstr "Propiedad"
+
+msgid "Parent class:"
+msgstr "Clase padre:"
+
+msgid "Password"
+msgstr "Contraseña"
+
+msgid "Password_plural"
+msgstr "Contraseñas"
+
+msgid "Please note that this is only a shallow copy"
+msgstr "Recuerde que sólo es una copia superficial"
+
+msgid "Powered by CubicWeb"
+msgstr "Potenciado en CubicWeb"
+
+msgid "RQLConstraint"
+msgstr "Restricción RQL"
+
+msgid "RQLExpression"
+msgstr "Expresión RQL"
+
+msgid "RQLExpression_plural"
+msgstr "Expresiones RQL"
+
+msgid "RQLUniqueConstraint"
+msgstr "Restricción RQL de Unicidad"
+
+msgid "RQLVocabularyConstraint"
+msgstr "Restricción RQL de Vocabulario"
+
+msgid "RegexpConstraint"
+msgstr "restricción expresión regular"
+
+msgid "Registry's content"
+msgstr "Contenido del registro"
+
+msgid "Relations"
+msgstr "Relaciones"
+
+msgid "Repository"
+msgstr "Repositorio"
+
+#, python-format
+msgid "Schema %s"
+msgstr "Esquema %s"
+
+msgid "Schema's permissions definitions"
+msgstr "Definiciones de permisos del esquema"
+
+msgid "Search for"
+msgstr "Buscar"
+
+msgid "Site information"
+msgstr "Información del Sitio"
+
+msgid "SizeConstraint"
+msgstr "Restricción de tamaño"
+
+msgid ""
+"Source's configuration for a particular host. One key=value per line, "
+"authorized keys depending on the source's type, overriding values defined on "
+"the source."
+msgstr ""
+"Configuración de la fuente por un \"host\" específico. Una clave=valor por "
+"línea, las claves permitidas dependen del tipo de fuente. Estos valores son "
+"prioritarios a los valores definidos en la fuente."
+
+msgid "Startup views"
+msgstr "Vistas de inicio"
+
+msgid "State"
+msgstr "Estado"
+
+msgid "State_plural"
+msgstr "Estados"
+
+msgid "StaticVocabularyConstraint"
+msgstr "Restricción de vocabulario"
+
+msgid "String"
+msgstr "Cadena de caracteres"
+
+msgid "String_plural"
+msgstr "Cadenas de caracteres"
+
+msgid "Sub-classes:"
+msgstr "Clases hijas:"
+
+msgid "SubWorkflowExitPoint"
+msgstr "Salida de sub-workflow"
+
+msgid "SubWorkflowExitPoint_plural"
+msgstr "Salidas de sub-workflow"
+
+msgid "Submit bug report"
+msgstr "Enviar un reporte de error (bug)"
+
+msgid "Submit bug report by mail"
+msgstr "Enviar este reporte por email"
+
+msgid "TZDatetime"
+msgstr "Fecha y hora internacional"
+
+msgid "TZDatetime_plural"
+msgstr "Fechas y horas internacionales"
+
+msgid "TZTime"
+msgstr "Hora internacional"
+
+msgid "TZTime_plural"
+msgstr "Horas internacionales"
+
+#, python-format
+msgid "The view %s can not be applied to this query"
+msgstr "La vista %s no puede ser aplicada a esta búsqueda"
+
+#, python-format
+msgid "The view %s could not be found"
+msgstr "La vista %s no ha podido ser encontrada"
+
+msgid "There is no default workflow"
+msgstr "Esta entidad no posee workflow por defecto"
+
+msgid "This BaseTransition"
+msgstr "Esta transición abstracta"
+
+msgid "This Bookmark"
+msgstr "Este favorito"
+
+msgid "This CWAttribute"
+msgstr "Esta definición de relación final"
+
+msgid "This CWCache"
+msgstr "Este Caché"
+
+msgid "This CWConstraint"
+msgstr "Esta Restricción"
+
+msgid "This CWConstraintType"
+msgstr "Este tipo de Restricción"
+
+msgid "This CWDataImport"
+msgstr "Esta importación de datos"
+
+msgid "This CWEType"
+msgstr "Este tipo de Entidad"
+
+msgid "This CWGroup"
+msgstr "Este grupo"
+
+msgid "This CWProperty"
+msgstr "Esta propiedad"
+
+msgid "This CWRType"
+msgstr "Este tipo de relación"
+
+msgid "This CWRelation"
+msgstr "Esta definición de relación no final"
+
+msgid "This CWSource"
+msgstr "Esta fuente"
+
+msgid "This CWSourceHostConfig"
+msgstr "Esta configuración de fuente"
+
+msgid "This CWSourceSchemaConfig"
+msgstr "Esta parte de mapeo de fuente"
+
+msgid "This CWUniqueTogetherConstraint"
+msgstr "Esta restricción de singularidad"
+
+msgid "This CWUser"
+msgstr "Este usuario"
+
+msgid "This EmailAddress"
+msgstr "Esta dirección electrónica"
+
+msgid "This ExternalUri"
+msgstr "Este Uri externo"
+
+msgid "This RQLExpression"
+msgstr "Esta expresión RQL"
+
+msgid "This State"
+msgstr "Este estado"
+
+msgid "This SubWorkflowExitPoint"
+msgstr "Esta Salida de sub-workflow"
+
+msgid "This TrInfo"
+msgstr "Esta información de transición"
+
+msgid "This Transition"
+msgstr "Esta transición"
+
+msgid "This Workflow"
+msgstr "Este Workflow"
+
+msgid "This WorkflowTransition"
+msgstr "Esta transición de Workflow"
+
+msgid ""
+"This action is forbidden. If you think it should be allowed, please contact "
+"the site administrator."
+msgstr ""
+"Esta acción le es prohibida. Si cree que Ud. debería de tener autorización, "
+"favor de contactar al administrador del sitio. "
+
+msgid "This entity type permissions:"
+msgstr "Permisos para este tipo de entidad:"
+
+msgid "Time"
+msgstr "Hora"
+
+msgid "Time_plural"
+msgstr "Horas"
+
+msgid "TrInfo"
+msgstr "Información Transición"
+
+msgid "TrInfo_plural"
+msgstr "Información Transiciones"
+
+msgid "Transition"
+msgstr "Transición"
+
+msgid "Transition_plural"
+msgstr "Transiciones"
+
+msgid "URLs from which content will be imported. You can put one url per line"
+msgstr ""
+"URLs desde el cual el contenido sera importado. Usted puede incluir un URL "
+"por línea."
+
+msgid "Undoable actions"
+msgstr "Acciones irreversibles"
+
+msgid "Undoing"
+msgstr "Deshaciendo"
+
+msgid "UniqueConstraint"
+msgstr "Restricción de Unicidad"
+
+msgid "Unknown source type"
+msgstr "tipo de fuente desconocida"
+
+msgid "Unreachable objects"
+msgstr "Objetos inaccesibles"
+
+#, python-format
+msgid "Updated %(etype)s : %(entity)s"
+msgstr "Se actualizó %(etype)s : %(entity)s"
+
+msgid "Used by:"
+msgstr "Utilizado por :"
+
+msgid "Users and groups management"
+msgstr "Usuarios y grupos de administradores"
+
+msgid "WARNING"
+msgstr "ADVERTENCIA"
+
+msgid "Web server"
+msgstr "Servidor web"
+
+msgid "Workflow"
+msgstr "Workflow"
+
+msgid "Workflow history"
+msgstr "Histórico del Workflow"
+
+msgid "WorkflowTransition"
+msgstr "Transición de Workflow"
+
+msgid "WorkflowTransition_plural"
+msgstr "Transiciones de Workflow"
+
+msgid "Workflow_plural"
+msgstr "work flows"
+
+msgid ""
+"You can either submit a new file using the browse button above, or choose to "
+"remove already uploaded file by checking the \"detach attached file\" check-"
+"box, or edit file content online with the widget below."
+msgstr ""
+"Usted puede proponer un nuevo archivo utilizando el botón\n"
+"\"buscar\" aquí arriba, o eliminar el archivo ya elegido al\n"
+"seleccionar el cuadro \"soltar archivo adjunto\", o editar el contenido\n"
+"del archivo en línea con el componente inferior."
+
+msgid ""
+"You can either submit a new file using the browse button above, or edit file "
+"content online with the widget below."
+msgstr ""
+"Puede proponer un nuevo archivo utilizando el botón buscar \n"
+"\"buscar\" en la parte superior, o editar el contenido del archivo en línea\n"
+"en el campo siguiente."
+
+msgid "You can't change this relation"
+msgstr "Usted no puede modificar esta relación"
+
+msgid "You cannot remove the system source"
+msgstr "Usted no puede eliminar la fuente sistema"
+
+msgid "You cannot rename the system source"
+msgstr "Usted no puede Renombrar la fuente sistema"
+
+msgid ""
+"You have no access to this view or it can not be used to display the current "
+"data."
+msgstr ""
+"No tiene permisos para accesar esta vista o No puede utilizarse para "
+"desplegar los datos seleccionados."
+
+msgid ""
+"You're not authorized to access this page. If you think you should, please "
+"contact the site administrator."
+msgstr ""
+"Usted no esta autorizado a acceder a esta página. Si Usted cree que \n"
+"hay un error, favor de contactar al administrador del Sistema."
+
+#, python-format
+msgid "[%s supervision] changes summary"
+msgstr "[%s supervision] descripción de cambios"
+
+msgid ""
+"a RQL expression which should return some results, else the transition won't "
+"be available. This query may use X and U variables that will respectivly "
+"represents the current entity and the current user."
+msgstr ""
+"una expresión RQL que debe haber enviado resultados, para que la transición "
+"pueda ser realizada. Esta expresión puede utilizar las variables X y U que "
+"representan respectivamente la entidad en transición y el usuario actual. "
+
+msgid "a URI representing an object in external data store"
+msgstr "una URI designando un objeto en un repositorio de datos externo"
+
+msgid "a float is expected"
+msgstr "un número flotante es requerido"
+
+msgid "a number (in seconds) or 20s, 10min, 24h or 4d are expected"
+msgstr "se espera un número (en segundos) ó 20s, 10min, 24h ó 4d "
+
+msgid ""
+"a simple cache entity characterized by a name and a validity date. The "
+"target application is responsible for updating timestamp when necessary to "
+"invalidate the cache (typically in hooks). Also, checkout the AppObject."
+"get_cache() method."
+msgstr ""
+"un caché simple caracterizado por un nombre y una fecha de validez. Es\n"
+"el código de la instancia quién es responsable de actualizar la fecha de\n"
+"validez mientras el caché debe ser invalidado (en general en un hook).\n"
+"Para recuperar un caché, hace falta utilizar el método\n"
+"get_cache(cachename)."
+
+msgid "abstract base class for transitions"
+msgstr "Clase de base abstracta para la transiciones"
+
+msgid "action menu"
+msgstr "acciones"
+
+msgid "action(s) on this selection"
+msgstr "Acción(es) en esta selección"
+
+msgid "actions"
+msgstr "Acciones"
+
+msgid "activate"
+msgstr "Activar"
+
+msgid "activated"
+msgstr "Activado"
+
+msgid "add"
+msgstr "Agregar"
+
+msgid "add Bookmark bookmarked_by CWUser object"
+msgstr "Agregar a los favoritos "
+
+msgid "add CWAttribute add_permission RQLExpression subject"
+msgstr "Expresión RQL de agregación"
+
+msgid "add CWAttribute constrained_by CWConstraint subject"
+msgstr "Restricción"
+
+msgid "add CWAttribute read_permission RQLExpression subject"
+msgstr "Expresión RQL de lectura"
+
+msgid "add CWAttribute relation_type CWRType object"
+msgstr "Definición de atributo"
+
+msgid "add CWAttribute update_permission RQLExpression subject"
+msgstr "Permiso de actualización"
+
+msgid "add CWEType add_permission RQLExpression subject"
+msgstr "Expresión RQL de agregación"
+
+msgid "add CWEType delete_permission RQLExpression subject"
+msgstr "Expresión RQL de eliminación"
+
+msgid "add CWEType read_permission RQLExpression subject"
+msgstr "Expresión RQL de lectura"
+
+msgid "add CWEType update_permission RQLExpression subject"
+msgstr "Definir una expresión RQL de actualización"
+
+msgid "add CWProperty for_user CWUser object"
+msgstr "Propiedad"
+
+msgid "add CWRelation add_permission RQLExpression subject"
+msgstr "Expresión RQL de agregar"
+
+msgid "add CWRelation constrained_by CWConstraint subject"
+msgstr "Restricción"
+
+msgid "add CWRelation delete_permission RQLExpression subject"
+msgstr "Expresión RQL de supresión"
+
+msgid "add CWRelation read_permission RQLExpression subject"
+msgstr "Expresión RQL de lectura"
+
+msgid "add CWRelation relation_type CWRType object"
+msgstr "Definición de relación"
+
+msgid "add CWSourceHostConfig cw_host_config_of CWSource object"
+msgstr "configuración del host"
+
+msgid "add CWUniqueTogetherConstraint constraint_of CWEType object"
+msgstr "restricción de singularidad"
+
+msgid "add CWUser in_group CWGroup object"
+msgstr "Usuario"
+
+msgid "add CWUser use_email EmailAddress subject"
+msgstr "Email"
+
+msgid "add State allowed_transition Transition object"
+msgstr "Estado en entrada"
+
+msgid "add State allowed_transition Transition subject"
+msgstr "Transición en salida"
+
+msgid "add State allowed_transition WorkflowTransition subject"
+msgstr "Transición workflow en salida"
+
+msgid "add State state_of Workflow object"
+msgstr "Estado"
+
+msgid "add Transition condition RQLExpression subject"
+msgstr "Restricción"
+
+msgid "add Transition destination_state State object"
+msgstr "Transición de entrada"
+
+msgid "add Transition destination_state State subject"
+msgstr "Estado de salida"
+
+msgid "add Transition transition_of Workflow object"
+msgstr "Transición"
+
+msgid "add WorkflowTransition condition RQLExpression subject"
+msgstr "Condición"
+
+msgid "add WorkflowTransition subworkflow_exit SubWorkflowExitPoint subject"
+msgstr "Salida de sub-workflow"
+
+msgid "add WorkflowTransition transition_of Workflow object"
+msgstr "Transición Workflow"
+
+msgid "add a BaseTransition"
+msgstr ""
+
+msgid "add a Bookmark"
+msgstr ""
+
+msgid "add a CWAttribute"
+msgstr ""
+
+msgid "add a CWCache"
+msgstr ""
+
+msgid "add a CWConstraint"
+msgstr ""
+
+msgid "add a CWConstraintType"
+msgstr ""
+
+msgid "add a CWDataImport"
+msgstr ""
+
+msgid "add a CWEType"
+msgstr ""
+
+msgctxt "inlined:CWRelation.from_entity.subject"
+msgid "add a CWEType"
+msgstr "Agregar un tipo de entidad"
+
+msgctxt "inlined:CWRelation.to_entity.subject"
+msgid "add a CWEType"
+msgstr "Agregar un tipo de entidad"
+
+msgid "add a CWGroup"
+msgstr ""
+
+msgid "add a CWProperty"
+msgstr ""
+
+msgid "add a CWRType"
+msgstr ""
+
+msgctxt "inlined:CWRelation.relation_type.subject"
+msgid "add a CWRType"
+msgstr "Agregar un tipo de relación"
+
+msgid "add a CWRelation"
+msgstr ""
+
+msgid "add a CWSource"
+msgstr ""
+
+msgid "add a CWSourceHostConfig"
+msgstr ""
+
+msgid "add a CWSourceSchemaConfig"
+msgstr ""
+
+msgid "add a CWUniqueTogetherConstraint"
+msgstr ""
+
+msgid "add a CWUser"
+msgstr ""
+
+msgid "add a EmailAddress"
+msgstr ""
+
+msgctxt "inlined:CWUser.use_email.subject"
+msgid "add a EmailAddress"
+msgstr "Agregar correo electrónico"
+
+msgid "add a ExternalUri"
+msgstr ""
+
+msgid "add a RQLExpression"
+msgstr ""
+
+msgid "add a State"
+msgstr ""
+
+msgid "add a SubWorkflowExitPoint"
+msgstr ""
+
+msgid "add a TrInfo"
+msgstr ""
+
+msgid "add a Transition"
+msgstr ""
+
+msgid "add a Workflow"
+msgstr ""
+
+msgid "add a WorkflowTransition"
+msgstr ""
+
+# subject and object forms for each relation type
+# (no object form for final relation types)
+msgid "add_permission"
+msgstr "Autorización para agregar"
+
+msgctxt "CWAttribute"
+msgid "add_permission"
+msgstr "Permiso de agregar"
+
+# subject and object forms for each relation type
+# (no object form for final relation types)
+msgctxt "CWEType"
+msgid "add_permission"
+msgstr "Permiso de agregar"
+
+msgctxt "CWRelation"
+msgid "add_permission"
+msgstr "Permiso de agregar"
+
+msgid "add_permission_object"
+msgstr "tiene permiso de agregar"
+
+msgctxt "CWGroup"
+msgid "add_permission_object"
+msgstr "tiene permiso de agregar"
+
+msgctxt "RQLExpression"
+msgid "add_permission_object"
+msgstr "tiene permiso de agregar"
+
+msgid "add_relation"
+msgstr "agregar"
+
+#, python-format
+msgid "added %(etype)s #%(eid)s (%(title)s)"
+msgstr "se agregó %(etype)s #%(eid)s (%(title)s)"
+
+#, python-format
+msgid ""
+"added relation %(rtype)s from %(frometype)s #%(eidfrom)s to %(toetype)s #"
+"%(eidto)s"
+msgstr ""
+"la relación %(rtype)s de %(frometype)s #%(eidfrom)s a %(toetype)s #%(eidto)s "
+"ha sido agregada"
+
+msgid "additional type specific properties"
+msgstr "propiedades adicionales específicas al tipo"
+
+msgid "addrelated"
+msgstr "Agregar"
+
+msgid "address"
+msgstr "correo electrónico"
+
+msgctxt "EmailAddress"
+msgid "address"
+msgstr "correo electrónico"
+
+msgid "alias"
+msgstr "alias"
+
+msgctxt "EmailAddress"
+msgid "alias"
+msgstr "alias"
+
+msgid "allow to set a specific workflow for an entity"
+msgstr "permite definir un Workflow específico para una entidad"
+
+msgid "allowed options depends on the source type"
+msgstr "las opciones permitidas dependen del tipo de fuente"
+
+msgid "allowed transitions from this state"
+msgstr "transiciones autorizadas desde este estado"
+
+#, python-format
+msgid "allowed values for \"action\" are %s"
+msgstr "los valores permitidos por \"acción\" son %s"
+
+msgid "allowed_transition"
+msgstr "transiciones autorizadas"
+
+msgctxt "State"
+msgid "allowed_transition"
+msgstr "transiciones autorizadas"
+
+msgid "allowed_transition_object"
+msgstr "Estados de entrada"
+
+msgctxt "BaseTransition"
+msgid "allowed_transition_object"
+msgstr "transición autorizada de"
+
+msgctxt "Transition"
+msgid "allowed_transition_object"
+msgstr "transición autorizada de"
+
+msgctxt "WorkflowTransition"
+msgid "allowed_transition_object"
+msgstr "transición autorizada de"
+
+msgid "an electronic mail address associated to a short alias"
+msgstr "una dirección electrónica asociada a este alias"
+
+msgid "an error occurred"
+msgstr "Ha ocurrido un error"
+
+msgid "an error occurred while processing your request"
+msgstr "un error ocurrió al procesar su demanda"
+
+msgid "an error occurred, the request cannot be fulfilled"
+msgstr "un error ha ocurrido, la búsqueda no ha podido ser realizada"
+
+msgid "an integer is expected"
+msgstr "un número entero es esperado"
+
+msgid "and linked"
+msgstr "y relacionada"
+
+msgid "and/or between different values"
+msgstr "y/o entre los diferentes valores"
+
+msgid "anonymous"
+msgstr "anónimo"
+
+msgid "anyrsetview"
+msgstr "vistas rset"
+
+msgid "april"
+msgstr "Abril"
+
+#, python-format
+msgid "archive for %(author)s"
+msgstr "archivo de %(author)s"
+
+#, python-format
+msgid "archive for %(month)s/%(year)s"
+msgstr "archivo del %(month)s/%(year)s"
+
+#, python-format
+msgid "at least one relation %(rtype)s is required on %(etype)s (%(eid)s)"
+msgstr ""
+"La entidad #%(eid)s de tipo %(etype)s debe necesariamente tener almenos una "
+"relación de tipo %(rtype)s"
+
+msgid "attribute"
+msgstr "Atributo"
+
+msgid "august"
+msgstr "Agosto"
+
+msgid "authentication failure"
+msgstr "Usuario o contraseña incorrecta"
+
+msgid "auto"
+msgstr "Automático"
+
+msgid "autocomputed attribute used to ensure transition coherency"
+msgstr ""
+"Atributo automatizado usado para asegurar la coherencia en la transición"
+
+msgid "automatic"
+msgstr "Automático"
+
+#, python-format
+msgid "back to pagination (%s results)"
+msgstr "regresar a paginación (%s resultados)"
+
+msgid "bad value"
+msgstr "Valor erróneo"
+
+msgid "badly formatted url"
+msgstr "url mal formateado"
+
+msgid "base url"
+msgstr "Url de base"
+
+msgid "bookmark has been removed"
+msgstr "Ha sido eliminado de sus favoritos"
+
+msgid "bookmark this page"
+msgstr "Agregar esta página a los favoritos"
+
+msgid "bookmark this search"
+msgstr "Guardar esta búsqueda"
+
+msgid "bookmarked_by"
+msgstr "está en los Favoritos de"
+
+msgctxt "Bookmark"
+msgid "bookmarked_by"
+msgstr "está en los Favoritos de"
+
+msgid "bookmarked_by_object"
+msgstr "tiene como Favoritos"
+
+msgctxt "CWUser"
+msgid "bookmarked_by_object"
+msgstr "tiene como Favoritos"
+
+msgid "bookmarks"
+msgstr "Favoritos"
+
+msgid "bookmarks are used to have user's specific internal links"
+msgstr "los Favoritos son ligas directas a espacios guardados por el usuario"
+
+msgid "boxes"
+msgstr "Cajas"
+
+msgid "bug report sent"
+msgstr "Reporte de error enviado"
+
+msgid "button_apply"
+msgstr "Aplicar"
+
+msgid "button_cancel"
+msgstr "Cancelar"
+
+msgid "button_delete"
+msgstr "Eliminar"
+
+msgid "button_ok"
+msgstr "Validar"
+
+msgid "by"
+msgstr "por"
+
+msgid "by relation"
+msgstr "por la relación"
+
+msgid "by_transition"
+msgstr "transición"
+
+msgctxt "TrInfo"
+msgid "by_transition"
+msgstr "transición"
+
+msgid "by_transition_object"
+msgstr "cambio de estados"
+
+msgctxt "BaseTransition"
+msgid "by_transition_object"
+msgstr "tiene como información"
+
+msgctxt "Transition"
+msgid "by_transition_object"
+msgstr "tiene como información"
+
+msgctxt "WorkflowTransition"
+msgid "by_transition_object"
+msgstr "tiene como información"
+
+msgid "calendar"
+msgstr "mostrar un calendario"
+
+msgid "can not resolve entity types:"
+msgstr "Imposible de interpretar los tipos de entidades:"
+
+msgid "can only have one url"
+msgstr "solo puede tener un URL"
+
+msgid "can't be changed"
+msgstr "No puede ser modificado"
+
+msgid "can't be deleted"
+msgstr "No puede ser eliminado"
+
+msgid "can't change this attribute"
+msgstr "no puede modificar este atributo"
+
+#, python-format
+msgid "can't display data, unexpected error: %s"
+msgstr "imposible de mostrar los datos, a causa del siguiente error: %s"
+
+msgid "can't have multiple exits on the same state"
+msgstr "no puede tener varias salidas en el mismo estado"
+
+#, python-format
+msgid "can't parse %(value)r (expected %(format)s)"
+msgstr "no puede analizar %(value)r (formato requerido : %(format)s)"
+
+#, python-format
+msgid ""
+"can't restore entity %(eid)s of type %(eschema)s, target of %(rtype)s (eid "
+"%(value)s) does not exist any longer"
+msgstr ""
+"no se pudo restaurar la entidad %(eid)s del tipo %(eschema)s, objetivo de "
+"%(rtype)s (eid %(value)s) pues ésta ya no existe"
+
+#, python-format
+msgid ""
+"can't restore relation %(rtype)s of entity %(eid)s, this relation does not "
+"exist in the schema anymore."
+msgstr ""
+"no se pudo restaurar la relación %(rtype)s de la entidad %(eid)s, esta "
+"relación ya no existe en el esquema. "
+
+#, python-format
+msgid "can't restore state of entity %s, it has been deleted inbetween"
+msgstr ""
+"no se puede restaurar el estado de la entidad %s, se ha borrado desde "
+"entonces"
+
+#, python-format
+msgid ""
+"can't set inlined=True, %(stype)s %(rtype)s %(otype)s has cardinality="
+"%(card)s"
+msgstr ""
+"no puede poner 'inlined' = True, %(stype)s %(rtype)s %(otype)s tiene "
+"cardinalidad %(card)s"
+
+msgid "cancel"
+msgstr "anular"
+
+msgid "cancel select"
+msgstr "Cancelar la selección"
+
+msgid "cancel this insert"
+msgstr "Cancelar esta inserción"
+
+msgid "cardinality"
+msgstr "cardinalidad"
+
+msgctxt "CWAttribute"
+msgid "cardinality"
+msgstr "cardinalidad"
+
+msgctxt "CWRelation"
+msgid "cardinality"
+msgstr "cardinalidad"
+
+msgid "category"
+msgstr "categoría"
+
+#, python-format
+msgid "changed state of %(etype)s #%(eid)s (%(title)s)"
+msgstr "Cambiar del estado de %(etype)s #%(eid)s (%(title)s)"
+
+msgid "changes applied"
+msgstr "Cambios realizados"
+
+msgid "click here to see created entity"
+msgstr "Ver la entidad creada"
+
+msgid "click here to see edited entity"
+msgstr "seleccione aquí para ver la entidad modificada"
+
+msgid "click on the box to cancel the deletion"
+msgstr "Seleccione la zona de edición para cancelar la eliminación"
+
+msgid "click to add a value"
+msgstr "seleccione para agregar un valor"
+
+msgid "click to delete this value"
+msgstr "seleccione para eliminar este valor"
+
+msgid "click to edit this field"
+msgstr "seleccione para editar este campo"
+
+msgid "close all"
+msgstr "cerrar todos"
+
+msgid "comment"
+msgstr "Comentario"
+
+msgctxt "TrInfo"
+msgid "comment"
+msgstr "Comentario"
+
+msgid "comment_format"
+msgstr "Formato"
+
+msgctxt "TrInfo"
+msgid "comment_format"
+msgstr "Formato"
+
+msgid "components"
+msgstr "Componentes"
+
+msgid "components_navigation"
+msgstr "Navigación por página"
+
+msgid "components_navigation_description"
+msgstr ""
+"Componente que permite presentar en varias páginas los resultados de  "
+"búsqueda  cuando son mayores a un número predeterminado "
+
+msgid "components_rqlinput"
+msgstr "Barra RQL"
+
+msgid "components_rqlinput_description"
+msgstr "La barra para realizar consultas en RQL, en el encabezado de página"
+
+msgid "composite"
+msgstr "composite"
+
+msgctxt "CWRelation"
+msgid "composite"
+msgstr "composite"
+
+msgid "condition"
+msgstr "condición"
+
+msgctxt "BaseTransition"
+msgid "condition"
+msgstr "condición"
+
+msgctxt "Transition"
+msgid "condition"
+msgstr "condición"
+
+msgctxt "WorkflowTransition"
+msgid "condition"
+msgstr "condición"
+
+msgid "condition_object"
+msgstr "condición de"
+
+msgctxt "RQLExpression"
+msgid "condition_object"
+msgstr "condición de"
+
+msgid "conditions"
+msgstr "condiciones"
+
+msgid "config"
+msgstr "configuración"
+
+msgctxt "CWSource"
+msgid "config"
+msgstr "configuración"
+
+msgctxt "CWSourceHostConfig"
+msgid "config"
+msgstr "configuración"
+
+msgid "config mode"
+msgstr "Modo de configuración"
+
+msgid "config type"
+msgstr "Tipo de configuración"
+
+msgid "confirm password"
+msgstr "Confirmar contraseña"
+
+msgid "constrained_by"
+msgstr "Restricción impuesta por"
+
+msgctxt "CWAttribute"
+msgid "constrained_by"
+msgstr "Restricción impuesta por"
+
+msgctxt "CWRelation"
+msgid "constrained_by"
+msgstr "Restricción impuesta por"
+
+msgid "constrained_by_object"
+msgstr "Restricción de"
+
+msgctxt "CWConstraint"
+msgid "constrained_by_object"
+msgstr "Restricción de"
+
+msgid "constraint factory"
+msgstr "Fábrica de restricciones"
+
+msgid "constraint_of"
+msgstr "restricción de"
+
+msgctxt "CWUniqueTogetherConstraint"
+msgid "constraint_of"
+msgstr "restricción de"
+
+msgid "constraint_of_object"
+msgstr "restringida por"
+
+msgctxt "CWEType"
+msgid "constraint_of_object"
+msgstr "restringida por"
+
+msgid "constraints"
+msgstr "Restricciones"
+
+msgid "constraints applying on this relation"
+msgstr "Restricciones que se aplican a esta relación"
+
+msgid "content type"
+msgstr "tipo MIME"
+
+msgid "context"
+msgstr "Contexto"
+
+msgid "context where this box should be displayed"
+msgstr "Contexto en el cual la caja debe aparecer en el sistema"
+
+msgid "context where this component should be displayed"
+msgstr "Contexto en el cual el componente debe aparecer en el sistema"
+
+msgid "context where this facet should be displayed, leave empty for both"
+msgstr ""
+"Contexto en el cual esta faceta debe ser mostrada, dejar vacia para ambos"
+
+msgid "control subject entity's relations order"
+msgstr "Controla el orden de relaciones de la entidad sujeto"
+
+msgid "copy"
+msgstr "Copiar"
+
+msgid "core relation indicating a user's groups"
+msgstr ""
+"Relación sistema que indica los grupos a los cuales pertenece un usuario"
+
+msgid ""
+"core relation indicating owners of an entity. This relation implicitly put "
+"the owner into the owners group for the entity"
+msgstr ""
+"Relación sistema que indica el(los) propietario(s) de una entidad. Esta "
+"relación pone de manera implícita al propietario en el grupo de propietarios "
+"de una entidad."
+
+msgid "core relation indicating the original creator of an entity"
+msgstr "Relación sistema que indica el creador de una entidad."
+
+msgid "core relation indicating the type of an entity"
+msgstr "Relación sistema que indica el tipo de entidad."
+
+msgid ""
+"core relation indicating the types (including specialized types) of an entity"
+msgstr ""
+"Relación sistema indicando los tipos (incluídos los tipos padres) de una "
+"entidad"
+
+msgid "could not connect to the SMTP server"
+msgstr "Imposible de conectarse al servidor SMTP"
+
+msgid "create an index for quick search on this attribute"
+msgstr "Crear un índice para accelerar las búsquedas sobre este atributo"
+
+msgid "created on"
+msgstr "creado el"
+
+msgid "created_by"
+msgstr "creado por"
+
+msgid "created_by_object"
+msgstr "ha creado"
+
+msgid "creating Bookmark (Bookmark bookmarked_by CWUser %(linkto)s)"
+msgstr "Creando Favorito"
+
+msgid "creating CWAttribute (CWAttribute relation_type CWRType %(linkto)s)"
+msgstr "Creación del atributo %(linkto)s"
+
+msgid ""
+"creating CWConstraint (CWAttribute %(linkto)s constrained_by CWConstraint)"
+msgstr "Creación condicionada por el atributo %(linkto)s"
+
+msgid ""
+"creating CWConstraint (CWRelation %(linkto)s constrained_by CWConstraint)"
+msgstr "Creación condicionada por la relación %(linkto)s"
+
+msgid "creating CWProperty (CWProperty for_user CWUser %(linkto)s)"
+msgstr "Creación de una propiedad por el usuario %(linkto)s"
+
+msgid "creating CWRelation (CWRelation relation_type CWRType %(linkto)s)"
+msgstr "Creación de la relación %(linkto)s"
+
+msgid ""
+"creating CWSourceHostConfig (CWSourceHostConfig cw_host_config_of CWSource "
+"%(linkto)s)"
+msgstr "creación de una configuración host para la fuente %(linkto)s"
+
+msgid ""
+"creating CWUniqueTogetherConstraint (CWUniqueTogetherConstraint "
+"constraint_of CWEType %(linkto)s)"
+msgstr "creación de una restricción de singularidad en  %(linkto)s"
+
+msgid "creating CWUser (CWUser in_group CWGroup %(linkto)s)"
+msgstr "Creación de un usuario para agregar al grupo %(linkto)s"
+
+msgid "creating EmailAddress (CWUser %(linkto)s use_email EmailAddress)"
+msgstr "Creación de una dirección electrónica para el usuario %(linkto)s"
+
+msgid ""
+"creating RQLExpression (CWAttribute %(linkto)s add_permission RQLExpression)"
+msgstr "Creación de una expresión RQL para permitir agregar %(linkto)s"
+
+msgid ""
+"creating RQLExpression (CWAttribute %(linkto)s read_permission RQLExpression)"
+msgstr "creación de una expresión RQL por el derecho de lectura de %(linkto)s"
+
+msgid ""
+"creating RQLExpression (CWAttribute %(linkto)s update_permission "
+"RQLExpression)"
+msgstr ""
+"creación de una expresión RQL por el derecho de actualización de %(linkto)s"
+
+msgid ""
+"creating RQLExpression (CWEType %(linkto)s add_permission RQLExpression)"
+msgstr ""
+"Creación de una expresión RQL para la autorización de agregar %(linkto)s"
+
+msgid ""
+"creating RQLExpression (CWEType %(linkto)s delete_permission RQLExpression)"
+msgstr ""
+"Creación de una expresión RQL para la autorización de eliminar %(linkto)s"
+
+msgid ""
+"creating RQLExpression (CWEType %(linkto)s read_permission RQLExpression)"
+msgstr "Creación de una expresión RQL para permitir leer %(linkto)s"
+
+msgid ""
+"creating RQLExpression (CWEType %(linkto)s update_permission RQLExpression)"
+msgstr "Creación de una expresión RQL para permitir actualizar %(linkto)s"
+
+msgid ""
+"creating RQLExpression (CWRelation %(linkto)s add_permission RQLExpression)"
+msgstr "Creación de una expresión RQL para permitir agregar %(linkto)s"
+
+msgid ""
+"creating RQLExpression (CWRelation %(linkto)s delete_permission "
+"RQLExpression)"
+msgstr "Creación de una expresión RQL para permitir eliminar %(linkto)s"
+
+msgid ""
+"creating RQLExpression (CWRelation %(linkto)s read_permission RQLExpression)"
+msgstr "Creación de una expresión RQL para permitir leer %(linkto)s"
+
+msgid "creating RQLExpression (Transition %(linkto)s condition RQLExpression)"
+msgstr "Creación de una expresión RQL para la transición %(linkto)s"
+
+msgid ""
+"creating RQLExpression (WorkflowTransition %(linkto)s condition "
+"RQLExpression)"
+msgstr "Creación de una expresión RQL para la transición Workflow %(linkto)s"
+
+msgid "creating State (State allowed_transition Transition %(linkto)s)"
+msgstr "Creación de un estado que puede ir hacia la transición %(linkto)s"
+
+msgid "creating State (State state_of Workflow %(linkto)s)"
+msgstr "Creando un Estado del Workflow"
+
+msgid "creating State (Transition %(linkto)s destination_state State)"
+msgstr "Creación de un Estado Destinación de la Transición %(linkto)s"
+
+msgid ""
+"creating SubWorkflowExitPoint (WorkflowTransition %(linkto)s "
+"subworkflow_exit SubWorkflowExitPoint)"
+msgstr "creación de un punto de Salida de la Transición Workflow %(linkto)s"
+
+msgid "creating Transition (State %(linkto)s allowed_transition Transition)"
+msgstr "Creación de una transición autorizada desde el Estado %(linkto)s"
+
+msgid "creating Transition (Transition destination_state State %(linkto)s)"
+msgstr "Creación de un transición hacia el Estado %(linkto)s"
+
+msgid "creating Transition (Transition transition_of Workflow %(linkto)s)"
+msgstr "Creación de una Transición Workflow %(linkto)s"
+
+msgid ""
+"creating WorkflowTransition (State %(linkto)s allowed_transition "
+"WorkflowTransition)"
+msgstr ""
+"Creación de una Transición Workflow permitida desde el estado %(linkto)s"
+
+msgid ""
+"creating WorkflowTransition (WorkflowTransition transition_of Workflow "
+"%(linkto)s)"
+msgstr "Creación de una Transición Workflow del Workflow %(linkto)s"
+
+msgid "creation"
+msgstr "Creación"
+
+msgid "creation date"
+msgstr "Fecha de Creación"
+
+msgid "creation time of an entity"
+msgstr "Fecha de creación de una entidad"
+
+msgid "creation_date"
+msgstr "Fecha de Creación"
+
+msgid "cstrtype"
+msgstr "Tipo de restricción"
+
+msgctxt "CWConstraint"
+msgid "cstrtype"
+msgstr "Tipo"
+
+msgid "cstrtype_object"
+msgstr "utilizado por"
+
+msgctxt "CWConstraintType"
+msgid "cstrtype_object"
+msgstr "Tipo de restricciones"
+
+msgid "csv export"
+msgstr "Exportar en CSV"
+
+msgid "csv export (entities)"
+msgstr "Exportar a CSV (entidades)"
+
+msgid "ctxcomponents"
+msgstr "Componentes contextuales"
+
+msgid "ctxcomponents_anonuserlink"
+msgstr "Liga usuario"
+
+msgid "ctxcomponents_anonuserlink_description"
+msgstr ""
+"Muestra un enlace hacia el formulario de conexión para los usuarios "
+"anónimos, o una caja que contiene los enlaces del usuario conectado. "
+
+msgid "ctxcomponents_appliname"
+msgstr "Nombre de la aplicación"
+
+msgid "ctxcomponents_appliname_description"
+msgstr "Muestra el nombre de la aplicación en el encabezado de la página"
+
+msgid "ctxcomponents_bookmarks_box"
+msgstr "Caja de Favoritos"
+
+msgid "ctxcomponents_bookmarks_box_description"
+msgstr "Muestra y permite administrar los favoritos del usuario"
+
+msgid "ctxcomponents_breadcrumbs"
+msgstr "Ruta de Navegación"
+
+msgid "ctxcomponents_breadcrumbs_description"
+msgstr "Muestra la ruta que permite localizar la página actual en el Sistema"
+
+msgid "ctxcomponents_download_box"
+msgstr "Configuración de caja de descargas"
+
+msgid "ctxcomponents_download_box_description"
+msgstr "Caja que contiene los elementos descargados"
+
+msgid "ctxcomponents_edit_box"
+msgstr "Caja de Acciones"
+
+msgid "ctxcomponents_edit_box_description"
+msgstr "Muestra las acciones posibles a ejecutar para los datos seleccionados"
+
+msgid "ctxcomponents_facet.filterbox"
+msgstr "Filtros"
+
+msgid "ctxcomponents_facet.filterbox_description"
+msgstr "Muestra los filtros aplicables a una búsqueda realizada"
+
+msgid "ctxcomponents_logo"
+msgstr "logo"
+
+msgid "ctxcomponents_logo_description"
+msgstr "El logo de la aplicación, en el encabezado de página"
+
+msgid "ctxcomponents_metadata"
+msgstr "Metadatos de la Entidad"
+
+msgid "ctxcomponents_metadata_description"
+msgstr "espacio que incluye los metadatos de la entidad actual"
+
+msgid "ctxcomponents_possible_views_box"
+msgstr "Caja de Vistas Posibles"
+
+msgid "ctxcomponents_possible_views_box_description"
+msgstr "Muestra las vistas posibles a aplicar a los datos seleccionados"
+
+msgid "ctxcomponents_prevnext"
+msgstr "Elemento anterior / siguiente"
+
+msgid "ctxcomponents_prevnext_description"
+msgstr ""
+"Muestra las ligas que permiten pasar de una entidad a otra en las entidades "
+"que implementan la interface \"anterior/siguiente\"."
+
+msgid "ctxcomponents_rss"
+msgstr "Ícono RSS"
+
+msgid "ctxcomponents_rss_description"
+msgstr "Muestra el ícono RSS para vistas RSS"
+
+msgid "ctxcomponents_search_box"
+msgstr "Caja de búsqueda"
+
+msgid "ctxcomponents_search_box_description"
+msgstr ""
+"Permite realizar una búsqueda simple para cualquier tipo de dato en la "
+"aplicación"
+
+msgid "ctxcomponents_startup_views_box"
+msgstr "Caja Vistas de inicio"
+
+msgid "ctxcomponents_startup_views_box_description"
+msgstr "Muestra las vistas de inicio de la aplicación"
+
+msgid "ctxcomponents_userstatus"
+msgstr "estado del usuario"
+
+msgid "ctxcomponents_userstatus_description"
+msgstr "establece el estado del usuario"
+
+msgid "ctxcomponents_wfhistory"
+msgstr "Histórico del workflow."
+
+msgid "ctxcomponents_wfhistory_description"
+msgstr ""
+"Sección que muestra el reporte histórico de las transiciones del workflow. "
+"Aplica solo en entidades con workflow."
+
+msgid "ctxtoolbar"
+msgstr "Barra de herramientas"
+
+msgid "custom_workflow"
+msgstr "Workflow específico"
+
+msgid "custom_workflow_object"
+msgstr "Workflow de"
+
+msgid "cw.groups-management"
+msgstr "grupos"
+
+msgid "cw.users-management"
+msgstr "usuarios"
+
+msgid "cw_for_source"
+msgstr "fuente"
+
+msgctxt "CWSourceSchemaConfig"
+msgid "cw_for_source"
+msgstr "fuente"
+
+msgid "cw_for_source_object"
+msgstr "elemento de mapeo"
+
+msgctxt "CWSource"
+msgid "cw_for_source_object"
+msgstr "elemento de mapeo"
+
+msgid "cw_host_config_of"
+msgstr "configuración del host de"
+
+msgctxt "CWSourceHostConfig"
+msgid "cw_host_config_of"
+msgstr "configuración del host de"
+
+msgid "cw_host_config_of_object"
+msgstr "tiene la configuración del host"
+
+msgctxt "CWSource"
+msgid "cw_host_config_of_object"
+msgstr "tiene la configuración del host"
+
+msgid "cw_import_of"
+msgstr "fuente"
+
+msgctxt "CWDataImport"
+msgid "cw_import_of"
+msgstr "fuente"
+
+msgid "cw_import_of_object"
+msgstr "importación"
+
+msgctxt "CWSource"
+msgid "cw_import_of_object"
+msgstr "importación"
+
+msgid "cw_schema"
+msgstr "esquema"
+
+msgctxt "CWSourceSchemaConfig"
+msgid "cw_schema"
+msgstr "esquema"
+
+msgid "cw_schema_object"
+msgstr "mapeado por"
+
+msgctxt "CWEType"
+msgid "cw_schema_object"
+msgstr "mapeado por"
+
+msgctxt "CWRType"
+msgid "cw_schema_object"
+msgstr "mapeado por"
+
+msgctxt "CWRelation"
+msgid "cw_schema_object"
+msgstr "mapeado por"
+
+msgid "cw_source"
+msgstr "desde la fuente de datos"
+
+msgid "cw_source_object"
+msgstr "entidades"
+
+msgid "cwetype-box"
+msgstr "Vista \"caja\""
+
+msgid "cwetype-description"
+msgstr "Descripción"
+
+msgid "cwetype-permissions"
+msgstr "Permisos"
+
+msgid "cwetype-views"
+msgstr "Vistas"
+
+msgid "cwetype-workflow"
+msgstr "Workflow"
+
+msgid "cwgroup-main"
+msgstr "Descripción"
+
+msgid "cwgroup-permissions"
+msgstr "Permisos"
+
+msgid "cwrtype-description"
+msgstr "Descripción"
+
+msgid "cwrtype-permissions"
+msgstr "Permisos"
+
+msgid "cwsource-imports"
+msgstr "importación"
+
+msgid "cwsource-main"
+msgstr "descripción"
+
+msgid "cwsource-mapping"
+msgstr "mapeo"
+
+msgid "cwuri"
+msgstr "Uri Interna"
+
+msgid "data directory url"
+msgstr "Url del repertorio de datos"
+
+msgid "data model schema"
+msgstr "Esquema del Sistema"
+
+msgid "data sources"
+msgstr "fuente de datos"
+
+msgid "data sources management"
+msgstr "administración de fuentes de datos"
+
+msgid "date"
+msgstr "Fecha"
+
+msgid "deactivate"
+msgstr "Desactivar"
+
+msgid "deactivated"
+msgstr "Desactivado"
+
+msgid "december"
+msgstr "Diciembre"
+
+msgid "default"
+msgstr "Valor por defecto"
+
+msgid "default text format for rich text fields."
+msgstr ""
+"Formato de texto que se utilizará por defecto para los campos de tipo texto"
+
+msgid "default user workflow"
+msgstr "Workflow por defecto de los usuarios"
+
+msgid "default value"
+msgstr "Valor por defecto"
+
+msgid "default value as gziped pickled python object"
+msgstr "valor por defecto, en la forma de objeto python, al usar pickle y gzip"
+
+msgid "default workflow for an entity type"
+msgstr "Workflow por defecto para un tipo de entidad"
+
+msgid "default_workflow"
+msgstr "Workflow por defecto"
+
+msgctxt "CWEType"
+msgid "default_workflow"
+msgstr "Workflow por defecto"
+
+msgid "default_workflow_object"
+msgstr "Workflow por defecto de"
+
+msgctxt "Workflow"
+msgid "default_workflow_object"
+msgstr "Workflow por defecto de"
+
+msgid "defaultval"
+msgstr "Valor por defecto"
+
+msgctxt "CWAttribute"
+msgid "defaultval"
+msgstr "Valor por defecto"
+
+msgid "define a CubicWeb user"
+msgstr "Define un usuario CubicWeb"
+
+msgid "define a CubicWeb users group"
+msgstr "Define un grupo de usuarios CubicWeb"
+
+msgid ""
+"define a final relation: link a final relation type from a non final entity "
+"to a final entity type. used to build the instance schema"
+msgstr ""
+"Define una relación final: liga un tipo de relación final desde una entidad "
+"NO final hacia un tipo de entidad final. Se usa para crear el esquema de la "
+"instancia."
+
+msgid ""
+"define a non final relation: link a non final relation type from a non final "
+"entity to a non final entity type. used to build the instance schema"
+msgstr ""
+"Define una relación NO final: liga un tipo de relación NO final desde una  "
+"entidad NO final hacia un tipo de entidad NO final. Se usa para crear el "
+"esquema de la instancia."
+
+msgid "define a relation type, used to build the instance schema"
+msgstr ""
+"Define un tipo de relación, usado para construir el esquema de la instancia."
+
+msgid "define a rql expression used to define permissions"
+msgstr "Expresión RQL utilizada para definir los derechos de acceso"
+
+msgid "define a schema constraint"
+msgstr "Define una condición de esquema"
+
+msgid "define a schema constraint type"
+msgstr "Define un tipo de condición de esquema"
+
+msgid "define an entity type, used to build the instance schema"
+msgstr ""
+"Define un tipo de entidad, usado para construir el esquema de la instancia."
+
+msgid "define how we get out from a sub-workflow"
+msgstr "Define como salir de un sub-Workflow"
+
+msgid "defines a sql-level multicolumn unique index"
+msgstr "define un índice SQL único a través de varias columnas"
+
+msgid ""
+"defines what's the property is applied for. You must select this first to be "
+"able to set value"
+msgstr ""
+"Define a que se aplica la propiedad . Debe de seleccionar esto antes de "
+"establecer un valor"
+
+msgid "delete"
+msgstr "Eliminar"
+
+msgid "delete this bookmark"
+msgstr "Eliminar este favorito"
+
+msgid "delete this relation"
+msgstr "Eliminar esta relación"
+
+msgid "delete_permission"
+msgstr "Permiso de eliminar"
+
+msgctxt "CWEType"
+msgid "delete_permission"
+msgstr "Permiso de eliminar"
+
+msgctxt "CWRelation"
+msgid "delete_permission"
+msgstr "Permiso de eliminar"
+
+msgid "delete_permission_object"
+msgstr "posee permiso para eliminar"
+
+msgctxt "CWGroup"
+msgid "delete_permission_object"
+msgstr "puede eliminar"
+
+msgctxt "RQLExpression"
+msgid "delete_permission_object"
+msgstr "puede eliminar"
+
+#, python-format
+msgid "deleted %(etype)s #%(eid)s (%(title)s)"
+msgstr "Eliminación de la entidad %(etype)s #%(eid)s (%(title)s)"
+
+#, python-format
+msgid ""
+"deleted relation %(rtype)s from %(frometype)s #%(eidfrom)s to %(toetype)s #"
+"%(eidto)s"
+msgstr ""
+"La relación %(rtype)s de %(frometype)s #%(eidfrom)s a %(toetype)s #%(eidto)s "
+"ha sido suprimida."
+
+msgid "depends on the constraint type"
+msgstr "Depende del tipo de restricción"
+
+msgid "description"
+msgstr "Descripción"
+
+msgctxt "BaseTransition"
+msgid "description"
+msgstr "Descripción"
+
+msgctxt "CWAttribute"
+msgid "description"
+msgstr "Descripción"
+
+msgctxt "CWEType"
+msgid "description"
+msgstr "Descripción"
+
+msgctxt "CWRType"
+msgid "description"
+msgstr "Descripción"
+
+msgctxt "CWRelation"
+msgid "description"
+msgstr "Descripción"
+
+msgctxt "State"
+msgid "description"
+msgstr "Descripción"
+
+msgctxt "Transition"
+msgid "description"
+msgstr "Descripción"
+
+msgctxt "Workflow"
+msgid "description"
+msgstr "Descripción"
+
+msgctxt "WorkflowTransition"
+msgid "description"
+msgstr "Descripción"
+
+msgid "description_format"
+msgstr "Formato"
+
+msgctxt "BaseTransition"
+msgid "description_format"
+msgstr "Formato"
+
+msgctxt "CWAttribute"
+msgid "description_format"
+msgstr "Formato"
+
+msgctxt "CWEType"
+msgid "description_format"
+msgstr "Formato"
+
+msgctxt "CWRType"
+msgid "description_format"
+msgstr "Formato"
+
+msgctxt "CWRelation"
+msgid "description_format"
+msgstr "Formato"
+
+msgctxt "State"
+msgid "description_format"
+msgstr "Formato"
+
+msgctxt "Transition"
+msgid "description_format"
+msgstr "Formato"
+
+msgctxt "Workflow"
+msgid "description_format"
+msgstr "Formato"
+
+msgctxt "WorkflowTransition"
+msgid "description_format"
+msgstr "Formato"
+
+msgid "destination state for this transition"
+msgstr "Estados accesibles para esta transición"
+
+msgid "destination state must be in the same workflow as our parent transition"
+msgstr ""
+"El estado de destino debe pertenecer al mismo Workflow que la transición "
+"padre."
+
+msgid "destination state of a transition"
+msgstr "Estado destino de una transición"
+
+msgid ""
+"destination state. No destination state means that transition should go back "
+"to the state from which we've entered the subworkflow."
+msgstr ""
+"Estado destino de la transición. Si el Estado destino no ha sido "
+"especificado, la transición regresará hacia el estado que tenía la entidad "
+"al entrar en el Sub-Workflow."
+
+msgid "destination_state"
+msgstr "Estado destino"
+
+msgctxt "SubWorkflowExitPoint"
+msgid "destination_state"
+msgstr "Estado destino"
+
+msgctxt "Transition"
+msgid "destination_state"
+msgstr "Estado destino"
+
+msgid "destination_state_object"
+msgstr "Destino de"
+
+msgctxt "State"
+msgid "destination_state_object"
+msgstr "Estado final de"
+
+msgid "detach attached file"
+msgstr "soltar el archivo existente"
+
+msgid "display order of the box"
+msgstr "Orden de aparición de la caja"
+
+msgid "display order of the component"
+msgstr "Orden de aparición del componente"
+
+msgid "display order of the facet"
+msgstr "Orden de aparición de la faceta"
+
+msgid "display the box or not"
+msgstr "Mostrar o no la caja"
+
+msgid "display the component or not"
+msgstr "Mostrar o no el componente"
+
+msgid "display the facet or not"
+msgstr "Mostrar o no la faceta"
+
+msgid "download"
+msgstr "Descargar"
+
+#, python-format
+msgid "download %s"
+msgstr "Descargar %s"
+
+msgid "download icon"
+msgstr "ícono de descarga"
+
+msgid "download schema as owl"
+msgstr "Descargar esquema en formato OWL"
+
+msgid "edit bookmarks"
+msgstr "Editar favoritos"
+
+msgid "edit canceled"
+msgstr "Edición cancelada"
+
+msgid "editable-table"
+msgstr "Tabla modificable"
+
+msgid "eid"
+msgstr "eid"
+
+msgid "embedded html"
+msgstr "Html incrustado"
+
+msgid "end_timestamp"
+msgstr "horario final"
+
+msgctxt "CWDataImport"
+msgid "end_timestamp"
+msgstr "horario final"
+
+msgid "entities deleted"
+msgstr "Entidades eliminadas"
+
+msgid "entity and relation types can't be mapped, only attributes or relations"
+msgstr ""
+"los tipos de entidad y relación no pueden ser mapeados, solo los atributos y "
+"las relaciones"
+
+msgid "entity copied"
+msgstr "Entidad copiada"
+
+msgid "entity created"
+msgstr "Entidad creada"
+
+msgid "entity creation"
+msgstr "Creación de entidad"
+
+msgid "entity deleted"
+msgstr "Entidad eliminada"
+
+msgid "entity deletion"
+msgstr "Eliminación de entidad"
+
+msgid "entity edited"
+msgstr "Entidad modificada"
+
+msgid "entity has no workflow set"
+msgstr "La entidad no tiene Workflow"
+
+msgid "entity linked"
+msgstr "Entidad asociada"
+
+msgid "entity type"
+msgstr "Tipo de entidad"
+
+msgid "entity types which may use this workflow"
+msgstr "Tipos de entidades que pueden utilizar este Workflow"
+
+msgid "entity update"
+msgstr "Actualización de la Entidad"
+
+msgid "entityview"
+msgstr "vistas de entidades"
+
+msgid "error"
+msgstr "error"
+
+msgid "error while publishing ReST text"
+msgstr ""
+"Se ha producido un error durante la interpretación del texto en formato ReST"
+
+msgid "exit state must be a subworkflow state"
+msgstr "El estado de salida debe de ser un estado del Sub-Workflow"
+
+msgid "exit_point"
+msgstr "Estado de Salida"
+
+msgid "exit_point_object"
+msgstr "Estado de Salida de"
+
+#, python-format
+msgid "exiting from subworkflow %s"
+msgstr "Salida del subworkflow %s"
+
+msgid "expression"
+msgstr "Expresión"
+
+msgctxt "RQLExpression"
+msgid "expression"
+msgstr "RQL de la expresión"
+
+msgid "exprtype"
+msgstr "Tipo de la expresión"
+
+msgctxt "RQLExpression"
+msgid "exprtype"
+msgstr "Tipo"
+
+msgid "extra_props"
+msgstr "propiedades adicionales"
+
+msgctxt "CWAttribute"
+msgid "extra_props"
+msgstr "propiedades adicionales"
+
+msgid "facet-loading-msg"
+msgstr "procesando, espere por favor"
+
+msgid "facet.filters"
+msgstr "Filtros"
+
+msgid "facetbox"
+msgstr "Caja de facetas"
+
+msgid "facets_created_by-facet"
+msgstr "Faceta \"creada por\""
+
+msgid "facets_created_by-facet_description"
+msgstr "Faceta creada por"
+
+msgid "facets_cw_source-facet"
+msgstr "faceta \"fuente de datos\""
+
+msgid "facets_cw_source-facet_description"
+msgstr "fuente de datos"
+
+msgid "facets_cwfinal-facet"
+msgstr "Faceta \"final\""
+
+msgid "facets_cwfinal-facet_description"
+msgstr "Faceta para las entidades \"finales\""
+
+msgid "facets_datafeed.dataimport.status"
+msgstr "estado de la importación"
+
+msgid "facets_datafeed.dataimport.status_description"
+msgstr "Estado de la importación de datos"
+
+msgid "facets_etype-facet"
+msgstr "Faceta \"es de tipo\""
+
+msgid "facets_etype-facet_description"
+msgstr "Faceta es de tipo"
+
+msgid "facets_has_text-facet"
+msgstr "Faceta \"contiene el texto\""
+
+msgid "facets_has_text-facet_description"
+msgstr "Faceta contiene el texto"
+
+msgid "facets_in_group-facet"
+msgstr "Faceta \"forma parte del grupo\""
+
+msgid "facets_in_group-facet_description"
+msgstr "Faceta en grupo"
+
+msgid "facets_in_state-facet"
+msgstr "Faceta \"en el estado\""
+
+msgid "facets_in_state-facet_description"
+msgstr "Faceta en el estado"
+
+msgid "failed"
+msgstr "fallido"
+
+#, python-format
+msgid "failed to uniquify path (%s, %s)"
+msgstr "No se pudo obtener un dato único (%s, %s)"
+
+msgid "february"
+msgstr "Febrero"
+
+msgid "file tree view"
+msgstr "Arborescencia (archivos)"
+
+msgid "final"
+msgstr "Final"
+
+msgctxt "CWEType"
+msgid "final"
+msgstr "Final"
+
+msgctxt "CWRType"
+msgid "final"
+msgstr "Final"
+
+msgid "first name"
+msgstr "Nombre"
+
+msgid "firstname"
+msgstr "Nombre"
+
+msgctxt "CWUser"
+msgid "firstname"
+msgstr "Nombre"
+
+msgid "foaf"
+msgstr "Amigo de un Amigo, FOAF"
+
+msgid "focus on this selection"
+msgstr "muestre esta selección"
+
+msgid "follow"
+msgstr "Seguir la liga"
+
+#, python-format
+msgid "follow this link for more information on this %s"
+msgstr "Seleccione esta liga para obtener mayor información sobre %s"
+
+msgid "for_user"
+msgstr "Para el usuario"
+
+msgctxt "CWProperty"
+msgid "for_user"
+msgstr "Propiedad del Usuario"
+
+msgid "for_user_object"
+msgstr "Utiliza las propiedades"
+
+msgctxt "CWUser"
+msgid "for_user_object"
+msgstr "Tiene como preferencia"
+
+msgid "friday"
+msgstr "Viernes"
+
+msgid "from"
+msgstr "De"
+
+#, python-format
+msgid "from %(date)s"
+msgstr "de %(date)s"
+
+msgid "from_entity"
+msgstr "De la entidad"
+
+msgctxt "CWAttribute"
+msgid "from_entity"
+msgstr "Atributo de la entidad"
+
+msgctxt "CWRelation"
+msgid "from_entity"
+msgstr "Relación de la entidad"
+
+msgid "from_entity_object"
+msgstr "Relación sujeto"
+
+msgctxt "CWEType"
+msgid "from_entity_object"
+msgstr "Entidad de"
+
+msgid "from_interval_start"
+msgstr "De"
+
+msgid "from_state"
+msgstr "Del Estado"
+
+msgctxt "TrInfo"
+msgid "from_state"
+msgstr "Estado de Inicio"
+
+msgid "from_state_object"
+msgstr "Transiciones desde este estado"
+
+msgctxt "State"
+msgid "from_state_object"
+msgstr "Estado de Inicio de"
+
+msgid "full text or RQL query"
+msgstr "Texto de búsqueda o demanda RQL"
+
+msgid "fulltext_container"
+msgstr "Contenedor de texto indexado"
+
+msgctxt "CWRType"
+msgid "fulltext_container"
+msgstr "Objeto a indexar"
+
+msgid "fulltextindexed"
+msgstr "Indexación de texto"
+
+msgctxt "CWAttribute"
+msgid "fulltextindexed"
+msgstr "Texto indexado"
+
+msgid "gc"
+msgstr "fuga de memoria"
+
+msgid "generic plot"
+msgstr "Gráfica Genérica"
+
+msgid "generic relation to link one entity to another"
+msgstr "Relación genérica para ligar entidades"
+
+msgid ""
+"generic relation to specify that an external entity represent the same "
+"object as a local one: http://www.w3.org/TR/owl-ref/#sameAs-def"
+msgstr ""
+"Relación genérica que indicar que una entidad es idéntica a otro recurso web "
+"(ver http://www.w3.org/TR/owl-ref/#sameAs-def)."
+
+msgid "granted to groups"
+msgstr "Otorgado a los grupos"
+
+#, python-format
+msgid "graphical representation of %(appid)s data model"
+msgstr "Representación gráfica del modelo de datos de %(appid)s"
+
+#, python-format
+msgid ""
+"graphical representation of the %(etype)s entity type from %(appid)s data "
+"model"
+msgstr ""
+"Representación gráfica del modelo de datos para el tipo de entidad %(etype)s "
+"de %(appid)s"
+
+#, python-format
+msgid ""
+"graphical representation of the %(rtype)s relation type from %(appid)s data "
+"model"
+msgstr ""
+"Representación gráfica del modelo de datos para el tipo de relación "
+"%(rtype)s de %(appid)s"
+
+msgid "group in which a user should be to be allowed to pass this transition"
+msgstr "Grupo en el cual el usuario debe estar lograr la transición"
+
+msgid "groups"
+msgstr "Grupos"
+
+msgid "groups allowed to add entities/relations of this type"
+msgstr "grupos autorizados a agregar entidades/relaciones de este tipo"
+
+msgid "groups allowed to delete entities/relations of this type"
+msgstr "grupos autorizados a eliminar entidades/relaciones de este tipo"
+
+msgid "groups allowed to read entities/relations of this type"
+msgstr "grupos autorizados a leer entidades/relaciones de este tipo"
+
+msgid "groups allowed to update entities/relations of this type"
+msgstr "grupos autorizados a actualizar entidades/relaciones de este tipo"
+
+msgid "groups grant permissions to the user"
+msgstr "Los grupos otorgan los permisos al usuario"
+
+msgid "guests"
+msgstr "Invitados"
+
+msgid "hCalendar"
+msgstr "hCalendar"
+
+msgid "has_text"
+msgstr "Contiene el texto"
+
+msgid "header-center"
+msgstr "header - centro"
+
+msgid "header-left"
+msgstr "encabezado (izquierdo)"
+
+msgid "header-right"
+msgstr "encabezado (derecho)"
+
+msgid "hide filter form"
+msgstr "Esconder el filtro"
+
+msgid ""
+"how to format date and time in the ui (see <a href=\"http://docs.python.org/"
+"library/datetime.html#strftime-strptime-behavior\">this page</a> for format "
+"description)"
+msgstr ""
+"Formato de fecha y hora que se utilizará por defecto en la interfaz (<a href="
+"\"http://docs.python.org/library/datetime.html#strftime-strptime-behavior"
+"\">mayor información del formato</a>)"
+
+msgid ""
+"how to format date in the ui (see <a href=\"http://docs.python.org/library/"
+"datetime.html#strftime-strptime-behavior\">this page</a> for format "
+"description)"
+msgstr ""
+"Formato de fecha que se utilizará por defecto en la interfaz (<a href="
+"\"http://docs.python.org/library/datetime.html#strftime-strptime-behavior"
+"\">mayor información  del formato</a>)"
+
+msgid "how to format float numbers in the ui"
+msgstr ""
+"Formato de números flotantes que se utilizará por defecto en la interfaz"
+
+msgid ""
+"how to format time in the ui (see <a href=\"http://docs.python.org/library/"
+"datetime.html#strftime-strptime-behavior\">this page</a> for format "
+"description)"
+msgstr ""
+"Formato de hora que se utilizará por defecto en la interfaz (<a href="
+"\"http://docs.python.org/library/datetime.html#strftime-strptime-behavior"
+"\">mayor información del formato</a>)"
+
+msgid "i18n_bookmark_url_fqs"
+msgstr "Parámetros"
+
+msgid "i18n_bookmark_url_path"
+msgstr "Ruta"
+
+msgid "i18n_login_popup"
+msgstr "Identificarse"
+
+msgid "i18ncard_*"
+msgstr "0..n"
+
+msgid "i18ncard_+"
+msgstr "1..n"
+
+msgid "i18ncard_1"
+msgstr "1"
+
+msgid "i18ncard_?"
+msgstr "0..1"
+
+msgid "i18nprevnext_next"
+msgstr "Siguiente"
+
+msgid "i18nprevnext_previous"
+msgstr "Anterior"
+
+msgid "i18nprevnext_up"
+msgstr "Padre"
+
+msgid "iCalendar"
+msgstr "iCalendar"
+
+msgid "id of main template used to render pages"
+msgstr "ID del template principal"
+
+msgid "identical to"
+msgstr "Idéntico a"
+
+msgid "identical_to"
+msgstr "idéntico a"
+
+msgid "identity"
+msgstr "es idéntico a"
+
+msgid "identity_object"
+msgstr "es idéntico a"
+
+msgid ""
+"if full text content of subject/object entity should be added to other side "
+"entity (the container)."
+msgstr ""
+"Si el texto indexado de la entidad sujeto/objeto debe ser agregado a la "
+"entidad al otro extremo de la relación (el contenedor)."
+
+msgid "image"
+msgstr "Imagen"
+
+msgid "in progress"
+msgstr "en progreso"
+
+msgid "in_group"
+msgstr "En el grupo"
+
+msgctxt "CWUser"
+msgid "in_group"
+msgstr "Forma parte del grupo"
+
+msgid "in_group_object"
+msgstr "Miembros"
+
+msgctxt "CWGroup"
+msgid "in_group_object"
+msgstr "Contiene los usuarios"
+
+msgid "in_state"
+msgstr "Estado"
+
+msgid "in_state_object"
+msgstr "Estado de"
+
+msgid "in_synchronization"
+msgstr "sincronizado"
+
+msgctxt "CWSource"
+msgid "in_synchronization"
+msgstr "sincronizado"
+
+msgid "incontext"
+msgstr "En el contexto"
+
+msgid "incorrect captcha value"
+msgstr "Valor del Captcha incorrecto"
+
+#, python-format
+msgid "incorrect value (%(KEY-value)r) for type \"%(KEY-type)s\""
+msgstr "el valor (%(KEY-value)r) es incorrecto para el tipo \"%(KEY-type)s\""
+
+msgid "index this attribute's value in the plain text index"
+msgstr "Indexar el valor de este atributo en el índice de texto simple"
+
+msgid "indexed"
+msgstr "Indexado"
+
+msgctxt "CWAttribute"
+msgid "indexed"
+msgstr "Indexado"
+
+msgid "indicate the current state of an entity"
+msgstr "Indica el estado actual de una entidad"
+
+msgid ""
+"indicate which state should be used by default when an entity using states "
+"is created"
+msgstr ""
+"Indica cual estado deberá ser utilizado por defecto al crear una entidad"
+
+msgid "indifferent"
+msgstr "indifferente"
+
+msgid "info"
+msgstr "Información del Sistema"
+
+msgid "initial state for this workflow"
+msgstr "Estado inicial para este Workflow"
+
+msgid "initial_state"
+msgstr "Estado inicial"
+
+msgctxt "Workflow"
+msgid "initial_state"
+msgstr "Estado inicial"
+
+msgid "initial_state_object"
+msgstr "Estado inicial de"
+
+msgctxt "State"
+msgid "initial_state_object"
+msgstr "Estado inicial de"
+
+msgid "inlined"
+msgstr "Inlined"
+
+msgctxt "CWRType"
+msgid "inlined"
+msgstr "Inlined"
+
+msgid "instance home"
+msgstr "Repertorio de la Instancia"
+
+msgid "internal entity uri"
+msgstr "Uri Interna"
+
+msgid "internationalizable"
+msgstr "Internacionalizable"
+
+msgctxt "CWAttribute"
+msgid "internationalizable"
+msgstr "Internacionalizable"
+
+#, python-format
+msgid "invalid action %r"
+msgstr "Acción %r invalida"
+
+#, python-format
+msgid "invalid value %(KEY-value)s, it must be one of %(KEY-choices)s"
+msgstr "Valor %(KEY-value)s es incorrecto, seleccione entre %(KEY-choices)s"
+
+msgid "is"
+msgstr "es"
+
+msgid "is object of:"
+msgstr "es objeto de"
+
+msgid "is subject of:"
+msgstr "es sujeto de"
+
+msgid ""
+"is the subject/object entity of the relation composed of the other ? This "
+"implies that when the composite is deleted, composants are also deleted."
+msgstr ""
+"Es la entidad sujeto/objeto de la relación une agregación de el otro ? De "
+"ser así, el destruir el composite destruirá de igual manera sus componentes "
+
+msgid "is this attribute's value translatable"
+msgstr "Es el valor de este atributo traducible ?"
+
+msgid "is this relation equivalent in both direction ?"
+msgstr "Es esta relación equivalente en los ambos sentidos ?"
+
+msgid ""
+"is this relation physically inlined? you should know what you're doing if "
+"you are changing this!"
+msgstr ""
+"Es esta relación estilo INLINED en la base de datos  ? Usted debe saber lo "
+"que hace si cambia esto !"
+
+msgid "is_instance_of"
+msgstr "es una instancia de"
+
+msgid "is_instance_of_object"
+msgstr "tiene como instancias"
+
+msgid "is_object"
+msgstr "tiene por instancia"
+
+msgid "january"
+msgstr "Enero"
+
+msgid "json-entities-export-view"
+msgstr "Exportación JSON (de entidades)"
+
+msgid "json-export-view"
+msgstr "Exportación JSON"
+
+msgid "july"
+msgstr "Julio"
+
+msgid "june"
+msgstr "Junio"
+
+msgid "language of the user interface"
+msgstr "Idioma que se utilizará por defecto en la interfaz usuario"
+
+msgid "last connection date"
+msgstr "Ultima conexión"
+
+msgid "last login time"
+msgstr "Ultima conexión"
+
+msgid "last name"
+msgstr "Apellido"
+
+msgid "last usage"
+msgstr "Ultimo uso"
+
+msgid "last_login_time"
+msgstr "Ultima fecha de conexión"
+
+msgctxt "CWUser"
+msgid "last_login_time"
+msgstr "Ultima conexión"
+
+msgid "latest import"
+msgstr "importaciones recientes"
+
+msgid "latest modification time of an entity"
+msgstr "Fecha de la última modificación de una entidad "
+
+msgid "latest synchronization time"
+msgstr "fecha de la última sincronización"
+
+msgid "latest update on"
+msgstr "Actualizado el"
+
+msgid "latest_retrieval"
+msgstr "última sincronización"
+
+msgctxt "CWSource"
+msgid "latest_retrieval"
+msgstr "fecha de la última sincronización de la fuente"
+
+msgid "left"
+msgstr "izquierda"
+
+msgid "line"
+msgstr "línea"
+
+msgid ""
+"link a property to the user which want this property customization. Unless "
+"you're a site manager, this relation will be handled automatically."
+msgstr ""
+"Liga una propiedad al usuario que desea esta personalización. Salvo que "
+"usted sea un administrador del sistema, esta relación será administrada de "
+"forma automática."
+
+msgid "link a relation definition to its object entity type"
+msgstr "Liga una definición de relación a su tipo de entidad objeto"
+
+msgid "link a relation definition to its relation type"
+msgstr "Liga una definición de relación a su tipo de relación"
+
+msgid "link a relation definition to its subject entity type"
+msgstr "Liga una definición de relación a su tipo de entidad"
+
+msgid "link a state to one or more workflow"
+msgstr "Liga un estado a uno o más Workflow"
+
+msgid "link a transition information to its object"
+msgstr "Liga una transición de informacion hacia los objetos asociados"
+
+msgid "link a transition to one or more workflow"
+msgstr "Liga una transición a uno o más Workflow"
+
+msgid "link a workflow to one or more entity type"
+msgstr "Liga un Workflow a uno a más tipos de entidad"
+
+msgid "list"
+msgstr "Lista"
+
+msgid "log"
+msgstr "log"
+
+msgctxt "CWDataImport"
+msgid "log"
+msgstr "log"
+
+msgid "log in"
+msgstr "Acceder"
+
+msgid "login"
+msgstr "Usuario"
+
+msgctxt "CWUser"
+msgid "login"
+msgstr "Usuario"
+
+msgid "login / password"
+msgstr "usuario / contraseña"
+
+msgid "login or email"
+msgstr "Usuario o dirección de correo"
+
+msgid "login_action"
+msgstr "Ingresa tus datos"
+
+msgid "logout"
+msgstr "Desconectarse"
+
+#, python-format
+msgid "loop in %(rel)s relation (%(eid)s)"
+msgstr "loop detectado en %(rel)s de la entidad #%(eid)s"
+
+msgid "main informations"
+msgstr "Informaciones Generales"
+
+msgid "main_tab"
+msgstr "descripción"
+
+msgid "mainvars"
+msgstr "Variables principales"
+
+msgctxt "RQLExpression"
+msgid "mainvars"
+msgstr "Variables principales"
+
+msgid "manage"
+msgstr "Administración Sistema"
+
+msgid "manage bookmarks"
+msgstr "Gestión de favoritos"
+
+msgid "manage permissions"
+msgstr "Gestión de permisos"
+
+msgid "managers"
+msgstr "Administradores"
+
+msgid "mandatory relation"
+msgstr "Relación obligatoria"
+
+msgid "march"
+msgstr "Marzo"
+
+msgid "match_host"
+msgstr "para el host"
+
+msgctxt "CWSourceHostConfig"
+msgid "match_host"
+msgstr "para el host"
+
+msgid "maximum number of characters in short description"
+msgstr "Máximo de caracteres en las descripciones cortas"
+
+msgid "maximum number of entities to display in related combo box"
+msgstr "Máximo de entidades a mostrar en las listas dinámicas"
+
+msgid "maximum number of objects displayed by page of results"
+msgstr "Máximo de elementos mostrados por página de resultados"
+
+msgid "maximum number of related entities to display in the primary view"
+msgstr "Máximo de entidades relacionadas a mostrar en la vista primaria"
+
+msgid "may"
+msgstr "Mayo"
+
+msgid "memory leak debugging"
+msgstr "depuración (debugging) de fuga de memoria"
+
+msgid "message"
+msgstr "mensaje"
+
+#, python-format
+msgid "missing parameters for entity %s"
+msgstr "Parámetros faltantes a la entidad %s"
+
+msgid "modification"
+msgstr "modificación"
+
+msgid "modification_date"
+msgstr "Fecha de modificación"
+
+msgid "modify"
+msgstr "Modificar"
+
+msgid "monday"
+msgstr "Lunes"
+
+msgid "more actions"
+msgstr "Más acciones"
+
+msgid "more info about this workflow"
+msgstr "Más información acerca de este workflow"
+
+msgid "multiple edit"
+msgstr "Edición multiple"
+
+msgid "my custom search"
+msgstr "Mi búsqueda personalizada"
+
+msgid "name"
+msgstr "Nombre"
+
+msgctxt "BaseTransition"
+msgid "name"
+msgstr "Nombre"
+
+msgctxt "CWCache"
+msgid "name"
+msgstr "Nombre"
+
+msgctxt "CWConstraintType"
+msgid "name"
+msgstr "Nombre"
+
+msgctxt "CWEType"
+msgid "name"
+msgstr "Nombre"
+
+msgctxt "CWGroup"
+msgid "name"
+msgstr "Nombre"
+
+msgctxt "CWRType"
+msgid "name"
+msgstr "Nombre"
+
+msgctxt "CWSource"
+msgid "name"
+msgstr "nombre"
+
+msgctxt "CWUniqueTogetherConstraint"
+msgid "name"
+msgstr "nombre"
+
+msgctxt "State"
+msgid "name"
+msgstr "nombre"
+
+msgctxt "Transition"
+msgid "name"
+msgstr "Nombre"
+
+msgctxt "Workflow"
+msgid "name"
+msgstr "Nombre"
+
+msgctxt "WorkflowTransition"
+msgid "name"
+msgstr "Nombre"
+
+msgid "name of the cache"
+msgstr "Nombre del Caché"
+
+msgid ""
+"name of the main variables which should be used in the selection if "
+"necessary (comma separated)"
+msgstr ""
+"Nombre de las variables principales que deberían ser utilizadas en la "
+"selección de ser necesario (separarlas con comas)"
+
+msgid "name of the source"
+msgstr "nombre de la fuente"
+
+msgid "navbottom"
+msgstr "Pie de página"
+
+msgid "navcontentbottom"
+msgstr "Pie de página del contenido principal"
+
+msgid "navcontenttop"
+msgstr "Encabezado"
+
+msgid "navigation"
+msgstr "Navegación"
+
+msgid "navigation.combobox-limit"
+msgstr "ComboBox"
+
+msgid "navigation.page-size"
+msgstr "Paginación"
+
+msgid "navigation.related-limit"
+msgstr "Entidades relacionadas"
+
+msgid "navigation.short-line-size"
+msgstr "Descripción corta"
+
+msgid "navtop"
+msgstr "Encabezado del contenido principal"
+
+msgid "new"
+msgstr "Nuevo"
+
+msgid "next page"
+msgstr "página siguiente"
+
+msgid "next_results"
+msgstr "Siguientes resultados"
+
+msgid "no"
+msgstr "No"
+
+msgid "no content next link"
+msgstr "no hay liga siguiente"
+
+msgid "no content prev link"
+msgstr "no existe liga previa"
+
+msgid "no edited fields specified"
+msgstr "ningún campo por editar especificado"
+
+msgid "no log to display"
+msgstr "no arrojó elementos para mostrar"
+
+msgid "no related entity"
+msgstr "No posee entidad asociada"
+
+msgid "no repository sessions found"
+msgstr "Ninguna sesión encontrada"
+
+msgid "no selected entities"
+msgstr "No hay entidades seleccionadas"
+
+#, python-format
+msgid "no such entity type %s"
+msgstr "El tipo de entidad '%s' no existe"
+
+msgid "no version information"
+msgstr "No existe la información de version"
+
+msgid "no web sessions found"
+msgstr "Ninguna sesión web encontrada"
+
+msgid "normal"
+msgstr "Normal"
+
+msgid "not authorized"
+msgstr "No autorizado"
+
+msgid "not selected"
+msgstr "No seleccionado"
+
+msgid "november"
+msgstr "Noviembre"
+
+msgid "num. users"
+msgstr "Número de Usuarios"
+
+msgid "object"
+msgstr "Objeto"
+
+msgid "object type"
+msgstr "Tipo de Objeto"
+
+msgid "october"
+msgstr "Octubre"
+
+msgid "one month"
+msgstr "Un mes"
+
+msgid "one week"
+msgstr "Una semana"
+
+msgid "oneline"
+msgstr "En una línea"
+
+msgid "only select queries are authorized"
+msgstr "Solo están permitidas consultas de lectura"
+
+msgid "open all"
+msgstr "Abrir todos"
+
+msgid "opened sessions"
+msgstr "Sesiones abiertas"
+
+msgid "opened web sessions"
+msgstr "Sesiones Web abiertas"
+
+msgid "options"
+msgstr "Opciones"
+
+msgctxt "CWSourceSchemaConfig"
+msgid "options"
+msgstr "opciones"
+
+msgid "order"
+msgstr "Orden"
+
+msgid "ordernum"
+msgstr "Orden"
+
+msgctxt "CWAttribute"
+msgid "ordernum"
+msgstr "Número de Orden"
+
+msgctxt "CWRelation"
+msgid "ordernum"
+msgstr "Número de Orden"
+
+msgid "owl"
+msgstr "OWL"
+
+msgid "owlabox"
+msgstr "OWLabox"
+
+msgid "owned_by"
+msgstr "Pertenece a"
+
+msgid "owned_by_object"
+msgstr "Pertenece al objeto"
+
+msgid "owners"
+msgstr "Proprietarios"
+
+msgid "ownerships have been changed"
+msgstr "Derechos de propiedad modificados"
+
+msgid "pageid-not-found"
+msgstr "Página no encontrada."
+
+msgid "parser"
+msgstr "analizador (parser)"
+
+msgctxt "CWSource"
+msgid "parser"
+msgstr "analizador (parser)"
+
+msgid "parser to use to extract entities from content retrieved at given URLs."
+msgstr ""
+"analizador (parser) que sirve para extraer entidades y relaciones del "
+"contenido recuperado de las URLs."
+
+msgid "password"
+msgstr "Contraseña"
+
+msgid "password and confirmation don't match"
+msgstr "Su contraseña y confirmación no concuerdan"
+
+msgid "path"
+msgstr "Ruta"
+
+msgctxt "Bookmark"
+msgid "path"
+msgstr "Ruta"
+
+msgid "permalink to this message"
+msgstr "liga permanente a este mensaje"
+
+msgid "permission"
+msgstr "Permiso"
+
+msgid "permissions"
+msgstr "Permisos"
+
+msgid "pick existing bookmarks"
+msgstr "Seleccionar favoritos existentes"
+
+msgid "pkey"
+msgstr "Clave"
+
+msgctxt "CWProperty"
+msgid "pkey"
+msgstr "Código de la Propiedad"
+
+msgid "please correct errors below"
+msgstr "Por favor corregir los errores señalados en la parte inferior"
+
+msgid "please correct the following errors:"
+msgstr "Por favor corregir los siguientes errores:"
+
+msgid "possible views"
+msgstr "Vistas posibles"
+
+msgid "prefered_form"
+msgstr "Forma preferida"
+
+msgctxt "EmailAddress"
+msgid "prefered_form"
+msgstr "Email principal"
+
+msgid "prefered_form_object"
+msgstr "Formato preferido sobre"
+
+msgctxt "EmailAddress"
+msgid "prefered_form_object"
+msgstr "Email principal de"
+
+msgid "preferences"
+msgstr "Preferencias"
+
+msgid "previous page"
+msgstr "página anterior"
+
+msgid "previous_results"
+msgstr "Resultados Anteriores"
+
+msgid "primary"
+msgstr "Primaria"
+
+msgid "primary_email"
+msgstr "Dirección principal de correo electrónico"
+
+msgctxt "CWUser"
+msgid "primary_email"
+msgstr "Dirección principal de correo electrónico"
+
+msgid "primary_email_object"
+msgstr "Dirección de email principal (objeto)"
+
+msgctxt "EmailAddress"
+msgid "primary_email_object"
+msgstr "Dirección principal de correo electrónico de"
+
+msgid "profile"
+msgstr "perfil"
+
+msgid "rdef-description"
+msgstr "Descripción"
+
+msgid "rdef-permissions"
+msgstr "Permisos"
+
+msgid "rdf export"
+msgstr "Exportación RDF"
+
+msgid "read"
+msgstr "Lectura"
+
+msgid "read_permission"
+msgstr "Permiso de lectura"
+
+msgctxt "CWAttribute"
+msgid "read_permission"
+msgstr "Permiso de Lectura"
+
+msgctxt "CWEType"
+msgid "read_permission"
+msgstr "Permiso de Lectura"
+
+msgctxt "CWRelation"
+msgid "read_permission"
+msgstr "Permiso de Lectura"
+
+msgid "read_permission_object"
+msgstr "Tiene acceso de lectura a"
+
+msgctxt "CWGroup"
+msgid "read_permission_object"
+msgstr "Puede leer"
+
+msgctxt "RQLExpression"
+msgid "read_permission_object"
+msgstr "Puede leer"
+
+msgid "regexp matching host(s) to which this config applies"
+msgstr ""
+"expresión regular de los nombres de hosts a los cuales esta configuración "
+"aplica"
+
+msgid "registry"
+msgstr "Registro"
+
+msgid "related entity has no state"
+msgstr "La entidad relacionada no posee Estado"
+
+msgid "related entity has no workflow set"
+msgstr "La entidad relacionada no posee Workflow definido"
+
+msgid "relation"
+msgstr "relación"
+
+#, python-format
+msgid "relation %(relname)s of %(ent)s"
+msgstr "relación %(relname)s de %(ent)s"
+
+#, python-format
+msgid ""
+"relation %(rtype)s with %(etype)s as %(role)s is supported but no target "
+"type supported"
+msgstr ""
+"la relación %(rtype)s con %(etype)s como %(role)s es aceptada pero ningún "
+"tipo target es aceptado"
+
+#, python-format
+msgid ""
+"relation %(type)s with %(etype)s as %(role)s and target type %(target)s is "
+"mandatory but not supported"
+msgstr ""
+"la relación %(type)s con %(etype)s como %(role)s y tipo objetivo %(target)s "
+"es obligatoria pero no mantenida"
+
+#, python-format
+msgid ""
+"relation %s is supported but none of its definitions matches supported "
+"entities"
+msgstr ""
+"la relación %s es aceptada pero ninguna de sus definiciones corresponden a "
+"los tipos de entidades aceptadas"
+
+msgid "relation add"
+msgstr "Agregar Relación"
+
+msgid "relation removal"
+msgstr "Eliminar Relación"
+
+msgid "relation_type"
+msgstr "Tipo de Relación"
+
+msgctxt "CWAttribute"
+msgid "relation_type"
+msgstr "Tipo de Relación"
+
+msgctxt "CWRelation"
+msgid "relation_type"
+msgstr "Tipo de Relación"
+
+msgid "relation_type_object"
+msgstr "Definición de Relaciones"
+
+msgctxt "CWRType"
+msgid "relation_type_object"
+msgstr "Definición de Relaciones"
+
+msgid "relations"
+msgstr "relaciones"
+
+msgctxt "CWUniqueTogetherConstraint"
+msgid "relations"
+msgstr "relaciones"
+
+msgid "relations deleted"
+msgstr "Relaciones Eliminadas"
+
+msgid "relations_object"
+msgstr "relaciones de"
+
+msgctxt "CWRType"
+msgid "relations_object"
+msgstr "relaciones de"
+
+msgid "relative url of the bookmarked page"
+msgstr "Url relativa de la página"
+
+msgid "remove-inlined-entity-form"
+msgstr "Eliminar"
+
+msgid "require_group"
+msgstr "Requiere el grupo"
+
+msgctxt "BaseTransition"
+msgid "require_group"
+msgstr "Restringida al Grupo"
+
+msgctxt "Transition"
+msgid "require_group"
+msgstr "Restringida al Grupo"
+
+msgctxt "WorkflowTransition"
+msgid "require_group"
+msgstr "Restringida al Grupo"
+
+msgid "require_group_object"
+msgstr "Posee derechos sobre"
+
+msgctxt "CWGroup"
+msgid "require_group_object"
+msgstr "Posee derechos sobre"
+
+msgid "required"
+msgstr "Requerido"
+
+msgid "required attribute"
+msgstr "Atributo requerido"
+
+msgid "required field"
+msgstr "Campo requerido"
+
+msgid "resources usage"
+msgstr "Recursos utilizados"
+
+msgid ""
+"restriction part of a rql query. For entity rql expression, X and U are "
+"predefined respectivly to the current object and to the request user. For "
+"relation rql expression, S, O and U are predefined respectivly to the "
+"current relation'subject, object and to the request user. "
+msgstr ""
+"Parte restrictiva de una consulta RQL. En una expresión ligada a una "
+"entidad, X y U son respectivamente asignadas a la Entidad y el Usuario en "
+"curso.En una expresión ligada a una relación, S, O y U son respectivamente "
+"asignados al Sujeto/Objeto de la relación y al Usuario actual."
+
+msgid "revert changes"
+msgstr "Anular modificación"
+
+msgid "right"
+msgstr "Derecha"
+
+msgid "rql expression allowing to add entities/relations of this type"
+msgstr "Expresión RQL que permite AGREGAR entidades/relaciones de este tipo"
+
+msgid "rql expression allowing to delete entities/relations of this type"
+msgstr "Expresión RQL que permite ELIMINAR entidades/relaciones de este tipo"
+
+msgid "rql expression allowing to read entities/relations of this type"
+msgstr "Expresión RQL que permite LEER entidades/relaciones de este tipo"
+
+msgid "rql expression allowing to update entities/relations of this type"
+msgstr "Expresión RQL que permite ACTUALIZAR entidades/relaciones de este tipo"
+
+msgid "rql expressions"
+msgstr "Expresiones RQL"
+
+msgid "rss export"
+msgstr "Exportación RSS"
+
+msgid "same_as"
+msgstr "Idéntico a"
+
+msgid "sample format"
+msgstr "Ejemplo"
+
+msgid "saturday"
+msgstr "Sábado"
+
+msgid "schema-diagram"
+msgstr "Gráfica"
+
+msgid "schema-entity-types"
+msgstr "Entidades"
+
+msgid "schema-relation-types"
+msgstr "Relaciones"
+
+msgid "search"
+msgstr "Buscar"
+
+msgid "search for association"
+msgstr "Búsqueda por asociación"
+
+msgid "searching for"
+msgstr "Buscando"
+
+msgid "security"
+msgstr "Seguridad"
+
+msgid "see more"
+msgstr "ver más"
+
+msgid "see them all"
+msgstr "Ver todos"
+
+msgid "see_also"
+msgstr "Ver además"
+
+msgid "select"
+msgstr "Seleccionar"
+
+msgid "select a"
+msgstr "Seleccione un"
+
+msgid "select a key first"
+msgstr "Seleccione una clave"
+
+msgid "select a relation"
+msgstr "Seleccione una relación"
+
+msgid "select this entity"
+msgstr "Seleccionar esta entidad"
+
+msgid "selected"
+msgstr "Seleccionado"
+
+msgid "semantic description of this attribute"
+msgstr "Descripción semántica de este atributo"
+
+msgid "semantic description of this entity type"
+msgstr "Descripción semántica de este tipo de entidad"
+
+msgid "semantic description of this relation"
+msgstr "Descripción semántica de esta relación"
+
+msgid "semantic description of this relation type"
+msgstr "Descripción semántica de este tipo de relación"
+
+msgid "semantic description of this state"
+msgstr "Descripción semántica de este estado"
+
+msgid "semantic description of this transition"
+msgstr "Descripcion semántica de esta transición"
+
+msgid "semantic description of this workflow"
+msgstr "Descripcion semántica de este Workflow"
+
+msgid "september"
+msgstr "Septiembre"
+
+msgid "server information"
+msgstr "Información del servidor"
+
+msgid "severity"
+msgstr "severidad"
+
+msgid ""
+"should html fields being edited using fckeditor (a HTML WYSIWYG editor).  "
+"You should also select text/html as default text format to actually get "
+"fckeditor."
+msgstr ""
+"Indica si los campos de tipo texto deberán ser editados usando fckeditor "
+"(un\n"
+"editor HTML WYSIWYG). Deberá también elegir text/html\n"
+"como formato de texto por defecto para poder utilizar fckeditor."
+
+#, python-format
+msgid "show %s results"
+msgstr "Mostrar %s resultados"
+
+msgid "show advanced fields"
+msgstr "Mostrar campos avanzados"
+
+msgid "show filter form"
+msgstr "Mostrar el Filtro"
+
+msgid "site configuration"
+msgstr "Configuración Sistema"
+
+msgid "site documentation"
+msgstr "Documentación Sistema"
+
+msgid "site title"
+msgstr "Nombre del Sistema"
+
+msgid "site-wide property can't be set for user"
+msgstr "Una propiedad específica al Sistema no puede ser propia al usuario"
+
+msgid "some later transaction(s) touch entity, undo them first"
+msgstr ""
+"Las transacciones más recientes modificaron esta entidad, anúlelas primero"
+
+msgid "some relations violate a unicity constraint"
+msgstr "algunas relaciones no respetan la restricción de unicidad"
+
+msgid "sorry, the server is unable to handle this query"
+msgstr "Lo sentimos, el servidor no puede manejar esta consulta"
+
+msgid ""
+"source's configuration. One key=value per line, authorized keys depending on "
+"the source's type"
+msgstr ""
+"configuración de fuentes. Una clave=valor por línea, las claves permitidas "
+"dependen del tipo de la fuente."
+
+msgid "sparql xml"
+msgstr "XML Sparql"
+
+msgid "special transition allowing to go through a sub-workflow"
+msgstr "Transición especial que permite ir en un Sub-Workflow"
+
+msgid "specializes"
+msgstr "Deriva de"
+
+msgctxt "CWEType"
+msgid "specializes"
+msgstr "Especializa"
+
+msgid "specializes_object"
+msgstr "Especializado por"
+
+msgctxt "CWEType"
+msgid "specializes_object"
+msgstr "Especializado por"
+
+#, python-format
+msgid "specifying %s is mandatory"
+msgstr "especificar %s es obligatorio"
+
+msgid ""
+"start timestamp of the currently in synchronization, or NULL when no "
+"synchronization in progress."
+msgstr ""
+"horario de inicio de la sincronización en curso, o NULL cuando no existe "
+"sincronización en curso"
+
+msgid "start_timestamp"
+msgstr "horario inicio"
+
+msgctxt "CWDataImport"
+msgid "start_timestamp"
+msgstr "horario inicio"
+
+msgid "startup views"
+msgstr "Vistas de inicio"
+
+msgid "startupview"
+msgstr "Vistas de Inicio"
+
+msgid "state"
+msgstr "Estado"
+
+msgid "state and transition don't belong the the same workflow"
+msgstr "El Estado y la Transición no pertenecen al mismo Workflow"
+
+msgid "state doesn't apply to this entity's type"
+msgstr "Este Estado no aplica a este tipo de Entidad"
+
+msgid "state doesn't belong to entity's current workflow"
+msgstr "El Estado no pertenece al Workflow actual de la Entidad"
+
+msgid "state doesn't belong to entity's workflow"
+msgstr "El Estado no pertenece al Workflow de la Entidad"
+
+msgid ""
+"state doesn't belong to entity's workflow. You may want to set a custom "
+"workflow for this entity first."
+msgstr ""
+"El Estado no pertenece al Workflow Actual de la Entidad. Usted deseaquizás "
+"especificar que esta entidad debe utilizar este Workflow"
+
+msgid "state doesn't belong to this workflow"
+msgstr "El Estado no pertenece a este Workflow"
+
+msgid "state_of"
+msgstr "Estado de"
+
+msgctxt "State"
+msgid "state_of"
+msgstr "Estado de"
+
+msgid "state_of_object"
+msgstr "Tiene por Estado"
+
+msgctxt "Workflow"
+msgid "state_of_object"
+msgstr "Tiene por Estado"
+
+msgid "status"
+msgstr "estado"
+
+msgctxt "CWDataImport"
+msgid "status"
+msgstr "estado"
+
+msgid "status change"
+msgstr "Cambio de Estatus"
+
+msgid "status changed"
+msgstr "Estatus cambiado"
+
+#, python-format
+msgid "status will change from %(st1)s to %(st2)s"
+msgstr "El estatus cambiará de %(st1)s a %(st2)s"
+
+msgid "subject"
+msgstr "Sujeto"
+
+msgid "subject type"
+msgstr "Tipo del sujeto"
+
+msgid "subject/object cardinality"
+msgstr "Cardinalidad Sujeto/Objeto"
+
+msgid "subworkflow"
+msgstr "Sub-Workflow"
+
+msgctxt "WorkflowTransition"
+msgid "subworkflow"
+msgstr "Sub-Workflow"
+
+msgid ""
+"subworkflow isn't a workflow for the same types as the transition's workflow"
+msgstr ""
+"Le Sub-Workflow no se aplica a los mismos tipos que el Workflow de esta "
+"transición"
+
+msgid "subworkflow state"
+msgstr "Estado de Sub-Workflow"
+
+msgid "subworkflow_exit"
+msgstr "Salida del Sub-Workflow"
+
+msgctxt "WorkflowTransition"
+msgid "subworkflow_exit"
+msgstr "Salida del Sub-Workflow"
+
+msgid "subworkflow_exit_object"
+msgstr "Salida Sub-Workflow de"
+
+msgctxt "SubWorkflowExitPoint"
+msgid "subworkflow_exit_object"
+msgstr "Salida Sub-Workflow de"
+
+msgid "subworkflow_object"
+msgstr "Sub-Workflow de"
+
+msgctxt "Workflow"
+msgid "subworkflow_object"
+msgstr "Sub-Workflow de"
+
+msgid "subworkflow_state"
+msgstr "Estado de Sub-Workflow"
+
+msgctxt "SubWorkflowExitPoint"
+msgid "subworkflow_state"
+msgstr "Estado de Sub-Workflow"
+
+msgid "subworkflow_state_object"
+msgstr "Estado de Salida de"
+
+msgctxt "State"
+msgid "subworkflow_state_object"
+msgstr "Estado de Salida de"
+
+msgid "success"
+msgstr "éxito"
+
+msgid "sunday"
+msgstr "Domingo"
+
+msgid "surname"
+msgstr "Apellido"
+
+msgctxt "CWUser"
+msgid "surname"
+msgstr "Apellido"
+
+msgid "symmetric"
+msgstr "Simétrico"
+
+msgctxt "CWRType"
+msgid "symmetric"
+msgstr "Simétrico"
+
+msgid "synchronization-interval must be greater than 1 minute"
+msgstr "synchronization-interval debe ser mayor a 1 minuto"
+
+msgid "table"
+msgstr "Tabla"
+
+msgid "tablefilter"
+msgstr "Tablero de Filtrado"
+
+msgid "text"
+msgstr "Texto"
+
+msgid "text/cubicweb-page-template"
+msgstr "Usar Page Templates"
+
+msgid "text/html"
+msgstr "Usar HTML"
+
+msgid "text/plain"
+msgstr "Usar Texto simple"
+
+msgid "text/rest"
+msgstr "Texto en REST"
+
+msgid "the URI of the object"
+msgstr "El URI del Objeto"
+
+msgid "the prefered email"
+msgstr "Dirección principal de email"
+
+msgid "the system source has its configuration stored on the file-system"
+msgstr ""
+"el sistema fuente tiene su configuración almacenada en el sistema de archivos"
+
+#, python-format
+msgid "the value \"%s\" is already used, use another one"
+msgstr "El valor \"%s\" ya esta en uso, favor de utilizar otro"
+
+msgid "there is no next page"
+msgstr "no existe página siguiente"
+
+msgid "there is no previous page"
+msgstr "no existe página anterior"
+
+#, python-format
+msgid "there is no transaction #%s"
+msgstr "no existe la transacción #%s"
+
+msgid "this action is not reversible!"
+msgstr "Esta acción es irreversible!."
+
+msgid "this entity is currently owned by"
+msgstr "Esta Entidad es propiedad de"
+
+msgid "this parser doesn't use a mapping"
+msgstr "este analizador (parser) no utiliza mapeo"
+
+msgid "this resource does not exist"
+msgstr "Este recurso no existe"
+
+msgid "this source doesn't use a mapping"
+msgstr "esta fuente no utiliza mapeo"
+
+msgid "thursday"
+msgstr "Jueves"
+
+msgid "timeline"
+msgstr "Escala de Tiempo"
+
+msgid "timestamp"
+msgstr "Fecha"
+
+msgctxt "CWCache"
+msgid "timestamp"
+msgstr "Válido desde"
+
+msgid "timetable"
+msgstr "Tablero de tiempos"
+
+msgid "title"
+msgstr "Nombre"
+
+msgctxt "Bookmark"
+msgid "title"
+msgstr "Nombre"
+
+msgid "to"
+msgstr "a"
+
+#, python-format
+msgid "to %(date)s"
+msgstr "a %(date)s"
+
+msgid "to associate with"
+msgstr "Para asociar con"
+
+msgid "to_entity"
+msgstr "Hacia la entidad"
+
+msgctxt "CWAttribute"
+msgid "to_entity"
+msgstr "Por la entidad"
+
+msgctxt "CWRelation"
+msgid "to_entity"
+msgstr "Por la entidad"
+
+msgid "to_entity_object"
+msgstr "Objeto de la Relación"
+
+msgctxt "CWEType"
+msgid "to_entity_object"
+msgstr "Objeto de la Relación"
+
+msgid "to_interval_end"
+msgstr "a"
+
+msgid "to_state"
+msgstr "Hacia el Estado"
+
+msgctxt "TrInfo"
+msgid "to_state"
+msgstr "Hacia el Estado"
+
+msgid "to_state_object"
+msgstr "Transición hacia este Estado"
+
+msgctxt "State"
+msgid "to_state_object"
+msgstr "Transición hacia este Estado"
+
+msgid "toggle check boxes"
+msgstr "Cambiar valor"
+
+msgid "tr_count"
+msgstr "n° de transición"
+
+msgctxt "TrInfo"
+msgid "tr_count"
+msgstr "n° de transición"
+
+msgid "transaction undone"
+msgstr "transacción anulada"
+
+#, python-format
+msgid "transition %(tr)s isn't allowed from %(st)s"
+msgstr "La transición %(tr)s no esta permitida desde el Estado %(st)s"
+
+msgid "transition doesn't belong to entity's workflow"
+msgstr "La transición no pertenece al Workflow de la Entidad"
+
+msgid "transition isn't allowed"
+msgstr "La transición no esta permitida"
+
+msgid "transition may not be fired"
+msgstr "La transición no puede ser lanzada"
+
+msgid "transition_of"
+msgstr "Transición de"
+
+msgctxt "BaseTransition"
+msgid "transition_of"
+msgstr "Transición de"
+
+msgctxt "Transition"
+msgid "transition_of"
+msgstr "Transición de"
+
+msgctxt "WorkflowTransition"
+msgid "transition_of"
+msgstr "Transición de"
+
+msgid "transition_of_object"
+msgstr "Utiliza las transiciones"
+
+msgctxt "Workflow"
+msgid "transition_of_object"
+msgstr "Utiliza las transiciones"
+
+msgid "tree view"
+msgstr "Vista Jerárquica"
+
+msgid "tuesday"
+msgstr "Martes"
+
+msgid "type"
+msgstr "Tipo"
+
+msgctxt "BaseTransition"
+msgid "type"
+msgstr "Tipo"
+
+msgctxt "CWSource"
+msgid "type"
+msgstr "tipo"
+
+msgctxt "Transition"
+msgid "type"
+msgstr "Tipo"
+
+msgctxt "WorkflowTransition"
+msgid "type"
+msgstr "Tipo"
+
+msgid "type here a sparql query"
+msgstr "Escriba aquí su consulta en Sparql"
+
+msgid "type of the source"
+msgstr "tipo de la fuente"
+
+msgid "ui"
+msgstr "Interfaz Genérica"
+
+msgid "ui.date-format"
+msgstr "Formato de Fecha"
+
+msgid "ui.datetime-format"
+msgstr "Formato de Fecha y Hora"
+
+msgid "ui.default-text-format"
+msgstr "Formato de texto"
+
+msgid "ui.encoding"
+msgstr "Codificación"
+
+msgid "ui.fckeditor"
+msgstr "Editor de texto FCK"
+
+msgid "ui.float-format"
+msgstr "Números flotantes"
+
+msgid "ui.language"
+msgstr "Lenguaje"
+
+msgid "ui.main-template"
+msgstr "Plantilla Principal"
+
+msgid "ui.site-title"
+msgstr "Nombre del Sistema"
+
+msgid "ui.time-format"
+msgstr "Formato de hora"
+
+msgid "unable to check captcha, please try again"
+msgstr "Imposible de verificar el Captcha, inténtelo otra vez"
+
+msgid "unaccessible"
+msgstr "Inaccesible"
+
+msgid "unauthorized value"
+msgstr "Valor no permitido"
+
+msgid "undefined user"
+msgstr "usuario indefinido"
+
+msgid "undo"
+msgstr "Anular"
+
+msgid "unique identifier used to connect to the application"
+msgstr "Identificador único utilizado para conectarse al Sistema"
+
+msgid "unknown external entity"
+msgstr "Entidad externa desconocida"
+
+#, python-format
+msgid "unknown options %s"
+msgstr "opciones desconocidas: %s"
+
+#, python-format
+msgid "unknown property key %s"
+msgstr "Clave de Propiedad desconocida: %s"
+
+msgid "unknown vocabulary:"
+msgstr "Vocabulario desconocido: "
+
+msgid "unsupported protocol"
+msgstr "protocolo no soportado"
+
+msgid "upassword"
+msgstr "Contraseña"
+
+msgctxt "CWUser"
+msgid "upassword"
+msgstr "Contraseña"
+
+msgid "update"
+msgstr "Modificación"
+
+msgid "update_permission"
+msgstr "Puede ser modificado por"
+
+msgctxt "CWAttribute"
+msgid "update_permission"
+msgstr "Puede ser modificado por"
+
+msgctxt "CWEType"
+msgid "update_permission"
+msgstr "Puede ser modificado por"
+
+msgid "update_permission_object"
+msgstr "Tiene permiso de modificar"
+
+msgctxt "CWGroup"
+msgid "update_permission_object"
+msgstr "Puede modificar"
+
+msgctxt "RQLExpression"
+msgid "update_permission_object"
+msgstr "Puede modificar"
+
+msgid "update_relation"
+msgstr "Modificar"
+
+msgid "updated"
+msgstr "Actualizado"
+
+#, python-format
+msgid "updated %(etype)s #%(eid)s (%(title)s)"
+msgstr "actualización de la entidad %(etype)s #%(eid)s (%(title)s)"
+
+msgid "uri"
+msgstr "URI"
+
+msgctxt "ExternalUri"
+msgid "uri"
+msgstr "URI"
+
+msgid "url"
+msgstr "url"
+
+msgctxt "CWSource"
+msgid "url"
+msgstr "url"
+
+msgid ""
+"use to define a transition from one or multiple states to a destination "
+"states in workflow's definitions. Transition without destination state will "
+"go back to the state from which we arrived to the current state."
+msgstr ""
+"Se utiliza en una definición de procesos para agregar una transición desde "
+"uno o varios estados hacia un estado destino. Una transición sin Estado "
+"destino regresará al Estado anterior del Estado actual"
+
+msgid "use_email"
+msgstr "Correo electrónico"
+
+msgctxt "CWUser"
+msgid "use_email"
+msgstr "Usa el Correo Electrónico"
+
+msgid "use_email_object"
+msgstr "Email utilizado por"
+
+msgctxt "EmailAddress"
+msgid "use_email_object"
+msgstr "Utilizado por"
+
+msgid ""
+"used for cubicweb configuration. Once a property has been created you can't "
+"change the key."
+msgstr ""
+"Se utiliza para la configuración de CubicWeb. Una vez que la propiedad ha "
+"sido creada no puede cambiar la clave"
+
+msgid ""
+"used to associate simple states to an entity type and/or to define workflows"
+msgstr ""
+"Se utiliza para asociar estados simples a un tipo de entidad y/o para "
+"definir Workflows"
+
+msgid "user"
+msgstr "Usuario"
+
+#, python-format
+msgid ""
+"user %s has made the following change(s):\n"
+"\n"
+msgstr ""
+"El usuario %s ha efectuado los siguentes cambios:\n"
+"\n"
+
+msgid "user interface encoding"
+msgstr "Encoding de la interfaz de usuario"
+
+msgid "user preferences"
+msgstr "Preferencias"
+
+msgid "user's email account"
+msgstr "email del usuario"
+
+msgid "users"
+msgstr "Usuarios"
+
+msgid "users and groups"
+msgstr "usuarios y grupos"
+
+msgid "users using this bookmark"
+msgstr "Usuarios utilizando este Favorito"
+
+msgid "validate modifications on selected items"
+msgstr "Valida modificaciones sobre elementos seleccionados"
+
+msgid "validating..."
+msgstr "Validando ..."
+
+msgid "value"
+msgstr "Valor"
+
+msgctxt "CWConstraint"
+msgid "value"
+msgstr "Valor"
+
+msgctxt "CWProperty"
+msgid "value"
+msgstr "Vampr"
+
+#, python-format
+msgid "value %(KEY-value)s must be %(KEY-op)s %(KEY-boundary)s"
+msgstr "El valor %(KEY-value)s debe ser %(KEY-op)s %(KEY-boundary)s"
+
+#, python-format
+msgid "value %(KEY-value)s must be <= %(KEY-boundary)s"
+msgstr "el valor %(KEY-value)s debe ser <= %(KEY-boundary)s"
+
+#, python-format
+msgid "value %(KEY-value)s must be >= %(KEY-boundary)s"
+msgstr "el valor %(KEY-value)s debe ser >= %(KEY-boundary)s"
+
+msgid "value associated to this key is not editable manually"
+msgstr "El valor asociado a este elemento no es editable manualmente"
+
+#, python-format
+msgid "value should have maximum size of %(KEY-max)s but found %(KEY-size)s"
+msgstr "el valor máximo es %(KEY-max)s y encontramos %(KEY-size)s"
+
+#, python-format
+msgid "value should have minimum size of %(KEY-min)s but found %(KEY-size)s"
+msgstr "el valor mínimo debe ser %(KEY-min)s y encontramos %(KEY-size)s"
+
+msgid "vcard"
+msgstr "vcard"
+
+msgid "versions configuration"
+msgstr "Configuración de Versión"
+
+msgid "view"
+msgstr "Ver"
+
+msgid "view all"
+msgstr "Ver todos"
+
+msgid "view detail for this entity"
+msgstr "Ver a detalle esta entidad"
+
+msgid "view history"
+msgstr "Ver histórico"
+
+msgid "view identifier"
+msgstr "Identificador"
+
+msgid "view title"
+msgstr "Nombre"
+
+msgid "view workflow"
+msgstr "Ver Workflow"
+
+msgid "view_index"
+msgstr "Inicio"
+
+msgid "visible"
+msgstr "Visible"
+
+msgid "warning"
+msgstr "atención"
+
+msgid "we are not yet ready to handle this query"
+msgstr "Aún no podemos manejar este tipo de consulta Sparql"
+
+msgid "wednesday"
+msgstr "Miércoles"
+
+#, python-format
+msgid "welcome %s!"
+msgstr "Bienvenido %s."
+
+msgid "wf_info_for"
+msgstr "Histórico de"
+
+msgid "wf_info_for_object"
+msgstr "Histórico de transiciones"
+
+msgid "wf_tab_info"
+msgstr "Descripción"
+
+msgid "wfgraph"
+msgstr "Gráfica del Workflow"
+
+msgid ""
+"when multiple addresses are equivalent (such as python-projects@logilab.org "
+"and python-projects@lists.logilab.org), set this to indicate which is the "
+"preferred form."
+msgstr ""
+"Cuando varias direcciones email son equivalentes (como python-"
+"projects@logilab.org y python-projects@lists.logilab.org), aquí se indica "
+"cual es la forma preferida."
+
+msgid "workflow"
+msgstr "Workflow"
+
+msgid "workflow already has a state of that name"
+msgstr "el workflow posee ya un estado con ese nombre"
+
+msgid "workflow already has a transition of that name"
+msgstr "El Workflow posee ya una transición con ese nombre"
+
+#, python-format
+msgid "workflow changed to \"%s\""
+msgstr "Workflow cambiado a \"%s\""
+
+msgid "workflow has no initial state"
+msgstr "El Workflow no posee Estado Inicial"
+
+msgid "workflow history item"
+msgstr "Elemento histórico del Workflow"
+
+msgid "workflow isn't a workflow for this type"
+msgstr "El Workflow no se aplica a este Tipo de Entidad"
+
+msgid "workflow to which this state belongs"
+msgstr "Workflow al cual pertenece este estado"
+
+msgid "workflow to which this transition belongs"
+msgstr "Workflow al cual pertenece esta transición"
+
+msgid "workflow_of"
+msgstr "Workflow de"
+
+msgctxt "Workflow"
+msgid "workflow_of"
+msgstr "Workflow de"
+
+msgid "workflow_of_object"
+msgstr "Utiliza el Workflow"
+
+msgctxt "CWEType"
+msgid "workflow_of_object"
+msgstr "Utiliza el Workflow"
+
+#, python-format
+msgid "wrong query parameter line %s"
+msgstr "Parámetro erróneo de consulta línea %s"
+
+msgid "xbel export"
+msgstr "Exportación XBEL"
+
+msgid "xml export"
+msgstr "Exportar XML"
+
+msgid "xml export (entities)"
+msgstr "Exportación XML (entidades)"
+
+msgid "yes"
+msgstr "Sí"
+
+msgid "you have been logged out"
+msgstr "Ha terminado la sesión"
+
+msgid "you should probably delete that property"
+msgstr "probablamente debería  suprimir esta propriedad"
+
+#~ msgid "%s relation should not be in mapped"
+#~ msgstr "la relación %s no debería estar mapeada"
+
+#~ msgid "Any"
+#~ msgstr "Cualquiera"
+
+#~ msgid "attribute/relation can't be mapped, only entity and relation types"
+#~ msgstr ""
+#~ "los atributos y las relaciones no pueden ser mapeados, solamente los "
+#~ "tipos de entidad y de relación"
+
+#~ msgid "can't connect to source %s, some data may be missing"
+#~ msgstr "no se puede conectar a la fuente %s, algunos datos pueden faltar"
+
+#~ msgid "can't mix dontcross and maycross options"
+#~ msgstr "no puede mezclar las opciones dontcross y maycross"
+
+#~ msgid "can't mix dontcross and write options"
+#~ msgstr "no puede mezclar las opciones dontcross y write"
+
+#~ msgid "components_etypenavigation"
+#~ msgstr "Filtar por tipo"
+
+#~ msgid "components_etypenavigation_description"
+#~ msgstr "Permite filtrar por tipo de entidad los resultados de una búsqueda"
+
+#~ msgid "error while querying source %s, some data may be missing"
+#~ msgstr ""
+#~ "Un error ha ocurrido al interrogar  %s, es posible que los \n"
+#~ "datos visibles se encuentren incompletos"
+
+#~ msgid "inlined relation %(rtype)s of %(etype)s should be supported"
+#~ msgstr ""
+#~ "la relación %(rtype)s del tipo de entidad %(etype)s debe ser aceptada "
+#~ "('inlined')"
+
+#~ msgid "no edited fields specified for entity %s"
+#~ msgstr "Ningún campo editable especificado para la entidad %s"
+
+#~ msgid "unknown option(s): %s"
+#~ msgstr "opcion(es) desconocida(s): %s"
+
+#~ msgid "web sessions without CNX"
+#~ msgstr "sesiones web sin conexión asociada"
+
+#~ msgid "you may want to specify something for %s"
+#~ msgstr "usted desea quizás especificar algo para la relación %s"
+
+#~ msgid ""
+#~ "you should un-inline relation %s which is supported and may be crossed "
+#~ msgstr ""
+#~ "usted debe  quitar la puesta en línea de la relación %s que es aceptada y "
+#~ "puede ser cruzada"
