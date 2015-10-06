@@ -1,0 +1,4 @@
+[system]
+db-driver   = sqlite
+db-name     = tmpdb-extern
+db-encoding = UTF-8

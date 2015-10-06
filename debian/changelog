@@ -1,0 +1,1215 @@
+cubicweb (3.19.13-1) unstable; urgency=medium
+
+  * New upstream release.
+
+ -- Rémi Cardona <remi.cardona@logilab.fr>  Tue, 06 Oct 2015 18:31:33 +0200
+
+cubicweb (3.19.12-1) unstable; urgency=low
+
+  * New upstream release
+
+ -- Rémi Cardona <remi.cardona@logilab.fr>  Fri, 19 Jun 2015 10:51:23 +0200
+
+cubicweb (3.19.11-2) unstable; urgency=low
+
+  * Fix cubicweb-dev dependencies.
+
+ -- Julien Cristau <julien.cristau@logilab.fr>  Fri, 27 Mar 2015 16:53:20 +0100
+
+cubicweb (3.19.11-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Julien Cristau <julien.cristau@logilab.fr>  Wed, 18 Mar 2015 11:55:52 +0100
+
+cubicweb (3.19.10-1) unstable; urgency=low
+
+  * New upstream release.
+
+ -- Rémi Cardona <remi.cardona@logilab.fr>  Thu, 12 Mar 2015 11:52:01 +0100
+
+cubicweb (3.19.9-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Julien Cristau <julien.cristau@logilab.fr>  Thu, 05 Feb 2015 15:35:19 +0100
+
+cubicweb (3.19.8-1) unstable; urgency=medium
+
+  * new upstream release
+
+ -- Julien Cristau <julien.cristau@logilab.fr>  Thu, 22 Jan 2015 17:18:34 +0100
+
+cubicweb (3.19.7-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Julien Cristau <julien.cristau@logilab.fr>  Wed, 07 Jan 2015 14:37:59 +0100
+
+cubicweb (3.19.6-1) unstable; urgency=low
+
+  * new upstream release 
+
+ -- David Douard <david.douard@logilab.fr>  Wed, 26 Nov 2014 16:22:39 +0100
+
+cubicweb (3.19.5-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Julien Cristau <julien.cristau@logilab.fr>  Mon, 06 Oct 2014 17:32:28 +0200
+
+cubicweb (3.19.4-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Julien Cristau <julien.cristau@logilab.fr>  Thu, 25 Sep 2014 14:24:04 +0200
+
+cubicweb (3.19.3-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Julien Cristau <julien.cristau@logilab.fr>  Fri, 18 Jul 2014 16:16:32 +0200
+
+cubicweb (3.19.2-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Julien Cristau <julien.cristau@logilab.fr>  Thu, 03 Jul 2014 09:53:52 +0200
+
+cubicweb (3.19.1-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Julien Cristau <julien.cristau@logilab.fr>  Tue, 03 Jun 2014 12:16:00 +0200
+
+cubicweb (3.19.0-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Julien Cristau <julien.cristau@logilab.fr>  Mon, 28 Apr 2014 18:35:27 +0200
+
+cubicweb (3.18.8-1) unstable; urgency=medium
+
+  * new upstream release
+
+ -- Julien Cristau <julien.cristau@logilab.fr>  Thu, 22 Jan 2015 16:41:12 +0100
+
+cubicweb (3.18.7-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Aurelien Campeas <aurelien.campeas@logilab.fr>  Tue, 25 Nov 2014 12:14:36 +0100
+
+cubicweb (3.18.6-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Julien Cristau <julien.cristau@logilab.fr>  Wed, 24 Sep 2014 15:08:34 +0200
+
+cubicweb (3.18.5-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Aurelien Campeas <aurelien.campeas@logilab.fr>  Thu, 05 Jun 2014 16:13:03 +0200
+
+cubicweb (3.18.4-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Aurelien Campeas <aurelien.campeas@logilab.fr>  Fri, 28 Mar 2014 17:12:48 +0100
+
+cubicweb (3.18.3-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Julien Cristau <julien.cristau@logilab.fr>  Fri, 14 Feb 2014 16:03:55 +0100
+
+cubicweb (3.18.2-1) unstable; urgency=low
+
+  * new upstream release.
+
+ -- Julien Cristau <julien.cristau@logilab.fr>  Tue, 21 Jan 2014 12:34:00 +0100
+
+cubicweb (3.18.1-1) unstable; urgency=low
+
+  * New upstream release.
+
+ -- Julien Cristau <julien.cristau@logilab.fr>  Thu, 16 Jan 2014 11:53:21 +0100
+
+cubicweb (3.18.0-1) unstable; urgency=low
+
+  * new upstream release.
+
+ -- Julien Cristau <julien.cristau@logilab.fr>  Fri, 10 Jan 2014 17:14:18 +0100
+
+cubicweb (3.17.18-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Aurelien Campeas <aurelien.campeas@logilab.fr>  Mon, 24 Nov 2014 17:41:24 +0100
+
+cubicweb (3.17.17-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Aurelien Campeas <aurelien.campeas@logilab.fr>  Tue, 16 Sep 2014 18:38:19 +0200
+
+cubicweb (3.17.16-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Aurelien Campeas <aurelien.campeas@logilab.fr>  Mon, 07 Jul 2014 19:26:12 +0200
+
+cubicweb (3.17.15-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Aurelien Campeas <aurelien.campeas@logilab.fr>  Wed, 13 May 2014 17:47:00 +0200
+
+cubicweb (3.17.14-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Aurelien Campeas <aurelien.campeas@logilab.fr>  Wed, 05 Mar 2014 15:48:38 +0100
+
+cubicweb (3.17.13-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Aurelien Campeas <aurelien.campeas@logilab.fr>  Mon, 10 Feb 2014 17:57:58 +0100
+
+cubicweb (3.17.12-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Aurelien Campeas <aurelien.campeas@logilab.fr>  Tue, 21 Jan 2014 13:10:22 +0100
+
+cubicweb (3.17.11-2) unstable; urgency=low
+
+  * Override lintian false-positive about debian/rules.tmpl in the cube
+    skeleton.
+
+ -- Julien Cristau <julien.cristau@logilab.fr>  Wed, 11 Dec 2013 15:56:39 +0100
+
+cubicweb (3.17.11-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Aurelien Campeas <aurelien.campeas@logilab.fr>  Fri, 06 Dec 2013 15:55:48 +0100
+
+cubicweb (3.17.10-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Julien Cristau <julien.cristau@logilab.fr>  Wed, 23 Oct 2013 17:23:45 +0200
+
+cubicweb (3.17.9-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Julien Cristau <julien.cristau@logilab.fr>  Tue, 08 Oct 2013 17:57:04 +0200
+
+cubicweb (3.17.8-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- David Douard <david.douard@logilab.fr>  Thu, 03 Oct 2013 15:12:32 +0200
+
+cubicweb (3.17.7-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- David Douard <david.douard@logilab.fr>  Thu, 26 Sep 2013 15:13:39 +0200
+
+cubicweb (3.17.6-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- David Douard <david.douard@logilab.fr>  Tue, 06 Aug 2013 11:49:04 +0200
+
+cubicweb (3.17.5-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- David Douard <david.douard@logilab.fr>  Wed, 31 Jul 2013 16:58:19 +0200
+
+cubicweb (3.17.4-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- David Douard <david.douard@logilab.fr>  Fri, 26 Jul 2013 09:44:19 +0200
+
+cubicweb (3.17.3-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- David Douard <david.douard@logilab.fr>  Tue, 09 Jul 2013 15:10:16 +0200
+
+cubicweb (3.17.2-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- David Douard <david.douard@logilab.fr>  Thu, 13 Jun 2013 17:32:18 +0200
+
+cubicweb (3.17.1-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- David Douard <david.douard@logilab.fr>  Thu, 06 Jun 2013 12:28:49 +0200
+
+cubicweb (3.17.0-2) unstable; urgency=low
+
+  * fix yams Depends on cubicweb-common
+
+ -- Pierre-Yves David <pierre-yves.david@logilab.fr>  Fri, 03 May 2013 16:26:50 +0200
+
+cubicweb (3.17.0-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Pierre-Yves David <pierre-yves.david@logilab.fr>  Mon, 29 Apr 2013 11:20:56 +0200
+
+cubicweb (3.16.6-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Florent Cayré <florent.cayre@logilab.fr>  Sat, 13 Jul 2013 05:10:23 +0200
+
+cubicweb (3.16.5-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- David Douard <david.douard@logilab.fr>  Fri, 14 Jun 2013 16:01:47 +0200
+
+cubicweb (3.16.4-1) unstable; urgency=low
+
+  * New upstream release
+
+ -- Pierre-Yves David <pierre-yves.david@logilab.fr>  Fri, 26 Apr 2013 18:20:42 +0200
+
+cubicweb (3.16.3-1) unstable; urgency=low
+
+  * New upstream release
+
+ -- David Douard <david.douard@logilab.fr>  Wed, 10 Apr 2013 10:37:37 +0200
+
+cubicweb (3.16.2-1) unstable; urgency=low
+
+  * New upstream release
+
+ -- David Douard <david.douard@logilab.fr>  Mon, 08 Apr 2013 19:29:33 +0200
+
+cubicweb (3.16.1-1) squeeze; urgency=low
+
+  * New upstream release
+
+ -- Aurélien Campéas <aurelien.campeas@logilab.fr>  Tue, 19 Mar 2013 16:52:00 +0100
+
+cubicweb (3.16.0-1) squeeze; urgency=low
+
+  * New upstream release
+
+ -- Aurélien Campéas <aurelien.campeas@logilab.fr>  Wed, 23 Jan 2013 17:40:00 +0100
+
+cubicweb (3.15.11-1) squeeze; urgency=low
+
+  * New upstream release
+
+ -- Pierre-Yves David <pierre-yves.david@logilab.fr>  Mon, 08 Apr 2013 12:43:02 +0200
+
+cubicweb (3.15.10-1) squeeze; urgency=low
+
+  * New upstream release
+
+ -- Aurélien Campéas <aurelien.campeas@logilab.fr>  Tue, 19 Mar 2013 16:56:00 +0100
+
+cubicweb (3.15.9-1) squeeze; urgency=low
+
+  * New upstream release
+
+ -- David Douard <david.douard@logilab.fr>  Fri, 25 Jan 2013 17:49:58 +0100
+
+cubicweb (3.15.8-2) UNRELEASED; urgency=low
+
+  * Don't compress txt files.  They're used by the doc's search functionality,
+    and the javascript gets confused if it receives gzip instead of text.
+  * Work around broken combination of jquery 1.4 and sphinx 0.6 in squeeze by
+    patching up doctools.js.
+
+ -- Julien Cristau <jcristau@debian.org>  Wed, 09 Jan 2013 19:09:16 +0100
+
+cubicweb (3.15.8-1) squeeze; urgency=low
+
+  * New upstream release
+
+ -- Aurélien Campéas <aurelien.campeas@logilab.fr>  Wed, 09 Jan 2013 15:40:00 +0100
+
+cubicweb (3.15.7-1) squeeze; urgency=low
+
+  * New upstream release
+
+ -- David Douard <david.douard@logilab.fr>  Wed, 12 Dec 2012 22:10:45 +0100
+
+cubicweb (3.15.6-1) squeeze; urgency=low
+
+  * New upstream release
+
+ -- David Douard <david.douard@logilab.fr>  Fri, 30 Nov 2012 19:25:20 +0100
+
+cubicweb (3.15.5-1) unstable; urgency=low
+
+  * New upstream release
+
+ -- Aurélien Campéas <aurelien.campeas@logilab.fr>  Wed, 24 Oct 2012 12:07:00 +0200
+
+cubicweb (3.15.4-1) unstable; urgency=low
+
+  * New upstream release
+
+ -- Julien Cristau <jcristau@debian.org>  Fri, 31 Aug 2012 16:43:11 +0200
+
+cubicweb (3.15.3-1) unstable; urgency=low
+
+  * New upstream release
+
+ -- Pierre-Yves David <pierre-yves.david@logilab.fr>  Tue, 21 Aug 2012 14:19:31 +0200
+
+cubicweb (3.15.2-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Fri, 20 Jul 2012 15:17:17 +0200
+
+cubicweb (3.15.1-1) quantal; urgency=low
+
+  * new upstream release
+
+ -- David Douard <david.douard@logilab.fr>  Mon, 11 Jun 2012 09:45:24 +0200
+
+cubicweb (3.15.0-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Thu, 12 Apr 2012 13:52:05 +0200
+
+cubicweb (3.14.10-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Pierre-Yves David <pierre-yves.david@logilab.fr>  Mon, 08 Apr 2013 12:18:20 +0200
+
+cubicweb (3.14.9-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Pierre-Yves David <pierre-yves.david@logilab.fr>  Tue, 31 Jul 2012 16:16:28 +0200
+
+cubicweb (3.14.8-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Wed, 23 May 2012 11:42:54 +0200
+
+cubicweb (3.14.7-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- David Douard <david.douard@logilab.fr>  Wed, 11 Apr 2012 09:28:46 +0200
+
+cubicweb (3.14.6-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Tue, 13 Mar 2012 14:21:04 +0100
+
+cubicweb (3.14.5-1) unstable; urgency=low
+
+  * New upstream release
+
+ -- David Douard <david.douard@logilab.fr>  Thu, 01 Mar 2012 15:29:29 +0100
+
+cubicweb (3.14.4-2) unstable; urgency=low
+
+  * add missing build-deps to generate the documentation
+
+ -- David Douard <david.douard@logilab.fr>  Wed, 29 Feb 2012 17:00:52 +0100
+
+cubicweb (3.14.4-1) unstable; urgency=low
+
+  * New upstream release
+
+ -- David Douard <david.douard@logilab.fr>  Fri, 17 Feb 2012 13:06:48 +0100
+
+cubicweb (3.14.3-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Fri, 03 Feb 2012 16:53:54 +0100
+
+cubicweb (3.14.2-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Thu, 22 Dec 2011 15:09:09 +0100
+
+cubicweb (3.14.1-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Thu, 08 Dec 2011 14:33:22 +0100
+
+cubicweb (3.14.0-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Wed, 09 Nov 2011 17:17:45 +0100
+
+cubicweb (3.13.10-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Thu, 08 Dec 2011 13:22:05 +0100
+
+cubicweb (3.13.9-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Fri, 21 Oct 2011 11:03:45 +0200
+
+cubicweb (3.13.8-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Fri, 07 Oct 2011 16:20:35 +0200
+
+cubicweb (3.13.7-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Thu, 29 Sep 2011 14:08:07 +0200
+
+cubicweb (3.13.6-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Mon, 26 Sep 2011 18:36:00 +0200
+
+cubicweb (3.13.5-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Thu, 08 Sep 2011 16:53:13 +0200
+
+cubicweb (3.13.4-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Fri, 05 Aug 2011 12:22:11 +0200
+
+cubicweb (3.13.3-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Wed, 27 Jul 2011 19:06:16 +0200
+
+cubicweb (3.13.2-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Wed, 20 Jul 2011 17:15:22 +0200
+
+cubicweb (3.13.1-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Tue, 12 Jul 2011 12:23:54 +0200
+
+cubicweb (3.12.10-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Mon, 26 Sep 2011 17:22:29 +0200
+
+cubicweb (3.12.9-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Tue, 12 Jul 2011 11:30:10 +0200
+
+cubicweb (3.13.0-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Thu, 09 Jun 2011 20:18:41 +0200
+
+cubicweb (3.12.8-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Mon, 27 Jun 2011 13:58:58 +0200
+
+cubicweb (3.12.7-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Tue, 21 Jun 2011 14:47:14 +0200
+
+cubicweb (3.12.6-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Thu, 09 Jun 2011 16:09:50 +0200
+
+cubicweb (3.12.5-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Mon, 23 May 2011 10:27:42 +0200
+
+cubicweb (3.12.4-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Wed, 11 May 2011 12:28:42 +0200
+
+cubicweb (3.12.3-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Thu, 05 May 2011 16:21:33 +0200
+
+cubicweb (3.12.2-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Nicolas Chauvat <nicolas.chauvat@logilab.fr>  Mon, 11 Apr 2011 22:15:21 +0200
+
+cubicweb (3.12.1-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Wed, 06 Apr 2011 23:25:12 +0200
+
+cubicweb (3.12.0-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Alexandre Fayolle <alexandre.fayolle@logilab.fr>  Fri, 01 Apr 2011 15:59:37 +0200
+
+cubicweb (3.11.3-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Thu, 05 May 2011 16:00:53 +0200
+
+cubicweb (3.11.2-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Nicolas Chauvat <nicolas.chauvat@logilab.fr>  Mon, 28 Mar 2011 19:18:54 +0200
+
+cubicweb (3.11.1-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Mon, 07 Mar 2011 17:21:28 +0100
+
+cubicweb (3.11.0-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Fri, 18 Feb 2011 10:27:22 +0100
+
+cubicweb (3.10.8-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Wed, 02 Feb 2011 11:09:22 +0100
+
+cubicweb (3.10.7-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Wed, 12 Jan 2011 08:50:29 +0100
+
+cubicweb (3.10.6-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Nicolas Chauvat <nicolas.chauvat@logilab.fr>  Tue, 30 Nov 2010 22:25:41 +0100
+
+cubicweb (3.10.5-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Mon, 25 Oct 2010 18:22:20 +0200
+
+cubicweb (3.10.4-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Fri, 22 Oct 2010 17:41:00 +0200
+
+cubicweb (3.10.3-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Wed, 20 Oct 2010 16:00:33 +0200
+
+cubicweb (3.10.2-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Mon, 18 Oct 2010 11:47:37 +0200
+
+cubicweb (3.10.1-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Fri, 15 Oct 2010 12:08:58 +0200
+
+cubicweb (3.10.0-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Wed, 13 Oct 2010 22:18:39 +0200
+
+cubicweb (3.9.9-3) unstable; urgency=low
+
+  * cubicweb-common must actually include shared/i18n folder
+
+ -- Pierre-Yves David <pierre-yves.david@logilab.fr>  Tue, 23 Nov 2010 16:18:46 +0200
+
+cubicweb (3.9.9-2) unstable; urgency=low
+
+  * fix cubicweb-common content
+
+ -- Pierre-Yves David <pierre-yves.david@logilab.fr>  Tue, 23 Nov 2010 14:00:46 +0200
+
+cubicweb (3.9.9-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Thu, 21 Oct 2010 09:33:46 +0200
+
+cubicweb (3.9.8-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Thu, 23 Sep 2010 18:45:23 +0200
+
+cubicweb (3.9.7-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Thu, 16 Sep 2010 15:41:51 +0200
+
+cubicweb (3.9.6-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Mon, 13 Sep 2010 10:50:15 +0200
+
+cubicweb (3.9.5-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Thu, 26 Aug 2010 10:53:34 +0200
+
+cubicweb (3.9.4-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Mon, 02 Aug 2010 14:25:38 +0200
+
+cubicweb (3.9.3-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Tue, 27 Jul 2010 16:39:04 +0200
+
+cubicweb (3.9.2-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Fri, 16 Jul 2010 12:40:59 +0200
+
+cubicweb (3.9.1-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Mon, 12 Jul 2010 13:25:10 +0200
+
+cubicweb (3.9.0-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Wed, 07 Jul 2010 13:01:06 +0200
+
+cubicweb (3.8.7-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Julien Jehannet <julien.jehannet@logilab.fr>  Wed, 07 Jul 2010 11:42:02 +0200
+
+cubicweb (3.8.6-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Fri, 02 Jul 2010 00:39:36 +0200
+
+cubicweb (3.8.5-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Mon, 21 Jun 2010 10:42:01 +0200
+
+cubicweb (3.8.4-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Fri, 11 Jun 2010 11:36:50 +0200
+
+cubicweb (3.8.3-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Mon, 07 Jun 2010 09:19:50 +0200
+
+cubicweb (3.8.2-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Tue, 18 May 2010 14:59:07 +0200
+
+cubicweb (3.8.1-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Mon, 26 Apr 2010 17:11:36 +0200
+
+cubicweb (3.8.0-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Tue, 20 Apr 2010 16:31:44 +0200
+
+cubicweb (3.7.5-1) unstable; urgency=low
+
+  * new upstream release on the 3.7 branch
+
+ -- Alexandre Fayolle <afayolle@debian.org>  Thu, 29 Apr 2010 13:51:52 +0200
+
+cubicweb (3.7.4-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Thu, 15 Apr 2010 18:20:39 +0200
+
+cubicweb (3.7.3-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Wed, 31 Mar 2010 14:55:21 +0200
+
+cubicweb (3.7.2-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Fri, 26 Mar 2010 15:53:01 +0100
+
+cubicweb (3.7.1-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Fri, 19 Mar 2010 14:47:23 +0100
+
+cubicweb (3.7.0-1) unstable; urgency=low
+
+  * remove postgresql-contrib from cubicweb dependency (using tsearch
+    which is included with postgres >= 8.3)
+  * add postgresql-client | mysql-client to cubicweb-server dependencies using two
+    new cubicweb-[postgresql|mysql]-support virtual packages (necessary for
+    dump/restore of database)
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Tue, 16 Mar 2010 17:55:37 +0100
+
+cubicweb (3.6.3-1) unstable; urgency=low
+
+  * remove postgresql-contrib from cubicweb dependency (using tsearch
+    which is included with postgres >= 8.3)
+  * add postgresql-client | mysql-client to cubicweb-server dependencies using two
+    new cubicweb-[postgresql|mysql]-support virtual packages (necessary for
+    dump/restore of database)
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Wed, 24 Mar 2010 07:50:47 +0100
+
+cubicweb (3.6.2-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Thu, 11 Mar 2010 19:49:04 +0100
+
+cubicweb (3.6.1-2) unstable; urgency=low
+
+  * remove depends to python-elementtree (included in python>=2.5)
+
+ -- Pierre-Yves David <pierre-yves.david@logilab.fr>  Fri, 04 Mar 2010 14:43:01 +0100
+
+cubicweb (3.6.1-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Fri, 26 Feb 2010 14:14:01 +0100
+
+cubicweb (3.6.0-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Wed, 10 Feb 2010 09:44:58 +0100
+
+cubicweb (3.5.12-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Tue, 02 Feb 2010 11:07:00 +0100
+
+cubicweb (3.5.11-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Wed, 23 Dec 2009 10:27:12 +0100
+
+cubicweb (3.5.10-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Thu, 03 Dec 2009 15:48:38 +0100
+
+cubicweb (3.5.9-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Nicolas Chauvat <nicolas.chauvat@logilab.fr>  Sun, 29 Nov 2009 23:28:47 +0100
+
+cubicweb (3.5.8-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Nicolas Chauvat <nicolas.chauvat@logilab.fr>  Sun, 29 Nov 2009 22:43:11 +0100
+
+cubicweb (3.5.7-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Nicolas Chauvat <nicolas.chauvat@logilab.fr>  Sat, 28 Nov 2009 11:50:08 +0100
+
+cubicweb (3.5.6-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Adrien Di Mascio <Adrien.DiMascio@logilab.fr>  Mon, 23 Nov 2009 18:55:01 +0100
+
+cubicweb (3.5.5-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Wed, 21 Oct 2009 10:38:55 +0200
+
+cubicweb (3.5.4-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Wed, 07 Oct 2009 20:58:35 +0200
+
+cubicweb (3.5.3-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Wed, 07 Oct 2009 15:35:10 +0200
+
+cubicweb (3.5.2-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Adrien Di Mascio <Adrien.DiMascio@logilab.fr>  Tue, 22 Sep 2009 09:31:42 +0200
+
+cubicweb (3.5.1-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Fri, 18 Sep 2009 10:35:00 +0200
+
+cubicweb (3.5.0-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Wed, 16 Sep 2009 17:51:13 +0200
+
+cubicweb (3.4.11-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Aurélien Campéas <aurelien.campeas@logilab.fr>  Tue, 11 Sep 2009 12:20:00 +0200
+
+cubicweb (3.4.10-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Fri, 11 Sep 2009 17:19:37 +0200
+
+cubicweb (3.4.9-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Fri, 11 Sep 2009 14:27:39 +0200
+
+cubicweb (3.4.8-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Thu, 10 Sep 2009 15:27:17 +0200
+
+cubicweb (3.4.7-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Wed, 09 Sep 2009 14:08:41 +0200
+
+cubicweb (3.4.6-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Mon, 31 Aug 2009 14:12:30 +0200
+
+cubicweb (3.4.5-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Wed, 26 Aug 2009 15:01:42 +0200
+
+cubicweb (3.4.4-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Tue, 18 Aug 2009 14:27:08 +0200
+
+cubicweb (3.4.3-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Nicolas Chauvat <nicolas.chauvat@logilab.fr>  Fri, 14 Aug 2009 17:54:06 +0200
+
+cubicweb (3.4.2-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Fri, 07 Aug 2009 17:50:15 +0200
+
+cubicweb (3.4.1-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Fri, 07 Aug 2009 14:00:33 +0200
+
+cubicweb (3.4.0-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Fri, 07 Aug 2009 10:43:21 +0200
+
+cubicweb (3.3.5-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Thu, 06 Aug 2009 09:05:22 +0200
+
+cubicweb (3.3.4-2) unstable; urgency=low
+
+  * fix conflicting test files
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Tue, 21 Jul 2009 23:09:03 +0200
+
+cubicweb (3.3.4-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Tue, 21 Jul 2009 13:11:38 +0200
+
+cubicweb (3.3.3-2) unstable; urgency=low
+
+  * re-release with "from __future__ import with_statement" commented out to
+    avoid broken installation if 2.4 is installed
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Mon, 06 Jul 2009 17:33:15 +0200
+
+cubicweb (3.3.3-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Mon, 06 Jul 2009 13:24:29 +0200
+
+cubicweb (3.3.2-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Thu, 25 Jun 2009 07:58:14 +0200
+
+cubicweb (3.3.1-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Aurélien Campéas <aurelien.campeas@logilab.fr>  Mon, 22 Jun 2009 12:00:00 +0200
+
+cubicweb (3.3.0-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Nicolas Chauvat <nicolas.chauvat@logilab.fr>  Wed, 03 Jun 2009 19:52:37 +0200
+
+cubicweb (3.2.3-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Nicolas Chauvat <nicolas.chauvat@logilab.fr>  Wed, 27 May 2009 12:31:49 +0200
+
+cubicweb (3.2.1-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Aurélien Campéas <aurelien.campeas@logilab.fr>  Mon, 25 May 2009 16:45:00 +0200
+
+cubicweb (3.2.0-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Thu, 14 May 2009 12:31:06 +0200
+
+cubicweb (3.1.4-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Aurélien Campéas <aurelien.campeas@logilab.fr>  Mon, 06 Apr 2009 14:30:00 +0200
+
+cubicweb (3.1.3-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Mon, 06 Apr 2009 08:52:27 +0200
+
+cubicweb (3.1.2-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Aurélien Campéas <aurelien.campeas@logilab.fr>  Wed, 10 Mar 2009 12:30:00 +0100
+
+cubicweb (3.1.1-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Aurélien Campéas <aurelien.campeas@logilab.fr>  Wed, 9 Mar 2009 18:32:00 +0100
+
+cubicweb (3.1.0-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Wed, 25 Feb 2009 18:41:47 +0100
+
+cubicweb (3.0.10-1) unstable; urgency=low
+
+  * merge cubicweb-core package into cubicweb-common
+  * simplify debian/rules
+
+ -- Julien Jehannet <julien.jehannet@logilab.fr>  Thu, 19 Feb 2009 16:24:09 +0100
+
+cubicweb (3.0.9-1) unstable; urgency=low
+
+  * new upstream (interim) release
+
+ -- Aurélien Campéas <aurelien.campeas@logilab.fr>  Tue, 10 Feb 2009 14:05:12 +0100
+
+cubicweb (3.0.4-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Tue, 27 Jan 2009 16:05:12 +0100
+
+cubicweb (3.0.3-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Aurélien Campéas <aurelien.campeas@logilab.fr>  Wed, 14 Jan 2009 18:25:21 +0100
+
+cubicweb (3.0.2-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Wed, 14 Jan 2009 13:25:21 +0100
+
+cubicweb (3.0.1-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Thu, 08 Jan 2009 18:27:37 +0100
+
+cubicweb (3.0.0-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Adrien Di Mascio <Adrien.DiMascio@logilab.fr>  Tue, 23 Dec 2008 18:42:43 +0100
+
+cubicweb (2.99.99-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Mon, 22 Dec 2008 17:34:45 +0100
+
+cubicweb (2.99.7-1) unstable; urgency=low
+
+  * remove buggy cubicweb-common.postinst
+  * replace erudi|ginco by cubicweb where necessary in existing instance
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Fri, 19 Dec 2008 17:11:00 +0100
+
+cubicweb (2.99.6-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Fri, 19 Dec 2008 15:16:37 +0100
+
+cubicweb (2.99.5-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Sylvain Thénault <sylvain.thenault@logilab.fr>  Wed, 17 Dec 2008 14:14:26 +0100
+
+cubicweb (2.99.4-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Adrien Di Mascio <Adrien.DiMascio@logilab.fr>  Fri, 12 Dec 2008 10:00:31 +0100
+
+cubicweb (2.99.3-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Adrien Di Mascio <Adrien.DiMascio@logilab.fr>  Tue, 09 Dec 2008 07:42:16 +0100
+
+cubicweb (2.99.2-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Adrien Di Mascio <adrien.dimascio@logilab.fr>  Mon, 17 Nov 2008 15:02:16 +0100
+
+cubicweb (2.99.1-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Nicolas Chauvat <nicolas.chauvat@logilab.fr>  Thu, 13 Nov 2008 11:02:16 +0100
+
+cubicweb (2.99.0-1) unstable; urgency=low
+
+  * initial public release
+
+ -- Nicolas Chauvat <nicolas.chauvat@logilab.fr>  Fri, 24 Oct 2008 23:01:21 +0200
