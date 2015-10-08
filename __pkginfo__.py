@@ -22,7 +22,7 @@ software
 
 modname = distname = "cubicweb"
 
-numversion = (3, 19, 13)
+numversion = (3, 20, 9)
 version = '.'.join(str(num) for num in numversion)
 
 description = "a repository of entities / relations for knowledge management"
@@ -39,18 +39,18 @@ classifiers = [
 ]
 
 __depends__ = {
-    'logilab-common': '>= 0.62.0',
+    'logilab-common': '>= 0.63.1',
     'logilab-mtconverter': '>= 0.8.0',
     'rql': '>= 0.31.2',
-    'yams': '>= 0.39.1, < 0.39.99',  # CW 3.19 is not compatible with yams 0.40
+    'yams': '>= 0.40.0',
     #gettext                    # for xgettext, msgcat, etc...
     # web dependencies
     'lxml': '',
-    'Twisted': '',
     # XXX graphviz
     # server dependencies
-    'logilab-database': '>= 1.12.1',
+    'logilab-database': '>= 1.13.0',
     'passlib': '',
+    'Markdown': ''
     }
 
 __recommends__ = {
@@ -62,6 +62,7 @@ __recommends__ = {
     'vobject': '>= 0.6.0',      # for ical view
     'rdflib': None,             #
     'pyzmq': None,
+    'Twisted': '',
     #'Products.FCKeditor':'',
     #'SimpleTAL':'>= 4.1.6',
     }
@@ -106,7 +107,7 @@ try:
     data_files = [
         # server data
         [join('share', 'cubicweb', 'schemas'),
-         [join('schemas', filename) for filename in listdir('schemas')]],
+         glob.glob(join('schemas', '*.sql'))],
         [join('share', 'cubicweb', 'migration'),
          [join(_server_migration_dir, filename)
           for filename in listdir(_server_migration_dir)]],
@@ -118,13 +119,19 @@ try:
          [join(_data_dir, 'timeline', fname) for fname in listdir(join(_data_dir, 'timeline'))]],
         [join('share', 'cubicweb', 'cubes', 'shared', 'data', 'images'),
          [join(_data_dir, 'images', fname) for fname in listdir(join(_data_dir, 'images'))]],
+        [join('share', 'cubicweb', 'cubes', 'shared', 'data', 'jquery-treeview'),
+         [join(_data_dir, 'jquery-treeview', fname) for fname in listdir(join(_data_dir, 'jquery-treeview'))
+          if not isdir(join(_data_dir, 'jquery-treeview', fname))]],
+        [join('share', 'cubicweb', 'cubes', 'shared', 'data', 'jquery-treeview', 'images'),
+         [join(_data_dir, 'jquery-treeview', 'images', fname)
+          for fname in listdir(join(_data_dir, 'jquery-treeview', 'images'))]],
         [join('share', 'cubicweb', 'cubes', 'shared', 'wdoc'),
          [join(_wdoc_dir, fname) for fname in listdir(_wdoc_dir)
           if not isdir(join(_wdoc_dir, fname))]],
         [join('share', 'cubicweb', 'cubes', 'shared', 'wdoc', 'images'),
          [join(_wdocimages_dir, fname) for fname in listdir(_wdocimages_dir)]],
         [join('share', 'cubicweb', 'cubes', 'shared', 'i18n'),
-         [join(_i18n_dir, fname) for fname in listdir(_i18n_dir)]],
+         glob.glob(join(_i18n_dir, '*.po'))],
         # skeleton
         ]
 except OSError:
