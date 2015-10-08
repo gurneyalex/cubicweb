@@ -178,9 +178,9 @@ class ConcatFilesHandler(object):
 
 
 class DataController(StaticFileController):
-    """Controller in charge of serving static file in /data/
+    """Controller in charge of serving static files in /data/
 
-    Handle modeconcat like url.
+    Handles mod_concat-like URLs.
     """
 
     __regid__ = 'data'
@@ -243,7 +243,7 @@ class StaticDirectoryController(StaticFileController):
 
     def publish(self, rset=None):
         staticdir = self._cw.vreg.config.static_directory
-        relpath = self.relpath
+        relpath = self.relpath[len(self.__regid__) + 1:]
         return self.static_file(osp.join(staticdir, relpath))
 
 STATIC_CONTROLLERS = [DataController, FCKEditorController,

@@ -112,7 +112,7 @@ class ServerMigrationHelper(MigrationHelper):
             # notify we're starting maintenance (called instead of server_start
             # which is called on regular start
             repo.hm.call_hooks('server_maintenance', repo=repo)
-        if not schema and not getattr(config, 'quick_start', False):
+        if not schema and not config.quick_start:
             insert_lperms = self.repo.get_versions()['cubicweb'] < (3, 14, 0) and 'localperms' in config.available_cubes()
             if insert_lperms:
                 cubes = config._cubes
@@ -320,7 +320,6 @@ class ServerMigrationHelper(MigrationHelper):
         """cached group mapping"""
         return ss.group_mapping(self.cnx)
 
-    @cached
     def cstrtype_mapping(self):
         """cached constraint types mapping"""
         return ss.cstrtype_mapping(self.cnx)
@@ -527,6 +526,9 @@ class ServerMigrationHelper(MigrationHelper):
                     subjtypes, objtypes = targettypes, [etype]
                 self._synchronize_rschema(rschema, syncrdefs=False,
                                           syncprops=syncprops, syncperms=syncperms)
+                if rschema.rule: # rdef for computed rtype are infered hence should not be
+                                 # synchronized
+                    continue
                 reporschema = self.repo.schema.rschema(rschema)
                 for subj in subjtypes:
                     for obj in objtypes:
@@ -581,6 +583,9 @@ class ServerMigrationHelper(MigrationHelper):
         """
         subjtype, objtype = str(subjtype), str(objtype)
         rschema = self.fs_schema.rschema(rtype)
+        if rschema.rule:
+            raise ExecutionError('Cannot synchronize a relation definition for a '
+                                 'computed relation (%s)' % rschema)
         reporschema = self.repo.schema.rschema(rschema)
         if (subjtype, rschema, objtype) in self._synchronized:
             return
@@ -690,8 +695,8 @@ class ServerMigrationHelper(MigrationHelper):
                 self.cmd_exec_event_script('postcreate', cube)
                 self.commit()
 
-    def cmd_remove_cube(self, cube, removedeps=False):
-        removedcubes = super(ServerMigrationHelper, self).cmd_remove_cube(
+    def cmd_drop_cube(self, cube, removedeps=False):
+        removedcubes = super(ServerMigrationHelper, self).cmd_drop_cube(
             cube, removedeps)
         if not removedcubes:
             return
@@ -1021,11 +1026,13 @@ class ServerMigrationHelper(MigrationHelper):
         if rtype in reposchema:
             print 'warning: relation type %s is already known, skip addition' % (
                 rtype)
+        elif rschema.rule:
+            ss.execschemarql(execute, rschema, ss.crschema2rql(rschema))
         else:
             # register the relation into CWRType and insert necessary relation
             # definitions
             ss.execschemarql(execute, rschema, ss.rschema2rql(rschema, addrdef=False))
-        if addrdef:
+        if not rschema.rule and addrdef:
             self.commit()
             gmap = self.group_mapping()
             cmap = self.cstrtype_mapping()
@@ -1060,8 +1067,9 @@ class ServerMigrationHelper(MigrationHelper):
 
     def cmd_drop_relation_type(self, rtype, commit=True):
         """unregister an existing relation type"""
-        # unregister the relation from CWRType
         self.rqlexec('DELETE CWRType X WHERE X name %r' % rtype,
+                     ask_confirm=self.verbosity>=2)
+        self.rqlexec('DELETE CWComputedRType X WHERE X name %r' % rtype,
                      ask_confirm=self.verbosity>=2)
         if commit:
             self.commit()
@@ -1080,8 +1088,9 @@ class ServerMigrationHelper(MigrationHelper):
                                 default='n'):
                 raise SystemExit(1)
         self.cmd_add_relation_type(newname, commit=True)
-        self.rqlexec('SET X %s Y WHERE X %s Y' % (newname, oldname),
-                     ask_confirm=self.verbosity>=2)
+        if not self.repo.schema[oldname].rule:
+            self.rqlexec('SET X %s Y WHERE X %s Y' % (newname, oldname),
+                         ask_confirm=self.verbosity>=2)
         self.cmd_drop_relation_type(oldname, commit=commit)
 
     def cmd_add_relation_definition(self, subjtype, rtype, objtype, commit=True):
@@ -1089,6 +1098,9 @@ class ServerMigrationHelper(MigrationHelper):
         schema definition file
         """
         rschema = self.fs_schema.rschema(rtype)
+        if rschema.rule:
+            raise ExecutionError('Cannot add a relation definition for a '
+                                 'computed relation (%s)' % rschema)
         if not rtype in self.repo.schema:
             self.cmd_add_relation_type(rtype, addrdef=False, commit=True)
         if (subjtype, objtype) in self.repo.schema.rschema(rtype).rdefs:
@@ -1116,6 +1128,9 @@ class ServerMigrationHelper(MigrationHelper):
     def cmd_drop_relation_definition(self, subjtype, rtype, objtype, commit=True):
         """unregister an existing relation definition"""
         rschema = self.repo.schema.rschema(rtype)
+        if rschema.rule:
+            raise ExecutionError('Cannot drop a relation definition for a '
+                                 'computed relation (%s)' % rschema)
         # unregister the definition from CWAttribute or CWRelation
         if rschema.final:
             etype = 'CWAttribute'
@@ -1275,12 +1290,12 @@ class ServerMigrationHelper(MigrationHelper):
                 assert 'wf_info_for' in eschema.objrels, _missing_wf_rel(etype)
             rset = self.rqlexec(
                 'SET X workflow_of ET WHERE X eid %(x)s, ET name %(et)s',
-                {'x': wf.eid, 'et': etype}, ask_confirm=False)
+                {'x': wf.eid, 'et': unicode(etype)}, ask_confirm=False)
             assert rset, 'unexistant entity type %s' % etype
             if default:
                 self.rqlexec(
                     'SET ET default_workflow X WHERE X eid %(x)s, ET name %(et)s',
-                    {'x': wf.eid, 'et': etype}, ask_confirm=False)
+                    {'x': wf.eid, 'et': unicode(etype)}, ask_confirm=False)
         if commit:
             self.commit()
         return wf
@@ -1315,7 +1330,7 @@ class ServerMigrationHelper(MigrationHelper):
         try:
             prop = self.rqlexec(
                 'CWProperty X WHERE X pkey %(k)s, NOT X for_user U',
-                {'k': pkey}, ask_confirm=False).get_entity(0, 0)
+                {'k': unicode(pkey)}, ask_confirm=False).get_entity(0, 0)
         except Exception:
             self.cmd_create_entity('CWProperty', pkey=unicode(pkey), value=value)
         else:

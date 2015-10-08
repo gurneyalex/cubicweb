@@ -89,7 +89,7 @@ DBG_MORE = 128
 DBG_ALL  = DBG_RQL + DBG_SQL + DBG_REPO + DBG_MS + DBG_HOOKS + DBG_OPS + DBG_SEC + DBG_MORE
 
 _SECURITY_ITEMS = []
-_SECURITY_CAPS = ['read', 'add', 'update', 'delete']
+_SECURITY_CAPS = ['read', 'add', 'update', 'delete', 'transition']
 
 #: current debug mode
 DEBUG = 0
@@ -196,7 +196,7 @@ def create_user(session, login, pwd, *groups):
     user = session.create_entity('CWUser', login=login, upassword=pwd)
     for group in groups:
         session.execute('SET U in_group G WHERE U eid %(u)s, G name %(group)s',
-                        {'u': user.eid, 'group': group})
+                        {'u': user.eid, 'group': unicode(group)})
     return user
 
 def init_repository(config, interactive=True, drop=False, vreg=None,
@@ -331,6 +331,7 @@ def initialize_schema(config, schema, mhandler, event='create'):
         mhandler.cmd_exec_event_script('pre%s' % event, apphome=True)
         # enter instance'schema into the database
         serialize_schema(cnx, schema)
+        cnx.commit()
         # execute cubicweb's post<event> script
         mhandler.cmd_exec_event_script('post%s' % event)
         # execute cubes'post<event> script if any

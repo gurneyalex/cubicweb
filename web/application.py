@@ -23,6 +23,7 @@ import sys
 from time import clock, time
 from contextlib import contextmanager
 from warnings import warn
+import json
 
 import httplib
 
@@ -223,7 +224,7 @@ class CookieSessionHandler(object):
         sessioncookie = self.session_cookie(req)
         secure = req.https and req.base_url().startswith('https://')
         req.set_cookie(sessioncookie, session.sessionid,
-                       maxage=None, secure=secure)
+                       maxage=None, secure=secure, httponly=True)
         if not session.anonymous_session:
             self.session_manager.postlogin(req, session)
         return session
@@ -567,7 +568,6 @@ class CubicWebPublisher(object):
             req.data['ex'] = ex
             if tb:
                 req.data['excinfo'] = excinfo
-            req.form['vid'] = 'error'
             errview = self.vreg['views'].select('error', req)
             template = self.main_template_id(req)
             content = self.vreg['views'].main_template(req, template, view=errview)
@@ -589,8 +589,10 @@ class CubicWebPublisher(object):
         status = httplib.INTERNAL_SERVER_ERROR
         if isinstance(ex, PublishException) and ex.status is not None:
             status = ex.status
-        req.status_out = status
-        json_dumper = getattr(ex, 'dumps', lambda : unicode(ex))
+        if req.status_out < 400:
+            # don't overwrite it if it's already set
+            req.status_out = status
+        json_dumper = getattr(ex, 'dumps', lambda : json.dumps({'reason': unicode(ex)}))
         return json_dumper()
 
     # special case handling
