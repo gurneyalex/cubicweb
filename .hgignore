@@ -1,6 +1,8 @@
 \.svn
 ^build$
 ^dist$
+\.egg-info$
+^.tox$
 \.pyc$
 \.pyo$
 \.bak$
@@ -11,11 +13,16 @@
 ^doc/book/en/apidoc$
 \.old$
 syntax: regexp
-.*/data/database/.*\.sqlite
-.*/data/database/.*\.config
+.*/data.*/database/.*\.sqlite
+.*/data.*/database/.*\.config
 .*/data/database/tmpdb.*
 .*/data/ldapdb/.*
+.*/data/uicache/
+.*/data/cubes/.*/i18n/.*\.po
 ^doc/html/
 ^doc/doctrees/
 ^doc/book/en/devweb/js_api/
+^doc/_build
+^doc/js_api/
 data/pgdb/
+data.*/pgdb.*

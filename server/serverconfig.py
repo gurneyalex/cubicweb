@@ -1,4 +1,4 @@
-# copyright 2003-2013 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2014 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -197,44 +197,6 @@ specific recipient rules.',
 notified of every changes.',
           'group': 'email', 'level': 2,
           }),
-        # pyro services config
-        ('pyro-host',
-         {'type' : 'string',
-          'default': None,
-          'help': 'Pyro server host, if not detectable correctly through \
-gethostname(). It may contains port information using <host>:<port> notation, \
-and if not set, it will be choosen randomly',
-          'group': 'pyro', 'level': 3,
-          }),
-        ('pyro-instance-id',
-         {'type' : 'string',
-          'default': lgconfig.Method('default_instance_id'),
-          'help': 'identifier of the CubicWeb instance in the Pyro name server',
-          'group': 'pyro', 'level': 1,
-          }),
-        ('pyro-ns-host',
-         {'type' : 'string',
-          'default': '',
-          'help': 'Pyro name server\'s host. If not set, will be detected by a \
-broadcast query. It may contains port information using <host>:<port> notation. \
-Use "NO_PYRONS" to create a Pyro server but not register to a pyro nameserver',
-          'group': 'pyro', 'level': 1,
-          }),
-        ('pyro-ns-group',
-         {'type' : 'string',
-          'default': 'cubicweb',
-          'help': 'Pyro name server\'s group where the repository will be \
-registered.',
-          'group': 'pyro', 'level': 1,
-          }),
-        # zmq services config
-        ('zmq-repository-address',
-         {'type' : 'string',
-          'default': None,
-          'help': ('ZMQ URI on which the repository will be bound '
-                   'to (of the form `zmqpickle-tcp://<ipaddr>:<port>`).'),
-          'group': 'zmq', 'level': 3,
-          }),
          ('zmq-address-sub',
           {'type' : 'csv',
            'default' : (),
@@ -350,10 +312,6 @@ registered.',
             stream.write('[%s]\n%s\n' % (section, generate_source_config(sconfig)))
         restrict_perms_to_user(sourcesfile)
 
-    def pyro_enabled(self):
-        """pyro is always enabled in standalone repository configuration"""
-        return True
-
     def load_schema(self, expand_cubes=False, **kwargs):
         from cubicweb.schema import CubicWebSchemaLoader
         if expand_cubes:
@@ -387,6 +345,3 @@ registered.',
         return ServerMigrationHelper(self, schema, interactive=interactive,
                                      cnx=cnx, repo=repo, connect=connect,
                                      verbosity=verbosity)
-
-
-CONFIGURATIONS.append(ServerConfiguration)

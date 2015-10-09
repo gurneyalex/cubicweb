@@ -73,9 +73,11 @@ class DevConfiguration(ServerConfiguration, WebConfiguration):
         return None
     def init_log(self):
         pass
-    def load_configuration(self):
+    def load_configuration(self, **kw):
         pass
     def default_log_file(self):
+        return None
+    def default_stats_file(self):
         return None
 
 
@@ -580,8 +582,8 @@ layout, and a full featured cube with "full" layout.',
 # FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License for more
 # details.
 #
-# You should have received a copy of the GNU Lesser General Public License along
-# with this program. If not, see <http://www.gnu.org/licenses/>.
+# You should have received a copy of the GNU Lesser General Public License
+# along with this program. If not, see <http://www.gnu.org/licenses/>.
 ''',
 
         'GPL': '''\
@@ -592,7 +594,8 @@ layout, and a full featured cube with "full" layout.',
 #
 # This program is distributed in the hope that it will be useful, but WITHOUT
 # ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
-# FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+# FOR A PARTICULAR PURPOSE. See the GNU General Public License for more
+# details.
 #
 # You should have received a copy of the GNU General Public License along with
 # this program. If not, see <http://www.gnu.org/licenses/>.
@@ -834,21 +837,11 @@ class GenerateSchema(Command):
             p.wait()
 
 
-class GenerateQUnitHTML(Command):
-    """Generate a QUnit html file to see test in your browser"""
-    name = "qunit-html"
-    arguments = '<test file> [<dependancy js file>...]'
-
-    def run(self, args):
-        from cubicweb.devtools.qunit import make_qunit_html
-        print make_qunit_html(args[0], args[1:])
-
 for cmdcls in (UpdateCubicWebCatalogCommand,
                UpdateCubeCatalogCommand,
                #LiveServerCommand,
                NewCubeCommand,
                ExamineLogCommand,
                GenerateSchema,
-               GenerateQUnitHTML,
                ):
     CWCTL.register(cmdcls)

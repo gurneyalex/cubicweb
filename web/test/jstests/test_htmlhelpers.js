@@ -1,35 +1,35 @@
 $(document).ready(function() {
 
-    module("module2", {
+    QUnit.module("module2", {
       setup: function() {
-        $('#main').append('<select id="theselect" multiple="multiple" size="2">' +
+        $('#qunit-fixture').append('<select id="theselect" multiple="multiple" size="2">' +
     			'</select>');
       }
     });
 
-    test("test first selected", function() {
+    QUnit.test("test first selected", function (assert) {
         $('#theselect').append('<option value="foo">foo</option>' +
     			     '<option selected="selected" value="bar">bar</option>' +
     			     '<option value="baz">baz</option>' +
     			     '<option selected="selecetd"value="spam">spam</option>');
         var selected = firstSelected(document.getElementById("theselect"));
-        equals(selected.value, 'bar');
+        assert.equal(selected.value, 'bar');
     });
 
-    test("test first selected 2", function() {
+    QUnit.test("test first selected 2", function (assert) {
         $('#theselect').append('<option value="foo">foo</option>' +
     			     '<option value="bar">bar</option>' +
     			     '<option value="baz">baz</option>' +
     			     '<option value="spam">spam</option>');
         var selected = firstSelected(document.getElementById("theselect"));
-        equals(selected, null);
+        assert.equal(selected, null);
     });
 
-    module("visibilty");
-    test('toggleVisibility', function() {
-        $('#main').append('<div id="foo"></div>');
+    QUnit.module("visibilty");
+    QUnit.test('toggleVisibility', function (assert) {
+        $('#qunit-fixture').append('<div id="foo"></div>');
         toggleVisibility('foo');
-        ok($('#foo').hasClass('hidden'), 'check hidden class is set');
+        assert.ok($('#foo').hasClass('hidden'), 'check hidden class is set');
     });
 
 });

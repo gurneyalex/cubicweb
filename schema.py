@@ -32,13 +32,14 @@ from logilab.common.deprecation import deprecated, class_moved, moved
 from logilab.common.textutils import splitstrip
 from logilab.common.graph import get_cycles
 
+import yams
 from yams import BadSchemaDefinition, buildobjs as ybo
 from yams.schema import Schema, ERSchema, EntitySchema, RelationSchema, \
      RelationDefinitionSchema, PermissionMixIn, role_name
-from yams.constraints import BaseConstraint, FormatConstraint
+from yams.constraints import (BaseConstraint, FormatConstraint, BoundaryConstraint,
+                              IntervalBoundConstraint, StaticVocabularyConstraint)
 from yams.reader import (CONSTRAINTS, PyFileReader, SchemaLoader,
-                         obsolete as yobsolete, cleanup_sys_modules,
-                         fill_schema_from_namespace)
+                         cleanup_sys_modules, fill_schema_from_namespace)
 
 from rql import parse, nodes, RQLSyntaxError, TypeResolverException
 from rql.analyze import ETypeResolver
@@ -462,6 +463,13 @@ class RRQLExpression(RQLExpression):
 ybo.DEFAULT_ATTRPERMS['update'] = ('managers', ERQLExpression('U has_update_permission X'))
 ybo.DEFAULT_ATTRPERMS['add'] = ('managers', ERQLExpression('U has_add_permission X'))
 
+# we don't want 'add' or 'delete' permissions on computed relation types
+# (they're hardcoded to '()' on computed relation definitions)
+if 'add' in yams.DEFAULT_COMPUTED_RELPERMS:
+    del yams.DEFAULT_COMPUTED_RELPERMS['add']
+if 'delete' in yams.DEFAULT_COMPUTED_RELPERMS:
+    del yams.DEFAULT_COMPUTED_RELPERMS['delete']
+
 
 PUB_SYSTEM_ENTITY_PERMS = {
     'read':   ('managers', 'users', 'guests',),
@@ -657,7 +665,7 @@ def check_perm(self, _cw, action, **kwargs):
     groups = self.get_groups(action)
     if _cw.user.matching_groups(groups):
         if DBG:
-            print 'check_perm: %r %r: user matches %s' % (action, _self_str, groups)
+            print ('check_perm: %r %r: user matches %s' % (action, _self_str, groups))
         return
     # if 'owners' in allowed groups, check if the user actually owns this
     # object, if so that's enough
@@ -859,7 +867,9 @@ class CubicWebEntitySchema(EntitySchema):
         return ERQLExpression(expression, mainvars, eid)
 
 
-class CubicWebRelationSchema(RelationSchema):
+class CubicWebRelationSchema(PermissionMixIn, RelationSchema):
+    permissions = {}
+    ACTIONS = ()
 
     def __init__(self, schema=None, rdef=None, eid=None, **kwargs):
         if rdef is not None:
@@ -869,6 +879,17 @@ class CubicWebRelationSchema(RelationSchema):
         if eid is None and rdef is not None:
             eid = getattr(rdef, 'eid', None)
         self.eid = eid
+
+    def init_computed_relation(self, rdef):
+        self.ACTIONS = ('read',)
+        super(CubicWebRelationSchema, self).init_computed_relation(rdef)
+
+    def advertise_new_add_permission(self):
+        pass
+
+    def check_permission_definitions(self):
+        RelationSchema.check_permission_definitions(self)
+        PermissionMixIn.check_permission_definitions(self)
 
     @property
     def meta(self):
@@ -1097,7 +1118,7 @@ class CubicWebSchema(Schema):
                     subjtype, rschema.type, objtype,
                     __permissions__={'add': (),
                                      'delete': (),
-                                     'read': ('managers', 'users', 'guests')})
+                                     'read': rschema.permissions['read']})
                 rdef.infered = True
                 self.add_relation_def(rdef)
 
@@ -1107,6 +1128,12 @@ class CubicWebSchema(Schema):
 
 
 # additional cw specific constraints ###########################################
+
+# these are implemented as CHECK constraints in sql, don't do the work
+# twice
+StaticVocabularyConstraint.check = lambda *args: True
+IntervalBoundConstraint.check = lambda *args: True
+BoundaryConstraint.check = lambda *args: True
 
 class BaseRQLConstraint(RRQLExpression, BaseConstraint):
     """base class for rql constraints"""
@@ -1396,13 +1423,6 @@ def vocabulary(self, entity=None, form=None):
             return self.regular_formats + tuple(NEED_PERM_FORMATS)
     return self.regular_formats
 
-# XXX monkey patch PyFileReader.import_erschema until bw_normalize_etype is
-# necessary
-orig_import_erschema = PyFileReader.import_erschema
-def bw_import_erschema(self, ertype, schemamod=None, instantiate=True):
-    return orig_import_erschema(self, bw_normalize_etype(ertype), schemamod, instantiate)
-PyFileReader.import_erschema = bw_import_erschema
-
 # XXX itou for some Statement methods
 from rql import stmts
 orig_get_etype = stmts.ScopeNode.get_etype
@@ -1424,16 +1444,3 @@ orig_set_statement_type = stmts.Select.set_statement_type
 def bw_set_statement_type(self, etype):
     return orig_set_statement_type(self, bw_normalize_etype(etype))
 stmts.Select.set_statement_type = bw_set_statement_type
-
-# XXX deprecated
-
-from yams.constraints import StaticVocabularyConstraint
-
-RichString = moved('yams.buildobjs', 'RichString')
-
-StaticVocabularyConstraint = class_moved(StaticVocabularyConstraint)
-FormatConstraint = class_moved(FormatConstraint)
-
-PyFileReader.context['ERQLExpression'] = yobsolete(ERQLExpression)
-PyFileReader.context['RRQLExpression'] = yobsolete(RRQLExpression)
-PyFileReader.context['WorkflowableEntityType'] = WorkflowableEntityType

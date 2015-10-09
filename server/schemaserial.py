@@ -25,13 +25,12 @@ import sys
 
 from logilab.common.shellutils import ProgressBar, DummyProgressBar
 
-from yams import (BadSchemaDefinition, schema as schemamod, buildobjs as ybo,
-                  schema2sql as y2sql)
+from yams import BadSchemaDefinition, schema as schemamod, buildobjs as ybo
 
 from cubicweb import Binary
 from cubicweb.schema import (KNOWN_RPROPERTIES, CONSTRAINTS, ETYPE_NAME_MAP,
                              VIRTUAL_RTYPES)
-from cubicweb.server import sqlutils
+from cubicweb.server import sqlutils, schema2sql as y2sql
 
 
 def group_mapping(cnx, interactive=True):
@@ -93,14 +92,6 @@ def deserialize_schema(schema, cnx):
     with cnx.ensure_cnx_set:
         tables = set(t.lower() for t in dbhelper.list_tables(cnx.cnxset.cu))
         has_computed_relations = 'cw_cwcomputedrtype' in tables
-    if has_computed_relations:
-        rset = cnx.execute(
-            'Any X, N, R, D WHERE X is CWComputedRType, X name N, '
-            'X rule R, X description D')
-        for eid, rule_name, rule, description in rset.rows:
-            rtype = ybo.ComputedRelation(name=rule_name, rule=rule, eid=eid,
-                                         description=description)
-            schema.add_relation_type(rtype)
     # computed attribute
     try:
         cnx.system_sql("SELECT cw_formula FROM cw_CWAttribute")
@@ -110,14 +101,13 @@ def deserialize_schema(schema, cnx):
         has_computed_attributes = False
 
     # XXX bw compat (3.6 migration)
-    with cnx.ensure_cnx_set:
-        sqlcu = cnx.system_sql("SELECT * FROM cw_CWRType WHERE cw_name='symetric'")
-        if sqlcu.fetchall():
-            sql = dbhelper.sql_rename_col('cw_CWRType', 'cw_symetric', 'cw_symmetric',
-                                          dbhelper.TYPE_MAPPING['Boolean'], True)
-            sqlcu.execute(sql)
-            sqlcu.execute("UPDATE cw_CWRType SET cw_name='symmetric' WHERE cw_name='symetric'")
-            cnx.commit(False)
+    sqlcu = cnx.system_sql("SELECT * FROM cw_CWRType WHERE cw_name='symetric'")
+    if sqlcu.fetchall():
+        sql = dbhelper.sql_rename_col('cw_CWRType', 'cw_symetric', 'cw_symmetric',
+                                      dbhelper.TYPE_MAPPING['Boolean'], True)
+        sqlcu.execute(sql)
+        sqlcu.execute("UPDATE cw_CWRType SET cw_name='symmetric' WHERE cw_name='symetric'")
+        cnx.commit()
     ertidx = {}
     copiedeids = set()
     permsidx = deserialize_ertype_permissions(cnx)
@@ -179,6 +169,15 @@ def deserialize_schema(schema, cnx):
         stype = ETYPE_NAME_MAP.get(stype, stype)
         schema.eschema(etype)._specialized_type = stype
         schema.eschema(stype)._specialized_by.append(etype)
+    if has_computed_relations:
+        rset = cnx.execute(
+            'Any X, N, R, D WHERE X is CWComputedRType, X name N, '
+            'X rule R, X description D')
+        for eid, rule_name, rule, description in rset.rows:
+            rtype = ybo.ComputedRelation(name=rule_name, rule=rule, eid=eid,
+                                         description=description)
+            rschema = schema.add_relation_type(rtype)
+            set_perms(rschema, permsidx)
     # load every relation types
     for eid, rtype, desc, sym, il, ftc in cnx.execute(
         'Any X,N,D,S,I,FTC WHERE X is CWRType, X name N, X description D, '
@@ -377,7 +376,7 @@ def serialize_schema(cnx, schema):
             pb.update()
             continue
         if rschema.rule:
-            execschemarql(execute, rschema, crschema2rql(rschema))
+            execschemarql(execute, rschema, crschema2rql(rschema, groupmap))
             pb.update()
             continue
         execschemarql(execute, rschema, rschema2rql(rschema, addrdef=False))
@@ -527,9 +526,12 @@ def rschema_relations_values(rschema):
     relations = ['X %s %%(%s)s' % (attr, attr) for attr in sorted(values)]
     return relations, values
 
-def crschema2rql(crschema):
+def crschema2rql(crschema, groupmap):
     relations, values = crschema_relations_values(crschema)
     yield 'INSERT CWComputedRType X: %s' % ','.join(relations), values
+    if groupmap:
+        for rql, args in _erperms2rql(crschema, groupmap):
+            yield rql, args
 
 def crschema_relations_values(crschema):
     values = _ervalues(crschema)

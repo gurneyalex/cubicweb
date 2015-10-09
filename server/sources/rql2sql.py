@@ -50,9 +50,7 @@ and Informix.
 __docformat__ = "restructuredtext en"
 
 import threading
-from datetime import datetime, time
 
-from logilab.common.date import utcdatetime, utctime
 from logilab.database import FunctionDescr, SQL_FUNCTIONS_REGISTRY
 
 from rql import BadRQLQuery, CoercionError
@@ -397,11 +395,14 @@ class StateInfo(object):
             yield 1
             return
         thisexistssols, thisexistsvars = self.existssols[exists]
+        notdone_outside_vars = set()
         # when iterating other solutions inner to an EXISTS subquery, we should
         # reset variables which have this exists node as scope at each iteration
         for var in exists.stmt.defined_vars.itervalues():
             if var.scope is exists:
                 thisexistsvars.add(var.name)
+            elif var.name not in self.done:
+                notdone_outside_vars.add(var)
         origsol = self.solution
         origtables = self.tables
         done = self.done
@@ -417,6 +418,10 @@ class StateInfo(object):
                 for var in thisexistsvars:
                     if var in done:
                         done.remove(var)
+                for var in list(notdone_outside_vars):
+                    if var.name in done and var._q_sqltable in self.tables:
+                        origtables[var._q_sqltable] = self.tables[var._q_sqltable]
+                        notdone_outside_vars.remove(var)
                 for rel in exists.iget_nodes(Relation):
                     if rel in done:
                         done.remove(rel)
@@ -1509,14 +1514,6 @@ class SQLGenerator(object):
                 _id = value
                 if isinstance(_id, unicode):
                     _id = _id.encode()
-                # convert timestamp to utc.
-                # expect SET TiME ZONE to UTC at connection opening time.
-                # This shouldn't change anything for datetime without TZ.
-                value = self._args[_id]
-                if isinstance(value, datetime) and value.tzinfo is not None:
-                    self._query_attrs[_id] = utcdatetime(value)
-                elif isinstance(value, time) and value.tzinfo is not None:
-                    self._query_attrs[_id] = utctime(value)
         else:
             _id = str(id(constant)).replace('-', '', 1)
             self._query_attrs[_id] = value
