@@ -69,7 +69,6 @@ def setUpClass(cls, *args):
 
 def tearDownClass(cls, *args):
     global repo, cnx
-    cnx.close()
     repo.shutdown()
     del repo, cnx
 
@@ -1173,11 +1172,10 @@ Any P1,B,E WHERE P1 identity P2 WITH
     def test_delete_3(self):
         s = self.user_groups_session('users')
         with s.new_cnx() as cnx:
-            with cnx.ensure_cnx_set:
-                peid, = self.o.execute(cnx, "INSERT Personne P: P nom 'toto'")[0]
-                seid, = self.o.execute(cnx, "INSERT Societe S: S nom 'logilab'")[0]
-                self.o.execute(cnx, "SET P travaille S")
-                cnx.commit()
+            peid, = self.o.execute(cnx, "INSERT Personne P: P nom 'toto'")[0]
+            seid, = self.o.execute(cnx, "INSERT Societe S: S nom 'logilab'")[0]
+            self.o.execute(cnx, "SET P travaille S")
+            cnx.commit()
         rset = self.qexecute('Personne P WHERE P travaille S')
         self.assertEqual(len(rset.rows), 1)
         self.qexecute("DELETE X travaille Y WHERE X eid %s, Y eid %s" % (peid, seid))
@@ -1212,12 +1210,11 @@ Any P1,B,E WHERE P1 identity P2 WITH
                               'X sender Y, X recipients Y WHERE Y is EmailAddress')[0]
         self.qexecute("DELETE Email X")
         with self.session.new_cnx() as cnx:
-            with cnx.ensure_cnx_set:
-                sqlc = cnx.cnxset.cu
-                sqlc.execute('SELECT * FROM recipients_relation')
-                self.assertEqual(len(sqlc.fetchall()), 0)
-                sqlc.execute('SELECT * FROM owned_by_relation WHERE eid_from=%s'%eeid)
-                self.assertEqual(len(sqlc.fetchall()), 0)
+            sqlc = cnx.cnxset.cu
+            sqlc.execute('SELECT * FROM recipients_relation')
+            self.assertEqual(len(sqlc.fetchall()), 0)
+            sqlc.execute('SELECT * FROM owned_by_relation WHERE eid_from=%s'%eeid)
+            self.assertEqual(len(sqlc.fetchall()), 0)
 
     def test_nonregr_delete_cache2(self):
         eid = self.qexecute("INSERT Folder T: T name 'toto'")[0][0]
@@ -1364,12 +1361,11 @@ Any P1,B,E WHERE P1 identity P2 WITH
         self.assertRaises(Unauthorized,
                           self.qexecute, "Any P WHERE X is CWUser, X login 'bob', X upassword P")
         with self.session.new_cnx() as cnx:
-            with cnx.ensure_cnx_set:
-                cursor = cnx.cnxset.cu
-                cursor.execute("SELECT %supassword from %sCWUser WHERE %slogin='bob'"
-                               % (SQL_PREFIX, SQL_PREFIX, SQL_PREFIX))
-                passwd = str(cursor.fetchone()[0])
-                self.assertEqual(passwd, crypt_password('toto', passwd))
+            cursor = cnx.cnxset.cu
+            cursor.execute("SELECT %supassword from %sCWUser WHERE %slogin='bob'"
+                           % (SQL_PREFIX, SQL_PREFIX, SQL_PREFIX))
+            passwd = str(cursor.fetchone()[0])
+            self.assertEqual(passwd, crypt_password('toto', passwd))
         rset = self.qexecute("Any X WHERE X is CWUser, X login 'bob', X upassword %(pwd)s",
                             {'pwd': Binary(passwd)})
         self.assertEqual(len(rset.rows), 1)
@@ -1377,21 +1373,20 @@ Any P1,B,E WHERE P1 identity P2 WITH
 
     def test_update_upassword(self):
         with self.session.new_cnx() as cnx:
-            with cnx.ensure_cnx_set:
-                rset = cnx.execute("INSERT CWUser X: X login 'bob', X upassword %(pwd)s",
-                                   {'pwd': 'toto'})
-                self.assertEqual(rset.description[0][0], 'CWUser')
-                rset = cnx.execute("SET X upassword %(pwd)s WHERE X is CWUser, X login 'bob'",
-                                   {'pwd': 'tutu'})
-                cursor = cnx.cnxset.cu
-                cursor.execute("SELECT %supassword from %sCWUser WHERE %slogin='bob'"
-                               % (SQL_PREFIX, SQL_PREFIX, SQL_PREFIX))
-                passwd = str(cursor.fetchone()[0])
-                self.assertEqual(passwd, crypt_password('tutu', passwd))
-                rset = cnx.execute("Any X WHERE X is CWUser, X login 'bob', X upassword %(pwd)s",
-                                   {'pwd': Binary(passwd)})
-                self.assertEqual(len(rset.rows), 1)
-                self.assertEqual(rset.description, [('CWUser',)])
+            rset = cnx.execute("INSERT CWUser X: X login 'bob', X upassword %(pwd)s",
+                               {'pwd': 'toto'})
+            self.assertEqual(rset.description[0][0], 'CWUser')
+            rset = cnx.execute("SET X upassword %(pwd)s WHERE X is CWUser, X login 'bob'",
+                               {'pwd': 'tutu'})
+            cursor = cnx.cnxset.cu
+            cursor.execute("SELECT %supassword from %sCWUser WHERE %slogin='bob'"
+                           % (SQL_PREFIX, SQL_PREFIX, SQL_PREFIX))
+            passwd = str(cursor.fetchone()[0])
+            self.assertEqual(passwd, crypt_password('tutu', passwd))
+            rset = cnx.execute("Any X WHERE X is CWUser, X login 'bob', X upassword %(pwd)s",
+                               {'pwd': Binary(passwd)})
+            self.assertEqual(len(rset.rows), 1)
+            self.assertEqual(rset.description, [('CWUser',)])
 
     # ZT datetime tests ########################################################
 
@@ -1401,6 +1396,13 @@ Any P1,B,E WHERE P1 identity P2 WITH
         datenaiss = self.qexecute("Any XD WHERE X nom 'bob', X tzdatenaiss XD")[0][0]
         self.assertEqual(datenaiss.tzinfo, None)
         self.assertEqual(datenaiss.utctimetuple()[:5], (1977, 6, 7, 1, 0))
+
+    def test_tz_datetime_cache_nonregr(self):
+        datenaiss = datetime(1977, 6, 7, 2, 0, tzinfo=FixedOffset(1))
+        self.qexecute("INSERT Personne X: X nom 'bob', X tzdatenaiss %(date)s",
+                     {'date': datenaiss})
+        self.assertTrue(self.qexecute("Any X WHERE X tzdatenaiss %(d)s", {'d': datenaiss}))
+        self.assertFalse(self.qexecute("Any X WHERE X tzdatenaiss %(d)s", {'d': datenaiss - timedelta(1)}))
 
     # non regression tests #####################################################
 
@@ -1512,9 +1514,9 @@ Any P1,B,E WHERE P1 identity P2 WITH
     def test_nonregr_has_text_cache(self):
         eid1 = self.qexecute("INSERT Personne X: X nom 'bidule'")[0][0]
         eid2 = self.qexecute("INSERT Personne X: X nom 'tag'")[0][0]
-        rset = self.qexecute("Any X WHERE X has_text %(text)s", {'text': 'bidule'})
+        rset = self.qexecute("Any X WHERE X has_text %(text)s", {'text': u'bidule'})
         self.assertEqual(rset.rows, [[eid1]])
-        rset = self.qexecute("Any X WHERE X has_text %(text)s", {'text': 'tag'})
+        rset = self.qexecute("Any X WHERE X has_text %(text)s", {'text': u'tag'})
         self.assertEqual(rset.rows, [[eid2]])
 
     def test_nonregr_sortterm_management(self):
@@ -1625,9 +1627,9 @@ class NonRegressionTC(CubicWebTC):
             aff2 = cnx.create_entity('Societe', nom=u'aff2')
             cnx.commit()
         with self.new_access('user').repo_cnx() as cnx:
-            res = cnx.execute('Any X WHERE X has_text %(text)s', {'text': 'aff1'})
+            res = cnx.execute('Any X WHERE X has_text %(text)s', {'text': u'aff1'})
             self.assertEqual(res.rows, [[aff1.eid]])
-            res = cnx.execute('Any X WHERE X has_text %(text)s', {'text': 'aff2'})
+            res = cnx.execute('Any X WHERE X has_text %(text)s', {'text': u'aff2'})
             self.assertEqual(res.rows, [[aff2.eid]])
 
     def test_set_relations_eid(self):

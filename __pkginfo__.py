@@ -22,7 +22,7 @@ software
 
 modname = distname = "cubicweb"
 
-numversion = (3, 20, 10)
+numversion = (3, 21, 1)
 version = '.'.join(str(num) for num in numversion)
 
 description = "a repository of entities / relations for knowledge management"
@@ -115,8 +115,6 @@ try:
         [join('share', 'cubicweb', 'cubes', 'shared', 'data'),
          [join(_data_dir, fname) for fname in listdir(_data_dir)
           if not isdir(join(_data_dir, fname))]],
-        [join('share', 'cubicweb', 'cubes', 'shared', 'data', 'timeline'),
-         [join(_data_dir, 'timeline', fname) for fname in listdir(join(_data_dir, 'timeline'))]],
         [join('share', 'cubicweb', 'cubes', 'shared', 'data', 'images'),
          [join(_data_dir, 'images', fname) for fname in listdir(join(_data_dir, 'images'))]],
         [join('share', 'cubicweb', 'cubes', 'shared', 'data', 'jquery-treeview'),

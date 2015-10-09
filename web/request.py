@@ -1,4 +1,4 @@
-# copyright 2003-2013 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2014 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -38,14 +38,14 @@ from logilab.common.decorators import cached
 from logilab.common.deprecation import deprecated
 from logilab.mtconverter import xml_escape
 
+from cubicweb import AuthenticationError
 from cubicweb.req import RequestSessionBase
-from cubicweb.dbapi import DBAPIRequest
 from cubicweb.uilib import remove_html_tags, js
 from cubicweb.utils import SizeConstrainedList, HTMLHead, make_uid
 from cubicweb.view import TRANSITIONAL_DOCTYPE_NOEXT
 from cubicweb.web import (INTERNAL_FIELD_VALUE, LOGGER, NothingToEdit,
                           RequestError, StatusResponse)
-from cubicweb.web.httpcache import GMTOFFSET, get_validators
+from cubicweb.web.httpcache import get_validators
 from cubicweb.web.http_headers import Headers, Cookie, parseDateTime
 
 _MARKER = object()
@@ -155,9 +155,7 @@ class _CubicWebRequestBase(RequestSessionBase):
         #: shared among various components used to publish the request (views,
         #: controller, application...)
         self.data = {}
-        #:  search state: 'normal' or 'linksearch' (eg searching for an object
-        #:  to create a relation with another)
-        self.search_state = ('normal',)
+        self._search_state = None
         #: page id, set by htmlheader template
         self.pageid = None
         self._set_pageid()
@@ -354,21 +352,36 @@ class _CubicWebRequestBase(RequestSessionBase):
             self.session.data.pop(self._msgid, u'')
             del self._msgid
 
-    def update_search_state(self):
-        """update the current search state"""
-        searchstate = self.form.get('__mode')
-        if not searchstate:
+    def _load_search_state(self, searchstate):
+        if searchstate is None or searchstate == 'normal':
+            self._search_state = ('normal',)
+        else:
+            self._search_state = ('linksearch', searchstate.split(':'))
+            assert len(self._search_state[-1]) == 4, 'invalid searchstate'
+
+    @property
+    def search_state(self):
+        """search state: 'normal' or 'linksearch' (i.e. searching for an object
+        to create a relation with another)"""
+        if self._search_state is None:
             searchstate = self.session.data.get('search_state', 'normal')
-        self.set_search_state(searchstate)
+            self._load_search_state(searchstate)
+        return self._search_state
+
+    @search_state.setter
+    def search_state(self, searchstate):
+        self._search_state = searchstate
+
+    def update_search_state(self):
+        """update the current search state if needed"""
+        searchstate = self.form.get('__mode')
+        if searchstate:
+            self.set_search_state(searchstate)
 
     def set_search_state(self, searchstate):
         """set a new search state"""
-        if searchstate is None or searchstate == 'normal':
-            self.search_state = (searchstate or 'normal',)
-        else:
-            self.search_state = ('linksearch', searchstate.split(':'))
-            assert len(self.search_state[-1]) == 4
         self.session.data['search_state'] = searchstate
+        self._load_search_state(searchstate)
 
     def match_search_state(self, rset):
         """when searching an entity to create a relation, return True if entities in
@@ -385,7 +398,7 @@ class _CubicWebRequestBase(RequestSessionBase):
 
     def update_breadcrumbs(self):
         """stores the last visisted page in session data"""
-        searchstate = self.session.data.get('search_state')
+        searchstate = self.search_state[0]
         if searchstate == 'normal':
             breadcrumbs = self.session.data.get('breadcrumbs')
             if breadcrumbs is None:
@@ -402,67 +415,6 @@ class _CubicWebRequestBase(RequestSessionBase):
         if breadcrumbs:
             return breadcrumbs.pop()
         return self.base_url()
-
-    @deprecated('[3.19] use a traditional ajaxfunc / controller')
-    def user_rql_callback(self, rqlargs, *args, **kwargs):
-        """register a user callback to execute some rql query, and return a URL
-        to call that callback which can be inserted in an HTML view.
-
-        `rqlargs` should be a tuple containing argument to give to the execute function.
-
-        The first argument following rqlargs must be the message to be
-        displayed after the callback is called.
-
-        For other allowed arguments, see :meth:`user_callback` method
-        """
-        def rqlexec(req, rql, args=None, key=None):
-            req.execute(rql, args, key)
-        return self.user_callback(rqlexec, rqlargs, *args, **kwargs)
-
-    @deprecated('[3.19] use a traditional ajaxfunc / controller')
-    def user_callback(self, cb, cbargs, *args, **kwargs):
-        """register the given user callback and return a URL which can
-        be inserted in an HTML view. When the URL is accessed, the
-        callback function will be called (as 'cb(req, \*cbargs)', and a
-        message will be displayed in the web interface. The third
-        positional argument must be 'msg', containing the message.
-
-        You can specify the underlying js function to call using a 'jsfunc'
-        named args, to one of :func:`userCallback`,
-        ':func:`userCallbackThenUpdateUI`, ':func:`userCallbackThenReloadPage`
-        (the default). Take care arguments may vary according to the used
-        function.
-        """
-        self.add_js('cubicweb.ajax.js')
-        jsfunc = kwargs.pop('jsfunc', 'userCallbackThenReloadPage')
-        assert not kwargs, 'dunno what to do with remaining kwargs: %s' % kwargs
-        cbname = self.register_onetime_callback(cb, *cbargs)
-        return "javascript: %s" % getattr(js, jsfunc)(cbname, *args)
-
-    @deprecated('[3.19] use a traditional ajaxfunc / controller')
-    def register_onetime_callback(self, func, *args):
-        cbname = build_cb_uid(func.__name__)
-        def _cb(req):
-            try:
-                return func(req, *args)
-            finally:
-                self.unregister_callback(self.pageid, cbname)
-        self.set_page_data(cbname, _cb)
-        return cbname
-
-    @deprecated('[3.19] use a traditional ajaxfunc / controller')
-    def unregister_callback(self, pageid, cbname):
-        assert pageid is not None
-        assert cbname.startswith('cb_')
-        self.info('unregistering callback %s for pageid %s', cbname, pageid)
-        self.del_page_data(cbname)
-
-    @deprecated('[3.19] use a traditional ajaxfunc / controller')
-    def clear_user_callbacks(self):
-        if self.session is not None: # XXX
-            for key in list(self.session.data):
-                if key.startswith('cb_'):
-                    del self.session.data[key]
 
     # web edition helpers #####################################################
 
@@ -584,8 +536,8 @@ class _CubicWebRequestBase(RequestSessionBase):
             # we don't want to handle times before the EPOCH (cause bug on
             # windows). Also use > and not >= else expires == 0 and Cookie think
             # that means no expire...
-            assert expires + GMTOFFSET > date(1970, 1, 1)
-            expires = timegm((expires + GMTOFFSET).timetuple())
+            assert expires > date(1970, 1, 1)
+            expires = timegm(expires.timetuple())
         else:
             expires = None
         # make sure cookie is set on the correct path
@@ -859,8 +811,7 @@ class _CubicWebRequestBase(RequestSessionBase):
         """
         mtime = self.get_header('If-modified-since', raw=False)
         if mtime:
-            # :/ twisted is returned a localized time stamp
-            return datetime.fromtimestamp(mtime) + GMTOFFSET
+            return datetime.utcfromtimestamp(mtime)
         return None
 
     ### outcoming headers
@@ -1005,29 +956,36 @@ class _CubicWebRequestBase(RequestSessionBase):
         self.set_default_language(vreg)
 
 
-class DBAPICubicWebRequestBase(_CubicWebRequestBase, DBAPIRequest):
-
-    def set_session(self, session):
-        """method called by the session handler when the user is authenticated
-        or an anonymous connection is open
-        """
-        super(CubicWebRequestBase, self).set_session(session)
-        # set request language
-        self.set_user_language(session.user)
-
-
 def _cnx_func(name):
     def proxy(req, *args, **kwargs):
         return getattr(req.cnx, name)(*args, **kwargs)
     return proxy
 
+class _NeedAuthAccessMock(object):
+
+    def __getattribute__(self, attr):
+        raise AuthenticationError()
+
+    def __nonzero__(self):
+        return False
+
+class _MockAnonymousSession(object):
+    sessionid = 'thisisnotarealsession'
+
+    @property
+    def data(self):
+        return {}
+
+    @property
+    def anonymous_session(self):
+        return True
 
 class ConnectionCubicWebRequestBase(_CubicWebRequestBase):
+    cnx = None
+    session = None
 
     def __init__(self, vreg, https=False, form=None, headers={}):
         """"""
-        self.cnx = None
-        self.session = None
         self.vreg = vreg
         try:
             # no vreg or config which doesn't handle translations
@@ -1036,8 +994,7 @@ class ConnectionCubicWebRequestBase(_CubicWebRequestBase):
             self.translations = {}
         super(ConnectionCubicWebRequestBase, self).__init__(vreg, https=https,
                                                        form=form, headers=headers)
-        from cubicweb.dbapi import DBAPISession, _NeedAuthAccessMock
-        self.session = DBAPISession(None)
+        self.session = _MockAnonymousSession()
         self.cnx = self.user = _NeedAuthAccessMock()
 
     @property
@@ -1045,8 +1002,10 @@ class ConnectionCubicWebRequestBase(_CubicWebRequestBase):
         return self.cnx.transaction_data
 
     def set_cnx(self, cnx):
+        if 'ecache' in cnx.transaction_data:
+            del cnx.transaction_data['ecache']
         self.cnx = cnx
-        self.session = cnx._session
+        self.session = cnx.session
         self._set_user(cnx.user)
         self.set_user_language(cnx.user)
 
@@ -1056,7 +1015,6 @@ class ConnectionCubicWebRequestBase(_CubicWebRequestBase):
         return rset
 
     def set_default_language(self, vreg):
-        # XXX copy from dbapi
         try:
             lang = vreg.property_value('ui.language')
         except Exception: # property may not be registered

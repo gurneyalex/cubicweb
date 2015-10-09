@@ -279,7 +279,7 @@ PERSISTENT_OPTIONS = (
     ('default-text-format',
      {'type' : 'choice',
       'choices': ('text/plain', 'text/rest', 'text/html', 'text/markdown'),
-      'default': 'text/html', # use fckeditor in the web ui
+      'default': 'text/plain',
       'help': _('default text format for rich text fields.'),
       'group': 'ui',
       }),
@@ -835,12 +835,19 @@ class CubicWebConfiguration(CubicWebNoAppConfiguration):
 
     # set by upgrade command
     verbosity = 0
-
+    cmdline_options = None
     options = CubicWebNoAppConfiguration.options + (
         ('log-file',
          {'type' : 'string',
           'default': Method('default_log_file'),
           'help': 'file where output logs should be written',
+          'group': 'main', 'level': 2,
+          }),
+        ('statsd-endpoint',
+         {'type' : 'string',
+          'default': '',
+          'help': 'UDP address of the statsd endpoint; it must be formatted'
+                  'like <ip>:<port>; disabled is unset.',
           'group': 'main', 'level': 2,
           }),
         # email configuration
@@ -869,6 +876,18 @@ repository.',
           'help': 'email address used as HELO address for outgoing emails from \
 the repository',
           'group': 'email', 'level': 1,
+          }),
+        ('logstat-interval',
+         {'type' : 'int',
+          'default': 0,
+          'help': 'interval (in seconds) at which stats are dumped in the logstat file; set 0 to disable',
+          'group': 'main', 'level': 2,
+          }),
+        ('logstat-file',
+         {'type' : 'string',
+          'default': Method('default_stats_file'),
+          'help': 'file where stats for the instance should be written',
+          'group': 'main', 'level': 2,
           }),
         )
 
@@ -953,6 +972,13 @@ the repository',
             log_path = os.path.join(_INSTALL_PREFIX, 'var', 'log', 'cubicweb', '%s-%s.log')
             return log_path % (self.appid, self.name)
 
+    def default_stats_file(self):
+        """return default path to the stats file of the instance'server"""
+        logfile = self.default_log_file()
+        if logfile.endswith('.log'):
+            logfile = logfile[:-4]
+        return logfile + '.stats'
+
     def default_pid_file(self):
         """return default path to the pid file of the instance'server"""
         if self.mode == 'system':
@@ -1010,7 +1036,7 @@ the repository',
         # or site_cubicweb files
         self.load_file_configuration(self.main_config_file())
         # configuration initialization hook
-        self.load_configuration()
+        self.load_configuration(**(self.cmdline_options or {}))
 
     def add_cubes(self, cubes):
         """add given cubes to the list of used cubes"""
@@ -1077,9 +1103,9 @@ the repository',
         infos.append('cubicweb-%s' % str(self.cubicweb_version()))
         return md5(';'.join(infos)).hexdigest()
 
-    def load_configuration(self):
+    def load_configuration(self, **kw):
         """load instance's configuration files"""
-        super(CubicWebConfiguration, self).load_configuration()
+        super(CubicWebConfiguration, self).load_configuration(**kw)
         if self.apphome and not self.creating:
             # init gettext
             self._gettext_init()
@@ -1102,6 +1128,17 @@ the repository',
         logconfig = join(self.apphome, 'logging.conf')
         if exists(logconfig):
             logging.config.fileConfig(logconfig)
+        # set the statsd address, if any
+        if self.get('statsd-endpoint'):
+            try:
+                address, port = self.get('statsd-endpoint').split(':')
+                port = int(port)
+            except:
+                self.error('statsd-endpoint: invalid address format ({}); '
+                           'it should be "ip:port"'.format(self.get('statsd-endpoint')))
+            else:
+                import statsd_logger
+                statsd_logger.setup('cubicweb.%s' % self.appid, (address, port))
 
     def available_languages(self, *args):
         """return available translation for an instance, by looking for

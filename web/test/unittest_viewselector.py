@@ -33,7 +33,6 @@ from cubicweb.web.views import (primary, baseviews, tableview,
                                 cwproperties, cwsources, xmlrss, rdf, csvexport, json,
                                 undohistory)
 
-from cubes.folder import views as folderviews
 
 USERACTIONS = [actions.UserPreferencesAction,
                actions.UserInfoAction,
@@ -49,7 +48,7 @@ MANAGEACTIONS = [actions.SiteConfigurationAction,
                  debug.SiteInfoAction]
 
 if hasattr(rdf, 'RDFView'): # not available if rdflib not installed
-    RDFVIEWS = [('rdf', rdf.RDFView)]
+    RDFVIEWS = [('rdf', rdf.RDFView), ('n3rdf', rdf.RDFN3View)]
 else:
     RDFVIEWS = []
 
@@ -101,7 +100,6 @@ class VRegistryTC(ViewSelectorTC):
                                   ('schema', schema.SchemaView),
                                   ('siteinfo', debug.SiteInfoView),
                                   ('systempropertiesform', cwproperties.SystemCWPropertiesForm),
-                                  ('tree', folderviews.FolderTreeView),
                                   ('undohistory', undohistory.UndoHistoryView)])
 
     def test_possible_views_noresult(self):
@@ -117,50 +115,51 @@ class VRegistryTC(ViewSelectorTC):
     def test_possible_views_one_egroup(self):
         with self.admin_access.web_request() as req:
             rset = req.execute('CWGroup X WHERE X name "managers"')
-            self.assertListEqual(self.pviews(req, rset),
-                                 [('csvexport', csvexport.CSVRsetView),
-                                  ('ecsvexport', csvexport.CSVEntityView),
-                                  ('ejsonexport', json.JsonEntityView),
-                                  ('filetree', treeview.FileTreeView),
-                                  ('jsonexport', json.JsonRsetView),
-                                  ('list', baseviews.ListView),
-                                  ('oneline', baseviews.OneLineView),
-                                  ('owlabox', owl.OWLABOXView),
-                                  ('primary', cwuser.CWGroupPrimaryView)] + \
-                                 RDFVIEWS + \
-                                 [('rsetxml', xmlrss.XMLRsetView),
-                                  ('rss', xmlrss.RSSView),
-                                  ('sameetypelist', baseviews.SameETypeListView),
-                                  ('security', management.SecurityManagementView),
-                                  ('table', tableview.RsetTableView),
-                                  ('text', baseviews.TextView),
-                                  ('treeview', treeview.TreeView),
-                                  ('xbel', xbel.XbelView),
-                                  ('xml', xmlrss.XMLView)])
+            self.assertCountEqual(self.pviews(req, rset),
+                                  RDFVIEWS +
+                                  [('csvexport', csvexport.CSVRsetView),
+                                   ('ecsvexport', csvexport.CSVEntityView),
+                                   ('ejsonexport', json.JsonEntityView),
+                                   ('filetree', treeview.FileTreeView),
+                                   ('jsonexport', json.JsonRsetView),
+                                   ('list', baseviews.ListView),
+                                   ('oneline', baseviews.OneLineView),
+                                   ('owlabox', owl.OWLABOXView),
+                                   ('primary', cwuser.CWGroupPrimaryView),
+                                   ('rsetxml', xmlrss.XMLRsetView),
+                                   ('rss', xmlrss.RSSView),
+                                   ('sameetypelist', baseviews.SameETypeListView),
+                                   ('security', management.SecurityManagementView),
+                                   ('table', tableview.RsetTableView),
+                                   ('text', baseviews.TextView),
+                                   ('treeview', treeview.TreeView),
+                                   ('xbel', xbel.XbelView),
+                                   ('xml', xmlrss.XMLView)])
 
     def test_possible_views_multiple_egroups(self):
         with self.admin_access.web_request() as req:
             rset = req.execute('CWGroup X')
-            self.assertListEqual(self.pviews(req, rset),
-                                 [('csvexport', csvexport.CSVRsetView),
-                                  ('ecsvexport', csvexport.CSVEntityView),
-                                  ('ejsonexport', json.JsonEntityView),
-                                  ('filetree', treeview.FileTreeView),
-                                  ('jsonexport', json.JsonRsetView),
-                                  ('list', baseviews.ListView),
-                                  ('oneline', baseviews.OneLineView),
-                                  ('owlabox', owl.OWLABOXView),
-                                  ('primary', cwuser.CWGroupPrimaryView)] + RDFVIEWS + [
-                                  ('rsetxml', xmlrss.XMLRsetView),
-                                  ('rss', xmlrss.RSSView),
-                                  ('sameetypelist', baseviews.SameETypeListView),
-                                  ('security', management.SecurityManagementView),
-                                  ('table', tableview.RsetTableView),
-                                  ('text', baseviews.TextView),
-                                  ('treeview', treeview.TreeView),
-                                  ('xbel', xbel.XbelView),
-                                  ('xml', xmlrss.XMLView),
-                                  ])
+            self.assertCountEqual(self.pviews(req, rset),
+                                  RDFVIEWS +
+                                  [('csvexport', csvexport.CSVRsetView),
+                                   ('ecsvexport', csvexport.CSVEntityView),
+                                   ('ejsonexport', json.JsonEntityView),
+                                   ('filetree', treeview.FileTreeView),
+                                   ('jsonexport', json.JsonRsetView),
+                                   ('list', baseviews.ListView),
+                                   ('oneline', baseviews.OneLineView),
+                                   ('owlabox', owl.OWLABOXView),
+                                   ('primary', cwuser.CWGroupPrimaryView),
+                                   ('rsetxml', xmlrss.XMLRsetView),
+                                   ('rss', xmlrss.RSSView),
+                                   ('sameetypelist', baseviews.SameETypeListView),
+                                   ('security', management.SecurityManagementView),
+                                   ('table', tableview.RsetTableView),
+                                   ('text', baseviews.TextView),
+                                   ('treeview', treeview.TreeView),
+                                   ('xbel', xbel.XbelView),
+                                   ('xml', xmlrss.XMLView),
+                                   ])
 
     def test_propertiesform_admin(self):
         assert self.vreg['views']['propertiesform']
@@ -172,7 +171,7 @@ class VRegistryTC(ViewSelectorTC):
             self.assertTrue(self.vreg['views'].select('propertiesform', req, rset=rset2))
 
     def test_propertiesform_anon(self):
-        with self.new_access('anon').web_request() as req:
+        with self.new_access(u'anon').web_request() as req:
             rset1 = req.execute('CWUser X WHERE X login "admin"')
             self.assertRaises(NoSelectableObject, self.vreg['views'].select, 'propertiesform', req, rset=None)
             self.assertRaises(NoSelectableObject, self.vreg['views'].select, 'propertiesform', req, rset=rset1)
@@ -181,9 +180,9 @@ class VRegistryTC(ViewSelectorTC):
 
     def test_propertiesform_jdoe(self):
         with self.admin_access.repo_cnx() as cnx:
-            self.create_user(cnx, 'jdoe')
+            self.create_user(cnx, u'jdoe')
             cnx.commit()
-        with self.new_access('jdoe').web_request() as req:
+        with self.new_access(u'jdoe').web_request() as req:
             rset1 = req.execute('CWUser X WHERE X login "admin"')
             rset2 = req.execute('CWUser X WHERE X login "jdoe"')
             self.assertTrue(self.vreg['views'].select('propertiesform', req, rset=None))
@@ -193,24 +192,25 @@ class VRegistryTC(ViewSelectorTC):
     def test_possible_views_multiple_different_types(self):
         with self.admin_access.web_request() as req:
             rset = req.execute('Any X')
-            self.assertListEqual(self.pviews(req, rset),
-                                 [('csvexport', csvexport.CSVRsetView),
-                                  ('ecsvexport', csvexport.CSVEntityView),
-                                  ('ejsonexport', json.JsonEntityView),
-                                  ('filetree', treeview.FileTreeView),
-                                  ('jsonexport', json.JsonRsetView),
-                                  ('list', baseviews.ListView),
-                                  ('oneline', baseviews.OneLineView),
-                                  ('owlabox', owl.OWLABOXView),
-                                  ('primary', primary.PrimaryView),] + RDFVIEWS + [
-                                  ('rsetxml', xmlrss.XMLRsetView),
-                                  ('rss', xmlrss.RSSView),
-                                  ('security', management.SecurityManagementView),
-                                  ('table', tableview.RsetTableView),
-                                  ('text', baseviews.TextView),
-                                  ('treeview', treeview.TreeView),
-                                  ('xbel', xbel.XbelView),
-                                  ('xml', xmlrss.XMLView),
+            self.assertCountEqual(self.pviews(req, rset),
+                                  RDFVIEWS +
+                                  [('csvexport', csvexport.CSVRsetView),
+                                   ('ecsvexport', csvexport.CSVEntityView),
+                                   ('ejsonexport', json.JsonEntityView),
+                                   ('filetree', treeview.FileTreeView),
+                                   ('jsonexport', json.JsonRsetView),
+                                   ('list', baseviews.ListView),
+                                   ('oneline', baseviews.OneLineView),
+                                   ('owlabox', owl.OWLABOXView),
+                                   ('primary', primary.PrimaryView),
+                                   ('rsetxml', xmlrss.XMLRsetView),
+                                   ('rss', xmlrss.RSSView),
+                                   ('security', management.SecurityManagementView),
+                                   ('table', tableview.RsetTableView),
+                                   ('text', baseviews.TextView),
+                                   ('treeview', treeview.TreeView),
+                                   ('xbel', xbel.XbelView),
+                                   ('xml', xmlrss.XMLView),
                                   ])
 
     def test_possible_views_any_rset(self):
@@ -226,28 +226,29 @@ class VRegistryTC(ViewSelectorTC):
     def test_possible_views_multiple_eusers(self):
         with self.admin_access.web_request() as req:
             rset = req.execute('CWUser X')
-            self.assertListEqual(self.pviews(req, rset),
-                                 [('csvexport', csvexport.CSVRsetView),
-                                  ('ecsvexport', csvexport.CSVEntityView),
-                                  ('ejsonexport', json.JsonEntityView),
-                                  ('filetree', treeview.FileTreeView),
-                                  ('foaf', cwuser.FoafView),
-                                  ('jsonexport', json.JsonRsetView),
-                                  ('list', baseviews.ListView),
-                                  ('oneline', baseviews.OneLineView),
-                                  ('owlabox', owl.OWLABOXView),
-                                  ('primary', primary.PrimaryView)] + RDFVIEWS + [
-                                  ('rsetxml', xmlrss.XMLRsetView),
-                                  ('rss', xmlrss.RSSView),
-                                  ('sameetypelist', baseviews.SameETypeListView),
-                                  ('security', management.SecurityManagementView),
-                                  ('table', tableview.RsetTableView),
-                                  ('text', baseviews.TextView),
-                                  ('treeview', treeview.TreeView),
-                                  ('vcard', vcard.VCardCWUserView),
-                                  ('xbel', xbel.XbelView),
-                                  ('xml', xmlrss.XMLView),
-                                  ])
+            self.assertCountEqual(self.pviews(req, rset),
+                                  RDFVIEWS +
+                                  [('csvexport', csvexport.CSVRsetView),
+                                   ('ecsvexport', csvexport.CSVEntityView),
+                                   ('ejsonexport', json.JsonEntityView),
+                                   ('filetree', treeview.FileTreeView),
+                                   ('foaf', cwuser.FoafView),
+                                   ('jsonexport', json.JsonRsetView),
+                                   ('list', baseviews.ListView),
+                                   ('oneline', baseviews.OneLineView),
+                                   ('owlabox', owl.OWLABOXView),
+                                   ('primary', primary.PrimaryView),
+                                   ('rsetxml', xmlrss.XMLRsetView),
+                                   ('rss', xmlrss.RSSView),
+                                   ('sameetypelist', baseviews.SameETypeListView),
+                                   ('security', management.SecurityManagementView),
+                                   ('table', tableview.RsetTableView),
+                                   ('text', baseviews.TextView),
+                                   ('treeview', treeview.TreeView),
+                                   ('vcard', vcard.VCardCWUserView),
+                                   ('xbel', xbel.XbelView),
+                                   ('xml', xmlrss.XMLView),
+                                   ])
 
     def test_possible_actions_none_rset(self):
         with self.admin_access.web_request() as req:

@@ -171,7 +171,7 @@ function addPendingInsert(optionNode, eid, cell, relname) {
     var entityForm = jQuery('#entityForm');
     var oid = optionNode.id.substring(2); // option id is prefixed by "id"
     loadRemote(AJAX_BASE_URL, ajaxFuncArgs('add_pending_inserts', null,
-                                           [oid.split(':')]), 'GET', true);
+                                           [oid.split(':')]), 'POST', true);
     var selectNode = optionNode.parentNode;
     // remove option node
     selectNode.removeChild(optionNode);
@@ -535,53 +535,6 @@ function postForm(bname, bvalue, formid) {
         jQuery(child).remove();
     }
 }
-
-/**
- * .. function:: setFormsTarget(node)
- *
- * called on load to set target and iframeso object.
- *
- * .. note::
- *
- *    This was a hack to make form loop handling XHTML compliant.
- *    Since we do not care about xhtml any longer, this may go away.
- *
- * .. note::
- *
- *   `object` nodes might be a potential replacement for iframes
- *
- * .. note::
- *
- *    The form's `target` attribute should probably become a simple data-target
- *    immediately generated server-side.
- *    Since we don't do xhtml any longer, the iframe should probably be either
- *    reconsidered or at least emitted server-side.
- */
-function setFormsTarget(node) {
-    var $node = jQuery(node || document.body);
-    $node.find('form').each(function() {
-        var form = jQuery(this);
-        var target = form.attr('cubicweb:target');
-        if (target) {
-            form.attr('target', target);
-            /* do not use display: none because some browsers ignore iframe
-             * with no display */
-            form.append(IFRAME({
-                name: target,
-                id: target,
-                src: 'javascript: void(0)',
-                width: '0px',
-                height: '0px'
-            }));
-            form.removeAttr('cubicweb:target'); // useles from now on, pop it
-                                                // to make IE9 happy
-        }
-    });
-}
-
-jQuery(document).ready(function() {
-    setFormsTarget();
-});
 
 /**
  * .. function:: validateForm(formid, action, onsuccess, onfailure)

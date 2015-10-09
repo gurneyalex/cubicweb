@@ -17,6 +17,7 @@
 # with CubicWeb.  If not, see <http://www.gnu.org/licenses/>.
 
 from datetime import datetime
+from urlparse import urlsplit, parse_qsl
 
 from cubicweb.devtools.testlib import CubicWebTC
 from cubicweb.sobjects.cwxmlparser import CWEntityXMLParser
@@ -133,6 +134,16 @@ class CWEntityXMLParserTC(CubicWebTC):
     """
     test_db_id = 'xmlparser'
 
+    def assertURLEquiv(self, first, second):
+        # ignore ordering differences in query params
+        parsed_first = urlsplit(first)
+        parsed_second = urlsplit(second)
+        self.assertEqual(parsed_first.scheme, parsed_second.scheme)
+        self.assertEqual(parsed_first.netloc, parsed_second.netloc)
+        self.assertEqual(parsed_first.path, parsed_second.path)
+        self.assertEqual(parsed_first.fragment, parsed_second.fragment)
+        self.assertCountEqual(parse_qsl(parsed_first.query), parse_qsl(parsed_second.query))
+
     @classmethod
     def pre_setup_database(cls, cnx, config):
         myfeed = cnx.create_entity('CWSource', name=u'myfeed', type=u'datafeed',
@@ -161,16 +172,16 @@ class CWEntityXMLParserTC(CubicWebTC):
         dfsource = self.repo.sources_by_uri['myfeed']
         with self.admin_access.repo_cnx() as cnx:
             parser = dfsource._get_parser(cnx)
-            self.assertEqual(parser.complete_url('http://www.cubicweb.org/CWUser'),
-                             'http://www.cubicweb.org/CWUser?relation=tags-object&relation=in_group-subject&relation=in_state-subject&relation=use_email-subject')
-            self.assertEqual(parser.complete_url('http://www.cubicweb.org/cwuser'),
-                             'http://www.cubicweb.org/cwuser?relation=tags-object&relation=in_group-subject&relation=in_state-subject&relation=use_email-subject')
-            self.assertEqual(parser.complete_url('http://www.cubicweb.org/cwuser?vid=rdf&relation=hop'),
-                             'http://www.cubicweb.org/cwuser?relation=hop&relation=tags-object&relation=in_group-subject&relation=in_state-subject&relation=use_email-subject&vid=rdf')
-            self.assertEqual(parser.complete_url('http://www.cubicweb.org/?rql=cwuser&vid=rdf&relation=hop'),
-                             'http://www.cubicweb.org/?rql=cwuser&relation=hop&vid=rdf')
-            self.assertEqual(parser.complete_url('http://www.cubicweb.org/?rql=cwuser&relation=hop'),
-                             'http://www.cubicweb.org/?rql=cwuser&relation=hop')
+            self.assertURLEquiv(parser.complete_url('http://www.cubicweb.org/CWUser'),
+                                'http://www.cubicweb.org/CWUser?relation=tags-object&relation=in_group-subject&relation=in_state-subject&relation=use_email-subject')
+            self.assertURLEquiv(parser.complete_url('http://www.cubicweb.org/cwuser'),
+                                'http://www.cubicweb.org/cwuser?relation=tags-object&relation=in_group-subject&relation=in_state-subject&relation=use_email-subject')
+            self.assertURLEquiv(parser.complete_url('http://www.cubicweb.org/cwuser?vid=rdf&relation=hop'),
+                                'http://www.cubicweb.org/cwuser?relation=hop&relation=tags-object&relation=in_group-subject&relation=in_state-subject&relation=use_email-subject&vid=rdf')
+            self.assertURLEquiv(parser.complete_url('http://www.cubicweb.org/?rql=cwuser&vid=rdf&relation=hop'),
+                                'http://www.cubicweb.org/?rql=cwuser&relation=hop&vid=rdf')
+            self.assertURLEquiv(parser.complete_url('http://www.cubicweb.org/?rql=cwuser&relation=hop'),
+                                'http://www.cubicweb.org/?rql=cwuser&relation=hop')
 
 
     def test_actions(self):
@@ -256,7 +267,11 @@ class CWEntityXMLParserTC(CubicWebTC):
             self.assertEqual(e.cw_source[0].name, 'system')
             self.assertEqual(e.reverse_use_email[0].login, 'sthenault')
             # test everything is still fine after source synchronization
+            # clear caches to make sure we look at the moved_entities table
+            self.repo._type_source_cache.clear()
+            self.repo._extid_cache.clear()
             stats = dfsource.pull_data(cnx, force=True, raise_on_error=True)
+            self.assertEqual(stats['updated'], set((email.eid,)))
             rset = cnx.execute('EmailAddress X WHERE X address "syt@logilab.fr"')
             self.assertEqual(len(rset), 1)
             e = rset.get_entity(0, 0)

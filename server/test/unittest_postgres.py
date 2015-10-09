@@ -1,4 +1,4 @@
-# copyright 2003-2014 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2015 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -21,17 +21,29 @@ from threading import Thread
 
 from logilab.common.testlib import SkipTest
 
-from cubicweb.devtools import PostgresApptestConfiguration
+from cubicweb import ValidationError
+from cubicweb.devtools import PostgresApptestConfiguration, startpgcluster, stoppgcluster
 from cubicweb.devtools.testlib import CubicWebTC
 from cubicweb.predicates import is_instance
 from cubicweb.entities.adapters import IFTIndexableAdapter
 
 from unittest_querier import FixedOffset
 
+
+def setUpModule():
+    startpgcluster(__file__)
+
+
+def tearDownModule():
+    stoppgcluster(__file__)
+
+
 class PostgresTimeoutConfiguration(PostgresApptestConfiguration):
-    default_sources = PostgresApptestConfiguration.default_sources.copy()
-    default_sources['system'] = PostgresApptestConfiguration.default_sources['system'].copy()
-    default_sources['system']['db-statement-timeout'] = 200
+    def __init__(self, *args, **kwargs):
+        self.default_sources = PostgresApptestConfiguration.default_sources.copy()
+        self.default_sources['system'] = PostgresApptestConfiguration.default_sources['system'].copy()
+        self.default_sources['system']['db-statement-timeout'] = 200
+        super(PostgresTimeoutConfiguration, self).__init__(*args, **kwargs)
 
 
 class PostgresFTITC(CubicWebTC):
@@ -119,6 +131,24 @@ class PostgresFTITC(CubicWebTC):
             self.assertEqual(datenaiss.tzinfo, None)
             self.assertEqual(datenaiss.utctimetuple()[:5], (1977, 6, 7, 2, 0))
 
+    def test_constraint_validationerror(self):
+        with self.admin_access.repo_cnx() as cnx:
+            with cnx.allow_all_hooks_but('integrity'):
+                with self.assertRaises(ValidationError) as cm:
+                    cnx.execute("INSERT Note N: N type 'nogood'")
+                self.assertEqual(cm.exception.errors,
+                        {'type-subject': u'invalid value %(KEY-value)s, it must be one of %(KEY-choices)s'})
+                self.assertEqual(cm.exception.msgargs,
+                        {'type-subject-value': u'"nogood"',
+                         'type-subject-choices': u'"todo", "a", "b", "T", "lalala"'})
+
+    def test_statement_timeout(self):
+        with self.admin_access.repo_cnx() as cnx:
+            cnx.system_sql('select pg_sleep(0.1)')
+            with self.assertRaises(Exception):
+                cnx.system_sql('select pg_sleep(0.3)')
+
+
 class PostgresLimitSizeTC(CubicWebTC):
     configcls = PostgresApptestConfiguration
 
@@ -136,12 +166,6 @@ class PostgresLimitSizeTC(CubicWebTC):
                 'he...'
             yield self.assertEqual, sql("SELECT limit_size('<span>a>b</span>', 'text/html', 2)"), \
                 'a>...'
-
-    def test_statement_timeout(self):
-        with self.admin_access.repo_cnx() as cnx:
-            cnx.system_sql('select pg_sleep(0.1)')
-            with self.assertRaises(Exception):
-                cnx.system_sql('select pg_sleep(0.3)')
 
 
 if __name__ == '__main__':
