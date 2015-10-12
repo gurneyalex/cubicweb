@@ -16,6 +16,7 @@
 # You should have received a copy of the GNU Lesser General Public License along
 # with CubicWeb.  If not, see <http://www.gnu.org/licenses/>.
 """Test tools for cubicweb"""
+from __future__ import print_function
 
 __docformat__ = "restructuredtext en"
 
@@ -24,7 +25,6 @@ import sys
 import errno
 import logging
 import shutil
-import pickle
 import glob
 import subprocess
 import warnings
@@ -34,6 +34,9 @@ from hashlib import sha1 # pylint: disable=E0611
 from datetime import timedelta
 from os.path import (abspath, realpath, join, exists, split, isabs, isdir)
 from functools import partial
+
+from six import text_type
+from six.moves import cPickle as pickle
 
 from logilab.common.date import strptime
 from logilab.common.decorators import cached, clear_cache
@@ -92,7 +95,7 @@ DEFAULT_SOURCES = {'system': {'adapter' : 'native',
 DEFAULT_PSQL_SOURCES = DEFAULT_SOURCES.copy()
 DEFAULT_PSQL_SOURCES['system'] = DEFAULT_SOURCES['system'].copy()
 DEFAULT_PSQL_SOURCES['system']['db-driver'] = 'postgres'
-DEFAULT_PSQL_SOURCES['system']['db-user'] = unicode(getpass.getuser())
+DEFAULT_PSQL_SOURCES['system']['db-user'] = text_type(getpass.getuser())
 DEFAULT_PSQL_SOURCES['system']['db-password'] = None
 
 def turn_repo_off(repo):
@@ -109,7 +112,7 @@ def turn_repo_off(repo):
             try:
                 repo.close(sessionid)
             except BadConnectionId: #this is strange ? thread issue ?
-                print 'XXX unknown session', sessionid
+                print('XXX unknown session', sessionid)
         for cnxset in repo.cnxsets:
             cnxset.close(True)
         repo.system_source.shutdown()
@@ -193,7 +196,7 @@ class TestServerConfiguration(ServerConfiguration):
     def sources_file(self):
         """define in subclasses self.sourcefile if necessary"""
         if self.sourcefile:
-            print 'Reading sources from', self.sourcefile
+            print('Reading sources from', self.sourcefile)
             sourcefile = self.sourcefile
             if not isabs(sourcefile):
                 sourcefile = join(self.apphome, sourcefile)
@@ -399,9 +402,8 @@ class TestDataBaseHandler(object):
 
     def _new_repo(self, config):
         """Factory method to create a new Repository Instance"""
-        from cubicweb.repoapi import _get_inmemory_repo
         config._cubes = None
-        repo = _get_inmemory_repo(config)
+        repo = config.repository()
         # extending Repository class
         repo._has_started = False
         repo._needs_refresh = False
@@ -414,7 +416,7 @@ class TestDataBaseHandler(object):
         from cubicweb.repoapi import connect
         repo = self.get_repo()
         sources = self.config.read_sources_file()
-        login  = unicode(sources['admin']['login'])
+        login  = text_type(sources['admin']['login'])
         password = sources['admin']['password'] or 'xxx'
         cnx = connect(repo, login, password=password)
         return cnx
@@ -493,7 +495,7 @@ class TestDataBaseHandler(object):
         if test_db_id is DEFAULT_EMPTY_DB_ID:
             self.init_test_database()
         else:
-            print 'Building %s for database %s' % (test_db_id, self.dbname)
+            print('Building %s for database %s' % (test_db_id, self.dbname))
             self.build_db_cache(DEFAULT_EMPTY_DB_ID)
             self.restore_database(DEFAULT_EMPTY_DB_ID)
             repo = self.get_repo(startup=True)
@@ -542,7 +544,7 @@ def startpgcluster(pyfile):
         try:
             subprocess.check_call(['initdb', '-D', datadir, '-E', 'utf-8', '--locale=C'])
 
-        except OSError, err:
+        except OSError as err:
             if err.errno == errno.ENOENT:
                 raise OSError('"initdb" could not be found. '
                               'You should add the postgresql bin folder to your PATH '
@@ -561,7 +563,7 @@ def startpgcluster(pyfile):
         subprocess.check_call(['pg_ctl', 'start', '-w', '-D', datadir,
                                '-o', options],
                               env=env)
-    except OSError, err:
+    except OSError as err:
         if err.errno == errno.ENOENT:
             raise OSError('"pg_ctl" could not be found. '
                           'You should add the postgresql bin folder to your PATH '
@@ -833,21 +835,21 @@ def install_sqlite_patch(querier):
                 found_date = False
                 for row, rowdesc in zip(rset, rset.description):
                     for cellindex, (value, vtype) in enumerate(zip(row, rowdesc)):
-                        if vtype in ('Date', 'Datetime') and type(value) is unicode:
+                        if vtype in ('Date', 'Datetime') and isinstance(value, text_type):
                             found_date = True
                             value = value.rsplit('.', 1)[0]
                             try:
                                 row[cellindex] = strptime(value, '%Y-%m-%d %H:%M:%S')
                             except Exception:
                                 row[cellindex] = strptime(value, '%Y-%m-%d')
-                        if vtype == 'Time' and type(value) is unicode:
+                        if vtype == 'Time' and isinstance(value, text_type):
                             found_date = True
                             try:
                                 row[cellindex] = strptime(value, '%H:%M:%S')
                             except Exception:
                                 # DateTime used as Time?
                                 row[cellindex] = strptime(value, '%Y-%m-%d %H:%M:%S')
-                        if vtype == 'Interval' and type(value) is int:
+                        if vtype == 'Interval' and isinstance(value, int):
                             found_date = True
                             row[cellindex] = timedelta(0, value, 0) # XXX value is in number of seconds?
                     if not found_date:

@@ -16,6 +16,7 @@
 # You should have received a copy of the GNU Lesser General Public License along
 # with CubicWeb.  If not, see <http://www.gnu.org/licenses/>.
 """cubicweb.server.sources.ldapusers unit and functional tests"""
+from __future__ import print_function
 
 import os
 import sys
@@ -24,6 +25,9 @@ import time
 from os.path import join, exists
 import subprocess
 import tempfile
+
+from six import string_types
+from six.moves import range
 
 from cubicweb import AuthenticationError
 from cubicweb.devtools.testlib import CubicWebTC
@@ -49,8 +53,8 @@ def create_slapd_configuration(cls):
     slapddir = tempfile.mkdtemp('cw-unittest-ldap')
     config = cls.config
     slapdconf = join(config.apphome, "slapd.conf")
-    confin = file(join(config.apphome, "slapd.conf.in")).read()
-    confstream = file(slapdconf, 'w')
+    confin = open(join(config.apphome, "slapd.conf.in")).read()
+    confstream = open(slapdconf, 'w')
     confstream.write(confin % {'apphome': config.apphome, 'testdir': slapddir})
     confstream.close()
     # fill ldap server with some data
@@ -61,13 +65,13 @@ def create_slapd_configuration(cls):
     slapproc = subprocess.Popen(cmdline, stdout=PIPE, stderr=PIPE)
     stdout, stderr = slapproc.communicate()
     if slapproc.returncode:
-        print >> sys.stderr, ('slapadd returned with status: %s'
-                              % slapproc.returncode)
+        print('slapadd returned with status: %s'
+              % slapproc.returncode, file=sys.stderr)
         sys.stdout.write(stdout)
         sys.stderr.write(stderr)
 
     #ldapuri = 'ldapi://' + join(basedir, "ldapi").replace('/', '%2f')
-    port = get_available_port(xrange(9000, 9100))
+    port = get_available_port(range(9000, 9100))
     host = 'localhost:%s' % port
     ldapuri = 'ldap://%s' % host
     cmdline = ["/usr/sbin/slapd", "-f",  slapdconf,  "-h",  ldapuri, "-d", "0"]
@@ -94,8 +98,8 @@ def terminate_slapd(cls):
             os.kill(cls.slapd_process.pid, signal.SIGTERM)
         stdout, stderr = cls.slapd_process.communicate()
         if cls.slapd_process.returncode:
-            print >> sys.stderr, ('slapd returned with status: %s'
-                                  % cls.slapd_process.returncode)
+            print('slapd returned with status: %s'
+                  % cls.slapd_process.returncode, file=sys.stderr)
             sys.stdout.write(stdout)
             sys.stderr.write(stderr)
         config.info('DONE')
@@ -150,7 +154,7 @@ class LDAPFeedTestBase(CubicWebTC):
         """
         modcmd = ['dn: %s'%dn, 'changetype: add']
         for key, values in mods.iteritems():
-            if isinstance(values, basestring):
+            if isinstance(values, string_types):
                 values = [values]
             for value in values:
                 modcmd.append('%s: %s'%(key, value))
@@ -170,7 +174,7 @@ class LDAPFeedTestBase(CubicWebTC):
         modcmd = ['dn: %s'%dn, 'changetype: modify']
         for (kind, key), values in mods.iteritems():
             modcmd.append('%s: %s' % (kind, key))
-            if isinstance(values, basestring):
+            if isinstance(values, string_types):
                 values = [values]
             for value in values:
                 modcmd.append('%s: %s'%(key, value))

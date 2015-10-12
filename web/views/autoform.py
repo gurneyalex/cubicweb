@@ -123,6 +123,8 @@ _ = unicode
 
 from warnings import warn
 
+from six.moves import range
+
 from logilab.mtconverter import xml_escape
 from logilab.common.decorators import iclassmethod, cached
 from logilab.common.deprecation import deprecated
@@ -491,7 +493,8 @@ def _remove_pending(req, eidfrom, rel, eidto, kind):
     pendings.remove( (int(eidfrom), rel, int(eidto)) )
 
 @ajaxfunc(output_type='json')
-def remove_pending_insert(self, (eidfrom, rel, eidto)):
+def remove_pending_insert(self, args):
+    eidfrom, rel, eidto = args
     _remove_pending(self._cw, eidfrom, rel, eidto, 'insert')
 
 @ajaxfunc(output_type='json')
@@ -500,11 +503,13 @@ def add_pending_inserts(self, tripletlist):
         _add_pending(self._cw, eidfrom, rel, eidto, 'insert')
 
 @ajaxfunc(output_type='json')
-def remove_pending_delete(self, (eidfrom, rel, eidto)):
+def remove_pending_delete(self, args):
+    eidfrom, rel, eidto = args
     _remove_pending(self._cw, eidfrom, rel, eidto, 'delete')
 
 @ajaxfunc(output_type='json')
-def add_pending_delete(self, (eidfrom, rel, eidto)):
+def add_pending_delete(self, args):
+    eidfrom, rel, eidto = args
     _add_pending(self._cw, eidfrom, rel, eidto, 'delete')
 
 
@@ -608,7 +613,7 @@ class GenericRelationsField(ff.Field):
                     toggleable_rel_link_func = toggleable_relation_link
                 else:
                     toggleable_rel_link_func = lambda x, y, z: u''
-                for row in xrange(rset.rowcount):
+                for row in range(rset.rowcount):
                     nodeid = relation_id(entity.eid, rschema, role,
                                          rset[row][0])
                     if nodeid in pending_deletes:

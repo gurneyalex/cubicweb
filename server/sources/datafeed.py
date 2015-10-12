@@ -19,13 +19,15 @@
 database
 """
 
-import urllib2
 import StringIO
 from os.path import exists
 from datetime import datetime, timedelta
-from base64 import b64decode
-from cookielib import CookieJar
-import urlparse
+
+from six.moves.urllib.parse import urlparse
+from six.moves.urllib.request import Request, build_opener, HTTPCookieProcessor
+from six.moves.urllib.error import HTTPError
+from six.moves.http_cookiejar import CookieJar
+
 from lxml import etree
 
 from cubicweb import RegistryNotFound, ObjectNotFound, ValidationError, UnknownEid
@@ -282,7 +284,7 @@ class DataFeedSource(AbstractSource):
         sql = ('SELECT extid, eid, type FROM entities, cw_source_relation '
                'WHERE entities.eid=cw_source_relation.eid_from '
                'AND cw_source_relation.eid_to=%s' % self.eid)
-        return dict((b64decode(uri), (eid, type))
+        return dict((self.decode_extid(uri), (eid, type))
                     for uri, eid, type in cnx.system_sql(sql).fetchall())
 
     def init_import_log(self, cnx, **kwargs):
@@ -328,7 +330,7 @@ class DataFeedParser(AppObject):
         For http URLs, it will try to find a cwclientlib config entry
         (if available) and use it as requester.
         """
-        purl = urlparse.urlparse(url)
+        purl = urlparse(url)
         if purl.scheme == 'file':
             return URLLibResponseAdapter(open(url[7:]), url)
 
@@ -354,7 +356,7 @@ class DataFeedParser(AppObject):
         # no chance with cwclientlib, fall back to former implementation
         if purl.scheme in ('http', 'https'):
             self.source.info('GET %s', url)
-            req = urllib2.Request(url)
+            req = Request(url)
             return _OPENER.open(req, timeout=self.source.http_timeout)
 
         # url is probably plain content
@@ -530,10 +532,10 @@ class DataFeedXMLParser(DataFeedParser):
             self.source.debug(str(exc))
 
         # no chance with cwclientlib, fall back to former implementation
-        if urlparse.urlparse(url).scheme in ('http', 'https'):
+        if urlparse(url).scheme in ('http', 'https'):
             try:
                 _OPENER.open(url, timeout=self.source.http_timeout)
-            except urllib2.HTTPError as ex:
+            except HTTPError as ex:
                 if ex.code == 404:
                     return True
         return False
@@ -560,10 +562,10 @@ class URLLibResponseAdapter(object):
         return Message(StringIO.StringIO())
 
 # use a cookie enabled opener to use session cookie if any
-_OPENER = urllib2.build_opener()
+_OPENER = build_opener()
 try:
     from logilab.common import urllib2ext
     _OPENER.add_handler(urllib2ext.HTTPGssapiAuthHandler())
 except ImportError: # python-kerberos not available
     pass
-_OPENER.add_handler(urllib2.HTTPCookieProcessor(CookieJar()))
+_OPENER.add_handler(HTTPCookieProcessor(CookieJar()))

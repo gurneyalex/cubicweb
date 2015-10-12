@@ -17,8 +17,10 @@
 # with CubicWeb.  If not, see <http://www.gnu.org/licenses/>.
 """unit tests for cubicweb.web.application"""
 
-import base64, Cookie
-import httplib
+import base64
+
+from six.moves import http_client
+from six.moves.http_cookies import SimpleCookie
 
 from logilab.common.testlib import TestCase, unittest_main
 from logilab.common.decorators import clear_cache, classproperty
@@ -267,7 +269,7 @@ class ApplicationTC(CubicWebTC):
                 with self.admin_access.web_request(vid='test.ajax.error') as req:
                     req.ajax_request = True
                     page = app.handle_request(req, '')
-        self.assertEqual(httplib.INTERNAL_SERVER_ERROR,
+        self.assertEqual(http_client.INTERNAL_SERVER_ERROR,
                          req.status_out)
 
     def _test_cleaned(self, kwargs, injected, cleaned):
@@ -361,7 +363,7 @@ class ApplicationTC(CubicWebTC):
     def _reset_cookie(self, req):
         # preparing the suite of the test
         # set session id in cookie
-        cookie = Cookie.SimpleCookie()
+        cookie = SimpleCookie()
         sessioncookie = self.app.session_handler.session_cookie(req)
         cookie[sessioncookie] = req.session.sessionid
         req.set_request_header('Cookie', cookie[sessioncookie].OutputString(),

@@ -164,6 +164,7 @@ Here are all environment variables that may be used to configure *CubicWeb*:
 
    Directory where pid files will be written
 """
+from __future__ import print_function
 
 __docformat__ = "restructuredtext en"
 _ = unicode
@@ -178,6 +179,8 @@ from threading import Lock
 from os.path import (exists, join, expanduser, abspath, normpath,
                      basename, isdir, dirname, splitext)
 from warnings import warn, filterwarnings
+
+from six import text_type
 
 from logilab.common.decorators import cached, classproperty
 from logilab.common.deprecation import deprecated
@@ -350,7 +353,7 @@ class CubicWebNoAppConfiguration(ConfigurationMixIn):
           }),
         ('umask',
          {'type' : 'int',
-          'default': 077,
+          'default': 0o077,
           'help': 'permission umask for files created by the server',
           'group': 'main', 'level': 2,
           }),
@@ -650,7 +653,7 @@ this option is set to yes",
         self.adjust_sys_path()
         self.load_defaults()
         # will be properly initialized later by _gettext_init
-        self.translations = {'en': (unicode, lambda ctx, msgid: unicode(msgid) )}
+        self.translations = {'en': (text_type, lambda ctx, msgid: text_type(msgid) )}
         self._site_loaded = set()
         # don't register ReStructured Text directives by simple import, avoid pb
         # with eg sphinx.
@@ -960,7 +963,7 @@ the repository',
             i = 1
             while exists(path) and i < 100: # arbitrary limit to avoid infinite loop
                 try:
-                    file(path, 'a')
+                    open(path, 'a')
                     break
                 except IOError:
                     path = '%s-%s.log' % (basepath, i)
@@ -994,6 +997,13 @@ the repository',
         rtdir = abspath(os.environ.get('CW_RUNTIME_DIR', default))
         return join(rtdir, '%s-%s.pid' % (self.appid, self.name))
 
+    # config -> repository
+
+    def repository(self, vreg=None):
+        from cubicweb.server.repository import Repository
+        from cubicweb.server.utils import TasksManager
+        return Repository(self, TasksManager(), vreg=vreg)
+
     # instance methods used to get instance specific resources #############
 
     def __init__(self, appid, debugmode=False, creating=False):
@@ -1001,7 +1011,7 @@ the repository',
         # set to true while creating an instance
         self.creating = creating
         super(CubicWebConfiguration, self).__init__(debugmode)
-        fake_gettext = (unicode, lambda ctx, msgid: unicode(msgid))
+        fake_gettext = (text_type, lambda ctx, msgid: text_type(msgid))
         for lang in self.available_languages():
             self.translations[lang] = fake_gettext
         self._cubes = None
@@ -1181,13 +1191,8 @@ the repository',
 
     def set_sources_mode(self, sources):
         if not 'all' in sources:
-            print 'warning: ignoring specified sources, requires a repository '\
-                  'configuration'
-
-    def migration_handler(self):
-        """return a migration handler instance"""
-        from cubicweb.migration import MigrationHelper
-        return MigrationHelper(self, verbosity=self.verbosity)
+            print('warning: ignoring specified sources, requires a repository '
+                  'configuration')
 
     def i18ncompile(self, langs=None):
         from cubicweb import i18n

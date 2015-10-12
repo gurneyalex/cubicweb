@@ -22,6 +22,8 @@ This is used for instance for read security checking in the repository.
 """
 __docformat__ = "restructuredtext en"
 
+from six import string_types
+
 from rql import nodes as n, stmts, TypeResolverException
 from rql.utils import common_parent
 
@@ -427,7 +429,7 @@ class RQLRewriter(object):
     def insert_varmap_snippets(self, varmap, rqlexprs, varexistsmap):
         try:
             self.init_from_varmap(varmap, varexistsmap)
-        except VariableFromSubQuery, ex:
+        except VariableFromSubQuery as ex:
             # variable may have been moved to a newly inserted subquery
             # we should insert snippet in that subquery
             subquery = self.select.aliases[ex.variable].query
@@ -883,7 +885,7 @@ class RQLRewriter(object):
                 return n.Constant(vi['const'], 'Int')
             return n.VariableRef(stmt.get_variable(selectvar))
         vname_or_term = self._get_varname_or_term(node.name)
-        if isinstance(vname_or_term, basestring):
+        if isinstance(vname_or_term, string_types):
             return n.VariableRef(stmt.get_variable(vname_or_term))
         # shared term
         return vname_or_term.copy(stmt)

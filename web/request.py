@@ -22,15 +22,16 @@ __docformat__ = "restructuredtext en"
 import time
 import random
 import base64
-import urllib
-from StringIO import StringIO
 from hashlib import sha1 # pylint: disable=E0611
-from Cookie import SimpleCookie
 from calendar import timegm
 from datetime import date, datetime
-from urlparse import urlsplit
-import httplib
 from warnings import warn
+from io import BytesIO
+
+from six import string_types
+from six.moves import http_client
+from six.moves.urllib.parse import urlsplit, quote as urlquote
+from six.moves.http_cookies import SimpleCookie
 
 from rql.utils import rqlvar_maker
 
@@ -142,7 +143,7 @@ class _CubicWebRequestBase(RequestSessionBase):
         #: form parameters
         self.setup_params(form)
         #: received body
-        self.content = StringIO()
+        self.content = BytesIO()
         # prepare output header
         #: Header used for the final response
         self.headers_out = Headers()
@@ -437,7 +438,7 @@ class _CubicWebRequestBase(RequestSessionBase):
             eids = form['eid']
         except KeyError:
             raise NothingToEdit(self._('no selected entities'))
-        if isinstance(eids, basestring):
+        if isinstance(eids, string_types):
             eids = (eids,)
         for peid in eids:
             if withtype:
@@ -580,7 +581,7 @@ class _CubicWebRequestBase(RequestSessionBase):
             header.append('filename="%s"' % ascii_filename)
             if unicode_filename is not None:
                 # encoded filename according RFC5987
-                urlquoted_filename = urllib.quote(unicode_filename.encode('utf-8'), '')
+                urlquoted_filename = urlquote(unicode_filename.encode('utf-8'), '')
                 header.append("filename*=utf-8''" + urlquoted_filename)
             self.set_header('content-disposition', ';'.join(header))
 
@@ -596,7 +597,7 @@ class _CubicWebRequestBase(RequestSessionBase):
         :param localfile: if True, the default data dir prefix is added to the
                           JS filename
         """
-        if isinstance(jsfiles, basestring):
+        if isinstance(jsfiles, string_types):
             jsfiles = (jsfiles,)
         for jsfile in jsfiles:
             if localfile:
@@ -616,7 +617,7 @@ class _CubicWebRequestBase(RequestSessionBase):
                        the css inclusion. cf:
                        http://msdn.microsoft.com/en-us/library/ms537512(VS.85).aspx
         """
-        if isinstance(cssfiles, basestring):
+        if isinstance(cssfiles, string_types):
             cssfiles = (cssfiles,)
         if ieonly:
             if self.ie_browser():
@@ -738,9 +739,9 @@ class _CubicWebRequestBase(RequestSessionBase):
             # overwrite headers_out to forge a brand new not-modified response
             self.headers_out = self._forge_cached_headers()
             if self.http_method() in ('HEAD', 'GET'):
-                self.status_out = httplib.NOT_MODIFIED
+                self.status_out = http_client.NOT_MODIFIED
             else:
-                self.status_out = httplib.PRECONDITION_FAILED
+                self.status_out = http_client.PRECONDITION_FAILED
             # XXX replace by True once validate_cache bw compat method is dropped
             return self.status_out
         # XXX replace by False once validate_cache bw compat method is dropped

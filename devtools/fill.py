@@ -17,6 +17,7 @@
 # You should have received a copy of the GNU Lesser General Public License along
 # with CubicWeb.  If not, see <http://www.gnu.org/licenses/>.
 """This modules defines func / methods for creating test repositories"""
+from __future__ import print_function
 
 __docformat__ = "restructuredtext en"
 
@@ -25,6 +26,8 @@ from random import randint, choice
 from copy import deepcopy
 from datetime import datetime, date, time, timedelta
 from decimal import Decimal
+
+from six.moves import range
 
 from logilab.common import attrdict
 from logilab.mtconverter import xml_escape
@@ -286,7 +289,7 @@ def insert_entity_queries(etype, schema, vreg, entity_num,
                         returns acceptable values for this attribute
     """
     queries = []
-    for index in xrange(entity_num):
+    for index in range(entity_num):
         restrictions = []
         args = {}
         for attrname, value in make_entity(etype, schema, vreg, index, choice_func).items():
@@ -363,7 +366,7 @@ def select(constraints, cnx, selectvar='O', objtype=None):
             rql += ', %s is %s' % (selectvar, objtype)
         rset = cnx.execute(rql)
     except Exception:
-        print "could restrict eid_list with given constraints (%r)" % constraints
+        print("could restrict eid_list with given constraints (%r)" % constraints)
         return []
     return set(eid for eid, in rset.rows)
 
@@ -508,8 +511,8 @@ class RelationsQueriesGenerator(object):
                     break
         else:
             # FIXME: 20 should be read from config
-            subjeidsiter = [choice(tuple(subjeids)) for i in xrange(min(len(subjeids), 20))]
-            objeidsiter = [choice(tuple(objeids)) for i in xrange(min(len(objeids), 20))]
+            subjeidsiter = [choice(tuple(subjeids)) for i in range(min(len(subjeids), 20))]
+            objeidsiter = [choice(tuple(objeids)) for i in range(min(len(objeids), 20))]
             for subjeid, objeid in zip(subjeidsiter, objeidsiter):
                 if subjeid != objeid and not (subjeid, objeid) in used:
                     used.add( (subjeid, objeid) )

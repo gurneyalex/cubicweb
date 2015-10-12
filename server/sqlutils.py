@@ -16,6 +16,7 @@
 # You should have received a copy of the GNU Lesser General Public License along
 # with CubicWeb.  If not, see <http://www.gnu.org/licenses/>.
 """SQL utilities functions and classes."""
+from __future__ import print_function
 
 __docformat__ = "restructuredtext en"
 
@@ -23,9 +24,11 @@ import sys
 import re
 import subprocess
 from os.path import abspath
-from itertools import ifilter
 from logging import getLogger
 from datetime import time, datetime
+
+from six import string_types
+from six.moves import filter
 
 from logilab import database as db, common as lgc
 from logilab.common.shellutils import ProgressBar, DummyProgressBar
@@ -44,7 +47,7 @@ lgc.USE_MX_DATETIME = False
 SQL_PREFIX = 'cw_'
 
 def _run_command(cmd):
-    print ' '.join(cmd)
+    print(' '.join(cmd))
     return subprocess.call(cmd)
 
 
@@ -69,7 +72,7 @@ def sqlexec(sqlstmts, cursor_or_execute, withpb=True,
     else:
         execute = cursor_or_execute
     sqlstmts_as_string = False
-    if isinstance(sqlstmts, basestring):
+    if isinstance(sqlstmts, string_types):
         sqlstmts_as_string = True
         sqlstmts = sqlstmts.split(delimiter)
     if withpb:
@@ -87,7 +90,7 @@ def sqlexec(sqlstmts, cursor_or_execute, withpb=True,
         try:
             # some dbapi modules doesn't accept unicode for sql string
             execute(str(sql))
-        except Exception, err:
+        except Exception as err:
             if cnx:
                 cnx.rollback()
             failed.append(sql)
@@ -95,7 +98,7 @@ def sqlexec(sqlstmts, cursor_or_execute, withpb=True,
             if cnx:
                 cnx.commit()
     if withpb:
-        print
+        print()
     if sqlstmts_as_string:
         failed = delimiter.join(failed)
     return failed
@@ -178,9 +181,9 @@ def sql_drop_all_user_tables(driver_or_helper, sqlcursor):
     # for mssql, we need to drop views before tables
     if hasattr(dbhelper, 'list_views'):
         cmds += ['DROP VIEW %s;' % name
-                 for name in ifilter(_SQL_DROP_ALL_USER_TABLES_FILTER_FUNCTION, dbhelper.list_views(sqlcursor))]
+                 for name in filter(_SQL_DROP_ALL_USER_TABLES_FILTER_FUNCTION, dbhelper.list_views(sqlcursor))]
     cmds += ['DROP TABLE %s;' % name
-             for name in ifilter(_SQL_DROP_ALL_USER_TABLES_FILTER_FUNCTION, dbhelper.list_tables(sqlcursor))]
+             for name in filter(_SQL_DROP_ALL_USER_TABLES_FILTER_FUNCTION, dbhelper.list_tables(sqlcursor))]
     return '\n'.join(cmds)
 
 

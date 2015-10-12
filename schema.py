@@ -16,6 +16,7 @@
 # You should have received a copy of the GNU Lesser General Public License along
 # with CubicWeb.  If not, see <http://www.gnu.org/licenses/>.
 """classes to define schemas for CubicWeb"""
+from __future__ import print_function
 
 __docformat__ = "restructuredtext en"
 _ = unicode
@@ -24,6 +25,9 @@ import re
 from os.path import join, basename
 from logging import getLogger
 from warnings import warn
+
+from six import string_types
+from six.moves import range
 
 from logilab.common import tempattr
 from logilab.common.decorators import cached, clear_cache, monkeypatch, cachedproperty
@@ -204,7 +208,7 @@ class RQLExpression(object):
         """
         self.eid = eid # eid of the entity representing this rql expression
         assert mainvars, 'bad mainvars %s' % mainvars
-        if isinstance(mainvars, basestring):
+        if isinstance(mainvars, string_types):
             mainvars = set(splitstrip(mainvars))
         elif not isinstance(mainvars, set):
             mainvars = set(mainvars)
@@ -363,7 +367,7 @@ class RQLExpression(object):
             get_eschema = _cw.vreg.schema.eschema
             try:
                 for eaction, col in has_perm_defs:
-                    for i in xrange(len(rset)):
+                    for i in range(len(rset)):
                         eschema = get_eschema(rset.description[i][col])
                         eschema.check_perm(_cw, eaction, eid=rset[i][col])
                 if self.eid is not None:
@@ -576,7 +580,7 @@ def get_groups(self, action):
     assert action in self.ACTIONS, action
     #assert action in self._groups, '%s %s' % (self, action)
     try:
-        return frozenset(g for g in self.permissions[action] if isinstance(g, basestring))
+        return frozenset(g for g in self.permissions[action] if isinstance(g, string_types))
     except KeyError:
         return ()
 PermissionMixIn.get_groups = get_groups
@@ -595,7 +599,7 @@ def get_rqlexprs(self, action):
     assert action in self.ACTIONS, action
     #assert action in self._rqlexprs, '%s %s' % (self, action)
     try:
-        return tuple(g for g in self.permissions[action] if not isinstance(g, basestring))
+        return tuple(g for g in self.permissions[action] if not isinstance(g, string_types))
     except KeyError:
         return ()
 PermissionMixIn.get_rqlexprs = get_rqlexprs
@@ -665,7 +669,7 @@ def check_perm(self, _cw, action, **kwargs):
     groups = self.get_groups(action)
     if _cw.user.matching_groups(groups):
         if DBG:
-            print ('check_perm: %r %r: user matches %s' % (action, _self_str, groups))
+            print('check_perm: %r %r: user matches %s' % (action, _self_str, groups))
         return
     # if 'owners' in allowed groups, check if the user actually owns this
     # object, if so that's enough
@@ -676,14 +680,14 @@ def check_perm(self, _cw, action, **kwargs):
           kwargs.get('creating')
           or ('eid' in kwargs and _cw.user.owns(kwargs['eid']))):
         if DBG:
-            print ('check_perm: %r %r: user is owner or creation time' %
-                   (action, _self_str))
+            print('check_perm: %r %r: user is owner or creation time' %
+                  (action, _self_str))
         return
     # else if there is some rql expressions, check them
     if DBG:
-        print ('check_perm: %r %r %s' %
-               (action, _self_str, [(rqlexpr, kwargs, rqlexpr.check(_cw, **kwargs))
-                                    for rqlexpr in self.get_rqlexprs(action)]))
+        print('check_perm: %r %r %s' %
+              (action, _self_str, [(rqlexpr, kwargs, rqlexpr.check(_cw, **kwargs))
+                                   for rqlexpr in self.get_rqlexprs(action)]))
     if any(rqlexpr.check(_cw, **kwargs)
            for rqlexpr in self.get_rqlexprs(action)):
         return

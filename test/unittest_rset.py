@@ -18,8 +18,9 @@
 # with CubicWeb.  If not, see <http://www.gnu.org/licenses/>.
 """unit tests for module cubicweb.utils"""
 
-from urlparse import urlsplit
-import pickle
+from six import string_types
+from six.moves import cPickle as pickle
+from six.moves.urllib.parse import urlsplit
 
 from rql import parse
 
@@ -100,7 +101,9 @@ class ResultSetTC(CubicWebTC):
 
     def test_pickle(self):
         del self.rset.req
-        self.assertEqual(len(pickle.dumps(self.rset)), 376)
+        # 373 for python 2.7's cPickle
+        # 376 for the old python pickle implementation
+        self.assertIn(len(pickle.dumps(self.rset)), (373, 376))
 
     def test_build_url(self):
         with self.admin_access.web_request() as req:
@@ -274,7 +277,7 @@ class ResultSetTC(CubicWebTC):
         """make sure syntax tree is cached"""
         rqlst1 = self.rset.syntax_tree()
         rqlst2 = self.rset.syntax_tree()
-        self.assert_(rqlst1 is rqlst2)
+        self.assertIs(rqlst1, rqlst2)
 
     def test_get_entity_simple(self):
         with self.admin_access.web_request() as req:
@@ -550,17 +553,17 @@ class ResultSetTC(CubicWebTC):
     def test_str(self):
         with self.admin_access.web_request() as req:
             rset = req.execute('(Any X,N WHERE X is CWGroup, X name N)')
-            self.assertIsInstance(str(rset), basestring)
+            self.assertIsInstance(str(rset), string_types)
             self.assertEqual(len(str(rset).splitlines()), 1)
 
     def test_repr(self):
         with self.admin_access.web_request() as req:
             rset = req.execute('(Any X,N WHERE X is CWGroup, X name N)')
-            self.assertIsInstance(repr(rset), basestring)
+            self.assertIsInstance(repr(rset), string_types)
             self.assertTrue(len(repr(rset).splitlines()) > 1)
 
             rset = req.execute('(Any X WHERE X is CWGroup, X name "managers")')
-            self.assertIsInstance(str(rset), basestring)
+            self.assertIsInstance(str(rset), string_types)
             self.assertEqual(len(str(rset).splitlines()), 1)
 
     def test_nonregr_symmetric_relation(self):

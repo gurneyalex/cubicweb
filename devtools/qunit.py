@@ -19,10 +19,11 @@
 import os, os.path as osp
 from tempfile import mkdtemp, NamedTemporaryFile, TemporaryFile
 import tempfile
-from Queue import Queue, Empty
 from subprocess import Popen, check_call, CalledProcessError
 from shutil import rmtree, copy as copyfile
 from uuid import uuid4
+
+from six.moves.queue import Queue, Empty
 
 # imported by default to simplify further import statements
 from logilab.common.testlib import unittest_main, with_tempdir, InnerTest, Tags
@@ -122,25 +123,20 @@ class QUnitTestCase(CubicWebServerTC):
 
     def test_javascripts(self):
         for args in self.all_js_tests:
+            self.assertIn(len(args), (1, 2))
             test_file = self.abspath(args[0])
             if len(args) > 1:
                 depends   = [self.abspath(dep) for dep in args[1]]
             else:
                 depends = ()
-            if len(args) > 2:
-                data   = [self.abspath(data) for data in args[2]]
-            else:
-                data = ()
-            for js_test in self._test_qunit(test_file, depends, data):
+            for js_test in self._test_qunit(test_file, depends):
                 yield js_test
 
     @with_tempdir
-    def _test_qunit(self, test_file, depends=(), data_files=(), timeout=10):
+    def _test_qunit(self, test_file, depends=(), timeout=10):
         assert osp.exists(test_file), test_file
         for dep in depends:
             assert osp.exists(dep), dep
-        for data in data_files:
-            assert osp.exists(data), data
 
         QUnitView.test_file = test_file
         QUnitView.depends = depends

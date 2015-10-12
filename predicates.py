@@ -24,6 +24,9 @@ import logging
 from warnings import warn
 from operator import eq
 
+from six import string_types, integer_types
+from six.moves import range
+
 from logilab.common.deprecation import deprecated
 from logilab.common.registry import Predicate, objectify_predicate, yes
 
@@ -106,7 +109,7 @@ class EClassPredicate(Predicate):
             if accept_none is None:
                 accept_none = self.accept_none
             if not accept_none and \
-                   any(rset[i][col] is None for i in xrange(len(rset))):
+                   any(row[col] is None for row in rset):
                 return 0
             etypes = rset.column_types(col)
         else:
@@ -332,7 +335,7 @@ class adaptable(appobject_selectable):
             # on rset containing several entity types, each row may be
             # individually adaptable, while the whole rset won't be if the
             # same adapter can't be used for each type
-            for row in xrange(len(kwargs['rset'])):
+            for row in range(len(kwargs['rset'])):
                 kwargs.setdefault('col', 0)
                 _score = super(adaptable, self).__call__(cls, req, row=row, **kwargs)
                 if not _score:
@@ -611,7 +614,7 @@ class is_instance(EClassPredicate):
         super(is_instance, self).__init__(**kwargs)
         self.expected_etypes = expected_etypes
         for etype in self.expected_etypes:
-            assert isinstance(etype, basestring), etype
+            assert isinstance(etype, string_types), etype
 
     def __str__(self):
         return '%s(%s)' % (self.__class__.__name__,
@@ -671,7 +674,7 @@ class score_entity(EntityPredicate):
             score = scorefunc(*args, **kwargs)
             if not score:
                 return 0
-            if isinstance(score, (int, long)):
+            if isinstance(score, integer_types):
                 return score
             return 1
         self.score_entity = intscore
@@ -1091,7 +1094,7 @@ def on_fire_transition(etype, tr_names, from_state_name=None):
     """
     if from_state_name is not None:
         warn("on_fire_transition's from_state_name argument is unused", DeprecationWarning)
-    if isinstance(tr_names, basestring):
+    if isinstance(tr_names, string_types):
         tr_names = set((tr_names,))
     def match_etype_and_transition(trinfo):
         # take care trinfo.transition is None when calling change_state
@@ -1291,7 +1294,7 @@ class match_form_params(ExpectedValuePredicate):
             raise ValueError("match_form_params() can't be called with both "
                              "positional and named arguments")
         if expected:
-            if len(expected) == 1 and not isinstance(expected[0], basestring):
+            if len(expected) == 1 and not isinstance(expected[0], string_types):
                 raise ValueError("match_form_params() positional arguments "
                                  "must be strings")
             super(match_form_params, self).__init__(*expected)
