@@ -16,18 +16,21 @@
 # You should have received a copy of the GNU Lesser General Public License along
 # with CubicWeb.  If not, see <http://www.gnu.org/licenses/>.
 """this module contains base classes and utilities for cubicweb tests"""
+from __future__ import print_function
+
 __docformat__ = "restructuredtext en"
 
 import sys
 import re
-import urlparse
 from os.path import dirname, join, abspath
-from urllib import unquote
 from math import log
 from contextlib import contextmanager
 from warnings import warn
-from types import NoneType
 from itertools import chain
+
+from six import string_types
+from six.moves import range
+from six.moves.urllib.parse import urlparse, parse_qs, unquote as urlunquote
 
 import yams.schema
 
@@ -60,7 +63,7 @@ class CubicWebDebugger(Debugger):
     def do_view(self, arg):
         import webbrowser
         data = self._getval(arg)
-        with file('/tmp/toto.html', 'w') as toto:
+        with open('/tmp/toto.html', 'w') as toto:
             toto.write(data)
         webbrowser.open('file:///tmp/toto.html')
 
@@ -313,7 +316,6 @@ class CubicWebTC(TestCase):
         login = unicode(db_handler.config.default_admin_config['login'])
         self.admin_access = self.new_access(login)
         self._admin_session = self.admin_access._session
-        self.config.repository = lambda x=None: self.repo
 
 
     # config management ########################################################
@@ -520,7 +522,7 @@ class CubicWebTC(TestCase):
         """
         torestore = []
         for erschema, etypeperms in chain(perm_overrides, perm_kwoverrides.iteritems()):
-            if isinstance(erschema, basestring):
+            if isinstance(erschema, string_types):
                 erschema = self.schema[erschema]
             for action, actionperms in etypeperms.iteritems():
                 origperms = erschema.permissions[action]
@@ -738,8 +740,8 @@ class CubicWebTC(TestCase):
         req = self.request(url=url)
         if isinstance(url, unicode):
             url = url.encode(req.encoding) # req.setup_params() expects encoded strings
-        querystring = urlparse.urlparse(url)[-2]
-        params = urlparse.parse_qs(querystring)
+        querystring = urlparse(url)[-2]
+        params = parse_qs(querystring)
         req.setup_params(params)
         return req
 
@@ -752,8 +754,8 @@ class CubicWebTC(TestCase):
         with self.admin_access.web_request(url=url) as req:
             if isinstance(url, unicode):
                 url = url.encode(req.encoding) # req.setup_params() expects encoded strings
-            querystring = urlparse.urlparse(url)[-2]
-            params = urlparse.parse_qs(querystring)
+            querystring = urlparse(url)[-2]
+            params = parse_qs(querystring)
             req.setup_params(params)
             yield req
 
@@ -792,7 +794,7 @@ class CubicWebTC(TestCase):
             path = location
             params = {}
         else:
-            cleanup = lambda p: (p[0], unquote(p[1]))
+            cleanup = lambda p: (p[0], urlunquote(p[1]))
             params = dict(cleanup(p.split('=', 1)) for p in params.split('&') if p)
         if path.startswith(req.base_url()): # may be relative
             path = path[len(req.base_url()):]
@@ -908,8 +910,11 @@ class CubicWebTC(TestCase):
         view = viewsreg.select(vid, req, rset=rset, **kwargs)
         # set explicit test description
         if rset is not None:
+            # coerce to "bytes" on py2 because the description will be sent to
+            # sys.stdout/stderr which takes "bytes" on py2 and "unicode" on py3
+            rql = str(rset.printable_rql())
             self.set_description("testing vid=%s defined in %s with (%s)" % (
-                vid, view.__module__, rset.printable_rql()))
+                vid, view.__module__, rql))
         else:
             self.set_description("testing vid=%s defined in %s without rset" % (
                 vid, view.__module__))
@@ -941,7 +946,9 @@ class CubicWebTC(TestCase):
                 msg = '[%s in %s] %s' % (klass, view.__regid__, exc)
             except Exception:
                 msg = '[%s in %s] undisplayable exception' % (klass, view.__regid__)
-            raise AssertionError, msg, tcbk
+            exc = AssertionError(msg)
+            exc.__traceback__ = tcbk
+            raise exc
         return self._check_html(output, view, template)
 
     def get_validator(self, view=None, content_type=None, output=None):
@@ -1016,7 +1023,9 @@ class CubicWebTC(TestCase):
                                          for idx, line in enumerate(content)
                                          if line_context_filter(idx+1, position))
                     msg += u'\nfor content:\n%s' % content
-            raise AssertionError, msg, tcbk
+            exc = AssertionError(msg)
+            exc.__traceback__ = tcbk
+            raise exc
 
     def assertDocTestFile(self, testfile):
         # doctest returns tuple (failure_count, test_count)
@@ -1167,7 +1176,7 @@ class AutoPopulateTest(CubicWebTC):
                 cnx.execute(rql, args)
             except ValidationError as ex:
                 # failed to satisfy some constraint
-                print 'error in automatic db population', ex
+                print('error in automatic db population', ex)
                 cnx.commit_state = None # reset uncommitable flag
         self.post_populate(cnx)
 
@@ -1180,7 +1189,7 @@ class AutoPopulateTest(CubicWebTC):
                 else:
                     rql = 'Any X WHERE X is %s' % etype
                 rset = req.execute(rql)
-                for row in xrange(len(rset)):
+                for row in range(len(rset)):
                     if limit and row > limit:
                         break
                     # XXX iirk

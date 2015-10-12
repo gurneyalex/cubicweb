@@ -22,6 +22,9 @@ __docformat__ = "restructuredtext en"
 from warnings import warn
 from functools import partial
 
+from six import string_types, integer_types
+from six.moves import range
+
 from logilab.common.decorators import cached
 from logilab.common.deprecation import deprecated
 from logilab.common.registry import yes
@@ -279,7 +282,7 @@ class Entity(AppObject):
             select = Select()
             mainvar = select.get_variable(mainvar)
             select.add_selected(mainvar)
-        elif isinstance(mainvar, basestring):
+        elif isinstance(mainvar, string_types):
             assert mainvar in select.defined_vars
             mainvar = select.get_variable(mainvar)
         # eases string -> syntax tree test transition: please remove once stable
@@ -545,12 +548,12 @@ class Entity(AppObject):
         raise NotImplementedError('comparison not implemented for %s' % self.__class__)
 
     def __eq__(self, other):
-        if isinstance(self.eid, (int, long)):
+        if isinstance(self.eid, integer_types):
             return self.eid == other.eid
         return self is other
 
     def __hash__(self):
-        if isinstance(self.eid, (int, long)):
+        if isinstance(self.eid, integer_types):
             return self.eid
         return super(Entity, self).__hash__()
 
@@ -695,7 +698,7 @@ class Entity(AppObject):
         attr = str(attr)
         if value is _marker:
             value = getattr(self, attr)
-        if isinstance(value, basestring):
+        if isinstance(value, string_types):
             value = value.strip()
         if value is None or value == '': # don't use "not", 0 is an acceptable value
             return u''
@@ -892,10 +895,10 @@ class Entity(AppObject):
                 raise Exception('unable to fetch attributes for entity with eid %s'
                                 % self.eid)
             # handle attributes
-            for i in xrange(1, lastattr):
+            for i in range(1, lastattr):
                 self.cw_attr_cache[str(selected[i-1][0])] = rset[i]
             # handle relations
-            for i in xrange(lastattr, len(rset)):
+            for i in range(lastattr, len(rset)):
                 rtype, role = selected[i-1][0]
                 value = rset[i]
                 if value is None:

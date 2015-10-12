@@ -18,9 +18,14 @@
 """Helper classes to execute RQL queries on a set of sources, performing
 security checking and data aggregation.
 """
+from __future__ import print_function
+
 __docformat__ = "restructuredtext en"
 
 from itertools import repeat
+
+from six import string_types, integer_types
+from six.moves import range
 
 from rql import RQLSyntaxError, CoercionError
 from rql.stmts import Union
@@ -103,13 +108,13 @@ def check_relations_read_access(cnx, select, args):
                                                    solution, args))
                 if not user.matching_groups(rdef.get_groups('read')):
                     if DBG:
-                        print ('check_read_access: %s %s does not match %s' %
-                               (rdef, user.groups, rdef.get_groups('read')))
+                        print('check_read_access: %s %s does not match %s' %
+                              (rdef, user.groups, rdef.get_groups('read')))
                     # XXX rqlexpr not allowed
                     raise Unauthorized('read', rel.r_type)
                 if DBG:
-                    print ('check_read_access: %s %s matches %s' %
-                           (rdef, user.groups, rdef.get_groups('read')))
+                    print('check_read_access: %s %s matches %s' %
+                          (rdef, user.groups, rdef.get_groups('read')))
 
 def get_local_checks(cnx, rqlst, solution):
     """Check that the given user has credentials to access data read by the
@@ -138,8 +143,8 @@ def get_local_checks(cnx, rqlst, solution):
                 ex = Unauthorized('read', solution[varname])
                 ex.var = varname
                 if DBG:
-                    print ('check_read_access: %s %s %s %s' %
-                           (varname, eschema, user.groups, eschema.get_groups('read')))
+                    print('check_read_access: %s %s %s %s' %
+                          (varname, eschema, user.groups, eschema.get_groups('read')))
                 raise ex
             # don't insert security on variable only referenced by 'NOT X relation Y' or
             # 'NOT EXISTS(X relation Y)'
@@ -446,13 +451,13 @@ class InsertPlan(ExecutionPlan):
         relations = {}
         for subj, rtype, obj in self.relation_defs():
             # if a string is given into args instead of an int, we get it here
-            if isinstance(subj, basestring):
+            if isinstance(subj, string_types):
                 subj = int(subj)
-            elif not isinstance(subj, (int, long)):
+            elif not isinstance(subj, integer_types):
                 subj = subj.entity.eid
-            if isinstance(obj, basestring):
+            if isinstance(obj, string_types):
                 obj = int(obj)
-            elif not isinstance(obj, (int, long)):
+            elif not isinstance(obj, integer_types):
                 obj = obj.entity.eid
             if repo.schema.rschema(rtype).inlined:
                 if subj not in edited_entities:
@@ -539,8 +544,8 @@ class QuerierHelper(object):
         """
         if server.DEBUG & (server.DBG_RQL | server.DBG_SQL):
             if server.DEBUG & (server.DBG_MORE | server.DBG_SQL):
-                print '*'*80
-            print 'querier input', repr(rql), repr(args)
+                print('*'*80)
+            print('querier input', repr(rql), repr(args))
         # parse the query and binds variables
         cachekey = (rql,)
         try:
@@ -641,7 +646,7 @@ class QuerierHelper(object):
                 # so compute description manually even if there is only
                 # one solution
                 basedescr = [None] * len(plan.selected)
-                todetermine = zip(xrange(len(plan.selected)), repeat(False))
+                todetermine = zip(range(len(plan.selected)), repeat(False))
                 descr = _build_descr(cnx, results, basedescr, todetermine)
             # FIXME: get number of affected entities / relations on non
             # selection queries ?
@@ -668,7 +673,7 @@ def manual_build_descr(cnx, rqlst, args, result):
     unstables = rqlst.get_variable_indices()
     basedescr = []
     todetermine = []
-    for i in xrange(len(rqlst.children[0].selection)):
+    for i in range(len(rqlst.children[0].selection)):
         ttype = _selection_idx_type(i, rqlst, args)
         if ttype is None or ttype == 'Any':
             ttype = None

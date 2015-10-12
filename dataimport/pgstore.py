@@ -16,16 +16,19 @@
 # You should have received a copy of the GNU Lesser General Public License along
 # with CubicWeb.  If not, see <http://www.gnu.org/licenses/>.
 """Postgres specific store"""
+from __future__ import print_function
 
 import threading
 import warnings
-import cPickle
 import os.path as osp
 from StringIO import StringIO
 from time import asctime
 from datetime import date, datetime, time
 from collections import defaultdict
 from base64 import b64encode
+
+from six import string_types, integer_types
+from six.moves import cPickle as pickle, range
 
 from cubicweb.utils import make_uid
 from cubicweb.server.sqlutils import SQL_PREFIX
@@ -40,7 +43,7 @@ def _import_statements(sql_connect, statements, nb_threads=3,
     try:
         chunksize = (len(statements) / nb_threads) + 1
         threads = []
-        for i in xrange(nb_threads):
+        for i in range(nb_threads):
             chunks = statements[i*chunksize:(i+1)*chunksize]
             thread = threading.Thread(target=_execmany_thread,
                                       args=(sql_connect, chunks,
@@ -52,7 +55,7 @@ def _import_statements(sql_connect, statements, nb_threads=3,
         for t in threads:
             t.join()
     except Exception:
-        print 'Error in import statements'
+        print('Error in import statements')
 
 def _execmany_thread_not_copy_from(cu, statement, data, table=None,
                                    columns=None, encoding='utf-8'):
@@ -100,7 +103,7 @@ def _execmany_thread(sql_connect, statements, dump_output_dir=None,
                     columns = list(data[0])
                 execmany_func(cu, statement, data, table, columns, encoding)
             except Exception:
-                print 'unable to copy data into table %s' % table
+                print('unable to copy data into table %s' % table)
                 # Error in import statement, save data in dump_output_dir
                 if dump_output_dir is not None:
                     pdata = {'data': data, 'statement': statement,
@@ -108,11 +111,10 @@ def _execmany_thread(sql_connect, statements, dump_output_dir=None,
                     filename = make_uid()
                     try:
                         with open(osp.join(dump_output_dir,
-                                           '%s.pickle' % filename), 'w') as fobj:
-                            fobj.write(cPickle.dumps(pdata))
+                                           '%s.pickle' % filename), 'wb') as fobj:
+                            pickle.dump(pdata, fobj)
                     except IOError:
-                        print 'ERROR while pickling in', dump_output_dir, filename+'.pickle'
-                        pass
+                        print('ERROR while pickling in', dump_output_dir, filename+'.pickle')
                 cnx.rollback()
                 raise
     finally:
@@ -135,7 +137,7 @@ def _copyfrom_buffer_convert_string(value, **opts):
     :encoding: resulting string encoding (default: utf-8)
     '''
     encoding = opts.get('encoding','utf-8')
-    escape_chars = ((u'\\', ur'\\'), (u'\t', u'\\t'), (u'\r', u'\\r'),
+    escape_chars = ((u'\\', u'\\\\'), (u'\t', u'\\t'), (u'\r', u'\\r'),
                     (u'\n', u'\\n'))
     for char, replace in escape_chars:
         value = value.replace(char, replace)
@@ -164,8 +166,8 @@ def _copyfrom_buffer_convert_time(value, **opts):
 # (types, converter) list.
 _COPYFROM_BUFFER_CONVERTERS = [
     (type(None), _copyfrom_buffer_convert_None),
-    ((long, int, float), _copyfrom_buffer_convert_number),
-    (basestring, _copyfrom_buffer_convert_string),
+    (integer_types + (float,), _copyfrom_buffer_convert_number),
+    (string_types, _copyfrom_buffer_convert_string),
     (datetime, _copyfrom_buffer_convert_datetime),
     (date, _copyfrom_buffer_convert_date),
     (time, _copyfrom_buffer_convert_time),
@@ -185,7 +187,7 @@ def _create_copyfrom_buffer(data, columns=None, **convert_opts):
     rows = []
     if columns is None:
         if isinstance(data[0], (tuple, list)):
-            columns = range(len(data[0]))
+            columns = list(range(len(data[0])))
         elif isinstance(data[0], dict):
             columns = data[0].keys()
         else:
@@ -335,7 +337,7 @@ class SQLGenSourceWrapper(object):
         self._sql.eid_insertdicts = {}
 
     def flush(self):
-        print 'starting flush'
+        print('starting flush')
         _entities_sql = self._sql.entities
         _relations_sql = self._sql.relations
         _inlined_relations_sql = self._sql.inlined_relations

@@ -22,7 +22,6 @@ __docformat__ = "restructuredtext en"
 
 # ignore the pygments UserWarnings
 import warnings
-import cPickle
 import zlib
 warnings.filterwarnings('ignore', category=UserWarning,
                         message='.*was already imported',
@@ -30,6 +29,7 @@ warnings.filterwarnings('ignore', category=UserWarning,
 
 
 import __builtin__
+from six import PY2, binary_type
 # '_' is available in builtins to mark internationalized string but should
 # not be used to do the actual translation
 if not hasattr(__builtin__, '_'):
@@ -38,7 +38,9 @@ if not hasattr(__builtin__, '_'):
 CW_SOFTWARE_ROOT = __path__[0]
 
 import sys, os, logging
-from StringIO import StringIO
+from io import BytesIO
+
+from six.moves import cPickle as pickle
 
 from logilab.common.deprecation import deprecated
 from logilab.common.logging_ext import set_log_methods
@@ -66,17 +68,19 @@ def typed_eid(eid):
 #import threading
 #threading.settrace(log_thread)
 
-class Binary(StringIO):
-    """customize StringIO to make sure we don't use unicode"""
-    def __init__(self, buf=''):
-        assert isinstance(buf, (str, buffer, bytearray)), \
-               "Binary objects must use raw strings, not %s" % buf.__class__
-        StringIO.__init__(self, buf)
+class Binary(BytesIO):
+    """class to hold binary data. Use BytesIO to prevent use of unicode data"""
+    _allowed_types = (binary_type, bytearray, buffer if PY2 else memoryview)
+
+    def __init__(self, buf=b''):
+        assert isinstance(buf, self._allowed_types), \
+               "Binary objects must use bytes/buffer objects, not %s" % buf.__class__
+        super(Binary, self).__init__(buf)
 
     def write(self, data):
-        assert isinstance(data, (str, buffer, bytearray)), \
-               "Binary objects must use raw strings, not %s" % data.__class__
-        StringIO.write(self, data)
+        assert isinstance(data, self._allowed_types), \
+               "Binary objects must use bytes/buffer objects, not %s" % data.__class__
+        super(Binary, self).write(data)
 
     def to_file(self, fobj):
         """write a binary to disk
@@ -132,12 +136,12 @@ class Binary(StringIO):
     def zpickle(cls, obj):
         """ return a Binary containing a gzipped pickle of obj """
         retval = cls()
-        retval.write(zlib.compress(cPickle.dumps(obj, protocol=2)))
+        retval.write(zlib.compress(pickle.dumps(obj, protocol=2)))
         return retval
 
     def unzpickle(self):
         """ decompress and loads the stream before returning it """
-        return cPickle.loads(zlib.decompress(self.getvalue()))
+        return pickle.loads(zlib.decompress(self.getvalue()))
 
 
 def check_password(eschema, value):

@@ -21,6 +21,7 @@
 
 from datetime import date, datetime, timedelta, tzinfo
 
+from six import PY2, integer_types
 from logilab.common.testlib import TestCase, unittest_main
 from rql import BadRQLQuery, RQLSyntaxError
 
@@ -263,8 +264,9 @@ class UtilsTC(BaseQuerierTC):
         self.assertEqual(rset.description[0][0], 'Datetime')
         rset = self.qexecute('Any %(x)s', {'x': 1})
         self.assertEqual(rset.description[0][0], 'Int')
-        rset = self.qexecute('Any %(x)s', {'x': 1L})
-        self.assertEqual(rset.description[0][0], 'Int')
+        if PY2:
+            rset = self.qexecute('Any %(x)s', {'x': long(1)})
+            self.assertEqual(rset.description[0][0], 'Int')
         rset = self.qexecute('Any %(x)s', {'x': True})
         self.assertEqual(rset.description[0][0], 'Boolean')
         rset = self.qexecute('Any %(x)s', {'x': 1.0})
@@ -318,7 +320,7 @@ class QuerierTC(BaseQuerierTC):
     def test_typed_eid(self):
         # should return an empty result set
         rset = self.qexecute('Any X WHERE X eid %(x)s', {'x': '1'})
-        self.assertIsInstance(rset[0][0], (int, long))
+        self.assertIsInstance(rset[0][0], integer_types)
 
     def test_bytes_storage(self):
         feid = self.qexecute('INSERT File X: X data_name "foo.pdf", '
@@ -1015,7 +1017,7 @@ Any P1,B,E WHERE P1 identity P2 WITH
         self.assertEqual(len(rset.rows), 1)
         self.assertEqual(rset.description, [('Personne',)])
         rset = self.qexecute('Personne X WHERE X nom "bidule"')
-        self.assert_(rset.rows)
+        self.assertTrue(rset.rows)
         self.assertEqual(rset.description, [('Personne',)])
 
     def test_insert_1_multiple(self):
@@ -1029,20 +1031,20 @@ Any P1,B,E WHERE P1 identity P2 WITH
         rset = self.qexecute("INSERT Personne X, Personne Y: X nom 'bidule', Y nom 'tutu'")
         self.assertEqual(rset.description, [('Personne', 'Personne')])
         rset = self.qexecute('Personne X WHERE X nom "bidule" or X nom "tutu"')
-        self.assert_(rset.rows)
+        self.assertTrue(rset.rows)
         self.assertEqual(rset.description, [('Personne',), ('Personne',)])
 
     def test_insert_3(self):
         self.qexecute("INSERT Personne X: X nom Y WHERE U login 'admin', U login Y")
         rset = self.qexecute('Personne X WHERE X nom "admin"')
-        self.assert_(rset.rows)
+        self.assertTrue(rset.rows)
         self.assertEqual(rset.description, [('Personne',)])
 
     def test_insert_4(self):
         self.qexecute("INSERT Societe Y: Y nom 'toto'")
         self.qexecute("INSERT Personne X: X nom 'bidule', X travaille Y WHERE Y nom 'toto'")
         rset = self.qexecute('Any X, Y WHERE X nom "bidule", Y nom "toto", X travaille Y')
-        self.assert_(rset.rows)
+        self.assertTrue(rset.rows)
         self.assertEqual(rset.description, [('Personne', 'Societe',)])
 
     def test_insert_4bis(self):
@@ -1067,7 +1069,7 @@ Any P1,B,E WHERE P1 identity P2 WITH
         self.qexecute("INSERT Personne X: X nom 'bidule'")
         self.qexecute("INSERT Societe Y: Y nom 'toto', X travaille Y WHERE X nom 'bidule'")
         rset = self.qexecute('Any X, Y WHERE X nom "bidule", Y nom "toto", X travaille Y')
-        self.assert_(rset.rows)
+        self.assertTrue(rset.rows)
         self.assertEqual(rset.description, [('Personne', 'Societe',)])
 
     def test_insert_5bis(self):
@@ -1075,20 +1077,20 @@ Any P1,B,E WHERE P1 identity P2 WITH
         self.qexecute("INSERT Societe Y: Y nom 'toto', X travaille Y WHERE X eid %(x)s",
                      {'x': peid})
         rset = self.qexecute('Any X, Y WHERE X nom "bidule", Y nom "toto", X travaille Y')
-        self.assert_(rset.rows)
+        self.assertTrue(rset.rows)
         self.assertEqual(rset.description, [('Personne', 'Societe',)])
 
     def test_insert_6(self):
         self.qexecute("INSERT Personne X, Societe Y: X nom 'bidule', Y nom 'toto', X travaille Y")
         rset = self.qexecute('Any X, Y WHERE X nom "bidule", Y nom "toto", X travaille Y')
-        self.assert_(rset.rows)
+        self.assertTrue(rset.rows)
         self.assertEqual(rset.description, [('Personne', 'Societe',)])
 
     def test_insert_7(self):
         self.qexecute("INSERT Personne X, Societe Y: X nom N, Y nom 'toto', "
                       "X travaille Y WHERE U login 'admin', U login N")
         rset = self.qexecute('Any X, Y WHERE X nom "admin", Y nom "toto", X travaille Y')
-        self.assert_(rset.rows)
+        self.assertTrue(rset.rows)
         self.assertEqual(rset.description, [('Personne', 'Societe',)])
 
     def test_insert_7_2(self):
@@ -1103,7 +1105,7 @@ Any P1,B,E WHERE P1 identity P2 WITH
         self.qexecute("INSERT Societe Y, Personne X: Y nom N, X nom 'toto', X travaille Y "
                       "WHERE U login 'admin', U login N")
         rset = self.qexecute('Any X, Y WHERE X nom "toto", Y nom "admin", X travaille Y')
-        self.assert_(rset.rows)
+        self.assertTrue(rset.rows)
         self.assertEqual(rset.description, [('Personne', 'Societe',)])
 
     def test_insert_9(self):

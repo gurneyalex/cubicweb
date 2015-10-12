@@ -21,9 +21,11 @@
 * workflow history (TrInfo)
 * adapter for workflowable entities (IWorkflowableAdapter)
 """
+from __future__ import print_function
 
 __docformat__ = "restructuredtext en"
 
+from six import string_types
 
 from logilab.common.decorators import cached, clear_cache
 from logilab.common.deprecation import deprecated
@@ -224,19 +226,19 @@ class BaseTransition(AnyEntity):
             matches = user.matching_groups(groups)
             if matches:
                 if DBG:
-                    print 'may_be_fired: %r may fire: user matches %s' % (self.name, groups)
+                    print('may_be_fired: %r may fire: user matches %s' % (self.name, groups))
                 return matches
             if 'owners' in groups and user.owns(eid):
                 if DBG:
-                    print 'may_be_fired: %r may fire: user is owner' % self.name
+                    print('may_be_fired: %r may fire: user is owner' % self.name)
                 return True
         # check one of the rql expression conditions matches if any
         if self.condition:
             if DBG:
-                print ('my_be_fired: %r: %s' %
-                       (self.name, [(rqlexpr.expression,
+                print('my_be_fired: %r: %s' %
+                      (self.name, [(rqlexpr.expression,
                                     rqlexpr.check_expression(self._cw, eid))
-                                   for rqlexpr in self.condition]))
+                                    for rqlexpr in self.condition]))
             for rqlexpr in self.condition:
                 if rqlexpr.check_expression(self._cw, eid):
                     return True
@@ -258,10 +260,10 @@ class BaseTransition(AnyEntity):
                                     'WHERE T eid %(x)s, G name %(gn)s',
                                     {'x': self.eid, 'gn': unicode(gname)})
             assert rset, '%s is not a known group' % gname
-        if isinstance(conditions, basestring):
+        if isinstance(conditions, string_types):
             conditions = (conditions,)
         for expr in conditions:
-            if isinstance(expr, basestring):
+            if isinstance(expr, string_types):
                 kwargs = {'expr': unicode(expr)}
             else:
                 assert isinstance(expr, dict)
@@ -528,7 +530,7 @@ class IWorkflowableAdapter(EntityAdapter):
 
     def _get_transition(self, tr):
         assert self.current_workflow
-        if isinstance(tr, basestring):
+        if isinstance(tr, string_types):
             _tr = self.current_workflow.transition_by_name(tr)
             assert _tr is not None, 'not a %s transition: %s' % (
                 self.__regid__, tr)

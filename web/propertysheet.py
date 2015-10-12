@@ -57,7 +57,9 @@ class PropertySheet(dict):
     def load(self, fpath):
         scriptglobals = self.context.copy()
         scriptglobals['__file__'] = fpath
-        execfile(fpath, scriptglobals, self)
+        with open(fpath, 'rb') as fobj:
+            code = compile(fobj.read(), fpath, 'exec')
+        exec(code, scriptglobals, self)
         for name, type in TYPE_CHECKS:
             if name in self:
                 if not isinstance(self[name], type):
@@ -96,7 +98,7 @@ class PropertySheet(dict):
             if not osp.exists(rcachedir):
                 os.makedirs(rcachedir)
             sourcefile = osp.join(rdirectory, rid)
-            content = file(sourcefile).read()
+            content = open(sourcefile).read()
             # XXX replace % not followed by a paren by %% to avoid having to do
             # this in the source css file ?
             try:
@@ -105,7 +107,7 @@ class PropertySheet(dict):
                 self.error("can't process %s/%s: %s", rdirectory, rid, ex)
                 adirectory = rdirectory
             else:
-                stream = file(cachefile, 'w')
+                stream = open(cachefile, 'w')
                 stream.write(content)
                 stream.close()
                 adirectory = self._cache_directory

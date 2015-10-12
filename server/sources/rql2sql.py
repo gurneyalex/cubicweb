@@ -51,6 +51,8 @@ __docformat__ = "restructuredtext en"
 
 import threading
 
+from six.moves import range
+
 from logilab.database import FunctionDescr, SQL_FUNCTIONS_REGISTRY
 
 from rql import BadRQLQuery, CoercionError
@@ -187,13 +189,13 @@ def remove_unused_solutions(rqlst, solutions, varmap, schema):
                 thisexistssols = [newsols[0]]
                 thisexistsvars = set()
                 existssols[var.scope] = thisexistssols, thisexistsvars
-            for i in xrange(len(newsols)-1, 0, -1):
+            for i in range(len(newsols)-1, 0, -1):
                 if vtype != newsols[i][vname]:
                     thisexistssols.append(newsols.pop(i))
                     thisexistsvars.add(vname)
         else:
             # remember unstable variables
-            for i in xrange(1, len(newsols)):
+            for i in range(1, len(newsols)):
                 if vtype != newsols[i][vname]:
                     unstable.add(vname)
     if invariants:

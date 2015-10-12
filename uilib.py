@@ -26,7 +26,9 @@ __docformat__ = "restructuredtext en"
 
 import csv
 import re
-from StringIO import StringIO
+from io import StringIO
+
+from six import string_types, integer_types
 
 from logilab.mtconverter import xml_escape, html_unescape
 from logilab.common.date import ustrftime
@@ -92,7 +94,7 @@ _('%d minutes')
 _('%d seconds')
 
 def print_timedelta(value, req, props, displaytime=True):
-    if isinstance(value, (int, long)):
+    if isinstance(value, integer_types):
         # `date - date`, unlike `datetime - datetime` gives an int
         # (number of days), not a timedelta
         # XXX should rql be fixed to return Int instead of Interval in
@@ -559,7 +561,7 @@ class limitsize(object):
     def __call__(self, function):
         def newfunc(*args, **kwargs):
             ret = function(*args, **kwargs)
-            if isinstance(ret, basestring):
+            if isinstance(ret, string_types):
                 return ret[:self.maxsize]
             return ret
         return newfunc
@@ -568,6 +570,6 @@ class limitsize(object):
 def htmlescape(function):
     def newfunc(*args, **kwargs):
         ret = function(*args, **kwargs)
-        assert isinstance(ret, basestring)
+        assert isinstance(ret, string_types)
         return xml_escape(ret)
     return newfunc
