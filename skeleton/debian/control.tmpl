@@ -1,0 +1,24 @@
+Source: %(distname)s
+Section: web
+Priority: optional
+Maintainer: %(author)s <%(author-email)s>
+Build-Depends:
+ debhelper (>= 7),
+ python (>= 2.6.5),
+Standards-Version: 3.9.3
+X-Python-Version: >= 2.6
+
+Package: %(distname)s
+Architecture: all
+Depends:
+ cubicweb-common (>= %(version)s),
+ python-six (>= 1.4.0),
+ ${python:Depends},
+ ${misc:Depends},
+Description: %(shortdesc)s
+ CubicWeb is a semantic web application framework.
+ .
+ %(longdesc)s
+ .
+ This package will install all the components you need to run the
+ %(distname)s application (cube :)..

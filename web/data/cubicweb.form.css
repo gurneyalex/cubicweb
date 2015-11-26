@@ -1,0 +1,233 @@
+/* styles for generated forms
+ *
+ *  :organization: Logilab
+ *  :copyright: 2003-2010 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+ *  :contact: http://www.logilab.fr/ -- mailto:contact@logilab.fr
+ */
+
+div.formTitle {
+  width: 100%;
+  font-size : 160%;
+  font-weight: bold;
+  padding-bottom : 0.4em;
+  margin-bottom: 0.6em
+}
+
+div.formTitle span {
+  padding: 4px 0px;
+  display: block;
+}
+
+div.iformTitle {
+  font-weight: bold;
+  font-size: 110%;
+  background: %(formHeaderBgColor)s;
+  border: 1px solid %(formHeaderBgColor)s;  /*#b7b6a3 */
+  border-bottom: none;
+}
+
+div.iformTitle span {
+  margin: 0.5em;
+}
+
+div.iformTitle span.icounter {
+  margin: 0em;
+}
+
+div.iformTitle a {
+  font-size: 80%;
+}
+
+div.formBody {
+  width:100%;
+}
+
+fieldset.subentity {
+  border: 1px solid %(formHeaderBgColor)s;
+  display: block;
+  margin-bottom: 1em;
+  padding: 0.4em;
+}
+
+table.attributeForm {
+  border: 1px solid %(formHeaderBgColor)s;
+  margin-bottom: 1em;
+  padding: 0.8em 1.2em;
+  width: 100%;
+}
+
+fieldset.subentity table td {
+  padding: 2px;
+  vertical-align: top;
+}
+
+fieldset.subentity table.attributeForm {
+    border: none;
+    padding: 0em;
+}
+
+.attributeForm,
+.attributeForm th,
+.attributeForm td {
+  border-collapse: separate;
+}
+
+table.attributeForm th,
+table.attributeForm td {
+  padding : .2em 2px;
+}
+
+table.attributeForm th {
+  text-align: left;
+  width: 12em;
+}
+
+table.attributeForm div#comfirmPsw {
+}
+
+table.attributeForm input,
+table.attributeForm textarea,
+table.attributeForm select {
+  border: 1px solid %(formHeaderBgColor)s;  /*#b7b6a3*/
+}
+
+table.attributeForm textarea {
+  font: 100% normal Courier, monospace;
+  width: 100%;
+}
+
+table.attributeForm label,
+.entityForm .label {
+  padding : 0.2em  1em 0.2em 0;
+}
+
+table.attributeForm label.required {
+  background: url("required.png") 100% 50% no-repeat;
+}
+
+.entityForm .validateButton {
+  margin: 5px 10px 5px 0px;
+}
+
+a.addEntity {
+  display:block ;
+  margin-bottom:1em ;
+  padding-left:0.2em ;
+  font-weight: bold ;
+}
+
+table#relatedEntities {
+  margin: 10px 0px;
+  border-collapse: separate;
+}
+
+table#relatedEntities th,
+table#relatedEntities td {
+  padding : 0px 2px;
+}
+
+table#relatedEntities tr.separator {
+  border-bottom: none;
+  text-align: center;
+}
+
+table#relatedEntities th {
+  text-align: right;
+  width:200em;
+}
+
+table#relatedEntities th.warning {
+  border: none;
+  text-align: center;
+}
+
+table#relatedEntities td span {
+  display: inline;
+}
+
+table#relatedEntities ul {
+  margin: 0px;
+  padding: 0px;
+}
+
+table#relatedEntities td {
+  width: 100%;
+}
+
+a.handle {
+ font-family: Courier;
+ font-size: 120%;
+}
+
+a.editionPending {
+  color: #9c9b24; /*557755*/
+  font-weight: bold;
+}
+ 
+.pendingDelete {
+  text-decoration: line-through;
+}
+
+div.notransform {
+  text-transform: none;
+}
+
+div.inlinedform {
+  margin-left: 2em;
+}
+
+div.editableField {
+  display: inline;
+}
+
+div.editableFieldValue {
+  display: inline;
+}
+
+/* div.editableField:hover, */
+/* div.editableField p:hover { */
+/*   background-color: #eeedd9; */
+/* } */
+
+.error input, /* error added by the form renderer */
+input.error { /* error added by javascript */
+  background: transparent %(errorMsgBgImg)s;
+}
+
+span.errorMsg {
+  display: block;
+  font-weight: bold;
+  color: %(errorMsgColor)s;
+}
+
+option.separator {
+  font-weight: bold;
+  background: #ccc;
+  text-align: center;
+}
+
+div.notice {
+  display: none;
+  font-style: italic;
+  font-size: 110%;
+  padding-left: 2em;
+  background : %(msgBgColor)s %(infoMsgBgImg)s;
+}
+
+.helper{
+  font-size: 96%;
+  color: %(helperColor)s;
+}
+
+.helper:hover {
+  color: #000;
+  cursor: default;
+}
+
+.validateButton {
+  margin: 1em 1em 0px 0px;
+  border-width: 1px;
+  border-style: solid;
+  border-color: %(buttonBorderColor)s %(incontextBoxBodyBgColor)s %(incontextBoxBodyBgColor)s %(buttonBorderColor)s;
+  background: %(buttonBgColor)s %(buttonBgImg)s;
+}
