@@ -22,7 +22,7 @@ software
 
 modname = distname = "cubicweb"
 
-numversion = (3, 20, 12)
+numversion = (3, 21, 3)
 version = '.'.join(str(num) for num in numversion)
 
 description = "a repository of entities / relations for knowledge management"
@@ -55,7 +55,6 @@ __depends__ = {
 
 __recommends__ = {
     'docutils': '>= 0.6',
-    'Pyro': '>= 3.9.1, < 4.0.0',
     'Pillow': '',               # for captcha
     'pycrypto': '',             # for crypto extensions
     'fyzz': '>= 0.1.0',         # for sparql
@@ -115,8 +114,6 @@ try:
         [join('share', 'cubicweb', 'cubes', 'shared', 'data'),
          [join(_data_dir, fname) for fname in listdir(_data_dir)
           if not isdir(join(_data_dir, fname))]],
-        [join('share', 'cubicweb', 'cubes', 'shared', 'data', 'timeline'),
-         [join(_data_dir, 'timeline', fname) for fname in listdir(join(_data_dir, 'timeline'))]],
         [join('share', 'cubicweb', 'cubes', 'shared', 'data', 'images'),
          [join(_data_dir, 'images', fname) for fname in listdir(join(_data_dir, 'images'))]],
         [join('share', 'cubicweb', 'cubes', 'shared', 'data', 'jquery-treeview'),

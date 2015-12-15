@@ -21,7 +21,6 @@ from __future__ import division
 
 __docformat__ = "restructuredtext en"
 
-import sys
 import decimal
 import datetime
 import random
@@ -553,8 +552,12 @@ class JSString(str):
     """
 
 def _dict2js(d, predictable=False):
+    if predictable:
+        it = sorted(d.iteritems())
+    else:
+        it = d.iteritems()
     res = [key + ': ' + js_dumps(val, predictable)
-           for key, val in d.iteritems()]
+           for key, val in it]
     return '{%s}' % ', '.join(res)
 
 def _list2js(l, predictable=False):
@@ -578,7 +581,7 @@ def js_dumps(something, predictable=False):
         return _list2js(something, predictable)
     if isinstance(something, JSString):
         return something
-    return json_dumps(something)
+    return json_dumps(something, sort_keys=predictable)
 
 PERCENT_IN_URLQUOTE_RE = re.compile(r'%(?=[0-9a-fA-F]{2})')
 def js_href(javascript_code):
@@ -608,8 +611,6 @@ def parse_repo_uri(uri):
     """ transform a command line uri into a (protocol, hostport, appid), e.g:
     <myapp>                      -> 'inmemory', None, '<myapp>'
     inmemory://<myapp>           -> 'inmemory', None, '<myapp>'
-    pyro://[host][:port]         -> 'pyro', 'host:port', None
-    zmqpickle://[host][:port]    -> 'zmqpickle', 'host:port', None
     """
     parseduri = urlparse(uri)
     scheme = parseduri.scheme
@@ -617,8 +618,6 @@ def parse_repo_uri(uri):
         return ('inmemory', None, parseduri.path)
     if scheme == 'inmemory':
         return (scheme, None, parseduri.netloc)
-    if scheme in ('pyro', 'pyroloc') or scheme.startswith('zmqpickle-'):
-        return (scheme, parseduri.netloc, parseduri.path)
     raise NotImplementedError('URI protocol not implemented for `%s`' % uri)
 
 
@@ -647,7 +646,7 @@ class QueryCache(object):
 
     Occasional elements can be buggy requests (server-side) or
     end-user (web-ui provided) requests. These have to be cleaned up
-    when they fill the cache, without evicting the usefull, frequently
+    when they fill the cache, without evicting the useful, frequently
     used entries.
     """
     # quite arbitrary, but we want to never

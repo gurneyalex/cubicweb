@@ -24,6 +24,7 @@ import traceback
 import threading
 from urlparse import urlsplit, urlunsplit
 from cgi import FieldStorage, parse_header
+from cubicweb.statsd_logger import statsd_timeit
 
 from twisted.internet import reactor, task, threads
 from twisted.web import http, server
@@ -65,14 +66,6 @@ class CubicWebRootResource(resource.Resource):
         # when we have an in-memory repository, clean unused sessions every XX
         # seconds and properly shutdown the server
         if config['repository-uri'] == 'inmemory://':
-            if config.pyro_enabled():
-                # if pyro is enabled, we have to register to the pyro name
-                # server, create a pyro daemon, and create a task to handle pyro
-                # requests
-                self.appli.repo.warning('remote repository access through pyro is deprecated')
-                self.pyro_daemon = self.appli.repo.pyro_register()
-                self.pyro_listen_timeout = 0.02
-                self.appli.repo.looping_task(1, self.pyro_loop_event)
             if config.mode != 'test':
                 reactor.addSystemEventTrigger('before', 'shutdown',
                                               self.shutdown_event)
@@ -93,13 +86,6 @@ class CubicWebRootResource(resource.Resource):
         """
         self.appli.repo.shutdown()
 
-    def pyro_loop_event(self):
-        """listen for pyro events"""
-        try:
-            self.pyro_daemon.handleRequests(self.pyro_listen_timeout)
-        except select.error:
-            return
-
     def getChild(self, path, request):
         """Indicate which resource to use to process down the URL's path"""
         return self
@@ -118,6 +104,7 @@ class CubicWebRootResource(resource.Resource):
             deferred = threads.deferToThread(self.render_request, request)
             return NOT_DONE_YET
 
+    @statsd_timeit
     def render_request(self, request):
         try:
             # processing HUGE files (hundred of megabytes) in http.processReceived

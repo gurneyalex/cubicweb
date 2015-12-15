@@ -1,4 +1,4 @@
-# copyright 2003-2013 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2014 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -25,7 +25,7 @@ __docformat__ = "restructuredtext en"
 # possible (for cubicweb-ctl reactivity, necessary for instance for usable bash
 # completion). So import locally in command helpers.
 import sys
-from warnings import warn
+from warnings import warn, filterwarnings
 from os import remove, listdir, system, pathsep
 from os.path import exists, join, isfile, isdir, dirname, abspath
 from urlparse import urlparse
@@ -401,7 +401,7 @@ class CreateInstanceCommand(Command):
                            if 'type' in odict
                            and odict.get('level') <= self.config.config_level)
             for section in sections:
-                if section not in ('main', 'email', 'pyro', 'web'):
+                if section not in ('main', 'email', 'web'):
                     print '\n' + underline_title('%s options' % section)
                     config.input_config(section, self.config.config_level)
         # write down configuration
@@ -520,7 +520,12 @@ running.'}),
           'default': None, 'choices': ('debug', 'info', 'warning', 'error'),
           'help': 'debug if -D is set, error otherwise',
           }),
-        )
+        ('param',
+         {'short': 'p', 'type' : 'named', 'metavar' : 'key1:value1,key2:value2',
+          'default': {},
+          'help': 'override <key> configuration file option with <value>.',
+         }),
+       )
 
     def start_instance(self, appid):
         """start the instance's server"""
@@ -534,6 +539,8 @@ running.'}),
                 "- '{ctl} pyramid {appid}' (requires the pyramid cube)\n")
             raise ExecutionError(msg.format(ctl='cubicweb-ctl', appid=appid))
         config = cwcfg.config_for(appid, debugmode=self['debug'])
+        # override config file values with cmdline options
+        config.cmdline_options = self.config.param
         init_cmdline_log_threshold(config, self['loglevel'])
         if self['profile']:
             config.global_set_option('profile', self.config.profile)
@@ -900,9 +907,7 @@ sources for migration will be automatically selected.",
         ('repo-uri',
          {'short': 'H', 'type' : 'string', 'metavar': '<protocol>://<[host][:port]>',
           'help': 'URI of the CubicWeb repository to connect to. URI can be \
-pyro://[host:port] the Pyro name server host; if the pyro nameserver is not set, \
-it will be detected by using a broadcast query, a ZMQ URL or \
-inmemory:// (default) use an in-memory repository. THIS OPTION IS DEPRECATED, \
+a ZMQ URL or inmemory:// (default) use an in-memory repository. THIS OPTION IS DEPRECATED, \
 directly give URI as instance id instead',
           'group': 'remote'
           }),
@@ -953,7 +958,7 @@ directly give URI as instance id instead',
         if self.config.repo_uri:
             warn('[3.16] --repo-uri option is deprecated, directly give the URI as instance id',
                  DeprecationWarning)
-            if urlparse(self.config.repo_uri).scheme in ('pyro', 'inmemory'):
+            if urlparse(self.config.repo_uri).scheme == 'inmemory':
                 appuri = '%s/%s' % (self.config.repo_uri.rstrip('/'), appuri)
 
         from cubicweb.utils import parse_repo_uri
@@ -1135,6 +1140,7 @@ def run(args):
     import os
     sys.stdout = os.fdopen(sys.stdout.fileno(), 'w', 0)
     sys.stderr = os.fdopen(sys.stderr.fileno(), 'w', 0)
+    filterwarnings('default', category=DeprecationWarning)
     cwcfg.load_cwctl_plugins()
     try:
         CWCTL.run(args)

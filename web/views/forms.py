@@ -95,7 +95,7 @@ class FieldsForm(form.Form):
       value for the "style" attribute of the <form> tag
 
     :attr:`cwtarget`
-      value for the "cubicweb:target" attribute of the <form> tag
+      value for the "target" attribute of the <form> tag
 
     :attr:`redirect_path`
       relative to redirect to after submitting the form
@@ -241,10 +241,7 @@ class FieldsForm(form.Form):
 
     _default_form_action_path = 'edit'
     def form_action(self):
-        try:
-            action = self.get_action() # avoid spurious warning w/ autoform bw compat property
-        except AttributeError:
-            action = self.action
+        action = self.action
         if action is None:
             return self._cw.build_url(self._default_form_action_path)
         return action

@@ -21,7 +21,7 @@ import time
 from xml.etree.ElementTree import fromstring
 from lxml import html
 
-from logilab.common.testlib import unittest_main, mock_object
+from logilab.common.testlib import unittest_main
 
 from cubicweb import Binary, ValidationError
 from cubicweb.devtools.testlib import CubicWebTC
@@ -39,7 +39,7 @@ class FieldsFormTC(CubicWebTC):
     def test_form_field_format(self):
         with self.admin_access.web_request() as req:
             form = FieldsForm(req, None)
-            self.assertEqual(StringField().format(form), 'text/html')
+            self.assertEqual(StringField().format(form), 'text/plain')
             req.cnx.execute('INSERT CWProperty X: X pkey "ui.default-text-format", X value "text/rest", X for_user U WHERE U login "admin"')
             req.cnx.commit()
             self.assertEqual(StringField().format(form), 'text/rest')

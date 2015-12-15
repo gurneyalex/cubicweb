@@ -18,7 +18,7 @@
 """unit tests for module cubicweb.server.migractions"""
 
 from datetime import date
-import os.path as osp
+import os, os.path as osp
 from contextlib import contextmanager
 
 from logilab.common.testlib import unittest_main, Tags, tag
@@ -26,6 +26,7 @@ from logilab.common.testlib import unittest_main, Tags, tag
 from yams.constraints import UniqueConstraint
 
 from cubicweb import ConfigurationError, ValidationError, ExecutionError
+from cubicweb.devtools import startpgcluster, stoppgcluster
 from cubicweb.devtools.testlib import CubicWebTC
 from cubicweb.server.sqlutils import SQL_PREFIX
 from cubicweb.server.migractions import ServerMigrationHelper
@@ -35,6 +36,11 @@ import cubicweb.devtools
 
 HERE = osp.dirname(osp.abspath(__file__))
 
+
+def setUpModule():
+    startpgcluster(__file__)
+
+
 migrschema = None
 def tearDownModule(*args):
     global migrschema
@@ -43,10 +49,19 @@ def tearDownModule(*args):
         del MigrationCommandsTC.origschema
     if hasattr(MigrationCommandsComputedTC, 'origschema'):
         del MigrationCommandsComputedTC.origschema
+    stoppgcluster(__file__)
+
+
+class MigrationConfig(cubicweb.devtools.TestServerConfiguration):
+    default_sources = cubicweb.devtools.DEFAULT_PSQL_SOURCES
+    CUBES_PATH = [osp.join(HERE, 'data-migractions', 'cubes')]
+
 
 class MigrationTC(CubicWebTC):
 
-    configcls = cubicweb.devtools.TestServerConfiguration
+    appid = 'data-migractions'
+
+    configcls = MigrationConfig
 
     tags = CubicWebTC.tags | Tags(('server', 'migration', 'migractions'))
 
@@ -64,31 +79,32 @@ class MigrationTC(CubicWebTC):
         config._apphome = osp.join(HERE, self.appid)
 
     def setUp(self):
-        CubicWebTC.setUp(self)
+        self.configcls.cls_adjust_sys_path()
+        super(MigrationTC, self).setUp()
 
     def tearDown(self):
-        CubicWebTC.tearDown(self)
+        super(MigrationTC, self).tearDown()
         self.repo.vreg['etypes'].clear_caches()
 
     @contextmanager
     def mh(self):
-        with self.admin_access.client_cnx() as cnx:
+        with self.admin_access.repo_cnx() as cnx:
             yield cnx, ServerMigrationHelper(self.repo.config, migrschema,
                                              repo=self.repo, cnx=cnx,
                                              interactive=False)
 
     def table_sql(self, mh, tablename):
-        result = mh.sqlexec("SELECT sql FROM sqlite_master WHERE type='table' "
-                            "and name=%(table)s", {'table': tablename})
+        result = mh.sqlexec("SELECT table_name FROM information_schema.tables WHERE LOWER(table_name)=%(table)s",
+                            {'table': tablename.lower()})
         if result:
             return result[0][0]
         return None # no such table
 
     def table_schema(self, mh, tablename):
-        sql = self.table_sql(mh, tablename)
-        assert sql, 'no table %s' % tablename
-        return dict(x.split()[:2]
-                    for x in sql.split('(', 1)[1].rsplit(')', 1)[0].split(','))
+        result = mh.sqlexec("SELECT column_name, data_type, character_maximum_length FROM information_schema.columns "
+                            "WHERE LOWER(table_name) = %(table)s", {'table': tablename.lower()})
+        assert result, 'no table %s' % tablename
+        return dict((x[0], (x[1], x[2])) for x in result)
 
 
 class MigrationCommandsTC(MigrationTC):
@@ -160,7 +176,7 @@ class MigrationCommandsTC(MigrationTC):
             self.assertEqual(self.schema['shortpara'].objects(), ('String', ))
             # test created column is actually a varchar(64)
             fields = self.table_schema(mh, '%sNote' % SQL_PREFIX)
-            self.assertEqual(fields['%sshortpara' % SQL_PREFIX], 'varchar(64)')
+            self.assertEqual(fields['%sshortpara' % SQL_PREFIX], ('character varying', 64))
             # test default value set on existing entities
             self.assertEqual(cnx.execute('Note X').get_entity(0, 0).shortpara, 'hop')
             # test default value set for next entities
@@ -212,6 +228,7 @@ class MigrationCommandsTC(MigrationTC):
                                             droprequired=True):
                 mh.cmd_add_attribute('Note', 'unique_id')
                 mh.rqlexec('INSERT Note N')
+                mh.rqlexec('SET N unique_id "x"')
             # make sure the required=True was restored
             self.assertRaises(ValidationError, mh.rqlexec, 'INSERT Note N')
             mh.rollback()
@@ -259,8 +276,8 @@ class MigrationCommandsTC(MigrationTC):
                                'filed_under2', 'has_text',
                                'identity', 'in_basket', 'is', 'is_instance_of',
                                'modification_date', 'name', 'owned_by'])
-            self.assertEqual([str(rs) for rs in self.schema['Folder2'].object_relations()],
-                              ['filed_under2', 'identity'])
+            self.assertCountEqual([str(rs) for rs in self.schema['Folder2'].object_relations()],
+                                  ['filed_under2', 'identity'])
             # Old will be missing as it has been renamed into 'New' in the migrated
             # schema while New hasn't been added here.
             self.assertEqual(sorted(str(e) for e in self.schema['filed_under2'].subjects()),
@@ -567,15 +584,15 @@ class MigrationCommandsTC(MigrationTC):
                                      ('Bookmark', 'Bookmark'), ('Bookmark', 'Note'),
                                      ('Note', 'Note'), ('Note', 'Bookmark')]))
             try:
-                mh.cmd_drop_cube('email', removedeps=True)
+                mh.cmd_drop_cube('fakeemail', removedeps=True)
                 # file was there because it's an email dependancy, should have been removed
-                self.assertNotIn('email', self.config.cubes())
-                self.assertNotIn(self.config.cube_dir('email'), self.config.cubes_path())
+                self.assertNotIn('fakeemail', self.config.cubes())
+                self.assertNotIn(self.config.cube_dir('fakeemail'), self.config.cubes_path())
                 self.assertNotIn('file', self.config.cubes())
                 self.assertNotIn(self.config.cube_dir('file'), self.config.cubes_path())
                 for ertype in ('Email', 'EmailThread', 'EmailPart', 'File',
                                'sender', 'in_thread', 'reply_to', 'data_format'):
-                    self.assertFalse(ertype in schema, ertype)
+                    self.assertNotIn(ertype, schema)
                 self.assertEqual(sorted(schema['see_also'].rdefs.iterkeys()),
                                   sorted([('Folder', 'Folder'),
                                           ('Bookmark', 'Bookmark'),
@@ -584,17 +601,17 @@ class MigrationCommandsTC(MigrationTC):
                                           ('Note', 'Bookmark')]))
                 self.assertEqual(sorted(schema['see_also'].subjects()), ['Bookmark', 'Folder', 'Note'])
                 self.assertEqual(sorted(schema['see_also'].objects()), ['Bookmark', 'Folder', 'Note'])
-                self.assertEqual(cnx.execute('Any X WHERE X pkey "system.version.email"').rowcount, 0)
+                self.assertEqual(cnx.execute('Any X WHERE X pkey "system.version.fakeemail"').rowcount, 0)
                 self.assertEqual(cnx.execute('Any X WHERE X pkey "system.version.file"').rowcount, 0)
             finally:
-                mh.cmd_add_cube('email')
-                self.assertIn('email', self.config.cubes())
-                self.assertIn(self.config.cube_dir('email'), self.config.cubes_path())
+                mh.cmd_add_cube('fakeemail')
+                self.assertIn('fakeemail', self.config.cubes())
+                self.assertIn(self.config.cube_dir('fakeemail'), self.config.cubes_path())
                 self.assertIn('file', self.config.cubes())
                 self.assertIn(self.config.cube_dir('file'), self.config.cubes_path())
                 for ertype in ('Email', 'EmailThread', 'EmailPart', 'File',
                                'sender', 'in_thread', 'reply_to', 'data_format'):
-                    self.assertTrue(ertype in schema, ertype)
+                    self.assertIn(ertype, schema)
                 self.assertEqual(sorted(schema['see_also'].rdefs.iterkeys()),
                                   sorted([('EmailThread', 'EmailThread'), ('Folder', 'Folder'),
                                           ('Bookmark', 'Bookmark'),
@@ -603,9 +620,9 @@ class MigrationCommandsTC(MigrationTC):
                                           ('Note', 'Bookmark')]))
                 self.assertEqual(sorted(schema['see_also'].subjects()), ['Bookmark', 'EmailThread', 'Folder', 'Note'])
                 self.assertEqual(sorted(schema['see_also'].objects()), ['Bookmark', 'EmailThread', 'Folder', 'Note'])
-                from cubes.email.__pkginfo__ import version as email_version
+                from cubes.fakeemail.__pkginfo__ import version as email_version
                 from cubes.file.__pkginfo__ import version as file_version
-                self.assertEqual(cnx.execute('Any V WHERE X value V, X pkey "system.version.email"')[0][0],
+                self.assertEqual(cnx.execute('Any V WHERE X value V, X pkey "system.version.fakeemail"')[0][0],
                                   email_version)
                 self.assertEqual(cnx.execute('Any V WHERE X value V, X pkey "system.version.file"')[0][0],
                                   file_version)
@@ -623,16 +640,16 @@ class MigrationCommandsTC(MigrationTC):
             cubes = set(self.config.cubes())
             schema = self.repo.schema
             try:
-                mh.cmd_drop_cube('email')
-                cubes.remove('email')
-                self.assertNotIn('email', self.config.cubes())
+                mh.cmd_drop_cube('fakeemail')
+                cubes.remove('fakeemail')
+                self.assertNotIn('fakeemail', self.config.cubes())
                 self.assertIn('file', self.config.cubes())
                 for ertype in ('Email', 'EmailThread', 'EmailPart',
                                'sender', 'in_thread', 'reply_to'):
-                    self.assertFalse(ertype in schema, ertype)
+                    self.assertNotIn(ertype, schema)
             finally:
-                mh.cmd_add_cube('email')
-                self.assertIn('email', self.config.cubes())
+                mh.cmd_add_cube('fakeemail')
+                self.assertIn('fakeemail', self.config.cubes())
                 # trick: overwrite self.maxeid to avoid deletion of just reintroduced
                 #        types (and their associated tables!)
                 self.maxeid = cnx.execute('Any MAX(X)')[0][0] # XXXXXXX KILL KENNY
@@ -689,6 +706,18 @@ class MigrationCommandsTC(MigrationTC):
             self.assertFalse(self.table_sql(mh, 'same_as_relation'))
             mh.cmd_add_relation_type('same_as')
             self.assertTrue(self.table_sql(mh, 'same_as_relation'))
+
+    def test_change_attribute_type(self):
+        with self.mh() as (cnx, mh):
+            mh.cmd_create_entity('Societe', tel=1)
+            mh.commit()
+            mh.change_attribute_type('Societe', 'tel', 'Float')
+            self.assertNotIn(('Societe', 'Int'), self.schema['tel'].rdefs)
+            self.assertIn(('Societe', 'Float'), self.schema['tel'].rdefs)
+            self.assertEqual(self.schema['tel'].rdefs[('Societe', 'Float')].object, 'Float')
+            tel = mh.rqlexec('Any T WHERE X tel T')[0][0]
+            self.assertEqual(tel, 1.0)
+            self.assertIsInstance(tel, float)
 
 
 class MigrationCommandsComputedTC(MigrationTC):
@@ -787,7 +816,7 @@ class MigrationCommandsComputedTC(MigrationTC):
         self.assertEqual(self.schema['score'].rdefs['Company', 'Float'].formula,
                          'Any AVG(NN) WHERE X employees E, N concerns E, N note NN')
         fields = self.table_schema(mh, '%sCompany' % SQL_PREFIX)
-        self.assertEqual(fields['%sscore' % SQL_PREFIX], 'float')
+        self.assertEqual(fields['%sscore' % SQL_PREFIX], ('double precision', None))
         self.assertEqual([[3.0]],
                          mh.rqlexec('Any CS WHERE C score CS, C is Company').rows)
 
@@ -811,10 +840,9 @@ class MigrationCommandsComputedTC(MigrationTC):
 
     def assert_computed_attribute_dropped(self):
         self.assertNotIn('note20', self.schema)
-        # DROP COLUMN not supported by sqlite
-        #with self.mh() as (cnx, mh):
-        #    fields = self.table_schema(mh, '%sNote' % SQL_PREFIX)
-        #self.assertNotIn('%snote20' % SQL_PREFIX, fields)
+        with self.mh() as (cnx, mh):
+            fields = self.table_schema(mh, '%sNote' % SQL_PREFIX)
+        self.assertNotIn('%snote20' % SQL_PREFIX, fields)
 
     def test_computed_attribute_drop_type(self):
         self.assertIn('note20', self.schema)

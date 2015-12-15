@@ -1,4 +1,4 @@
-# copyright 2003-2012 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2015 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -19,6 +19,8 @@
 """
 
 __docformat__ = "restructuredtext en"
+
+from contextlib import contextmanager
 
 from logilab.database import get_db_helper
 
@@ -159,6 +161,10 @@ class FakeSession(RequestSessionBase):
     # for use with enabled_security context manager
     read_security = write_security = True
 
+    @contextmanager
+    def running_hooks_ops(self):
+        yield
+
 class FakeRepo(object):
     querier = None
     def __init__(self, schema, vreg=None, config=None):
@@ -173,7 +179,7 @@ class FakeRepo(object):
     def internal_session(self):
         return FakeSession(self)
 
-    def extid2eid(self, source, extid, etype, session, insert=True):
+    def extid2eid(self, source, extid, etype, cnx, insert=True):
         try:
             return self.extids[extid]
         except KeyError:
@@ -181,10 +187,10 @@ class FakeRepo(object):
                 return None
             self._count += 1
             eid = self._count
-            entity = source.before_entity_insertion(session, extid, etype, eid)
+            entity = source.before_entity_insertion(cnx, extid, etype, eid)
             self.extids[extid] = eid
             self.eids[eid] = extid
-            source.after_entity_insertion(session, extid, entity)
+            source.after_entity_insertion(cnx, extid, entity)
             return eid
 
 

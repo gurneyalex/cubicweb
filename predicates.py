@@ -15,171 +15,7 @@
 #
 # You should have received a copy of the GNU Lesser General Public License along
 # with CubicWeb.  If not, see <http://www.gnu.org/licenses/>.
-""".. _Selectors:
-
-Predicates and selectors
-------------------------
-
-A predicate is a class testing a particular aspect of a context. A selector is
-built by combining existant predicates or even selectors.
-
-Using and combining existant predicates
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-You can combine predicates using the `&`, `|` and `~` operators.
-
-When two predicates are combined using the `&` operator, it means that
-both should return a positive score. On success, the sum of scores is
-returned.
-
-When two predicates are combined using the `|` operator, it means that
-one of them should return a positive score. On success, the first
-positive score is returned.
-
-You can also "negate" a predicate by precedeing it by the `~` unary operator.
-
-Of course you can use parenthesis to balance expressions.
-
-Example
-~~~~~~~
-
-The goal: when on a blog, one wants the RSS link to refer to blog entries, not to
-the blog entity itself.
-
-To do that, one defines a method on entity classes that returns the
-RSS stream url for a given entity. The default implementation on
-:class:`~cubicweb.entities.AnyEntity` (the generic entity class used
-as base for all others) and a specific implementation on `Blog` will
-do what we want.
-
-But when we have a result set containing several `Blog` entities (or
-different entities), we don't know on which entity to call the
-aforementioned method. In this case, we keep the generic behaviour.
-
-Hence we have two cases here, one for a single-entity rsets, the other for
-multi-entities rsets.
-
-In web/views/boxes.py lies the RSSIconBox class. Look at its selector:
-
-.. sourcecode:: python
-
-  class RSSIconBox(box.Box):
-    ''' just display the RSS icon on uniform result set '''
-    __select__ = box.Box.__select__ & non_final_entity()
-
-It takes into account:
-
-* the inherited selection criteria (one has to look them up in the class
-  hierarchy to know the details)
-
-* :class:`~cubicweb.predicates.non_final_entity`, which filters on result sets
-  containing non final entities (a 'final entity' being synonym for entity
-  attributes type, eg `String`, `Int`, etc)
-
-This matches our second case. Hence we have to provide a specific component for
-the first case:
-
-.. sourcecode:: python
-
-  class EntityRSSIconBox(RSSIconBox):
-    '''just display the RSS icon on uniform result set for a single entity'''
-    __select__ = RSSIconBox.__select__ & one_line_rset()
-
-Here, one adds the :class:`~cubicweb.predicates.one_line_rset` predicate, which
-filters result sets of size 1. Thus, on a result set containing multiple
-entities, :class:`one_line_rset` makes the EntityRSSIconBox class non
-selectable. However for a result set with one entity, the `EntityRSSIconBox`
-class will have a higher score than `RSSIconBox`, which is what we wanted.
-
-Of course, once this is done, you have to:
-
-* fill in the call method of `EntityRSSIconBox`
-
-* provide the default implementation of the method returning the RSS stream url
-  on :class:`~cubicweb.entities.AnyEntity`
-
-* redefine this method on `Blog`.
-
-
-When to use selectors?
-~~~~~~~~~~~~~~~~~~~~~~
-
-Selectors are to be used whenever arises the need of dispatching on the shape or
-content of a result set or whatever else context (value in request form params,
-authenticated user groups, etc...). That is, almost all the time.
-
-Here is a quick example:
-
-.. sourcecode:: python
-
-    class UserLink(component.Component):
-	'''if the user is the anonymous user, build a link to login else a link
-	to the connected user object with a logout link
-	'''
-	__regid__ = 'loggeduserlink'
-
-	def call(self):
-	    if self._cw.session.anonymous_session:
-		# display login link
-		...
-	    else:
-		# display a link to the connected user object with a loggout link
-		...
-
-The proper way to implement this with |cubicweb| is two have two different
-classes sharing the same identifier but with different selectors so you'll get
-the correct one according to the context.
-
-.. sourcecode:: python
-
-    class UserLink(component.Component):
-	'''display a link to the connected user object with a loggout link'''
-	__regid__ = 'loggeduserlink'
-	__select__ = component.Component.__select__ & authenticated_user()
-
-	def call(self):
-            # display useractions and siteactions
-	    ...
-
-    class AnonUserLink(component.Component):
-	'''build a link to login'''
-	__regid__ = 'loggeduserlink'
-	__select__ = component.Component.__select__ & anonymous_user()
-
-	def call(self):
-	    # display login link
-            ...
-
-The big advantage, aside readability once you're familiar with the
-system, is that your cube becomes much more easily customizable by
-improving componentization.
-
-
-.. _CustomPredicates:
-
-Defining your own predicates
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. autodocstring:: cubicweb.appobject::objectify_predicate
-
-In other cases, you can take a look at the following abstract base classes:
-
-.. autoclass:: cubicweb.predicates.ExpectedValuePredicate
-.. autoclass:: cubicweb.predicates.EClassPredicate
-.. autoclass:: cubicweb.predicates.EntityPredicate
-
-.. _DebuggingSelectors:
-
-Debugging selection
-~~~~~~~~~~~~~~~~~~~
-
-Once in a while, one needs to understand why a view (or any application object)
-is, or is not selected appropriately. Looking at which predicates fired (or did
-not) is the way. The :class:`logilab.common.registry.traced_selection` context
-manager to help with that, *if you're running your instance in debug mode*.
-
-.. autoclass:: logilab.common.registry.traced_selection
-
+"""Predicate classes
 """
 
 __docformat__ = "restructuredtext en"
@@ -394,7 +230,7 @@ class ExpectedValuePredicate(Predicate):
     """
     def __init__(self, *expected, **kwargs):
         assert expected, self
-        if len(expected) == 1 and isinstance(expected[0], set):
+        if len(expected) == 1 and isinstance(expected[0], (set, dict)):
             self.expected = expected[0]
         else:
             self.expected = frozenset(expected)
@@ -409,7 +245,21 @@ class ExpectedValuePredicate(Predicate):
 
     def __call__(self, cls, req, **kwargs):
         values = self._values_set(cls, req, **kwargs)
-        matching = len(values & self.expected)
+        if isinstance(values, dict):
+            if isinstance(self.expected, dict):
+                matching = 0
+                for key, expected_value in self.expected.items():
+                    if key in values:
+                        if (isinstance(expected_value, (list, tuple, frozenset, set))
+                            and values[key] in expected_value):
+                            matching += 1
+                        elif values[key] == expected_value:
+                            matching += 1
+            if isinstance(self.expected, (set, frozenset)):
+                values = frozenset(values)
+                matching = len(values & self.expected)
+        else:
+            matching = len(values & self.expected)
         if self.once_is_enough:
             return matching
         if matching == len(self.expected):
@@ -438,7 +288,7 @@ class match_kwargs(ExpectedValuePredicate):
     """
 
     def _values_set(self, cls, req, **kwargs):
-        return frozenset(kwargs)
+        return kwargs
 
 
 class appobject_selectable(Predicate):
@@ -1278,31 +1128,29 @@ class match_transition(ExpectedValuePredicate):
 def no_cnx(cls, req, **kwargs):
     """Return 1 if the web session has no connection set. This occurs when
     anonymous access is not allowed and user isn't authenticated.
-
-    May only be used on the web side, not on the data repository side.
     """
     if not req.cnx:
         return 1
     return 0
 
+
 @objectify_predicate
 def authenticated_user(cls, req, **kwargs):
     """Return 1 if the user is authenticated (i.e. not the anonymous user).
-
-    May only be used on the web side, not on the data repository side.
     """
     if req.session.anonymous_session:
         return 0
     return 1
 
 
-# XXX == ~ authenticated_user()
-def anonymous_user():
+@objectify_predicate
+def anonymous_user(cls, req, **kwargs):
     """Return 1 if the user is not authenticated (i.e. is the anonymous user).
-
-    May only be used on the web side, not on the data repository side.
     """
-    return ~ authenticated_user()
+    if req.session.anonymous_session:
+        return 1
+    return 0
+
 
 class match_user_groups(ExpectedValuePredicate):
     """Return a non-zero score if request's user is in at least one of the
@@ -1435,8 +1283,23 @@ class match_form_params(ExpectedValuePredicate):
     in which case a single matching parameter is enough.
     """
 
+    def __init__(self, *expected, **kwargs):
+        """override default __init__ to allow either named or positional
+        parameters.
+        """
+        if kwargs and expected:
+            raise ValueError("match_form_params() can't be called with both "
+                             "positional and named arguments")
+        if expected:
+            if len(expected) == 1 and not isinstance(expected[0], basestring):
+                raise ValueError("match_form_params() positional arguments "
+                                 "must be strings")
+            super(match_form_params, self).__init__(*expected)
+        else:
+            super(match_form_params, self).__init__(kwargs)
+
     def _values_set(self, cls, req, **kwargs):
-        return frozenset(req.form)
+        return req.form
 
 
 class match_http_method(ExpectedValuePredicate):
