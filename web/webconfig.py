@@ -49,7 +49,7 @@ register_persistent_options( (
       }),
     # user web ui configuration
     ('fckeditor',
-     {'type' : 'yn', 'default': True,
+     {'type' : 'yn', 'default': False,
       'help': _('should html fields being edited using fckeditor (a HTML '
                 'WYSIWYG editor).  You should also select text/html as default '
                 'text format to actually get fckeditor.'),
@@ -124,16 +124,13 @@ class WebConfiguration(CubicWebConfiguration):
           'where the cubicweb web server is listening on port 8080.',
           'group': 'main', 'level': 3,
           }),
-        ('https-deny-anonymous',
-         {'type': 'yn',
-          'default': False,
-          'help': 'Prevent anonymous user to browse through https version of '
-                  'the site (https-url). Login form will then be displayed '
-                  'until logged',
+        ('datadir-url',
+         {'type': 'string', 'default': None,
+          'help': ('base url for static data, if different from "${base-url}/data/".  '
+                   'If served from a different domain, that domain should allow '
+                   'cross-origin requests.'),
           'group': 'web',
-          'level': 2
-         }
-          ),
+          }),
         ('auth-mode',
          {'type' : 'choice',
           'choices' : ('cookie', 'http'),
@@ -378,9 +375,9 @@ have the python imaging library installed to use captcha)',
             if exists(fpath):
                 yield join(fpath)
 
-    def load_configuration(self):
+    def load_configuration(self, **kw):
         """load instance's configuration files"""
-        super(WebConfiguration, self).load_configuration()
+        super(WebConfiguration, self).load_configuration(**kw)
         # load external resources definition
         self._init_base_url()
         self._build_ui_properties()
@@ -392,6 +389,14 @@ have the python imaging library installed to use captcha)',
             baseurl += '/'
         if not (self.repairing or self.creating):
             self.global_set_option('base-url', baseurl)
+        self.datadir_url = self['datadir-url']
+        if self.datadir_url:
+            if self.datadir_url[-1] != '/':
+                self.datadir_url += '/'
+            if self.mode != 'test':
+                self.datadir_url += '%s/' % self.instance_md5_version()
+            self.https_datadir_url = self.datadir_url
+            return
         httpsurl = self['https-url']
         data_relpath = self.data_relpath()
         if httpsurl:
@@ -477,8 +482,3 @@ have the python imaging library installed to use captcha)',
     def static_file_del(self, rpath):
         if self.static_file_exists(rpath):
             os.remove(join(self.static_directory, rpath))
-
-    @deprecated('[3.9] use _cw.uiprops.get(rid)')
-    def has_resource(self, rid):
-        """return true if an external resource is defined"""
-        return bool(self.uiprops.get(rid))

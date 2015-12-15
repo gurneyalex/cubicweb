@@ -1,9 +1,9 @@
 $(document).ready(function() {
 
-  module("air");
+  QUnit.module("air");
 
-  test("test 1", function() {
-      equals(b, 6);
+  QUnit.test("test 1", function (assert) {
+      assert.equal(b, 6);
   });
 
 });

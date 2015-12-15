@@ -27,9 +27,10 @@ __docformat__ = "restructuredtext en"
 _ = unicode
 
 from copy import copy
+from hashlib import md5
 from yams.schema import (BASE_TYPES, BadSchemaDefinition,
                          RelationSchema, RelationDefinitionSchema)
-from yams import buildobjs as ybo, schema2sql as y2sql, convert_default_value
+from yams import buildobjs as ybo, convert_default_value
 
 from logilab.common.decorators import clear_cache
 
@@ -37,7 +38,7 @@ from cubicweb import validation_error
 from cubicweb.predicates import is_instance
 from cubicweb.schema import (SCHEMA_TYPES, META_RTYPES, VIRTUAL_RTYPES,
                              CONSTRAINTS, ETYPE_NAME_MAP, display_name)
-from cubicweb.server import hook, schemaserial as ss
+from cubicweb.server import hook, schemaserial as ss, schema2sql as y2sql
 from cubicweb.server.sqlutils import SQL_PREFIX
 from cubicweb.hooks.synccomputed import RecomputeAttributeOperation
 
@@ -72,7 +73,7 @@ def add_inline_relation_column(cnx, etype, rtype):
     table = SQL_PREFIX + etype
     column = SQL_PREFIX + rtype
     try:
-        cnx.system_sql(str('ALTER TABLE %s ADD %s integer' % (table, column)),
+        cnx.system_sql(str('ALTER TABLE %s ADD %s integer REFERENCES entities (eid)' % (table, column)),
                        rollback_on_failure=False)
         cnx.info('added column %s to table %s', column, table)
     except Exception:
@@ -319,8 +320,12 @@ class CWRTypeUpdateOp(MemSchemaOperation):
         if 'fulltext_container' in self.values:
             op = UpdateFTIndexOp.get_instance(cnx)
             for subjtype, objtype in rschema.rdefs:
-                op.add_data(subjtype)
-                op.add_data(objtype)
+                if self.values['fulltext_container'] == 'subject':
+                    op.add_data(subjtype)
+                    op.add_data(objtype)
+                else:
+                    op.add_data(objtype)
+                    op.add_data(subjtype)
         # update the in-memory schema first
         self.oldvalues = dict( (attr, getattr(rschema, attr)) for attr in self.values)
         self.rschema.__dict__.update(self.values)
@@ -711,6 +716,10 @@ class CWConstraintDelOp(MemSchemaOperation):
         elif cstrtype == 'UniqueConstraint':
             syssource.update_rdef_unique(cnx, rdef)
             self.unique_changed = True
+        if cstrtype in ('BoundaryConstraint', 'IntervalBoundConstraint', 'StaticVocabularyConstraint'):
+            cstrname = 'cstr' + md5(rdef.subject.type + rdef.rtype.type + cstrtype +
+                                    (self.oldcstr.serialize() or '')).hexdigest()
+            cnx.system_sql('ALTER TABLE %s%s DROP CONSTRAINT %s' % (SQL_PREFIX, rdef.subject.type, cstrname))
 
     def revertprecommit_event(self):
         # revert changes on in memory schema
@@ -758,6 +767,16 @@ class CWConstraintAddOp(CWConstraintDelOp):
         elif cstrtype == 'UniqueConstraint' and oldcstr is None:
             syssource.update_rdef_unique(cnx, rdef)
             self.unique_changed = True
+        if cstrtype in ('BoundaryConstraint', 'IntervalBoundConstraint', 'StaticVocabularyConstraint'):
+            if oldcstr is not None:
+                oldcstrname = 'cstr' + md5(rdef.subject.type + rdef.rtype.type + cstrtype +
+                                           (self.oldcstr.serialize() or '')).hexdigest()
+                cnx.system_sql('ALTER TABLE %s%s DROP CONSTRAINT %s' %
+                               (SQL_PREFIX, rdef.subject.type, oldcstrname))
+            cstrname, check = y2sql.check_constraint(rdef.subject, rdef.object, rdef.rtype.type,
+                    newcstr, syssource.dbhelper, prefix=SQL_PREFIX)
+            cnx.system_sql('ALTER TABLE %s%s ADD CONSTRAINT %s CHECK(%s)' %
+                           (SQL_PREFIX, rdef.subject.type, cstrname, check))
 
 
 class CWUniqueTogetherConstraintAddOp(MemSchemaOperation):
@@ -1335,6 +1354,7 @@ class UpdateFTIndexOp(hook.DataOperationMixIn, hook.SingleLastOperation):
     We wait after the commit to as the schema in memory is only updated after
     the commit.
     """
+    containercls = list
 
     def postcommit_event(self):
         cnx = self.cnx

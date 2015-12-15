@@ -1210,7 +1210,7 @@ class RangeFacet(AttributeFacet):
 
     The image below display the rendering of the slider:
 
-    .. image:: ../images/facet_range.png
+    .. image:: ../../images/facet_range.png
 
     .. _jquery: http://www.jqueryui.com/
     """
@@ -1309,7 +1309,7 @@ class DateRangeFacet(RangeFacet):
 
     The image below display the rendering of the slider for a date range:
 
-    .. image:: ../images/facet_date_range.png
+    .. image:: ../../images/facet_date_range.png
     """
     target_attr_type = 'Date' # only date types are supported
 
@@ -1440,7 +1440,7 @@ class HasRelationFacet(AbstractFacet):
     Here is an example of the rendering of thos facet to filter book with image
     and the corresponding code:
 
-    .. image:: ../images/facet_has_image.png
+    .. image:: ../../images/facet_has_image.png
 
     .. sourcecode:: python
 
@@ -1465,15 +1465,17 @@ class HasRelationFacet(AbstractFacet):
 
     def add_rql_restrictions(self):
         """add restriction for this facet into the rql syntax tree"""
-        self.select.set_distinct(True) # XXX
         value = self._cw.form.get(self.__regid__)
         if not value: # no value sent for this facet
             return
+        exists = nodes.Exists()
+        self.select.add_restriction(exists)
         var = self.select.make_variable()
         if self.role == 'subject':
-            self.select.add_relation(self.filtered_variable, self.rtype, var)
+            subj, obj = self.filtered_variable, var
         else:
-            self.select.add_relation(var, self.rtype, self.filtered_variable)
+            subj, obj = var, self.filtered_variable
+        exists.add_relation(subj, self.rtype, obj)
 
 
 class BitFieldFacet(AttributeFacet):

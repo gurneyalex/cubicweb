@@ -347,62 +347,6 @@ Widgets.LazySuggestField = defclass('LazySuggestField', [Widgets.SuggestField], 
 });
 
 /**
- * .. class:: Widgets.SuggestForm
- *
- * suggestform displays a suggest field and associated validate / cancel buttons
- * constructor's argumemts are the same that BaseSuggestField widget
- */
-Widgets.SuggestForm = defclass("SuggestForm", null, {
-
-    __init__: function(inputid, initfunc, varargs, validatefunc, options) {
-        this.validatefunc = validatefunc || $.noop;
-        this.sgfield = new Widgets.BaseSuggestField(inputid, initfunc, varargs, options);
-        this.oklabel = options.oklabel || 'ok';
-        this.cancellabel = options.cancellabel || 'cancel';
-        bindMethods(this);
-        connect(this.sgfield, 'validate', this, this.entryValidated);
-    },
-
-    show: function(parentnode) {
-        var sgnode = this.sgfield.builddom();
-        var buttons = DIV({
-            'class': "sgformbuttons"
-        },
-        [A({
-            'href': "javascript: $.noop();",
-            'onclick': this.onValidateClicked
-        },
-        this.oklabel), ' / ', A({
-            'href': "javascript: $.noop();",
-            'onclick': this.destroy
-        },
-        escapeHTML(this.cancellabel))]);
-        var formnode = DIV({
-            'class': "sgform"
-        },
-        [sgnode, buttons]);
-        appendChildNodes(parentnode, formnode);
-        this.sgfield.textinput.focus();
-        this.formnode = formnode;
-        return formnode;
-    },
-
-    destroy: function() {
-        signal(this, 'destroy');
-        this.sgfield.destroy();
-        removeElement(this.formnode);
-    },
-
-    onValidateClicked: function() {
-        this.validatefunc(this, this.sgfield.taglist());
-    },
-    /* just an indirection to pass the form instead of the sgfield as first parameter */
-    entryValidated: function(sgfield, taglist) {
-        this.validatefunc(this, taglist);
-    }
-});
-
-/**
  * .. function:: toggleTree(event)
  *
  * called when the use clicks on a tree node
@@ -427,41 +371,6 @@ function toggleTree(event) {
         );
     }
 }
-
-/**
- * .. class:: Widgets.TimelineWidget
- *
- * widget based on SIMILE's timeline widget
- * http://code.google.com/p/simile-widgets/
- *
- * Beware not to mess with SIMILE's Timeline JS namepsace !
- */
-
-Widgets.TimelineWidget = defclass("TimelineWidget", null, {
-    __init__: function(wdgnode) {
-        var tldiv = DIV({
-            id: "tl",
-            style: 'height: 200px; border: 1px solid #ccc;'
-        });
-        wdgnode.appendChild(tldiv);
-        var tlunit = wdgnode.getAttribute('cubicweb:tlunit') || 'YEAR';
-        var eventSource = new Timeline.DefaultEventSource();
-        var bandData = {
-            eventPainter: Timeline.CubicWebEventPainter,
-            eventSource: eventSource,
-            width: "100%",
-            intervalUnit: Timeline.DateTime[tlunit.toUpperCase()],
-            intervalPixels: 100
-        };
-        var bandInfos = [Timeline.createBandInfo(bandData)];
-        this.tl = Timeline.create(tldiv, bandInfos);
-        var loadurl = wdgnode.getAttribute('cubicweb:loadurl');
-        Timeline.loadJSON(loadurl, function(json, url) {
-            eventSource.loadJSON(json, url);
-        });
-
-    }
-});
 
 Widgets.TemplateTextField = defclass("TemplateTextField", null, {
 

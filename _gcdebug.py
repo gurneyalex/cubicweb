@@ -19,6 +19,10 @@
 import gc, types, weakref
 
 from cubicweb.schema import CubicWebRelationSchema, CubicWebEntitySchema
+try:
+    from cubicweb.web.request import _NeedAuthAccessMock
+except ImportError:
+    _NeedAuthAccessMock = None
 
 listiterator = type(iter([]))
 
@@ -30,6 +34,8 @@ IGNORE_CLASSES = (
     types.ModuleType, types.FunctionType, types.MethodType,
     types.MemberDescriptorType, types.GetSetDescriptorType,
     )
+if _NeedAuthAccessMock is not None:
+    IGNORE_CLASSES = IGNORE_CLASSES + (_NeedAuthAccessMock,)
 
 def _get_counted_class(obj, classes):
     for cls in classes:
@@ -63,7 +69,8 @@ def gc_info(countclasses,
                 ocounters[key] = 1
         if isinstance(obj, viewreferrersclasses):
             print '   ', obj, referrers(obj, showobjs, maxlevel)
-    return counters, ocounters, gc.garbage
+    garbage = [repr(obj) for obj in gc.garbage]
+    return counters, ocounters, garbage
 
 
 def referrers(obj, showobj=False, maxlevel=1):
