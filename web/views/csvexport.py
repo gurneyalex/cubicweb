@@ -18,7 +18,10 @@
 """csv export views"""
 
 __docformat__ = "restructuredtext en"
-_ = unicode
+from cubicweb import _
+
+from six import PY2
+from six.moves import range
 
 from cubicweb.schema import display_name
 from cubicweb.predicates import any_rset, empty_rset
@@ -29,7 +32,7 @@ class CSVMixIn(object):
     """mixin class for CSV views"""
     templatable = False
     content_type = "text/comma-separated-values"
-    binary = True # avoid unicode assertion
+    binary = PY2 # python csv module is unicode aware in py3k
     csv_params = {'dialect': 'excel',
                   'quotechar': '"',
                   'delimiter': ';',
@@ -88,7 +91,7 @@ class CSVEntityView(CSVMixIn, EntityView):
         rows_by_type = {}
         writer = self.csvwriter()
         rowdef_by_type = {}
-        for index in xrange(len(self.cw_rset)):
+        for index in range(len(self.cw_rset)):
             entity = self.cw_rset.complete_entity(index)
             if entity.e_schema not in rows_by_type:
                 rowdef_by_type[entity.e_schema] = [rs for rs, at in entity.e_schema.attribute_definitions()
@@ -98,8 +101,7 @@ class CSVEntityView(CSVMixIn, EntityView):
             rows = rows_by_type[entity.e_schema]
             rows.append([entity.printable_value(rs.type, format='text/plain')
                          for rs in rowdef_by_type[entity.e_schema]])
-        for rows in rows_by_type.itervalues():
+        for rows in rows_by_type.values():
             writer.writerows(rows)
             # use two empty lines as separator
             writer.writerows([[], []])
-

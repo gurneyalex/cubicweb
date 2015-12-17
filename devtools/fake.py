@@ -22,6 +22,8 @@ __docformat__ = "restructuredtext en"
 
 from contextlib import contextmanager
 
+from six import string_types
+
 from logilab.database import get_db_helper
 
 from cubicweb.req import RequestSessionBase
@@ -91,7 +93,7 @@ class FakeRequest(ConnectionCubicWebRequestBase):
 
     def set_request_header(self, header, value, raw=False):
         """set an incoming HTTP header (for test purpose only)"""
-        if isinstance(value, basestring):
+        if isinstance(value, string_types):
             value = [value]
         if raw:
             # adding encoded header is important, else page content
@@ -110,7 +112,7 @@ class FakeRequest(ConnectionCubicWebRequestBase):
     def build_url_params(self, **kwargs):
         # overriden to get predictable resultts
         args = []
-        for param, values in sorted(kwargs.iteritems()):
+        for param, values in sorted(kwargs.items()):
             if not isinstance(values, (list, tuple)):
                 values = (values,)
             for value in values:

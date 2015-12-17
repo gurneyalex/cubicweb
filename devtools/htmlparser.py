@@ -20,7 +20,7 @@
 import re
 import sys
 from xml import sax
-from cStringIO import StringIO
+from io import BytesIO
 
 from lxml import etree
 
@@ -33,7 +33,7 @@ TRANSITIONAL_DOCTYPE = str(TRANSITIONAL_DOCTYPE)
 
 ERR_COUNT = 0
 
-_REM_SCRIPT_RGX = re.compile(r"<script[^>]*>.*?</script>", re.U|re.M|re.I|re.S)
+_REM_SCRIPT_RGX = re.compile(br"<script[^>]*>.*?</script>", re.M|re.I|re.S)
 def _remove_script_tags(data):
     """Remove the script (usually javascript) tags to help the lxml
     XMLParser / HTMLParser do their job. Without that, they choke on
@@ -70,7 +70,7 @@ def _remove_script_tags(data):
     #
     # using that, we'll miss most actual validation error we want to
     # catch. For now, use dumb regexp
-    return _REM_SCRIPT_RGX.sub('', data)
+    return _REM_SCRIPT_RGX.sub(b'', data)
 
 
 class Validator(object):
@@ -164,10 +164,10 @@ class XMLSyntaxValidator(Validator):
 
     def _parse(self, data):
         inpsrc = sax.InputSource()
-        inpsrc.setByteStream(StringIO(data))
+        inpsrc.setByteStream(BytesIO(data))
         try:
             self._parser.parse(inpsrc)
-        except sax.SAXParseException, exc:
+        except sax.SAXParseException as exc:
             new_exc = AssertionError(u'invalid document: %s' % exc)
             new_exc.position = (exc._linenum, exc._colnum)
             raise new_exc
@@ -209,7 +209,7 @@ class PageInfo(object):
     def matching_nodes(self, tag, **attrs):
         for elt in self.etree.iterfind(self._iterstr(tag)):
             eltattrs  = elt.attrib
-            for attr, value in attrs.iteritems():
+            for attr, value in attrs.items():
                 try:
                     if eltattrs[attr] != value:
                         break

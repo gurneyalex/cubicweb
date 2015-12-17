@@ -20,13 +20,15 @@ Cubicweb registries
 """
 
 __docformat__ = "restructuredtext en"
-_ = unicode
+from cubicweb import _
 
 import sys
 from os.path import join, dirname, realpath
 from warnings import warn
 from datetime import datetime, date, time, timedelta
 from functools import reduce
+
+from six import text_type, binary_type
 
 from logilab.common.decorators import cached, clear_cache
 from logilab.common.deprecation import deprecated, class_deprecated
@@ -221,9 +223,9 @@ class ViewsRegistry(CWRegistry):
         """
         obj = self.select(oid, req, rset=rset, **kwargs)
         res = obj.render(**kwargs)
-        if isinstance(res, unicode):
+        if isinstance(res, text_type):
             return res.encode(req.encoding)
-        assert isinstance(res, str)
+        assert isinstance(res, binary_type)
         return res
 
     def possible_views(self, req, rset=None, **kwargs):
@@ -382,7 +384,7 @@ class CWRegistryStore(RegistryStore):
         return [item for item in super(CWRegistryStore, self).items()
                 if not item[0] in ('propertydefs', 'propertyvalues')]
     def iteritems(self):
-        return (item for item in super(CWRegistryStore, self).iteritems()
+        return (item for item in super(CWRegistryStore, self).items()
                 if not item[0] in ('propertydefs', 'propertyvalues'))
 
     def values(self):
@@ -492,7 +494,7 @@ class CWRegistryStore(RegistryStore):
         """
         self.schema = schema
         for registry, regcontent in self.items():
-            for objects in regcontent.itervalues():
+            for objects in regcontent.values():
                 for obj in objects:
                     obj.schema = schema
 
@@ -543,7 +545,7 @@ class CWRegistryStore(RegistryStore):
                     self.unregister(obj)
         super(CWRegistryStore, self).initialization_completed()
         if 'uicfg' in self: # 'uicfg' is not loaded in a pure repository mode
-            for rtags in self['uicfg'].itervalues():
+            for rtags in self['uicfg'].values():
                 for rtag in rtags:
                     # don't check rtags if we don't want to cleanup_unused_appobjects
                     rtag.init(self.schema, check=self.config.cleanup_unused_appobjects)
@@ -576,7 +578,7 @@ class CWRegistryStore(RegistryStore):
         if withsitewide:
             return sorted(k for k in self['propertydefs']
                           if not k.startswith('sources.'))
-        return sorted(k for k, kd in self['propertydefs'].iteritems()
+        return sorted(k for k, kd in self['propertydefs'].items()
                       if not kd['sitewide'] and not k.startswith('sources.'))
 
     def register_property(self, key, type, help, default=None, vocabulary=None,
@@ -653,4 +655,3 @@ YAMS_TO_PY.update({
     'TZTime':     time,
     'Interval':   timedelta,
     })
-

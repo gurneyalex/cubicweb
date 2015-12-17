@@ -21,6 +21,8 @@ __docformat__ = "restructuredtext en"
 
 from warnings import warn
 
+from six import PY3, text_type
+
 from logilab.common.decorators import cachedproperty
 
 from yams import ValidationError
@@ -30,23 +32,24 @@ from yams import ValidationError
 class CubicWebException(Exception):
     """base class for cubicweb server exception"""
     msg = ""
-    def __str__(self):
+    def __unicode__(self):
         if self.msg:
             if self.args:
                 return self.msg % tuple(self.args)
             else:
                 return self.msg
         else:
-            return u' '.join(unicode(arg) for arg in self.args)
+            return u' '.join(text_type(arg) for arg in self.args)
+    __str__ = __unicode__ if PY3 else lambda self: self.__unicode__().encode('utf-8')
 
 class ConfigurationError(CubicWebException):
     """a misconfiguration error"""
 
 class InternalError(CubicWebException):
-    """base class for exceptions which should not occurs"""
+    """base class for exceptions which should not occur"""
 
 class SecurityError(CubicWebException):
-    """base class for cubicweb server security exception"""
+    """base class for cubicweb server security exceptions"""
 
 class RepositoryError(CubicWebException):
     """base class for repository exceptions"""
@@ -185,7 +188,7 @@ class UndoTransactionException(QueryError):
          commit time.
 
     :type txuuix: int
-    :param txuuid: Unique identifier of the partialy undone transaction
+    :param txuuid: Unique identifier of the partially undone transaction
 
     :type errors: list
     :param errors: List of errors occurred during undoing
@@ -204,4 +207,3 @@ class ExecutionError(Exception):
 
 # pylint: disable=W0611
 from logilab.common.clcommands import BadCommandUsage
-

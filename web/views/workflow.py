@@ -22,10 +22,12 @@
 """
 
 __docformat__ = "restructuredtext en"
-_ = unicode
+from cubicweb import _
 
 import os
 from warnings import warn
+
+from six import add_metaclass
 
 from logilab.mtconverter import xml_escape
 from logilab.common.graph import escape
@@ -116,7 +118,7 @@ class ChangeStateFormView(form.FormViewMixIn, EntityView):
             'changestate', self._cw, entity=entity, transition=transition,
             redirect_path=self.redirectpath(entity), **kwargs)
         trinfo = self._cw.vreg['etypes'].etype_class('TrInfo')(self._cw)
-        trinfo.eid = self._cw.varmaker.next()
+        trinfo.eid = next(self._cw.varmaker)
         subform = self._cw.vreg['forms'].select('edition', self._cw, entity=trinfo,
                                                 mainform=False)
         subform.field_by_name('wf_info_for', 'subject').value = entity.eid
@@ -429,8 +431,8 @@ class WorkflowGraphView(DotGraphView):
         return WorkflowDotPropsHandler(self._cw)
 
 
+@add_metaclass(class_deprecated)
 class TmpPngView(TmpFileViewMixin, EntityView):
-    __metaclass__ = class_deprecated
     __deprecation_warning__ = '[3.18] %(cls)s is deprecated'
     __regid__ = 'tmppng'
     __select__ = match_form_params('tmpfile')

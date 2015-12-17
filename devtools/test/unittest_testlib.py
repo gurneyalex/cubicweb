@@ -17,9 +17,10 @@
 # with CubicWeb.  If not, see <http://www.gnu.org/licenses/>.
 """unittests for cw.devtools.testlib module"""
 
-from cStringIO import StringIO
-
+from io import BytesIO, StringIO
 from unittest import TextTestRunner
+
+from six import PY2
 
 from logilab.common.testlib import TestSuite, TestCase, unittest_main
 from logilab.common.registry import yes
@@ -33,7 +34,7 @@ class FakeFormTC(TestCase):
         class entity:
             cw_etype = 'Entity'
             eid = 0
-        sio = StringIO('hop\n')
+        sio = BytesIO(b'hop\n')
         form = CubicWebTC.fake_form('import',
                                     {'file': ('filename.txt', sio),
                                      'encoding': u'utf-8',
@@ -51,7 +52,7 @@ class FakeFormTC(TestCase):
 class WebTestTC(TestCase):
 
     def setUp(self):
-        output = StringIO()
+        output = BytesIO() if PY2 else StringIO()
         self.runner = TextTestRunner(stream=output)
 
     def test_error_raised(self):

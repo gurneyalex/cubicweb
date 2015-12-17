@@ -22,6 +22,9 @@ __docformat__ = "restructuredtext en"
 from warnings import warn
 from functools import partial
 
+from six import text_type, string_types, integer_types
+from six.moves import range
+
 from logilab.common.decorators import cached
 from logilab.common.deprecation import deprecated
 from logilab.common.registry import yes
@@ -57,7 +60,7 @@ def can_use_rest_path(value):
     """return True if value can be used at the end of a Rest URL path"""
     if value is None:
         return False
-    value = unicode(value)
+    value = text_type(value)
     # the check for ?, /, & are to prevent problems when running
     # behind Apache mod_proxy
     if value == u'' or u'?' in value or u'/' in value or u'&' in value:
@@ -105,7 +108,7 @@ def build_cstr_with_linkto_infos(cstr, args, searchedvar, evar,
     """
     st = cstr.snippet_rqlst.copy()
     # replace relations in ST by eid infos from linkto where possible
-    for (info_rtype, info_role), eids in lt_infos.iteritems():
+    for (info_rtype, info_role), eids in lt_infos.items():
         eid = eids[0] # NOTE: we currently assume a pruned lt_info with only 1 eid
         for rel in st.iget_nodes(RqlRelation):
             targetvar = rel_matches(rel, info_rtype, info_role, evar.name)
@@ -132,7 +135,7 @@ def build_cstr_with_linkto_infos(cstr, args, searchedvar, evar,
 
 def pruned_lt_info(eschema, lt_infos):
     pruned = {}
-    for (lt_rtype, lt_role), eids in lt_infos.iteritems():
+    for (lt_rtype, lt_role), eids in lt_infos.items():
         # we can only use lt_infos describing relation with a cardinality
         # of value 1 towards the linked entity
         if not len(eids) == 1:
@@ -143,6 +146,7 @@ def pruned_lt_info(eschema, lt_infos):
             continue
         pruned[(lt_rtype, lt_role)] = eids
     return pruned
+
 
 class Entity(AppObject):
     """an entity instance has e_schema automagically set on
@@ -279,7 +283,7 @@ class Entity(AppObject):
             select = Select()
             mainvar = select.get_variable(mainvar)
             select.add_selected(mainvar)
-        elif isinstance(mainvar, basestring):
+        elif isinstance(mainvar, string_types):
             assert mainvar in select.defined_vars
             mainvar = select.get_variable(mainvar)
         # eases string -> syntax tree test transition: please remove once stable
@@ -455,7 +459,7 @@ class Entity(AppObject):
                 if len(value) == 0:
                     continue # avoid crash with empty IN clause
                 elif len(value) == 1:
-                    value = iter(value).next()
+                    value = next(iter(value))
                 else:
                     # prepare IN clause
                     pendingrels.append( (attr, role, value) )
@@ -530,6 +534,7 @@ class Entity(AppObject):
     def __init__(self, req, rset=None, row=None, col=0):
         AppObject.__init__(self, req, rset=rset, row=row, col=col)
         self._cw_related_cache = {}
+        self._cw_adapters_cache = {}
         if rset is not None:
             self.eid = rset[row][col]
         else:
@@ -545,12 +550,12 @@ class Entity(AppObject):
         raise NotImplementedError('comparison not implemented for %s' % self.__class__)
 
     def __eq__(self, other):
-        if isinstance(self.eid, (int, long)):
+        if isinstance(self.eid, integer_types):
             return self.eid == other.eid
         return self is other
 
     def __hash__(self):
-        if isinstance(self.eid, (int, long)):
+        if isinstance(self.eid, integer_types):
             return self.eid
         return super(Entity, self).__hash__()
 
@@ -567,10 +572,7 @@ class Entity(AppObject):
 
         return None if it can not be adapted.
         """
-        try:
-            cache = self._cw_adapters_cache
-        except AttributeError:
-            self._cw_adapters_cache = cache = {}
+        cache = self._cw_adapters_cache
         try:
             return cache[interface]
         except KeyError:
@@ -677,8 +679,8 @@ class Entity(AppObject):
         if path is None:
             # fallback url: <base-url>/<eid> url is used as cw entities uri,
             # prefer it to <base-url>/<etype>/eid/<eid>
-            return unicode(value)
-        return '%s/%s' % (path, self._cw.url_quote(value))
+            return text_type(value)
+        return u'%s/%s' % (path, self._cw.url_quote(value))
 
     def cw_attr_metadata(self, attr, metadata):
         """return a metadata for an attribute (None if unspecified)"""
@@ -695,7 +697,7 @@ class Entity(AppObject):
         attr = str(attr)
         if value is _marker:
             value = getattr(self, attr)
-        if isinstance(value, basestring):
+        if isinstance(value, string_types):
             value = value.strip()
         if value is None or value == '': # don't use "not", 0 is an acceptable value
             return u''
@@ -849,7 +851,7 @@ class Entity(AppObject):
         if attributes is None:
             self._cw_completed = True
         varmaker = rqlvar_maker()
-        V = varmaker.next()
+        V = next(varmaker)
         rql = ['WHERE %s eid %%(x)s' % V]
         selected = []
         for attr in (attributes or self._cw_to_complete_attributes(skip_bytes, skip_pwd)):
@@ -857,7 +859,7 @@ class Entity(AppObject):
             if attr in self.cw_attr_cache:
                 continue
             # case where attribute must be completed, but is not yet in entity
-            var = varmaker.next()
+            var = next(varmaker)
             rql.append('%s %s %s' % (V, attr, var))
             selected.append((attr, var))
         # +1 since this doesn't include the main variable
@@ -876,7 +878,7 @@ class Entity(AppObject):
                 # * user has read perm on the relation and on the target entity
                 assert rschema.inlined
                 assert role == 'subject'
-                var = varmaker.next()
+                var = next(varmaker)
                 # keep outer join anyway, we don't want .complete to crash on
                 # missing mandatory relation (see #1058267)
                 rql.append('%s %s %s?' % (V, rtype, var))
@@ -892,10 +894,10 @@ class Entity(AppObject):
                 raise Exception('unable to fetch attributes for entity with eid %s'
                                 % self.eid)
             # handle attributes
-            for i in xrange(1, lastattr):
+            for i in range(1, lastattr):
                 self.cw_attr_cache[str(selected[i-1][0])] = rset[i]
             # handle relations
-            for i in xrange(lastattr, len(rset)):
+            for i in range(lastattr, len(rset)):
                 rtype, role = selected[i-1][0]
                 value = rset[i]
                 if value is None:
@@ -1145,9 +1147,7 @@ class Entity(AppObject):
         self._cw.vreg.solutions(self._cw, select, args)
         # insert RQL expressions for schema constraints into the rql syntax tree
         if vocabconstraints:
-            # RQLConstraint is a subclass for RQLVocabularyConstraint, so they
-            # will be included as well
-            cstrcls = RQLVocabularyConstraint
+            cstrcls = (RQLVocabularyConstraint, RQLConstraint)
         else:
             cstrcls = RQLConstraint
         lt_infos = pruned_lt_info(self.e_schema, lt_infos or {})
@@ -1236,8 +1236,8 @@ class Entity(AppObject):
         no relation is given
         """
         if rtype is None:
-            self._cw_related_cache = {}
-            self._cw_adapters_cache = {}
+            self._cw_related_cache.clear()
+            self._cw_adapters_cache.clear()
         else:
             assert role
             self._cw_related_cache.pop('%s_%s' % (rtype, role), None)

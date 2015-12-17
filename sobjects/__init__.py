@@ -20,11 +20,11 @@
 import os.path as osp
 
 def registration_callback(vreg):
-    vreg.register_all(globals().itervalues(), __name__)
+    vreg.register_all(globals().values(), __name__)
     global URL_MAPPING
     URL_MAPPING = {}
     if vreg.config.apphome:
         url_mapping_file = osp.join(vreg.config.apphome, 'urlmapping.py')
         if osp.exists(url_mapping_file):
-            URL_MAPPING = eval(file(url_mapping_file).read())
+            URL_MAPPING = eval(open(url_mapping_file).read())
             vreg.info('using url mapping %s from %s', URL_MAPPING, url_mapping_file)

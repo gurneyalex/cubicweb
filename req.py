@@ -20,10 +20,10 @@
 __docformat__ = "restructuredtext en"
 
 from warnings import warn
-from urlparse import urlsplit, urlunsplit
-from urllib import quote as urlquote, unquote as urlunquote
 from datetime import time, datetime, timedelta
-from cgi import parse_qs, parse_qsl
+
+from six import PY2, PY3, text_type
+from six.moves.urllib.parse import parse_qs, parse_qsl, quote as urlquote, unquote as urlunquote, urlsplit, urlunsplit
 
 from logilab.common.decorators import cached
 from logilab.common.deprecation import deprecated
@@ -73,7 +73,7 @@ class RequestSessionBase(object):
         # connection
         self.user = None
         self.local_perm_cache = {}
-        self._ = unicode
+        self._ = text_type
 
     def _set_user(self, orig_user):
         """set the user for this req_session_base
@@ -219,7 +219,7 @@ class RequestSessionBase(object):
                 parts.append(
                     '%(varname)s %(attr)s X, '
                     '%(varname)s eid %%(reverse_%(attr)s)s'
-                    % {'attr': attr, 'varname': varmaker.next()})
+                    % {'attr': attr, 'varname': next(varmaker)})
             else:
                 assert attr in eschema.subjrels, \
                     '%s not in %s subject relations' % (attr, eschema)
@@ -300,7 +300,7 @@ class RequestSessionBase(object):
     def build_url_params(self, **kwargs):
         """return encoded params to incorporate them in a URL"""
         args = []
-        for param, values in kwargs.iteritems():
+        for param, values in kwargs.items():
             if not isinstance(values, (list, tuple)):
                 values = (values,)
             for value in values:
@@ -313,7 +313,7 @@ class RequestSessionBase(object):
         necessary encoding / decoding. Also it's designed to quote each
         part of a url path and so the '/' character will be encoded as well.
         """
-        if isinstance(value, unicode):
+        if PY2 and isinstance(value, unicode):
             quoted = urlquote(value.encode(self.encoding), safe=safe)
             return unicode(quoted, self.encoding)
         return urlquote(str(value), safe=safe)
@@ -324,6 +324,8 @@ class RequestSessionBase(object):
         decoding is based on `self.encoding` which is the encoding
         used in `url_quote`
         """
+        if PY3:
+            return urlunquote(quoted)
         if isinstance(quoted, unicode):
             quoted = quoted.encode(self.encoding)
         try:
@@ -333,6 +335,10 @@ class RequestSessionBase(object):
 
     def url_parse_qsl(self, querystring):
         """return a list of (key, val) found in the url quoted query string"""
+        if PY3:
+            for key, val in parse_qsl(querystring):
+                yield key, val
+            return
         if isinstance(querystring, unicode):
             querystring = querystring.encode(self.encoding)
         for key, val in parse_qsl(querystring):
@@ -348,12 +354,12 @@ class RequestSessionBase(object):
 
         newparams may only be mono-valued.
         """
-        if isinstance(url, unicode):
+        if PY2 and isinstance(url, unicode):
             url = url.encode(self.encoding)
         schema, netloc, path, query, fragment = urlsplit(url)
         query = parse_qs(query)
         # sort for testing predictability
-        for key, val in sorted(newparams.iteritems()):
+        for key, val in sorted(newparams.items()):
             query[key] = (self.url_quote(val),)
         query = '&'.join(u'%s=%s' % (param, value)
                          for param, values in sorted(query.items())

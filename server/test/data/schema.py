@@ -24,6 +24,7 @@ from cubicweb.schema import (WorkflowableEntityType,
                              RQLConstraint, RQLUniqueConstraint,
                              RQLVocabularyConstraint,
                              ERQLExpression, RRQLExpression)
+from cubicweb import _
 
 class Affaire(WorkflowableEntityType):
     __permissions__ = {
@@ -85,7 +86,7 @@ class travaille_subdivision(RelationDefinition):
     object = 'SubDivision'
 
 from cubicweb.schemas.base import CWUser
-CWUser.get_relations('login').next().fulltextindexed = True
+next(CWUser.get_relations('login')).fulltextindexed = True
 
 class Note(WorkflowableEntityType):
     date = String(maxsize=10)

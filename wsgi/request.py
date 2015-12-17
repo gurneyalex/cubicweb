@@ -27,13 +27,12 @@ __docformat__ = "restructuredtext en"
 
 import tempfile
 
-from StringIO import StringIO
-from urllib import quote
-from urlparse import parse_qs
-from warnings import warn
+from io import BytesIO
+
+from six.moves.urllib.parse import parse_qs
 
 from cubicweb.multipart import (
-    copy_file, parse_form_data, MultipartError, parse_options_header)
+    copy_file, parse_form_data, parse_options_header)
 from cubicweb.web import RequestError
 from cubicweb.web.request import CubicWebRequestBase
 from cubicweb.wsgi import pformat, normalize_header
@@ -59,7 +58,7 @@ class CubicWebWsgiRequest(CubicWebRequestBase):
             length = 0
         # wsgi.input is not seekable, so copy the request contents to a temporary file
         if length < 100000:
-            self.content = StringIO()
+            self.content = BytesIO()
         else:
             self.content = tempfile.TemporaryFile()
         copy_file(environ['wsgi.input'], self.content, maxread=length)
@@ -82,7 +81,7 @@ class CubicWebWsgiRequest(CubicWebRequestBase):
                                                   headers= headers_in)
         self.content = environ['wsgi.input']
         if files is not None:
-            for key, part in files.iteritems():
+            for key, part in files.items():
                 self.form[key] = (part.filename, part.file)
 
     def __repr__(self):
@@ -149,15 +148,10 @@ class CubicWebWsgiRequest(CubicWebRequestBase):
         if params is None:
             return
         encoding = self.encoding
-        for param, val in params.iteritems():
+        for param, val in params.items():
             if isinstance(val, (tuple, list)):
-                val = [
-                    unicode(x, encoding) if isinstance(x, str) else x
-                    for x in val]
                 if len(val) == 1:
                     val = val[0]
-            elif isinstance(val, str):
-                val = unicode(val, encoding)
             if param in self.no_script_form_params and val:
                 val = self.no_script_form_param(param, val)
             if param == '_cwmsgid':

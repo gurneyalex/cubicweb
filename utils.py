@@ -33,9 +33,10 @@ from itertools import repeat
 from uuid import uuid4
 from warnings import warn
 from threading import Lock
-from urlparse import urlparse
-
 from logging import getLogger
+
+from six import text_type
+from six.moves.urllib.parse import urlparse
 
 from logilab.mtconverter import xml_escape
 from logilab.common.deprecation import deprecated
@@ -100,7 +101,7 @@ class wrap_on_write(object):
     """
     def __init__(self, w, tag, closetag=None):
         self.written = False
-        self.tag = unicode(tag)
+        self.tag = text_type(tag)
         self.closetag = closetag
         self.w = w
 
@@ -116,7 +117,7 @@ class wrap_on_write(object):
     def __exit__(self, exctype, value, traceback):
         if self.written is True:
             if self.closetag:
-                self.w(unicode(self.closetag))
+                self.w(text_type(self.closetag))
             else:
                 self.w(self.tag.replace('<', '</', 1))
 
@@ -138,39 +139,6 @@ def transitive_closure_of(entity, rtype, _seen=None):
             yield subchild
 
 
-class SizeConstrainedList(list):
-    """simple list that makes sure the list does not get bigger than a given
-    size.
-
-    when the list is full and a new element is added, the first element of the
-    list is removed before appending the new one
-
-    >>> l = SizeConstrainedList(2)
-    >>> l.append(1)
-    >>> l.append(2)
-    >>> l
-    [1, 2]
-    >>> l.append(3)
-    >>> l
-    [2, 3]
-    """
-    def __init__(self, maxsize):
-        self.maxsize = maxsize
-
-    def append(self, element):
-        if len(self) == self.maxsize:
-            del self[0]
-        super(SizeConstrainedList, self).append(element)
-
-    def extend(self, sequence):
-        super(SizeConstrainedList, self).extend(sequence)
-        keepafter = len(self) - self.maxsize
-        if keepafter > 0:
-            del self[:keepafter]
-
-    __iadd__ = extend
-
-
 class RepeatList(object):
     """fake a list with the same element in each row"""
     __slots__ = ('_size', '_item')
@@ -185,13 +153,13 @@ class RepeatList(object):
     def __iter__(self):
         return repeat(self._item, self._size)
     def __getitem__(self, index):
+        if isinstance(index, slice):
+            # XXX could be more efficient, but do we bother?
+            return ([self._item] * self._size)[index]
         return self._item
     def __delitem__(self, idc):
         assert self._size > 0
         self._size -= 1
-    def __getslice__(self, i, j):
-        # XXX could be more efficient, but do we bother?
-        return ([self._item] * self._size)[i:j]
     def __add__(self, other):
         if isinstance(other, RepeatList):
             if other._item == self._item:
@@ -208,8 +176,10 @@ class RepeatList(object):
         if isinstance(other, RepeatList):
             return other._size == self._size and other._item == self._item
         return self[:] == other
-    # py3k future warning "Overriding __eq__ blocks inheritance of __hash__ in 3.x"
-    # is annoying but won't go away because we don't want to hash() the repeatlist
+    def __ne__(self, other):
+        return not (self == other)
+    def __hash__(self):
+        raise NotImplementedError
     def pop(self, i):
         self._size -= 1
 
@@ -223,11 +193,13 @@ class UStringIO(list):
         self.tracewrites = tracewrites
         super(UStringIO, self).__init__(*args, **kwargs)
 
-    def __nonzero__(self):
+    def __bool__(self):
         return True
 
+    __nonzero__ = __bool__
+
     def write(self, value):
-        assert isinstance(value, unicode), u"unicode required not %s : %s"\
+        assert isinstance(value, text_type), u"unicode required not %s : %s"\
                                      % (type(value).__name__, repr(value))
         if self.tracewrites:
             from traceback import format_stack
@@ -553,9 +525,9 @@ class JSString(str):
 
 def _dict2js(d, predictable=False):
     if predictable:
-        it = sorted(d.iteritems())
+        it = sorted(d.items())
     else:
-        it = d.iteritems()
+        it = d.items()
     res = [key + ': ' + js_dumps(val, predictable)
            for key, val in it]
     return '{%s}' % ', '.join(res)

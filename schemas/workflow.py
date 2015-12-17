@@ -19,7 +19,7 @@
 
 """
 __docformat__ = "restructuredtext en"
-_ = unicode
+from cubicweb import _
 
 from yams.buildobjs import (EntityType, RelationType, RelationDefinition,
                             SubjectRelation,
@@ -273,7 +273,7 @@ class in_state(RelationType):
     """indicate the current state of an entity"""
     __permissions__ = RO_REL_PERMS
 
-    # not inlined intentionnaly since when using ldap sources, user'state
+    # not inlined intentionnally since when using ldap sources, user'state
     # has to be stored outside the CWUser table
     inlined = False
 

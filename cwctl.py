@@ -18,6 +18,7 @@
 """the cubicweb-ctl tool, based on logilab.common.clcommands to
 provide a pluggable commands system.
 """
+from __future__ import print_function
 
 __docformat__ = "restructuredtext en"
 
@@ -28,7 +29,6 @@ import sys
 from warnings import warn, filterwarnings
 from os import remove, listdir, system, pathsep
 from os.path import exists, join, isfile, isdir, dirname, abspath
-from urlparse import urlparse
 
 try:
     from os import kill, getpgid
@@ -37,6 +37,8 @@ except ImportError:
         """win32 kill implementation"""
     def getpgid():
         """win32 getpgid implementation"""
+
+from six.moves.urllib.parse import urlparse
 
 from logilab.common.clcommands import CommandLine
 from logilab.common.shellutils import ASK
@@ -113,15 +115,15 @@ class InstanceCommand(Command):
         _allinstances = list_instances(regdir)
         if isfile(join(regdir, 'startorder')):
             allinstances = []
-            for line in file(join(regdir, 'startorder')):
+            for line in open(join(regdir, 'startorder')):
                 line = line.strip()
                 if line and not line.startswith('#'):
                     try:
                         _allinstances.remove(line)
                         allinstances.append(line)
                     except ValueError:
-                        print ('ERROR: startorder file contains unexistant '
-                               'instance %s' % line)
+                        print('ERROR: startorder file contains unexistant '
+                              'instance %s' % line)
             allinstances += _allinstances
         else:
             allinstances = _allinstances
@@ -146,7 +148,7 @@ class InstanceCommand(Command):
         status = 0
         for appid in args:
             if askconfirm:
-                print '*'*72
+                print('*'*72)
                 if not ASK.confirm('%s instance %r ?' % (self.name, appid)):
                     continue
             try:
@@ -184,13 +186,13 @@ class InstanceCommandFork(InstanceCommand):
             forkcmd = None
         for appid in args:
             if askconfirm:
-                print '*'*72
+                print('*'*72)
                 if not ASK.confirm('%s instance %r ?' % (self.name, appid)):
                     continue
             if forkcmd:
                 status = system('%s %s' % (forkcmd, appid))
                 if status:
-                    print '%s exited with status %s' % (forkcmd, status)
+                    print('%s exited with status %s' % (forkcmd, status))
             else:
                 self.run_arg(appid)
 
@@ -224,19 +226,19 @@ class ListCommand(Command):
         from cubicweb.migration import ConfigurationProblem
 
         if mode == 'all':
-            print 'CubicWeb %s (%s mode)' % (cwcfg.cubicweb_version(), cwcfg.mode)
-            print
+            print('CubicWeb %s (%s mode)' % (cwcfg.cubicweb_version(), cwcfg.mode))
+            print()
 
         if mode in ('all', 'config', 'configurations'):
-            print 'Available configurations:'
+            print('Available configurations:')
             for config in CONFIGURATIONS:
-                print '*', config.name
+                print('*', config.name)
                 for line in config.__doc__.splitlines():
                     line = line.strip()
                     if not line:
                         continue
-                    print '   ', line
-            print
+                    print('   ', line)
+            print()
 
         if mode in ('all', 'cubes'):
             cfgpb = ConfigurationProblem(cwcfg)
@@ -244,11 +246,11 @@ class ListCommand(Command):
                 cubesdir = pathsep.join(cwcfg.cubes_search_path())
                 namesize = max(len(x) for x in cwcfg.available_cubes())
             except ConfigurationError as ex:
-                print 'No cubes available:', ex
+                print('No cubes available:', ex)
             except ValueError:
-                print 'No cubes available in %s' % cubesdir
+                print('No cubes available in %s' % cubesdir)
             else:
-                print 'Available cubes (%s):' % cubesdir
+                print('Available cubes (%s):' % cubesdir)
                 for cube in cwcfg.available_cubes():
                     try:
                         tinfo = cwcfg.cube_pkginfo(cube)
@@ -257,59 +259,59 @@ class ListCommand(Command):
                     except (ConfigurationError, AttributeError) as ex:
                         tinfo = None
                         tversion = '[missing cube information: %s]' % ex
-                    print '* %s %s' % (cube.ljust(namesize), tversion)
+                    print('* %s %s' % (cube.ljust(namesize), tversion))
                     if self.config.verbose:
                         if tinfo:
                             descr = getattr(tinfo, 'description', '')
                             if not descr:
                                 descr = tinfo.__doc__
                             if descr:
-                                print '    '+ '    \n'.join(descr.splitlines())
+                                print('    '+ '    \n'.join(descr.splitlines()))
                         modes = detect_available_modes(cwcfg.cube_dir(cube))
-                        print '    available modes: %s' % ', '.join(modes)
-            print
+                        print('    available modes: %s' % ', '.join(modes))
+            print()
 
         if mode in ('all', 'instances'):
             try:
                 regdir = cwcfg.instances_dir()
             except ConfigurationError as ex:
-                print 'No instance available:', ex
-                print
+                print('No instance available:', ex)
+                print()
                 return
             instances = list_instances(regdir)
             if instances:
-                print 'Available instances (%s):' % regdir
+                print('Available instances (%s):' % regdir)
                 for appid in instances:
                     modes = cwcfg.possible_configurations(appid)
                     if not modes:
-                        print '* %s (BROKEN instance, no configuration found)' % appid
+                        print('* %s (BROKEN instance, no configuration found)' % appid)
                         continue
-                    print '* %s (%s)' % (appid, ', '.join(modes))
+                    print('* %s (%s)' % (appid, ', '.join(modes)))
                     try:
                         config = cwcfg.config_for(appid, modes[0])
                     except Exception as exc:
-                        print '    (BROKEN instance, %s)' % exc
+                        print('    (BROKEN instance, %s)' % exc)
                         continue
             else:
-                print 'No instance available in %s' % regdir
-            print
+                print('No instance available in %s' % regdir)
+            print()
 
         if mode == 'all':
             # configuration management problem solving
             cfgpb.solve()
             if cfgpb.warnings:
-                print 'Warnings:\n', '\n'.join('* '+txt for txt in cfgpb.warnings)
+                print('Warnings:\n', '\n'.join('* '+txt for txt in cfgpb.warnings))
             if cfgpb.errors:
-                print 'Errors:'
+                print('Errors:')
                 for op, cube, version, src in cfgpb.errors:
                     if op == 'add':
-                        print '* cube', cube,
+                        print('* cube', cube, end=' ')
                         if version:
-                            print ' version', version,
-                        print 'is not installed, but required by %s' % src
+                            print(' version', version, end=' ')
+                        print('is not installed, but required by %s' % src)
                     else:
-                        print '* cube %s version %s is installed, but version %s is required by %s' % (
-                            cube, cfgpb.cubes[cube], version, src)
+                        print('* cube %s version %s is installed, but version %s is required by %s' % (
+                            cube, cfgpb.cubes[cube], version, src))
 
 def check_options_consistency(config):
     if config.automatic and config.config_level > 0:
@@ -380,20 +382,20 @@ class CreateInstanceCommand(Command):
             templdirs = [cwcfg.cube_dir(cube)
                          for cube in cubes]
         except ConfigurationError as ex:
-            print ex
-            print '\navailable cubes:',
-            print ', '.join(cwcfg.available_cubes())
+            print(ex)
+            print('\navailable cubes:', end=' ')
+            print(', '.join(cwcfg.available_cubes()))
             return
         # create the registry directory for this instance
-        print '\n'+underline_title('Creating the instance %s' % appid)
+        print('\n'+underline_title('Creating the instance %s' % appid))
         create_dir(config.apphome)
         # cubicweb-ctl configuration
         if not self.config.automatic:
-            print '\n'+underline_title('Configuring the instance (%s.conf)'
-                                       % configname)
+            print('\n'+underline_title('Configuring the instance (%s.conf)'
+                                       % configname))
             config.input_config('main', self.config.config_level)
         # configuration'specific stuff
-        print
+        print()
         helper.bootstrap(cubes, self.config.automatic, self.config.config_level)
         # input for cubes specific options
         if not self.config.automatic:
@@ -402,23 +404,23 @@ class CreateInstanceCommand(Command):
                            and odict.get('level') <= self.config.config_level)
             for section in sections:
                 if section not in ('main', 'email', 'web'):
-                    print '\n' + underline_title('%s options' % section)
+                    print('\n' + underline_title('%s options' % section))
                     config.input_config(section, self.config.config_level)
         # write down configuration
         config.save()
         self._handle_win32(config, appid)
-        print '-> generated config %s' % config.main_config_file()
+        print('-> generated config %s' % config.main_config_file())
         # handle i18n files structure
         # in the first cube given
         from cubicweb import i18n
         langs = [lang for lang, _ in i18n.available_catalogs(join(templdirs[0], 'i18n'))]
         errors = config.i18ncompile(langs)
         if errors:
-            print '\n'.join(errors)
+            print('\n'.join(errors))
             if self.config.automatic \
                    or not ASK.confirm('error while compiling message catalogs, '
                                       'continue anyway ?'):
-                print 'creation not completed'
+                print('creation not completed')
                 return
         # create the additional data directory for this instance
         if config.appdatahome != config.apphome: # true in dev mode
@@ -427,9 +429,9 @@ class CreateInstanceCommand(Command):
         if config['uid']:
             from logilab.common.shellutils import chown
             # this directory should be owned by the uid of the server process
-            print 'set %s as owner of the data directory' % config['uid']
+            print('set %s as owner of the data directory' % config['uid'])
             chown(config.appdatahome, config['uid'])
-        print '\n-> creation done for %s\n' % repr(config.apphome)[1:-1]
+        print('\n-> creation done for %s\n' % repr(config.apphome)[1:-1])
         if not self.config.no_db_create:
             helper.postcreate(self.config.automatic, self.config.config_level)
 
@@ -487,7 +489,7 @@ class DeleteInstanceCommand(Command):
             if ex.errno != errno.ENOENT:
                 raise
         confignames = ', '.join([config.name for config in configs])
-        print '-> instance %s (%s) deleted.' % (appid, confignames)
+        print('-> instance %s (%s) deleted.' % (appid, confignames))
 
 
 # instance commands ########################################################
@@ -551,7 +553,7 @@ running.'}),
 the --force option."
             raise ExecutionError(msg % (appid, pidf))
         if helper.start_server(config) == 1:
-            print 'instance %s started' % appid
+            print('instance %s started' % appid)
 
 
 def init_cmdline_log_threshold(config, loglevel):
@@ -606,7 +608,7 @@ class StopInstanceCommand(InstanceCommand):
         except OSError:
             # already removed by twistd
             pass
-        print 'instance %s stopped' % appid
+        print('instance %s stopped' % appid)
 
 
 class RestartInstanceCommand(StartInstanceCommand):
@@ -630,7 +632,7 @@ class RestartInstanceCommand(StartInstanceCommand):
         # get instances in startorder
         for appid in args:
             if askconfirm:
-                print '*'*72
+                print('*'*72)
                 if not ASK.confirm('%s instance %r ?' % (self.name, appid)):
                     continue
             StopInstanceCommand(self.logger).stop_instance(appid)
@@ -677,14 +679,14 @@ class StatusCommand(InstanceCommand):
         status = 0
         for mode in cwcfg.possible_configurations(appid):
             config = cwcfg.config_for(appid, mode)
-            print '[%s-%s]' % (appid, mode),
+            print('[%s-%s]' % (appid, mode), end=' ')
             try:
                 pidf = config['pid-file']
             except KeyError:
-                print 'buggy instance, pid file not specified'
+                print('buggy instance, pid file not specified')
                 continue
             if not exists(pidf):
-                print "doesn't seem to be running"
+                print("doesn't seem to be running")
                 status = 1
                 continue
             pid = int(open(pidf).read().strip())
@@ -692,10 +694,10 @@ class StatusCommand(InstanceCommand):
             try:
                 getpgid(pid)
             except OSError:
-                print "should be running with pid %s but the process can not be found" % pid
+                print("should be running with pid %s but the process can not be found" % pid)
                 status = 1
                 continue
-            print "running with pid %s" % (pid)
+            print("running with pid %s" % (pid))
         return status
 
 class UpgradeInstanceCommand(InstanceCommandFork):
@@ -756,7 +758,7 @@ given, appropriate sources for migration will be automatically selected \
         )
 
     def upgrade_instance(self, appid):
-        print '\n' + underline_title('Upgrading the instance %s' % appid)
+        print('\n' + underline_title('Upgrading the instance %s' % appid))
         from logilab.common.changelog import Version
         config = cwcfg.config_for(appid)
         instance_running = exists(config['pid-file'])
@@ -767,11 +769,11 @@ given, appropriate sources for migration will be automatically selected \
             set_sources_mode(self.config.ext_sources or ('migration',))
         # get instance and installed versions for the server and the componants
         mih = config.migration_handler()
-        repo = mih.repo_connect()
+        repo = mih.repo
         vcconf = repo.get_versions()
         helper = self.config_helper(config, required=False)
         if self.config.force_cube_version:
-            for cube, version in self.config.force_cube_version.iteritems():
+            for cube, version in self.config.force_cube_version.items():
                 vcconf[cube] = Version(version)
         toupgrade = []
         for cube in config.cubes():
@@ -797,30 +799,30 @@ given, appropriate sources for migration will be automatically selected \
         # run cubicweb/componants migration scripts
         if self.config.fs_only or toupgrade:
             for cube, fromversion, toversion in toupgrade:
-                print '-> migration needed from %s to %s for %s' % (fromversion, toversion, cube)
+                print('-> migration needed from %s to %s for %s' % (fromversion, toversion, cube))
             with mih.cnx:
                 with mih.cnx.security_enabled(False, False):
                     mih.migrate(vcconf, reversed(toupgrade), self.config)
         else:
-            print '-> no data migration needed for instance %s.' % appid
+            print('-> no data migration needed for instance %s.' % appid)
         # rewrite main configuration file
         mih.rewrite_configuration()
         mih.shutdown()
         # handle i18n upgrade
         if not self.i18nupgrade(config):
             return
-        print
+        print()
         if helper:
             helper.postupgrade(repo)
-        print '-> instance migrated.'
+        print('-> instance migrated.')
         if instance_running and not (CWDEV or self.config.nostartstop):
             # restart instance through fork to get a proper environment, avoid
             # uicfg pb (and probably gettext catalogs, to check...)
             forkcmd = '%s start %s' % (sys.argv[0], appid)
             status = system(forkcmd)
             if status:
-                print '%s exited with status %s' % (forkcmd, status)
-        print
+                print('%s exited with status %s' % (forkcmd, status))
+        print()
 
     def i18nupgrade(self, config):
         # handle i18n upgrade:
@@ -832,10 +834,10 @@ given, appropriate sources for migration will be automatically selected \
         langs = [lang for lang, _ in i18n.available_catalogs(join(templdir, 'i18n'))]
         errors = config.i18ncompile(langs)
         if errors:
-            print '\n'.join(errors)
+            print('\n'.join(errors))
             if not ASK.confirm('Error while compiling message catalogs, '
                                'continue anyway?'):
-                print '-> migration not completed.'
+                print('-> migration not completed.')
                 return False
         return True
 
@@ -856,10 +858,9 @@ class ListVersionsInstanceCommand(InstanceCommand):
         config.quick_start = True
         if hasattr(config, 'set_sources_mode'):
             config.set_sources_mode(('migration',))
-        repo = config.migration_handler().repo_connect()
-        vcconf = repo.get_versions()
+        vcconf = config.repository().get_versions()
         for key in sorted(vcconf):
-            print key+': %s.%s.%s' % vcconf[key]
+            print(key+': %s.%s.%s' % vcconf[key])
 
 class ShellCommand(Command):
     """Run an interactive migration shell on an instance. This is a python shell
@@ -940,9 +941,9 @@ directly give URI as instance id instead',
                 repo = get_repository(appuri)
                 cnx = connect(repo, login=login, password=pwd, mulcnx=False)
             except AuthenticationError as ex:
-                print ex
+                print(ex)
             except (KeyboardInterrupt, EOFError):
-                print
+                print()
                 sys.exit(0)
             else:
                 break
@@ -1003,7 +1004,7 @@ class RecompileInstanceCatalogsCommand(InstanceCommand):
             config.init_cubes(repo.get_cubes())
         errors = config.i18ncompile()
         if errors:
-            print '\n'.join(errors)
+            print('\n'.join(errors))
 
 
 class ListInstancesCommand(Command):
@@ -1015,7 +1016,7 @@ class ListInstancesCommand(Command):
         """run the command with its specific arguments"""
         regdir = cwcfg.instances_dir()
         for appid in sorted(listdir(regdir)):
-            print appid
+            print(appid)
 
 
 class ListCubesCommand(Command):
@@ -1026,7 +1027,7 @@ class ListCubesCommand(Command):
     def run(self, args):
         """run the command with its specific arguments"""
         for cube in cwcfg.available_cubes():
-            print cube
+            print(cube)
 
 class ConfigureInstanceCommand(InstanceCommand):
     """Configure instance.
@@ -1048,7 +1049,7 @@ class ConfigureInstanceCommand(InstanceCommand):
     def configure_instance(self, appid):
         if self.config.param is not None:
             appcfg = cwcfg.config_for(appid)
-            for key, value in self.config.param.iteritems():
+            for key, value in self.config.param.items():
                 try:
                     appcfg.global_set_option(key, value)
                 except KeyError:
@@ -1138,17 +1139,15 @@ for cmdcls in (ListCommand,
 def run(args):
     """command line tool"""
     import os
-    sys.stdout = os.fdopen(sys.stdout.fileno(), 'w', 0)
-    sys.stderr = os.fdopen(sys.stderr.fileno(), 'w', 0)
     filterwarnings('default', category=DeprecationWarning)
     cwcfg.load_cwctl_plugins()
     try:
         CWCTL.run(args)
     except ConfigurationError as err:
-        print 'ERROR: ', err
+        print('ERROR: ', err)
         sys.exit(1)
     except ExecutionError as err:
-        print err
+        print(err)
         sys.exit(2)
 
 if __name__ == '__main__':

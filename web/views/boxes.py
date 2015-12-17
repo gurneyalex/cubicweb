@@ -26,9 +26,11 @@ Additional boxes (disabled by default):
 * startup views box
 """
 __docformat__ = "restructuredtext en"
-_ = unicode
+from cubicweb import _
 
 from warnings import warn
+
+from six import text_type, add_metaclass
 
 from logilab.mtconverter import xml_escape
 from logilab.common.deprecation import class_deprecated
@@ -93,7 +95,7 @@ class EditBox(component.CtxComponent):
             etypes = self.cw_rset.column_types(0)
             if len(etypes) == 1:
                 plural = self.cw_rset.rowcount > 1 and 'plural' or ''
-                etypelabel = display_name(self._cw, iter(etypes).next(), plural)
+                etypelabel = display_name(self._cw, next(iter(etypes)), plural)
                 title = u'%s - %s' % (title, etypelabel.lower())
         w(title)
 
@@ -216,7 +218,7 @@ class RsetBox(component.CtxComponent):
 
     @property
     def domid(self):
-        return super(RsetBox, self).domid + unicode(abs(id(self))) + unicode(abs(id(self.cw_rset)))
+        return super(RsetBox, self).domid + text_type(abs(id(self))) + text_type(abs(id(self.cw_rset)))
 
     def render_title(self, w):
         w(self.cw_extra_kwargs['title'])
@@ -231,9 +233,9 @@ class RsetBox(component.CtxComponent):
 
  # helper classes ##############################################################
 
+@add_metaclass(class_deprecated)
 class SideBoxView(EntityView):
     """helper view class to display some entities in a sidebox"""
-    __metaclass__ = class_deprecated
     __deprecation_warning__ = '[3.10] SideBoxView is deprecated, use RsetBox instead (%(cls)s)'
 
     __regid__ = 'sidebox'

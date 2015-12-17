@@ -18,7 +18,9 @@
 """base xml and rss views"""
 
 __docformat__ = "restructuredtext en"
-_ = unicode
+from cubicweb import _
+
+from six.moves import range
 
 from yams import xy
 
@@ -56,7 +58,7 @@ if rdflib is not None:
             graph.bind('cw', CW)
             for prefix, xmlns in xy.XY.prefixes.items():
                 graph.bind(prefix, rdflib.Namespace(xmlns))
-            for i in xrange(self.cw_rset.rowcount):
+            for i in range(self.cw_rset.rowcount):
                 entity = self.cw_rset.complete_entity(i, 0)
                 self.entity2graph(graph, entity)
             self.w(graph.serialize(format=self.format))

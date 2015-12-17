@@ -1,4 +1,4 @@
-# copyright 2003-2014 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2015 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -24,7 +24,7 @@ checking for schema consistency is done in hooks.py
 """
 
 __docformat__ = "restructuredtext en"
-_ = unicode
+from cubicweb import _
 
 from copy import copy
 from hashlib import md5
@@ -37,7 +37,7 @@ from logilab.common.decorators import clear_cache
 from cubicweb import validation_error
 from cubicweb.predicates import is_instance
 from cubicweb.schema import (SCHEMA_TYPES, META_RTYPES, VIRTUAL_RTYPES,
-                             CONSTRAINTS, ETYPE_NAME_MAP, display_name)
+                             CONSTRAINTS, UNIQUE_CONSTRAINTS, ETYPE_NAME_MAP)
 from cubicweb.server import hook, schemaserial as ss, schema2sql as y2sql
 from cubicweb.server.sqlutils import SQL_PREFIX
 from cubicweb.hooks.synccomputed import RecomputeAttributeOperation
@@ -158,24 +158,26 @@ class DropRelationTable(DropTable):
         cnx.transaction_data.setdefault('pendingrtypes', set()).add(rtype)
 
 
-class DropColumn(hook.Operation):
+class DropColumn(hook.DataOperationMixIn, hook.Operation):
     """actually remove the attribut's column from entity table in the system
     database
     """
-    table = column = None # make pylint happy
     def precommit_event(self):
-        cnx, table, column = self.cnx, self.table, self.column
-        source = cnx.repo.system_source
-        # drop index if any
-        source.drop_index(cnx, table, column)
-        if source.dbhelper.alter_column_support:
-            cnx.system_sql('ALTER TABLE %s DROP COLUMN %s' % (table, column),
-                           rollback_on_failure=False)
-            self.info('dropped column %s from table %s', column, table)
-        else:
-            # not supported by sqlite for instance
-            self.error('dropping column not supported by the backend, handle '
-                       'it yourself (%s.%s)', table, column)
+        cnx = self.cnx
+        for etype, attr in self.get_data():
+            table = SQL_PREFIX + etype
+            column = SQL_PREFIX + attr
+            source = cnx.repo.system_source
+            # drop index if any
+            source.drop_index(cnx, table, column)
+            if source.dbhelper.alter_column_support:
+                cnx.system_sql('ALTER TABLE %s DROP COLUMN %s' % (table, column),
+                               rollback_on_failure=False)
+                self.info('dropped column %s from table %s', column, table)
+            else:
+                # not supported by sqlite for instance
+                self.error('dropping column not supported by the backend, handle '
+                           'it yourself (%s.%s)', table, column)
 
     # XXX revertprecommit_event
 
@@ -208,7 +210,7 @@ class MemSchemaNotifyChanges(hook.SingleLastOperation):
             repo.set_schema(repo.schema)
             # CWUser class might have changed, update current session users
             cwuser_cls = self.cnx.vreg['etypes'].etype_class('CWUser')
-            for session in repo._sessions.itervalues():
+            for session in repo._sessions.values():
                 session.user.__class__ = cwuser_cls
         except Exception:
             self.critical('error while setting schema', exc_info=True)
@@ -330,7 +332,7 @@ class CWRTypeUpdateOp(MemSchemaOperation):
         self.oldvalues = dict( (attr, getattr(rschema, attr)) for attr in self.values)
         self.rschema.__dict__.update(self.values)
         # then make necessary changes to the system source database
-        if not 'inlined' in self.values:
+        if 'inlined' not in self.values:
             return # nothing to do
         inlined = self.values['inlined']
         # check in-lining is possible when inlined
@@ -360,8 +362,7 @@ class CWRTypeUpdateOp(MemSchemaOperation):
             # drop existant columns
             #if cnx.repo.system_source.dbhelper.alter_column_support:
             for etype in rschema.subjects():
-                DropColumn(cnx, table=SQL_PREFIX + str(etype),
-                           column=SQL_PREFIX + rtype)
+                DropColumn.get_instance(cnx).add_data((str(etype), rtype))
         else:
             for etype in rschema.subjects():
                 try:
@@ -606,10 +607,24 @@ class RDefDelOp(MemSchemaOperation):
             if rset[0][0] == 0 and not cnx.deleted_in_transaction(rdef.subject.eid):
                 ptypes = cnx.transaction_data.setdefault('pendingrtypes', set())
                 ptypes.add(rschema.type)
-                DropColumn(cnx, table=SQL_PREFIX + str(rdef.subject),
-                           column=SQL_PREFIX + str(rschema))
+                DropColumn.get_instance(cnx).add_data((str(rdef.subject), str(rschema)))
+            elif rschema.inlined:
+                cnx.system_sql('UPDATE %s%s SET %s%s=NULL WHERE '
+                               'EXISTS(SELECT 1 FROM entities '
+                               '       WHERE eid=%s%s AND type=%%(to_etype)s)'
+                               % (SQL_PREFIX, rdef.subject, SQL_PREFIX, rdef.rtype,
+                                  SQL_PREFIX, rdef.rtype),
+                               {'to_etype': rdef.object.type})
         elif lastrel:
             DropRelationTable(cnx, str(rschema))
+        else:
+            cnx.system_sql('DELETE FROM %s_relation WHERE '
+                           'EXISTS(SELECT 1 FROM entities '
+                           '       WHERE eid=eid_from AND type=%%(from_etype)s)'
+                           ' AND EXISTS(SELECT 1 FROM entities '
+                           '       WHERE eid=eid_to AND type=%%(to_etype)s)'
+                           % rschema,
+                           {'from_etype': rdef.subject.type, 'to_etype': rdef.object.type})
         # then update the in-memory schema
         if rdef.subject not in ETYPE_NAME_MAP and rdef.object not in ETYPE_NAME_MAP:
             rschema.del_relation_def(rdef.subject, rdef.object)
@@ -647,8 +662,7 @@ class RDefUpdateOp(MemSchemaOperation):
         if 'indexed' in self.values:
             syssource.update_rdef_indexed(cnx, rdef)
             self.indexed_changed = True
-        if 'cardinality' in self.values and (rdef.rtype.final or
-                                             rdef.rtype.inlined) \
+        if 'cardinality' in self.values and rdef.rtype.final \
               and self.values['cardinality'][0] != self.oldvalues['cardinality'][0]:
             syssource.update_rdef_null_allowed(self.cnx, rdef)
             self.null_allowed_changed = True
@@ -717,8 +731,8 @@ class CWConstraintDelOp(MemSchemaOperation):
             syssource.update_rdef_unique(cnx, rdef)
             self.unique_changed = True
         if cstrtype in ('BoundaryConstraint', 'IntervalBoundConstraint', 'StaticVocabularyConstraint'):
-            cstrname = 'cstr' + md5(rdef.subject.type + rdef.rtype.type + cstrtype +
-                                    (self.oldcstr.serialize() or '')).hexdigest()
+            cstrname = 'cstr' + md5((rdef.subject.type + rdef.rtype.type + cstrtype +
+                                     (self.oldcstr.serialize() or '')).encode('utf-8')).hexdigest()
             cnx.system_sql('ALTER TABLE %s%s DROP CONSTRAINT %s' % (SQL_PREFIX, rdef.subject.type, cstrname))
 
     def revertprecommit_event(self):
@@ -749,7 +763,10 @@ class CWConstraintAddOp(CWConstraintDelOp):
             return
         rdef = self.rdef = cnx.vreg.schema.schema_by_eid(rdefentity.eid)
         cstrtype = self.entity.type
-        oldcstr = self.oldcstr = rdef.constraint_by_type(cstrtype)
+        if cstrtype in UNIQUE_CONSTRAINTS:
+            oldcstr = self.oldcstr = rdef.constraint_by_type(cstrtype)
+        else:
+            oldcstr = None
         newcstr = self.newcstr = CONSTRAINTS[cstrtype].deserialize(self.entity.value)
         # in-place modification of in-memory schema first
         _set_modifiable_constraints(rdef)
@@ -769,8 +786,8 @@ class CWConstraintAddOp(CWConstraintDelOp):
             self.unique_changed = True
         if cstrtype in ('BoundaryConstraint', 'IntervalBoundConstraint', 'StaticVocabularyConstraint'):
             if oldcstr is not None:
-                oldcstrname = 'cstr' + md5(rdef.subject.type + rdef.rtype.type + cstrtype +
-                                           (self.oldcstr.serialize() or '')).hexdigest()
+                oldcstrname = 'cstr' + md5((rdef.subject.type + rdef.rtype.type + cstrtype +
+                                            (self.oldcstr.serialize() or '')).encode('ascii')).hexdigest()
                 cnx.system_sql('ALTER TABLE %s%s DROP CONSTRAINT %s' %
                                (SQL_PREFIX, rdef.subject.type, oldcstrname))
             cstrname, check = y2sql.check_constraint(rdef.subject, rdef.object, rdef.rtype.type,
@@ -905,11 +922,6 @@ class MemSchemaPermissionDel(MemSchemaPermissionAdd):
             # duh, schema not found, log error and skip operation
             self.warning('no schema for %s', self.eid)
             return
-        if isinstance(erschema, RelationSchema): # XXX 3.6 migration
-            return
-        if isinstance(erschema, RelationDefinitionSchema) and \
-               self.action in ('delete', 'add'): # XXX 3.6.1 migration
-            return
         perms = list(erschema.action_permissions(self.action))
         if self.group_eid is not None:
             perm = self.cnx.entity_from_eid(self.group_eid).name
@@ -972,7 +984,6 @@ class DelCWETypeHook(SyncSchemaHook):
             raise validation_error(self.entity, {None: _("can't be deleted")})
         # delete every entities of this type
         if name not in ETYPE_NAME_MAP:
-            self._cw.execute('DELETE %s X' % name)
             MemSchemaCWETypeDel(self._cw, etype=name)
         DropTable(self._cw, table=SQL_PREFIX + name)
 
@@ -1155,10 +1166,6 @@ class AfterDelRelationTypeHook(SyncSchemaHook):
         else:
             rdeftype = 'CWRelation'
             pendingrdefs.add((subjschema, rschema, objschema))
-            if not (cnx.deleted_in_transaction(subjschema.eid) or
-                    cnx.deleted_in_transaction(objschema.eid)):
-                cnx.execute('DELETE X %s Y WHERE X is %s, Y is %s'
-                                % (rschema, subjschema, objschema))
         RDefDelOp(cnx, rdef=rdef)
 
 

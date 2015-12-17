@@ -119,9 +119,11 @@ checking for dark-corner case where it can't be verified properly.
 """
 
 __docformat__ = "restructuredtext en"
-_ = unicode
+from cubicweb import _
 
 from warnings import warn
+
+from six.moves import range
 
 from logilab.mtconverter import xml_escape
 from logilab.common.decorators import iclassmethod, cached
@@ -355,7 +357,7 @@ class InlineEntityCreationFormView(InlineEntityEditionFormView):
             self.w(self._cw._('no such entity type %s') % self.etype)
             return
         entity = cls(self._cw)
-        entity.eid = self._cw.varmaker.next()
+        entity.eid = next(self._cw.varmaker)
         return entity
 
     def call(self, i18nctx, **kwargs):
@@ -491,7 +493,8 @@ def _remove_pending(req, eidfrom, rel, eidto, kind):
     pendings.remove( (int(eidfrom), rel, int(eidto)) )
 
 @ajaxfunc(output_type='json')
-def remove_pending_insert(self, (eidfrom, rel, eidto)):
+def remove_pending_insert(self, args):
+    eidfrom, rel, eidto = args
     _remove_pending(self._cw, eidfrom, rel, eidto, 'insert')
 
 @ajaxfunc(output_type='json')
@@ -500,11 +503,13 @@ def add_pending_inserts(self, tripletlist):
         _add_pending(self._cw, eidfrom, rel, eidto, 'insert')
 
 @ajaxfunc(output_type='json')
-def remove_pending_delete(self, (eidfrom, rel, eidto)):
+def remove_pending_delete(self, args):
+    eidfrom, rel, eidto = args
     _remove_pending(self._cw, eidfrom, rel, eidto, 'delete')
 
 @ajaxfunc(output_type='json')
-def add_pending_delete(self, (eidfrom, rel, eidto)):
+def add_pending_delete(self, args):
+    eidfrom, rel, eidto = args
     _add_pending(self._cw, eidfrom, rel, eidto, 'delete')
 
 
@@ -608,7 +613,7 @@ class GenericRelationsField(ff.Field):
                     toggleable_rel_link_func = toggleable_relation_link
                 else:
                     toggleable_rel_link_func = lambda x, y, z: u''
-                for row in xrange(rset.rowcount):
+                for row in range(rset.rowcount):
                     nodeid = relation_id(entity.eid, rschema, role,
                                          rset[row][0])
                     if nodeid in pending_deletes:
@@ -737,7 +742,8 @@ class AutomaticEntityForm(forms.EntityFieldsForm):
     copy_nav_params = True
     form_buttons = [fw.SubmitButton(),
                     fw.Button(stdmsgs.BUTTON_APPLY, cwaction='apply'),
-                    fw.Button(stdmsgs.BUTTON_CANCEL, cwaction='cancel')]
+                    fw.Button(stdmsgs.BUTTON_CANCEL,
+                              {'class': fw.Button.css_class + ' cwjs-edition-cancel'})]
     # for attributes selection when searching in uicfg.autoform_section
     formtype = 'main'
     # set this to a list of [(relation, role)] if you want to explictily tell
@@ -1048,4 +1054,4 @@ def registration_callback(vreg):
             AutomaticEntityForm.error('field for %s %s may not be found in schema' % (rtype, role))
             return None
 
-    vreg.register_all(globals().itervalues(), __name__)
+    vreg.register_all(globals().values(), __name__)

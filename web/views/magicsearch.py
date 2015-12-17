@@ -23,6 +23,8 @@ __docformat__ = "restructuredtext en"
 import re
 from logging import getLogger
 
+from six import text_type
+
 from yams.interfaces import IVocabularyConstraint
 
 from rql import RQLSyntaxError, BadRQLQuery, parse
@@ -86,7 +88,7 @@ def translate_rql_tree(rqlst, translations, schema):
             else:
                 # Only one possible translation, no ambiguity
                 if len(translation_set) == 1:
-                    relation.r_type = iter(translations[rtype]).next()
+                    relation.r_type = next(iter(translations[rtype]))
                 # More than 1 possible translation => resolve it later
                 else:
                     ambiguous_nodes[relation] = (lhs.name, translation_set)
@@ -386,7 +388,7 @@ class MagicSearchComponent(Component):
         self.processors = sorted(processors, key=lambda x: x.priority)
 
     def process_query(self, uquery):
-        assert isinstance(uquery, unicode)
+        assert isinstance(uquery, text_type)
         try:
             procname, query = uquery.split(':', 1)
             proc = self.by_name[procname.strip().lower()]
@@ -589,7 +591,7 @@ class RQLSuggestionsBuilder(Component):
         """
         schema = self._cw.vreg.schema
         relations = set()
-        untyped_dest_var = rqlvar_maker(defined=select.defined_vars).next()
+        untyped_dest_var = next(rqlvar_maker(defined=select.defined_vars))
         # for each solution
         # 1. find each possible relation
         # 2. for each relation:
@@ -643,7 +645,7 @@ class RQLSuggestionsBuilder(Component):
                 vocab_kwargs = {}
                 if rtype_incomplete_value:
                     vocab_rql += ', X %s LIKE %%(value)s' % user_rtype
-                    vocab_kwargs['value'] = '%s%%' % rtype_incomplete_value
+                    vocab_kwargs['value'] = u'%s%%' % rtype_incomplete_value
                 vocab += [value for value, in
                           self._cw.execute(vocab_rql, vocab_kwargs)]
         return sorted(set(vocab))

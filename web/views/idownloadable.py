@@ -20,7 +20,9 @@ Specific views for entities adapting to IDownloadable
 =====================================================
 """
 __docformat__ = "restructuredtext en"
-_ = unicode
+from cubicweb import _
+
+from six.moves import range
 
 from logilab.mtconverter import BINARY_ENCODINGS, TransformError, xml_escape
 from logilab.common.deprecation import class_renamed, deprecated
@@ -166,7 +168,7 @@ class AbstractEmbeddedView(EntityView):
 
     def call(self, **kwargs):
         rset = self.cw_rset
-        for i in xrange(len(rset)):
+        for i in range(len(rset)):
             self.w(u'<div class="efile">')
             self.wview(self.__regid__, rset, row=i, col=0, **kwargs)
             self.w(u'</div>')
@@ -199,6 +201,3 @@ class EHTMLView(AbstractEmbeddedView):
 
     title = _('embedded html')
     _embedding_tag = tags.iframe
-
-
-

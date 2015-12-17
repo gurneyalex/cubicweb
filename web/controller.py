@@ -19,6 +19,8 @@
 
 __docformat__ = "restructuredtext en"
 
+from six import PY2
+
 from logilab.mtconverter import xml_escape
 from logilab.common.registry import yes
 from logilab.common.deprecation import deprecated
@@ -87,7 +89,7 @@ class Controller(AppObject):
         rql = req.form.get('rql')
         if rql:
             req.ensure_ro_rql(rql)
-            if not isinstance(rql, unicode):
+            if PY2 and not isinstance(rql, unicode):
                 rql = unicode(rql, req.encoding)
             pp = req.vreg['components'].select_or_none('magicsearch', req)
             if pp is not None:
@@ -132,8 +134,6 @@ class Controller(AppObject):
             newparams['_cwmsgid'] = self._cw.set_redirect_message(msg)
         if '__action_apply' in self._cw.form:
             self._return_to_edition_view(newparams)
-        if '__action_cancel' in self._cw.form:
-            self._return_to_lastpage(newparams)
         else:
             self._return_to_original_view(newparams)
 
@@ -155,7 +155,7 @@ class Controller(AppObject):
                 and '_cwmsgid' in newparams):
                 # are we here on creation or modification?
                 if any(eid == self._edited_entity.eid
-                       for eid in self._cw.data.get('eidmap', {}).itervalues()):
+                       for eid in self._cw.data.get('eidmap', {}).values()):
                     msg = self._cw._('click here to see created entity')
                 else:
                     msg = self._cw._('click here to see edited entity')
@@ -201,11 +201,9 @@ class Controller(AppObject):
         raise Redirect(self._cw.build_url(path, **newparams))
 
 
-    def _return_to_lastpage(self, newparams):
-        """cancel-button case: in this case we are always expecting to go back
-        where we came from, and this is not easy. Currently we suppose that
-        __redirectpath is specifying that place if found, else we look in the
-        request breadcrumbs for the last visited page.
+    def _redirect(self, newparams):
+        """Raise a redirect. We use __redirectpath if it specified, else we
+        return to the home page.
         """
         if '__redirectpath' in self._cw.form:
             # if redirect path was explicitly specified in the form, use it
@@ -213,7 +211,7 @@ class Controller(AppObject):
             url = self._cw.build_url(path)
             url = append_url_params(url, self._cw.form.get('__redirectparams'))
         else:
-            url = self._cw.last_visited_page()
+            url = self._cw.base_url()
         # The newparams must update the params in all cases
         url = self._cw.rebuild_url(url, **newparams)
         raise Redirect(url)
@@ -221,4 +219,3 @@ class Controller(AppObject):
 
 from cubicweb import set_log_methods
 set_log_methods(Controller, LOGGER)
-

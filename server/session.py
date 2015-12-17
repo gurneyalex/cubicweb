@@ -16,6 +16,8 @@
 # You should have received a copy of the GNU Lesser General Public License along
 # with CubicWeb.  If not, see <http://www.gnu.org/licenses/>.
 """Repository users' and internal' sessions."""
+from __future__ import print_function
+
 __docformat__ = "restructuredtext en"
 
 import sys
@@ -24,6 +26,8 @@ from uuid import uuid4
 from warnings import warn
 import functools
 from contextlib import contextmanager
+
+from six import text_type
 
 from logilab.common.deprecation import deprecated
 from logilab.common.textutils import unormalize
@@ -556,7 +560,7 @@ class Connection(RequestSessionBase):
                 else:
                     relations_dict[rtype] = eids
             self.repo.glob_add_relations(self, relations_dict)
-            for edited in edited_entities.itervalues():
+            for edited in edited_entities.values():
                 self.repo.glob_update_entity(self, edited)
 
 
@@ -769,7 +773,7 @@ class Connection(RequestSessionBase):
     def transaction_uuid(self, set=True):
         uuid = self.transaction_data.get('tx_uuid')
         if set and uuid is None:
-            self.transaction_data['tx_uuid'] = uuid = unicode(uuid4().hex)
+            self.transaction_data['tx_uuid'] = uuid = text_type(uuid4().hex)
             self.repo.system_source.start_undoable_transaction(self, uuid)
         return uuid
 
@@ -874,7 +878,7 @@ class Connection(RequestSessionBase):
                 processed = []
                 self.commit_state = 'precommit'
                 if debug:
-                    print self.commit_state, '*' * 20
+                    print(self.commit_state, '*' * 20)
                 try:
                     with self.running_hooks_ops():
                         while self.pending_operations:
@@ -882,7 +886,7 @@ class Connection(RequestSessionBase):
                             operation.processed = 'precommit'
                             processed.append(operation)
                             if debug:
-                                print operation
+                                print(operation)
                             operation.handle_event('precommit_event')
                     self.pending_operations[:] = processed
                     self.debug('precommit transaction %s done', self.connectionid)
@@ -899,11 +903,11 @@ class Connection(RequestSessionBase):
                     # and revertcommit, that will be enough in mont case.
                     operation.failed = True
                     if debug:
-                        print self.commit_state, '*' * 20
+                        print(self.commit_state, '*' * 20)
                     with self.running_hooks_ops():
                         for operation in reversed(processed):
                             if debug:
-                                print operation
+                                print(operation)
                             try:
                                 operation.handle_event('revertprecommit_event')
                             except BaseException:
@@ -917,12 +921,12 @@ class Connection(RequestSessionBase):
                 self.cnxset.commit()
                 self.commit_state = 'postcommit'
                 if debug:
-                    print self.commit_state, '*' * 20
+                    print(self.commit_state, '*' * 20)
                 with self.running_hooks_ops():
                     while self.pending_operations:
                         operation = self.pending_operations.pop(0)
                         if debug:
-                            print operation
+                            print(operation)
                         operation.processed = 'postcommit'
                         try:
                             operation.handle_event('postcommit_event')
@@ -1004,7 +1008,7 @@ class Session(object):
     """
 
     def __init__(self, user, repo, cnxprops=None, _id=None):
-        self.sessionid = _id or make_uid(unormalize(user.login).encode('UTF8'))
+        self.sessionid = _id or make_uid(unormalize(user.login))
         self.user = user # XXX repoapi: deprecated and store only a login.
         self.repo = repo
         self.vreg = repo.vreg

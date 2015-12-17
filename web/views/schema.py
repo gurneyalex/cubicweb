@@ -18,13 +18,15 @@
 """Specific views for schema related entities"""
 
 __docformat__ = "restructuredtext en"
-_ = unicode
+from cubicweb import _
 
 from itertools import cycle
 
 import tempfile
 import os, os.path as osp
 import codecs
+
+from six import text_type
 
 from logilab.common.graph import GraphGenerator, DotBackend
 from logilab.common.ureports import Section, Table
@@ -114,7 +116,7 @@ class SecurityViewMixIn(object):
     def grouped_permissions_table(self, rschema):
         # group relation definitions with identical permissions
         perms = {}
-        for rdef in rschema.rdefs.itervalues():
+        for rdef in rschema.rdefs.values():
             rdef_perms = []
             for action in rdef.ACTIONS:
                 groups = sorted(rdef.get_groups(action))
@@ -131,7 +133,7 @@ class SecurityViewMixIn(object):
         _ = self._cw._
         w(u'<div style="margin: 0px 1.5em">')
         tmpl = u'<strong>%s</strong> %s <strong>%s</strong>'
-        for perm, rdefs in perms.iteritems():
+        for perm, rdefs in perms.items():
             w(u'<div>%s</div>' % u', '.join(
                 tmpl % (_(s.type), _(rschema.type), _(o.type)) for s, o in rdefs))
             # accessing rdef from previous loop by design: only used to get
@@ -279,7 +281,7 @@ class CWETypeAttributeDefaultValCell(baseviews.FinalView):
     def cell_call(self, row, col):
         defaultval = self.cw_rset.rows[row][col]
         if defaultval is not None:
-            self.w(unicode(self.cw_rset.rows[row][col].unzpickle()))
+            self.w(text_type(self.cw_rset.rows[row][col].unzpickle()))
 
 class CWETypeRelationCardinalityCell(baseviews.FinalView):
     __regid__ = 'etype-rel-cardinality-cell'
@@ -487,7 +489,7 @@ class RDEFConstraintsCell(EntityView):
         entity = self.cw_rset.get_entity(row, col)
         rschema = self._cw.vreg.schema.rschema(entity.rtype.name)
         rdef = rschema.rdefs[(entity.stype.name, entity.otype.name)]
-        constraints = [xml_escape(unicode(c)) for c in getattr(rdef, 'constraints')]
+        constraints = [xml_escape(text_type(c)) for c in getattr(rdef, 'constraints')]
         self.w(u'<br/>'.join(constraints))
 
 class CWAttributeOptionsCell(EntityView):
@@ -557,8 +559,9 @@ class CWSchemaDotPropsHandler(s2d.SchemaDotPropsHandler):
     def __init__(self, visitor, cw):
         self.visitor = visitor
         self.cw = cw
-        self.nextcolor = cycle( ('#ff7700', '#000000',
-                                 '#ebbc69', '#888888') ).next
+        self._cycle = iter(cycle(('#ff7700', '#000000', '#ebbc69', '#888888')))
+        self.nextcolor = lambda: next(self._cycle)
+
         self.colors = {}
 
     def node_properties(self, eschema):

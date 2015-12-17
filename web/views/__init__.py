@@ -23,6 +23,8 @@ import os
 import sys
 import tempfile
 
+from six import add_metaclass
+
 from rql import nodes
 from logilab.mtconverter import xml_escape
 from logilab.common.deprecation import class_deprecated
@@ -77,7 +79,7 @@ VID_BY_MIMETYPE = {
     #'text/xml': 'xml',
     # XXX rss, owl...
 }
-def vid_from_rset(req, rset, schema):
+def vid_from_rset(req, rset, schema, check_table=True):
     """given a result set, return a view id"""
     if rset is None:
         return 'index'
@@ -90,7 +92,7 @@ def vid_from_rset(req, rset, schema):
         return 'noresult'
     # entity result set
     if not schema.eschema(rset.description[0][0]).final:
-        if need_table_view(rset, schema):
+        if check_table and need_table_view(rset, schema):
             return 'table'
         if nb_rows == 1:
             if req.search_state[0] == 'normal':
@@ -127,8 +129,8 @@ def add_etype_button(req, etype, csscls='addButton right', **urlkwargs):
 
 
 
+@add_metaclass(class_deprecated)
 class TmpFileViewMixin(object):
-    __metaclass__ = class_deprecated
     __deprecation_warning__ = '[3.18] %(cls)s is deprecated'
     binary = True
     content_type = 'application/octet-stream'

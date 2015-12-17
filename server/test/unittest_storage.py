@@ -17,12 +17,15 @@
 # with CubicWeb.  If not, see <http://www.gnu.org/licenses/>.
 """unit tests for module cubicweb.server.sources.storages"""
 
+from six import PY2
+
 from logilab.common.testlib import unittest_main, tag, Tags
 from cubicweb.devtools.testlib import CubicWebTC
 
 from glob import glob
 import os
 import os.path as osp
+import sys
 import shutil
 import tempfile
 
@@ -57,24 +60,26 @@ class StorageTC(CubicWebTC):
     def setup_database(self):
         self.tempdir = tempfile.mkdtemp()
         bfs_storage = storages.BytesFileSystemStorage(self.tempdir)
+        self.bfs_storage = bfs_storage
         storages.set_attribute_storage(self.repo, 'File', 'data', bfs_storage)
         storages.set_attribute_storage(self.repo, 'BFSSTestable', 'opt_attr', bfs_storage)
 
     def tearDown(self):
         super(StorageTC, self).tearDown()
         storages.unset_attribute_storage(self.repo, 'File', 'data')
+        del self.bfs_storage
         shutil.rmtree(self.tempdir)
 
 
-    def create_file(self, cnx, content='the-data'):
+    def create_file(self, cnx, content=b'the-data'):
         return cnx.create_entity('File', data=Binary(content),
                                  data_format=u'text/plain',
                                  data_name=u'foo.pdf')
 
     def fspath(self, cnx, entity):
         fspath = cnx.execute('Any fspath(D) WHERE F eid %(f)s, F data D',
-                             {'f': entity.eid})[0][0]
-        return fspath.getvalue()
+                             {'f': entity.eid})[0][0].getvalue()
+        return fspath if PY2 else fspath.decode('utf-8')
 
     def test_bfss_wrong_fspath_usage(self):
         with self.admin_access.repo_cnx() as cnx:
@@ -109,7 +114,7 @@ class StorageTC(CubicWebTC):
 
             # add f1 back to the entity cache with req as _cw
             f1 = req.entity_from_eid(f1.eid)
-            f1.cw_set(data=Binary('the new data'))
+            f1.cw_set(data=Binary(b'the new data'))
             cnx.rollback()
             self.assertEqual(open(expected_filepath).read(), 'the-data')
             f1.cw_delete()
@@ -132,7 +137,7 @@ class StorageTC(CubicWebTC):
         with self.admin_access.repo_cnx() as cnx:
             cnx.transaction_data['fs_importing'] = True
             filepath = osp.abspath(__file__)
-            f1 = cnx.create_entity('File', data=Binary(filepath),
+            f1 = cnx.create_entity('File', data=Binary(filepath.encode(sys.getfilesystemencoding())),
                                    data_format=u'text/plain', data_name=u'foo')
             self.assertEqual(self.fspath(cnx, f1), filepath)
 
@@ -185,8 +190,8 @@ class StorageTC(CubicWebTC):
             self.assertEqual(len(rset), 2)
             self.assertEqual(rset[0][0], f1.eid)
             self.assertEqual(rset[1][0], f1.eid)
-            self.assertEqual(rset[0][1].getvalue(), 'the-data')
-            self.assertEqual(rset[1][1].getvalue(), 'the-data')
+            self.assertEqual(rset[0][1].getvalue(), b'the-data')
+            self.assertEqual(rset[1][1].getvalue(), b'the-data')
             rset = cnx.execute('Any X,LENGTH(D) WHERE X eid %(x)s, X data D',
                                 {'x': f1.eid})
             self.assertEqual(len(rset), 1)
@@ -212,31 +217,31 @@ class StorageTC(CubicWebTC):
         with self.admin_access.repo_cnx() as cnx:
             cnx.transaction_data['fs_importing'] = True
             filepath = osp.abspath(__file__)
-            f1 = cnx.create_entity('File', data=Binary(filepath),
+            f1 = cnx.create_entity('File', data=Binary(filepath.encode(sys.getfilesystemencoding())),
                                    data_format=u'text/plain', data_name=u'foo')
             cw_value = f1.data.getvalue()
-            fs_value = file(filepath).read()
+            fs_value = open(filepath, 'rb').read()
             if cw_value != fs_value:
                 self.fail('cw value %r is different from file content' % cw_value)
 
     @tag('update')
     def test_bfss_update_with_existing_data(self):
         with self.admin_access.repo_cnx() as cnx:
-            f1 = cnx.create_entity('File', data=Binary('some data'),
+            f1 = cnx.create_entity('File', data=Binary(b'some data'),
                                    data_format=u'text/plain', data_name=u'foo')
             # NOTE: do not use cw_set() which would automatically
             #       update f1's local dict. We want the pure rql version to work
             cnx.execute('SET F data %(d)s WHERE F eid %(f)s',
-                         {'d': Binary('some other data'), 'f': f1.eid})
-            self.assertEqual(f1.data.getvalue(), 'some other data')
+                         {'d': Binary(b'some other data'), 'f': f1.eid})
+            self.assertEqual(f1.data.getvalue(), b'some other data')
             cnx.commit()
             f2 = cnx.execute('Any F WHERE F eid %(f)s, F is File', {'f': f1.eid}).get_entity(0, 0)
-            self.assertEqual(f2.data.getvalue(), 'some other data')
+            self.assertEqual(f2.data.getvalue(), b'some other data')
 
     @tag('update', 'extension', 'commit')
     def test_bfss_update_with_different_extension_commited(self):
         with self.admin_access.repo_cnx() as cnx:
-            f1 = cnx.create_entity('File', data=Binary('some data'),
+            f1 = cnx.create_entity('File', data=Binary(b'some data'),
                                    data_format=u'text/plain', data_name=u'foo.txt')
             # NOTE: do not use cw_set() which would automatically
             #       update f1's local dict. We want the pure rql version to work
@@ -246,7 +251,7 @@ class StorageTC(CubicWebTC):
             self.assertEqual(osp.splitext(old_path)[1], '.txt')
             cnx.execute('SET F data %(d)s, F data_name %(dn)s, '
                          'F data_format %(df)s WHERE F eid %(f)s',
-                         {'d': Binary('some other data'), 'f': f1.eid,
+                         {'d': Binary(b'some other data'), 'f': f1.eid,
                           'dn': u'bar.jpg', 'df': u'image/jpeg'})
             cnx.commit()
             # the new file exists with correct extension
@@ -260,7 +265,7 @@ class StorageTC(CubicWebTC):
     @tag('update', 'extension', 'rollback')
     def test_bfss_update_with_different_extension_rolled_back(self):
         with self.admin_access.repo_cnx() as cnx:
-            f1 = cnx.create_entity('File', data=Binary('some data'),
+            f1 = cnx.create_entity('File', data=Binary(b'some data'),
                                    data_format=u'text/plain', data_name=u'foo.txt')
             # NOTE: do not use cw_set() which would automatically
             #       update f1's local dict. We want the pure rql version to work
@@ -271,7 +276,7 @@ class StorageTC(CubicWebTC):
             self.assertEqual(osp.splitext(old_path)[1], '.txt')
             cnx.execute('SET F data %(d)s, F data_name %(dn)s, '
                          'F data_format %(df)s WHERE F eid %(f)s',
-                         {'d': Binary('some other data'),
+                         {'d': Binary(b'some other data'),
                           'f': f1.eid,
                           'dn': u'bar.jpg',
                           'df': u'image/jpeg'})
@@ -290,7 +295,7 @@ class StorageTC(CubicWebTC):
     @tag('update', 'NULL')
     def test_bfss_update_to_None(self):
         with self.admin_access.repo_cnx() as cnx:
-            f = cnx.create_entity('Affaire', opt_attr=Binary('toto'))
+            f = cnx.create_entity('Affaire', opt_attr=Binary(b'toto'))
             cnx.commit()
             f.cw_set(opt_attr=None)
             cnx.commit()
@@ -298,17 +303,17 @@ class StorageTC(CubicWebTC):
     @tag('fs_importing', 'update')
     def test_bfss_update_with_fs_importing(self):
         with self.admin_access.repo_cnx() as cnx:
-            f1 = cnx.create_entity('File', data=Binary('some data'),
+            f1 = cnx.create_entity('File', data=Binary(b'some data'),
                                    data_format=u'text/plain',
                                    data_name=u'foo')
             old_fspath = self.fspath(cnx, f1)
             cnx.transaction_data['fs_importing'] = True
             new_fspath = osp.join(self.tempdir, 'newfile.txt')
-            file(new_fspath, 'w').write('the new data')
+            open(new_fspath, 'w').write('the new data')
             cnx.execute('SET F data %(d)s WHERE F eid %(f)s',
-                         {'d': Binary(new_fspath), 'f': f1.eid})
+                         {'d': Binary(new_fspath.encode(sys.getfilesystemencoding())), 'f': f1.eid})
             cnx.commit()
-            self.assertEqual(f1.data.getvalue(), 'the new data')
+            self.assertEqual(f1.data.getvalue(), b'the new data')
             self.assertEqual(self.fspath(cnx, f1), new_fspath)
             self.assertFalse(osp.isfile(old_fspath))
 

@@ -16,15 +16,18 @@
 # You should have received a copy of the GNU Lesser General Public License along
 # with CubicWeb.  If not, see <http://www.gnu.org/licenses/>.
 """Postgres specific store"""
+from __future__ import print_function
 
 import warnings
-import cPickle
 import os.path as osp
-from StringIO import StringIO
+from io import StringIO
 from time import asctime
 from datetime import date, datetime, time
 from collections import defaultdict
 from base64 import b64encode
+
+from six import string_types, integer_types, text_type
+from six.moves import cPickle as pickle, range
 
 from cubicweb.utils import make_uid
 from cubicweb.server.utils import eschema_eid
@@ -48,9 +51,9 @@ def _execmany_thread_copy_from(cu, statement, data, table,
         _execmany_thread_not_copy_from(cu, statement, data)
     else:
         if columns is None:
-            cu.copy_from(buf, table, null='NULL')
+            cu.copy_from(buf, table, null=u'NULL')
         else:
-            cu.copy_from(buf, table, null='NULL', columns=columns)
+            cu.copy_from(buf, table, null=u'NULL', columns=columns)
 
 def _execmany_thread(sql_connect, statements, dump_output_dir=None,
                      support_copy_from=True, encoding='utf-8'):
@@ -79,7 +82,7 @@ def _execmany_thread(sql_connect, statements, dump_output_dir=None,
                     columns = list(data[0])
                 execmany_func(cu, statement, data, table, columns, encoding)
             except Exception:
-                print 'unable to copy data into table %s' % table
+                print('unable to copy data into table %s' % table)
                 # Error in import statement, save data in dump_output_dir
                 if dump_output_dir is not None:
                     pdata = {'data': data, 'statement': statement,
@@ -87,11 +90,10 @@ def _execmany_thread(sql_connect, statements, dump_output_dir=None,
                     filename = make_uid()
                     try:
                         with open(osp.join(dump_output_dir,
-                                           '%s.pickle' % filename), 'w') as fobj:
-                            fobj.write(cPickle.dumps(pdata))
+                                           '%s.pickle' % filename), 'wb') as fobj:
+                            pickle.dump(pdata, fobj)
                     except IOError:
-                        print 'ERROR while pickling in', dump_output_dir, filename+'.pickle'
-                        pass
+                        print('ERROR while pickling in', dump_output_dir, filename+'.pickle')
                 cnx.rollback()
                 raise
     finally:
@@ -101,50 +103,44 @@ def _execmany_thread(sql_connect, statements, dump_output_dir=None,
 
 def _copyfrom_buffer_convert_None(value, **opts):
     '''Convert None value to "NULL"'''
-    return 'NULL'
+    return u'NULL'
 
 def _copyfrom_buffer_convert_number(value, **opts):
     '''Convert a number into its string representation'''
-    return str(value)
+    return text_type(value)
 
 def _copyfrom_buffer_convert_string(value, **opts):
     '''Convert string value.
-
-    Recognized keywords:
-    :encoding: resulting string encoding (default: utf-8)
     '''
-    encoding = opts.get('encoding','utf-8')
-    escape_chars = ((u'\\', ur'\\'), (u'\t', u'\\t'), (u'\r', u'\\r'),
+    escape_chars = ((u'\\', u'\\\\'), (u'\t', u'\\t'), (u'\r', u'\\r'),
                     (u'\n', u'\\n'))
     for char, replace in escape_chars:
         value = value.replace(char, replace)
-    if isinstance(value, unicode):
-        value = value.encode(encoding)
     return value
 
 def _copyfrom_buffer_convert_date(value, **opts):
     '''Convert date into "YYYY-MM-DD"'''
     # Do not use strftime, as it yields issue with date < 1900
     # (http://bugs.python.org/issue1777412)
-    return '%04d-%02d-%02d' % (value.year, value.month, value.day)
+    return u'%04d-%02d-%02d' % (value.year, value.month, value.day)
 
 def _copyfrom_buffer_convert_datetime(value, **opts):
     '''Convert date into "YYYY-MM-DD HH:MM:SS.UUUUUU"'''
     # Do not use strftime, as it yields issue with date < 1900
     # (http://bugs.python.org/issue1777412)
-    return '%s %s' % (_copyfrom_buffer_convert_date(value, **opts),
-                      _copyfrom_buffer_convert_time(value, **opts))
+    return u'%s %s' % (_copyfrom_buffer_convert_date(value, **opts),
+                       _copyfrom_buffer_convert_time(value, **opts))
 
 def _copyfrom_buffer_convert_time(value, **opts):
     '''Convert time into "HH:MM:SS.UUUUUU"'''
-    return '%02d:%02d:%02d.%06d' % (value.hour, value.minute,
-                                    value.second, value.microsecond)
+    return u'%02d:%02d:%02d.%06d' % (value.hour, value.minute,
+                                     value.second, value.microsecond)
 
 # (types, converter) list.
 _COPYFROM_BUFFER_CONVERTERS = [
     (type(None), _copyfrom_buffer_convert_None),
-    ((long, int, float), _copyfrom_buffer_convert_number),
-    (basestring, _copyfrom_buffer_convert_string),
+    (integer_types + (float,), _copyfrom_buffer_convert_number),
+    (string_types, _copyfrom_buffer_convert_string),
     (datetime, _copyfrom_buffer_convert_datetime),
     (date, _copyfrom_buffer_convert_date),
     (time, _copyfrom_buffer_convert_time),
@@ -164,7 +160,7 @@ def _create_copyfrom_buffer(data, columns=None, **convert_opts):
     rows = []
     if columns is None:
         if isinstance(data[0], (tuple, list)):
-            columns = range(len(data[0]))
+            columns = list(range(len(data[0])))
         elif isinstance(data[0], dict):
             columns = data[0].keys()
         else:
@@ -188,6 +184,7 @@ def _create_copyfrom_buffer(data, columns=None, **convert_opts):
             for types, converter in _COPYFROM_BUFFER_CONVERTERS:
                 if isinstance(value, types):
                     value = converter(value, **convert_opts)
+                    assert isinstance(value, text_type)
                     break
             else:
                 raise ValueError("Unsupported value type %s" % type(value))
@@ -310,7 +307,7 @@ class SQLGenSourceWrapper(object):
         self._sql_eid_insertdicts = {}
 
     def flush(self):
-        print 'starting flush'
+        print('starting flush')
         _entities_sql = self._sql_entities
         _relations_sql = self._sql_relations
         _inlined_relations_sql = self._sql_inlined_relations
@@ -321,7 +318,7 @@ class SQLGenSourceWrapper(object):
             # In that case, simply update the insert dict and remove
             # the need to make the
             # UPDATE statement
-            for statement, datalist in _inlined_relations_sql.iteritems():
+            for statement, datalist in _inlined_relations_sql.items():
                 new_datalist = []
                 # for a given inlined relation,
                 # browse each couple to be inserted

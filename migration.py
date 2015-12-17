@@ -16,6 +16,7 @@
 # You should have received a copy of the GNU Lesser General Public License along
 # with CubicWeb.  If not, see <http://www.gnu.org/licenses/>.
 """utilities for instances migration"""
+from __future__ import print_function
 
 __docformat__ = "restructuredtext en"
 
@@ -25,6 +26,9 @@ import logging
 import tempfile
 from os.path import exists, join, basename, splitext
 from itertools import chain
+from warnings import warn
+
+from six import string_types
 
 from logilab.common import IGNORED_EXTENSIONS
 from logilab.common.decorators import cached
@@ -49,7 +53,7 @@ def filter_scripts(config, directory, fromversion, toversion, quiet=True):
     assert fromversion <= toversion, (fromversion, toversion)
     if not exists(directory):
         if not quiet:
-            print directory, "doesn't exists, no migration path"
+            print(directory, "doesn't exists, no migration path")
         return []
     if fromversion == toversion:
         return []
@@ -93,9 +97,9 @@ def execscript_confirm(scriptpath):
             stream = open(scriptpath)
             scriptcontent = stream.read()
             stream.close()
-            print
-            print scriptcontent
-            print
+            print()
+            print(scriptcontent)
+            print()
         else:
             return True
 
@@ -138,9 +142,6 @@ class MigrationHelper(object):
                                                              meth=meth)
             raise
         raise AttributeError(name)
-
-    def repo_connect(self):
-        return self.config.repository()
 
     def migrate(self, vcconf, toupgrade, options):
         """upgrade the given set of cubes
@@ -243,7 +244,7 @@ class MigrationHelper(object):
         # avoid '_' to be added to builtins by sys.display_hook
         def do_not_add___to_builtins(obj):
             if obj is not None:
-                print repr(obj)
+                print(repr(obj))
         sys.displayhook = do_not_add___to_builtins
         local_ctx = self._create_context()
         try:
@@ -349,7 +350,16 @@ type "exit" or Ctrl-D to quit the shell and resume operation"""
             else:
                 pyname = splitext(basename(migrscript))[0]
             scriptlocals['__name__'] = pyname
-            execfile(migrscript, scriptlocals)
+            with open(migrscript, 'rb') as fobj:
+                fcontent = fobj.read()
+            try:
+                code = compile(fcontent, migrscript, 'exec')
+            except SyntaxError:
+                # try without print_function
+                code = compile(fcontent, migrscript, 'exec', 0, True)
+                warn('[3.22] script %r should be updated to work with print_function'
+                     % migrscript, DeprecationWarning)
+            exec(code, scriptlocals)
             if funcname is not None:
                 try:
                     func = scriptlocals[funcname]
@@ -399,7 +409,7 @@ type "exit" or Ctrl-D to quit the shell and resume operation"""
         """modify the list of used cubes in the in-memory config
         returns newly inserted cubes, including dependencies
         """
-        if isinstance(cubes, basestring):
+        if isinstance(cubes, string_types):
             cubes = (cubes,)
         origcubes = self.config.cubes()
         newcubes = [p for p in self.config.expand_cubes(cubes)
@@ -454,6 +464,10 @@ set_log_methods(MigrationHelper, getLogger('cubicweb.migration'))
 
 
 def version_strictly_lower(a, b):
+    if a is None:
+        return True
+    if b is None:
+        return False
     if a:
         a = Version(a)
     if b:
@@ -491,8 +505,8 @@ class ConfigurationProblem(object):
             self.dependencies[cube] = dict(self.config.cube_dependencies(cube))
             self.dependencies[cube]['cubicweb'] = self.config.cube_depends_cubicweb_version(cube)
         # compute reverse dependencies
-        for cube, dependencies in self.dependencies.iteritems():
-            for name, constraint in dependencies.iteritems():
+        for cube, dependencies in self.dependencies.items():
+            for name, constraint in dependencies.items():
                 self.reverse_dependencies.setdefault(name,set())
                 if constraint:
                     try:
@@ -522,9 +536,9 @@ class ConfigurationProblem(object):
                     elif op == None:
                         continue
                     else:
-                        print ('unable to handle %s in %s, set to `%s %s` '
-                               'but currently up to `%s %s`' %
-                               (cube, source, oper, version, op, ver))
+                        print('unable to handle %s in %s, set to `%s %s` '
+                              'but currently up to `%s %s`' %
+                              (cube, source, oper, version, op, ver))
             # "solve" constraint satisfaction problem
             if cube not in self.cubes:
                 self.errors.append( ('add', cube, version, source) )
@@ -536,4 +550,4 @@ class ConfigurationProblem(object):
                 elif oper is None:
                     pass # no constraint on version
                 else:
-                    print 'unknown operator', oper
+                    print('unknown operator', oper)

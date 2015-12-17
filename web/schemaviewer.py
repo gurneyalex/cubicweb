@@ -18,7 +18,9 @@
 """an helper class to display CubicWeb schema using ureports"""
 
 __docformat__ = "restructuredtext en"
-_ = unicode
+from cubicweb import _
+
+from six import string_types
 
 from logilab.common.ureports import Section, Title, Table, Link, Span, Text
 
@@ -218,7 +220,7 @@ class SchemaViewer(object):
                     elif prop == 'constraints':
                         val = ', '.join([c.expression for c in val])
                     elif isinstance(val, dict):
-                        for key, value in val.iteritems():
+                        for key, value in val.items():
                             if isinstance(value, (list, tuple)):
                                 val[key] = ', '.join(sorted( str(v) for v in value))
                         val = str(val)
@@ -226,7 +228,7 @@ class SchemaViewer(object):
                     elif isinstance(val, (list, tuple)):
                         val = sorted(val)
                         val = ', '.join(str(v) for v in val)
-                    elif val and isinstance(val, basestring):
+                    elif val and isinstance(val, string_types):
                         val = _(val)
                     else:
                         val = str(val)
