@@ -24,6 +24,9 @@ serialization time
 import random
 from math import floor
 
+from six import add_metaclass
+from six.moves import range
+
 from logilab.mtconverter import xml_escape
 from logilab.common.deprecation import class_deprecated
 
@@ -115,9 +118,9 @@ class BoxWidget(HTMLWidget): # XXX Deprecated
         self.w(u'</div>')
 
 
+@add_metaclass(class_deprecated)
 class SideBoxWidget(BoxWidget):
     """default CubicWeb's sidebox widget"""
-    __metaclass__ = class_deprecated
     __deprecation_warning__ = '[3.10] class %(cls)s is deprecated'
 
     title_class = u'sideBoxTitle'
@@ -207,9 +210,9 @@ class PopupBoxMenu(BoxMenu):
         self.w(u'</ul></div></div>')
 
 
+@add_metaclass(class_deprecated)
 class BoxField(HTMLWidget):
     """couples label / value meant to be displayed in a box"""
-    __metaclass__ = class_deprecated
     __deprecation_warning__ = '[3.10] class %(cls)s is deprecated'
     def __init__(self, label, value):
         self.label = label
@@ -220,18 +223,19 @@ class BoxField(HTMLWidget):
                u'<span class="value">%s</span></div></li>'
                % (self.label, self.value))
 
+
+@add_metaclass(class_deprecated)
 class BoxSeparator(HTMLWidget):
     """a menu separator"""
-    __metaclass__ = class_deprecated
     __deprecation_warning__ = '[3.10] class %(cls)s is deprecated'
 
     def _render(self):
         self.w(u'</ul><hr class="boxSeparator"/><ul>')
 
 
+@add_metaclass(class_deprecated)
 class BoxLink(HTMLWidget):
     """a link in a box"""
-    __metaclass__ = class_deprecated
     __deprecation_warning__ = '[3.10] class %(cls)s is deprecated'
     def __init__(self, href, label, _class='', title='', ident='', escape=False):
         self.href = href
@@ -252,9 +256,9 @@ class BoxLink(HTMLWidget):
             self.w(u'<li class="%s">%s</li>\n' % (self._class, link))
 
 
+@add_metaclass(class_deprecated)
 class BoxHtml(HTMLWidget):
     """a form in a box"""
-    __metaclass__ = class_deprecated
     __deprecation_warning__ = '[3.10] class %(cls)s is deprecated'
     def __init__(self, rawhtml):
         self.rawhtml = rawhtml
@@ -339,17 +343,17 @@ class TableWidget(HTMLWidget):
         self.w(u'<thead>')
         self.w(u'<tr class="header">')
         for column in self.columns:
-            attrs = ('%s="%s"' % (name, value) for name, value in column.cell_attrs.iteritems())
+            attrs = ('%s="%s"' % (name, value) for name, value in column.cell_attrs.items())
             self.w(u'<th %s>%s</th>' % (' '.join(attrs), column.name or u''))
         self.w(u'</tr>')
         self.w(u'</thead><tbody>')
-        for rowindex in xrange(len(self.model.get_rows())):
+        for rowindex in range(len(self.model.get_rows())):
             klass = (rowindex%2==1) and 'odd' or 'even'
             self.w(u'<tr class="%s" %s>' % (klass, self.highlight))
             for column, sortvalue in self.itercols(rowindex):
                 attrs = dict(column.cell_attrs)
                 attrs["cubicweb:sortvalue"] = sortvalue
-                attrs = ('%s="%s"' % (name, value) for name, value in attrs.iteritems())
+                attrs = ('%s="%s"' % (name, value) for name, value in attrs.items())
                 self.w(u'<td %s>' % (' '.join(attrs)))
                 for cellvid, colindex in column.cellrenderers:
                     self.model.render_cell(cellvid, rowindex, colindex, w=self.w)
@@ -361,5 +365,3 @@ class TableWidget(HTMLWidget):
     def itercols(self, rowindex):
         for column in self.columns:
             yield column, self.model.sortvalue(rowindex, column.rset_sortcol)
-
-

@@ -20,7 +20,7 @@ form
 """
 
 __docformat__ = "restructuredtext en"
-_ = unicode
+from cubicweb import _
 
 import copy
 from warnings import warn
@@ -259,7 +259,7 @@ class AutoClickAndEditFormView(EntityView):
         elif action == 'add':
             add_etype = self._compute_ttypes(rschema, role)[0]
             _new_entity = self._cw.vreg['etypes'].etype_class(add_etype)(self._cw)
-            _new_entity.eid = self._cw.varmaker.next()
+            _new_entity.eid = next(self._cw.varmaker)
             edit_entity = _new_entity
             # XXX see forms.py ~ 276 and entities.linked_to method
             #     is there another way?
@@ -292,7 +292,7 @@ class AutoClickAndEditFormView(EntityView):
             cwtarget='eformframe', cssclass='releditForm',
             **formargs)
         # pass reledit arguments
-        for pname, pvalue in event_args.iteritems():
+        for pname, pvalue in event_args.items():
             form.add_hidden('__reledit|' + pname, pvalue)
         # handle buttons
         if form.form_buttons: # edition, delete
@@ -402,4 +402,3 @@ def reledit_form(self):
         assert args['reload'].startswith('http')
     view = req.vreg['views'].select('reledit', req, rset=rset, rtype=args['rtype'])
     return self._call_view(view, **args)
-

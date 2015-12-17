@@ -18,7 +18,7 @@
 """Core hooks: workflow related hooks"""
 
 __docformat__ = "restructuredtext en"
-_ = unicode
+from cubicweb import _
 
 from datetime import datetime
 
@@ -355,4 +355,3 @@ class DelCustomWorkflow(SetCustomWorkflow):
         typewf = entity.cw_adapt_to('IWorkflowable').cwetype_workflow()
         if typewf is not None:
             _WorkflowChangedOp(self._cw, eid=self.eidfrom, wfeid=typewf.eid)
-

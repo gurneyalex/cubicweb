@@ -19,7 +19,10 @@
 
 import threading
 
+from six import text_type
+
 from yams.schema import role_name
+
 from cubicweb import ValidationError
 from cubicweb.server import Service
 from cubicweb.predicates import match_user_groups, match_kwargs
@@ -58,6 +61,7 @@ class StatsService(Service):
         results['threads'] = [t.name for t in threading.enumerate()]
         return results
 
+
 class GcStatsService(Service):
     """Return a dictionary containing some statistics about the repository
     resources usage.
@@ -94,9 +98,9 @@ class GcStatsService(Service):
         results = {}
         counters, ocounters, garbage = gc_info(lookupclasses,
                                                viewreferrersclasses=())
-        values = sorted(counters.iteritems(), key=lambda x: x[1], reverse=True)
+        values = sorted(counters.items(), key=lambda x: x[1], reverse=True)
         results['lookupclasses'] = values
-        values = sorted(ocounters.iteritems(), key=lambda x: x[1], reverse=True)[:nmax]
+        values = sorted(ocounters.items(), key=lambda x: x[1], reverse=True)[:nmax]
         results['referenced'] = values
         results['unreachable'] = garbage
         return results
@@ -129,7 +133,7 @@ class RegisterUserService(Service):
             qname = role_name('login', 'subject')
             raise ValidationError(None, {qname: errmsg % login})
 
-        if isinstance(password, unicode):
+        if isinstance(password, text_type):
             # password should *always* be utf8 encoded
             password = password.encode('UTF8')
         cwuserkwargs['login'] = login
@@ -154,3 +158,17 @@ class RegisterUserService(Service):
                         'WHERE U login %(login)s', d, build_descr=False)
 
         return user
+
+
+class SourceSynchronizationService(Service):
+    """Force synchronization of a datafeed source"""
+    __regid__ = 'source-sync'
+    __select__ = Service.__select__ & match_user_groups('managers')
+
+    def call(self, source_eid):
+        source_entity = self._cw.entity_from_eid(source_eid)
+        repo = self._cw.repo # Service are repo side only.
+        with repo.internal_cnx() as cnx:
+            source = repo.sources_by_uri[source_entity.name]
+            source.pull_data(cnx)
+

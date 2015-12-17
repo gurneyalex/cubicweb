@@ -19,9 +19,10 @@
 
 __docformat__ = "restructuredtext en"
 from warnings import warn
-
-from urlparse import urlsplit, urlunsplit
 from datetime import datetime
+
+from six.moves import range
+from six.moves.urllib.parse import urlsplit, urlunsplit
 
 from logilab.mtconverter import xml_escape
 
@@ -67,7 +68,7 @@ class EmailAddress(AnyEntity):
                                 {'y': self.eid})
         if skipeids is None:
             skipeids = set()
-        for i in xrange(len(rset)):
+        for i in range(len(rset)):
             eid = rset[i][0]
             if eid in skipeids:
                 continue
@@ -146,4 +147,3 @@ class CWCache(AnyEntity):
         if date:
             return date > self.timestamp
         return False
-

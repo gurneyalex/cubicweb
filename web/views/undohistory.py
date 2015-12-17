@@ -17,7 +17,7 @@
 # with CubicWeb.  If not, see <http://www.gnu.org/licenses/>.
 
 __docformat__ = "restructuredtext en"
-_ = unicode
+from cubicweb import _
 
 
 from logilab.common.registry import Predicate
@@ -46,7 +46,7 @@ class undoable_action(Predicate):
 
     def __str__(self):
         return '%s(%s)' % (self.__class__.__name__, ', '.join(
-            "%s=%v" % (str(k), str(v)) for k, v in kwargs.iteritems() ))
+            "%s=%v" % (str(k), str(v)) for k, v in kwargs.items() ))
 
     def __call__(self, cls, req, tx_action=None, **kwargs):
         # tx_action is expected to be a transaction.AbstractAction

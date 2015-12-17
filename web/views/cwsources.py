@@ -20,20 +20,23 @@ CWSourceHostConfig, CWSourceSchemaConfig).
 """
 
 __docformat__ = "restructuredtext en"
-_ = unicode
+from cubicweb import _
 
 import logging
 from itertools import repeat
+
+from six.moves import range
+
 from logilab.mtconverter import xml_escape
 from logilab.common.decorators import cachedproperty
 
 from cubicweb import Unauthorized, tags
 from cubicweb.utils import make_uid
 from cubicweb.predicates import (is_instance, score_entity, has_related_entities,
-                                match_user_groups, match_kwargs, match_view)
+                                 match_user_groups, match_kwargs, match_view, one_line_rset)
 from cubicweb.view import EntityView, StartupView
 from cubicweb.schema import META_RTYPES, VIRTUAL_RTYPES, display_name
-from cubicweb.web import formwidgets as wdgs, facet
+from cubicweb.web import Redirect, formwidgets as wdgs, facet, action
 from cubicweb.web.views import add_etype_button
 from cubicweb.web.views import (uicfg, tabs, actions, ibreadcrumbs, navigation,
                                 tableview, pyviews)
@@ -95,7 +98,7 @@ class CWSourceMainTab(tabs.PrimaryTab):
             if hostconfig:
                 self.w(u'<h3>%s</h3>' % self._cw._('CWSourceHostConfig_plural'))
                 self._cw.view('table', hostconfig, w=self.w,
-                              displaycols=range(2),
+                              displaycols=list(range(2)),
                               cellvids={1: 'editable-final'})
 
 
@@ -186,7 +189,7 @@ class MappingChecker(object):
                     warning(_('relation %(rtype)s with %(etype)s as %(role)s is '
                               'supported but no target type supported') %
                             {'rtype': rschema, 'role': role, 'etype': etype})
-        for rtype, rdefs in self.srelations.iteritems():
+        for rtype, rdefs in self.srelations.items():
             if rdefs is None:
                 rschema = self.schema[rtype]
                 for subj, obj in rschema.rdefs:
@@ -221,6 +224,36 @@ class CWImportsTable(tableview.EntityTableView):
     columns = ['import', 'start_timestamp', 'end_timestamp']
     column_renderers = {'import': tableview.MainEntityColRenderer()}
     layout_args = {'display_filter': 'top'}
+
+
+class CWSourceSyncAction(action.Action):
+    __regid__ = 'cw.source-sync'
+    __select__ = (action.Action.__select__ & match_user_groups('managers')
+                  & one_line_rset() & is_instance('CWSource')
+                  & score_entity(lambda x: x.name != 'system'))
+
+    title = _('synchronize')
+    category = 'mainactions'
+    order = 20
+
+    def url(self):
+        entity = self.cw_rset.get_entity(self.cw_row or 0, self.cw_col or 0)
+        return entity.absolute_url(vid=self.__regid__)
+
+
+class CWSourceSyncView(EntityView):
+    __regid__ = 'cw.source-sync'
+    __select__ = (match_user_groups('managers')
+                  & one_line_rset() & is_instance('CWSource')
+                  & score_entity(lambda x: x.name != 'system'))
+
+    title = _('synchronize')
+
+    def entity_call(self, entity):
+        self._cw.call_service('source-sync', source_eid=entity.eid)
+        msg = self._cw._('Source has been synchronized')
+        url = entity.absolute_url(tab='cwsource-imports', __message=msg)
+        raise Redirect(url)
 
 
 

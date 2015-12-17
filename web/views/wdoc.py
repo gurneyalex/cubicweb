@@ -35,7 +35,7 @@ from cubicweb.predicates import match_form_params
 from cubicweb.view import StartupView
 from cubicweb.uilib import rest_publish
 from cubicweb.web import NotFound, action
-_ = unicode
+from cubicweb import _
 
 # table of content management #################################################
 
@@ -73,7 +73,7 @@ def get_insertion_point(section, index):
 
 def build_toc(config):
     alltocfiles = reversed(tuple(config.locate_all_files('toc.xml')))
-    maintoc = parse(alltocfiles.next()).getroot()
+    maintoc = parse(next(alltocfiles)).getroot()
     maintoc.parent = None
     index = {}
     build_toc_index(maintoc, index)
@@ -229,4 +229,3 @@ class AboutAction(action.Action):
 
     def url(self):
         return self._cw.build_url('doc/about')
-

@@ -19,7 +19,9 @@
 
 """
 __docformat__ = "restructuredtext en"
-_ = unicode
+from cubicweb import _
+
+from six.moves import range
 
 from logilab.mtconverter import TransformError, xml_escape
 
@@ -166,7 +168,7 @@ class OWLABOXView(EntityView):
 
     def call(self):
         self.w(OWL_OPENING_ROOT % {'appid': self._cw.vreg.schema.name})
-        for i in xrange(self.cw_rset.rowcount):
+        for i in range(self.cw_rset.rowcount):
             self.cell_call(i, 0)
         self.w(OWL_CLOSING_ROOT)
 

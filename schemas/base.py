@@ -18,7 +18,7 @@
 """core CubicWeb schema, but not necessary at bootstrap time"""
 
 __docformat__ = "restructuredtext en"
-_ = unicode
+from cubicweb import _
 
 from yams.buildobjs import (EntityType, RelationType, RelationDefinition,
                             SubjectRelation,
@@ -379,5 +379,3 @@ class see_also(RelationType):
         'add':    ('managers', RRQLExpression('U has_update_permission S'),),
         'delete': ('managers', RRQLExpression('U has_update_permission S'),),
         }
-
-

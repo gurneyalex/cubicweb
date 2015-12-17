@@ -18,13 +18,15 @@
 """web ui configuration for cubicweb instances"""
 
 __docformat__ = "restructuredtext en"
-_ = unicode
+from cubicweb import _
 
 import os
 import hmac
 from uuid import uuid4
 from os.path import join, exists, split, isdir
 from warnings import warn
+
+from six import text_type
 
 from logilab.common.decorators import cached, cachedproperty
 from logilab.common.deprecation import deprecated
@@ -280,18 +282,7 @@ have the python imaging library installed to use captcha)',
                 continue
             yield key, pdef
 
-    # don't use @cached: we want to be able to disable it while this must still
-    # be cached
-    def repository(self, vreg=None):
-        """return the instance's repository object"""
-        try:
-            return self.__repo
-        except AttributeError:
-            from cubicweb.repoapi import get_repository
-            repo = get_repository(config=self, vreg=vreg)
-            self.__repo = repo
-            return repo
-
+    @deprecated('[3.22] call req.cnx.repo.get_versions() directly')
     def vc_config(self):
         return self.repository().get_versions()
 
@@ -305,7 +296,7 @@ have the python imaging library installed to use captcha)',
             user   = self['anonymous-user'] or None
             passwd = self['anonymous-password']
             if user:
-                user = unicode(user)
+                user = text_type(user)
         except KeyError:
             user, passwd = None, None
         except UnicodeDecodeError:
@@ -317,17 +308,17 @@ have the python imaging library installed to use captcha)',
         """This random key/salt is used to sign content to be sent back by
         browsers, eg. in the error report form.
         """
-        return str(uuid4())
+        return str(uuid4()).encode('ascii')
 
     def sign_text(self, text):
         """sign some text for later checking"""
         # hmac.new expect bytes
-        if isinstance(text, unicode):
+        if isinstance(text, text_type):
             text = text.encode('utf-8')
         # replace \r\n so we do not depend on whether a browser "reencode"
         # original message using \r\n or not
         return hmac.new(self._instance_salt,
-                        text.strip().replace('\r\n', '\n')).hexdigest()
+                        text.strip().replace(b'\r\n', b'\n')).hexdigest()
 
     def check_text_sign(self, text, signature):
         """check the text signature is equal to the given signature"""
@@ -472,7 +463,7 @@ have the python imaging library installed to use captcha)',
             staticdir = join(staticdir, rdir)
             if not isdir(staticdir) and 'w' in mode:
                 os.makedirs(staticdir)
-        return file(join(staticdir, filename), mode)
+        return open(join(staticdir, filename), mode)
 
     def static_file_add(self, rpath, data):
         stream = self.static_file_open(rpath)

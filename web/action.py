@@ -33,7 +33,7 @@ Many examples are available in :mod:`cubicweb.web.views.actions`.
 """
 
 __docformat__ = "restructuredtext en"
-_ = unicode
+from cubicweb import _
 
 from cubicweb import target
 from cubicweb.predicates import (partial_relation_possible, match_search_state,
@@ -91,7 +91,7 @@ class LinkToEntityAction(Action):
     """base class for actions consisting to create a new object with an initial
     relation set to an entity.
 
-    Additionaly to EntityAction behaviour, this class is parametrized using
+    Additionally to EntityAction behaviour, this class is parametrized using
     .rtype, .role and .target_etype attributes to check if the action apply and
     if the logged user has access to it (see
     :class:`~cubicweb.selectors.partial_relation_possible` selector
@@ -111,4 +111,3 @@ class LinkToEntityAction(Action):
         return self._cw.vreg["etypes"].etype_class(ttype).cw_create_url(self._cw,
                                   __redirectpath=entity.rest_path(), __linkto=linkto,
                                   __redirectvid=self._cw.form.get('__redirectvid', ''))
-

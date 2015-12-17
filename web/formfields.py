@@ -66,6 +66,8 @@ __docformat__ = "restructuredtext en"
 from warnings import warn
 from datetime import datetime, timedelta
 
+from six import PY2, text_type, string_types
+
 from logilab.mtconverter import xml_escape
 from logilab.common import nullobject
 from logilab.common.date import ustrftime
@@ -159,7 +161,7 @@ class Field(object):
     :attr:`order`
        key used by automatic forms to sort fields
     :attr:`ignore_req_params`
-       when true, this field won't consider value potentialy specified using
+       when true, this field won't consider value potentially specified using
        request's form parameters (eg you won't be able to specify a value using for
        instance url like http://mywebsite.com/form?field=value)
 
@@ -231,11 +233,14 @@ class Field(object):
     def __unicode__(self):
         return self.as_string(False)
 
-    def __str__(self):
-        return self.as_string(False).encode('UTF8')
+    if PY2:
+        def __str__(self):
+            return self.as_string(False).encode('UTF8')
+    else:
+        __str__ = __unicode__
 
     def __repr__(self):
-        return self.as_string(True).encode('UTF8')
+        return self.as_string(True)
 
     def init_widget(self, widget):
         if widget is not None:
@@ -279,7 +284,7 @@ class Field(object):
             return u''
         if value is True:
             return u'1'
-        return unicode(value)
+        return text_type(value)
 
     def get_widget(self, form):
         """return the widget instance associated to this field"""
@@ -381,7 +386,7 @@ class Field(object):
         assert self.choices is not None
         if callable(self.choices):
             # pylint: disable=E1102
-            if getattr(self.choices, 'im_self', None) is self:
+            if getattr(self.choices, '__self__', None) is self:
                 vocab = self.choices(form=form, **kwargs)
             else:
                 vocab = self.choices(form=form, field=self, **kwargs)
@@ -508,7 +513,7 @@ class Field(object):
 
 class StringField(Field):
     """Use this field to edit unicode string (`String` yams type). This field
-    additionaly support a `max_length` attribute that specify a maximum size for
+    additionally support a `max_length` attribute that specify a maximum size for
     the string (`None` meaning no limit).
 
     Unless explicitly specified, the widget for this field will be:
@@ -780,7 +785,7 @@ class EditableFileField(FileField):
 
     If the stream format is one of text/plain, text/html, text/rest,
     text/markdown
-    then a :class:`~cubicweb.web.formwidgets.TextArea` will be additionaly
+    then a :class:`~cubicweb.web.formwidgets.TextArea` will be additionally
     displayed, allowing to directly the file's content when desired, instead
     of choosing a file from user's file system.
     """
@@ -794,7 +799,7 @@ class EditableFileField(FileField):
             if data:
                 encoding = self.encoding(form)
                 try:
-                    form.formvalues[(self, form)] = unicode(data.getvalue(), encoding)
+                    form.formvalues[(self, form)] = data.getvalue().decode(encoding)
                 except UnicodeError:
                     pass
                 else:
@@ -815,7 +820,7 @@ class EditableFileField(FileField):
 
     def _process_form_value(self, form):
         value = form._cw.form.get(self.input_name(form))
-        if isinstance(value, unicode):
+        if isinstance(value, text_type):
             # file modified using a text widget
             return Binary(value.encode(self.encoding(form)))
         return super(EditableFileField, self)._process_form_value(form)
@@ -823,7 +828,7 @@ class EditableFileField(FileField):
 
 class BigIntField(Field):
     """Use this field to edit big integers (`BigInt` yams type). This field
-    additionaly support `min` and `max` attributes that specify a minimum and/or
+    additionally support `min` and `max` attributes that specify a minimum and/or
     maximum value for the integer (`None` meaning no boundary).
 
     Unless explicitly specified, the widget for this field will be a
@@ -842,7 +847,7 @@ class BigIntField(Field):
             self.widget.attrs.setdefault('size', self.default_text_input_size)
 
     def _ensure_correctly_typed(self, form, value):
-        if isinstance(value, basestring):
+        if isinstance(value, string_types):
             value = value.strip()
             if not value:
                 return None
@@ -907,7 +912,7 @@ class BooleanField(Field):
 
 
 class FloatField(IntField):
-    """Use this field to edit floats (`Float` yams type). This field additionaly
+    """Use this field to edit floats (`Float` yams type). This field additionally
     support `min` and `max` attributes as the
     :class:`~cubicweb.web.formfields.IntField`.
 
@@ -924,7 +929,7 @@ class FloatField(IntField):
         return self.format_single_value(req, 1.234)
 
     def _ensure_correctly_typed(self, form, value):
-        if isinstance(value, basestring):
+        if isinstance(value, string_types):
             value = value.strip()
             if not value:
                 return None
@@ -946,7 +951,7 @@ class TimeIntervalField(StringField):
     def format_single_value(self, req, value):
         if value:
             value = format_time(value.days * 24 * 3600 + value.seconds)
-            return unicode(value)
+            return text_type(value)
         return u''
 
     def example_format(self, req):
@@ -956,7 +961,7 @@ class TimeIntervalField(StringField):
         return u'20s, 10min, 24h, 4d'
 
     def _ensure_correctly_typed(self, form, value):
-        if isinstance(value, basestring):
+        if isinstance(value, string_types):
             value = value.strip()
             if not value:
                 return None
@@ -986,14 +991,14 @@ class DateField(StringField):
         return self.format_single_value(req, datetime.now())
 
     def _ensure_correctly_typed(self, form, value):
-        if isinstance(value, basestring):
+        if isinstance(value, string_types):
             value = value.strip()
             if not value:
                 return None
             try:
                 value = form._cw.parse_datetime(value, self.etype)
             except ValueError as ex:
-                raise ProcessFormError(unicode(ex))
+                raise ProcessFormError(text_type(ex))
         return value
 
 
@@ -1083,7 +1088,7 @@ class RelationField(Field):
         linkedto = form.linked_to.get((self.name, self.role))
         if linkedto:
             buildent = form._cw.entity_from_eid
-            return [(buildent(eid).view('combobox'), unicode(eid))
+            return [(buildent(eid).view('combobox'), text_type(eid))
                     for eid in linkedto]
         return []
 
@@ -1095,7 +1100,7 @@ class RelationField(Field):
         # vocabulary doesn't include current values, add them
         if form.edited_entity.has_eid():
             rset = form.edited_entity.related(self.name, self.role)
-            vocab += [(e.view('combobox'), unicode(e.eid))
+            vocab += [(e.view('combobox'), text_type(e.eid))
                       for e in rset.entities()]
         return vocab
 
@@ -1129,11 +1134,11 @@ class RelationField(Field):
             if entity.eid in done:
                 continue
             done.add(entity.eid)
-            res.append((entity.view('combobox'), unicode(entity.eid)))
+            res.append((entity.view('combobox'), text_type(entity.eid)))
         return res
 
     def format_single_value(self, req, value):
-        return unicode(value)
+        return text_type(value)
 
     def process_form_value(self, form):
         """process posted form and return correctly typed value"""

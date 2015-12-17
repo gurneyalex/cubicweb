@@ -48,6 +48,9 @@ __docformat__ = "restructuredtext en"
 from warnings import warn
 
 import time
+import inspect
+
+from six import text_type
 
 from logilab.common import dictattr, tempattr
 from logilab.common.decorators import iclassmethod, cached
@@ -257,7 +260,7 @@ class FieldsForm(form.Form):
                 editedfields = self._cw.form['_cw_fields']
             except KeyError:
                 raise RequestError(self._cw._('no edited fields specified'))
-        entityform = entity and self.field_by_name.im_func.func_code.co_argcount == 4 # XXX
+        entityform = entity and len(inspect.getargspec(self.field_by_name)) == 4 # XXX
         for editedfield in splitstrip(editedfields):
             try:
                 name, role = editedfield.split('-')
@@ -286,7 +289,7 @@ class FieldsForm(form.Form):
                 except ProcessFormError as exc:
                     errors.append((field, exc))
             if errors:
-                errors = dict((f.role_name(), unicode(ex)) for f, ex in errors)
+                errors = dict((f.role_name(), text_type(ex)) for f, ex in errors)
                 raise ValidationError(None, errors)
             return processed
 
@@ -377,7 +380,7 @@ class EntityFieldsForm(FieldsForm):
 
         Warning: this method must be called only when all form fields are setup
         """
-        for (rtype, role), eids in self.linked_to.iteritems():
+        for (rtype, role), eids in self.linked_to.items():
             # if the relation is already setup by a form field, do not add it
             # in a __linkto hidden to avoid setting it twice in the controller
             try:

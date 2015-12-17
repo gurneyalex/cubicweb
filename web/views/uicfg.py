@@ -57,6 +57,8 @@ __docformat__ = "restructuredtext en"
 
 from warnings import warn
 
+from six import string_types
+
 from cubicweb import neg_role
 from cubicweb.rtags import (RelationTags, RelationTagsBool, RelationTagsSet,
                             RelationTagsDict, NoTargetRelationTagsDict,
@@ -267,7 +269,7 @@ class AutoformSectionRelationTags(RelationTagsSet):
         if not 'inlined' in sectdict:
             sectdict['inlined'] = sectdict['main']
         # recompute formsections and set it to avoid recomputing
-        for formtype, section in sectdict.iteritems():
+        for formtype, section in sectdict.items():
             formsections.add('%s_%s' % (formtype, section))
 
     def tag_relation(self, key, formtype, section):
@@ -302,7 +304,7 @@ class AutoformSectionRelationTags(RelationTagsSet):
                 rtags[section] = value
         cls = self.tag_container_cls
         rtags = cls('_'.join([section,value])
-                    for section,value in rtags.iteritems())
+                    for section,value in rtags.items())
         return rtags
 
     def get(self, *key):
@@ -650,7 +652,7 @@ class ActionBoxUicfg(RelationTagsBool):
                 self.tag_relation((sschema, rschema, oschema, role), True)
 
     def _tag_etype_attr(self, etype, attr, desttype='*', *args, **kwargs):
-        if isinstance(attr, basestring):
+        if isinstance(attr, string_types):
             attr, role = attr, 'subject'
         else:
             attr, role = attr
@@ -687,5 +689,5 @@ actionbox_appearsin_addmenu = ActionBoxUicfg()
 
 
 def registration_callback(vreg):
-    vreg.register_all(globals().itervalues(), __name__)
+    vreg.register_all(globals().values(), __name__)
     indexview_etype_section.init(vreg.schema)

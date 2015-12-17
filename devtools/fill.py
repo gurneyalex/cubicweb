@@ -17,6 +17,7 @@
 # You should have received a copy of the GNU Lesser General Public License along
 # with CubicWeb.  If not, see <http://www.gnu.org/licenses/>.
 """This modules defines func / methods for creating test repositories"""
+from __future__ import print_function
 
 __docformat__ = "restructuredtext en"
 
@@ -25,6 +26,10 @@ from random import randint, choice
 from copy import deepcopy
 from datetime import datetime, date, time, timedelta
 from decimal import Decimal
+import inspect
+
+from six import text_type, add_metaclass
+from six.moves import range
 
 from logilab.common import attrdict
 from logilab.mtconverter import xml_escape
@@ -173,7 +178,7 @@ title
     generate_tztime = generate_time # XXX implementation should add a timezone
 
     def generate_bytes(self, entity, attrname, index, format=None):
-        fakefile = Binary("%s%s" % (attrname, index))
+        fakefile = Binary(("%s%s" % (attrname, index)).encode('ascii'))
         fakefile.filename = u"file_%s" % attrname
         return fakefile
 
@@ -224,7 +229,7 @@ title
         """
         for cst in self.eschema.rdef(attrname).constraints:
             if isinstance(cst, StaticVocabularyConstraint):
-                return unicode(choice(cst.vocabulary()))
+                return text_type(choice(cst.vocabulary()))
         return None
 
     # XXX nothing to do here
@@ -254,13 +259,15 @@ class autoextend(type):
         for attrname, attrvalue in classdict.items():
             if callable(attrvalue):
                 if attrname.startswith('generate_') and \
-                       attrvalue.func_code.co_argcount < 2:
+                       len(inspect.getargspec(attrvalue).args) < 2:
                     raise TypeError('generate_xxx must accept at least 1 argument')
                 setattr(_ValueGenerator, attrname, attrvalue)
         return type.__new__(mcs, name, bases, classdict)
 
+
+@add_metaclass(autoextend)
 class ValueGenerator(_ValueGenerator):
-    __metaclass__ = autoextend
+    pass
 
 
 def _default_choice_func(etype, attrname):
@@ -286,7 +293,7 @@ def insert_entity_queries(etype, schema, vreg, entity_num,
                         returns acceptable values for this attribute
     """
     queries = []
-    for index in xrange(entity_num):
+    for index in range(entity_num):
         restrictions = []
         args = {}
         for attrname, value in make_entity(etype, schema, vreg, index, choice_func).items():
@@ -347,7 +354,7 @@ def make_entity(etype, schema, vreg, index=0, choice_func=_default_choice_func,
                 fmt = vreg.property_value('ui.float-format')
                 value = fmt % value
             else:
-                value = unicode(value)
+                value = text_type(value)
     return entity
 
 
@@ -363,7 +370,7 @@ def select(constraints, cnx, selectvar='O', objtype=None):
             rql += ', %s is %s' % (selectvar, objtype)
         rset = cnx.execute(rql)
     except Exception:
-        print "could restrict eid_list with given constraints (%r)" % constraints
+        print("could restrict eid_list with given constraints (%r)" % constraints)
         return []
     return set(eid for eid, in rset.rows)
 
@@ -508,8 +515,8 @@ class RelationsQueriesGenerator(object):
                     break
         else:
             # FIXME: 20 should be read from config
-            subjeidsiter = [choice(tuple(subjeids)) for i in xrange(min(len(subjeids), 20))]
-            objeidsiter = [choice(tuple(objeids)) for i in xrange(min(len(objeids), 20))]
+            subjeidsiter = [choice(tuple(subjeids)) for i in range(min(len(subjeids), 20))]
+            objeidsiter = [choice(tuple(objeids)) for i in range(min(len(objeids), 20))]
             for subjeid, objeid in zip(subjeidsiter, objeidsiter):
                 if subjeid != objeid and not (subjeid, objeid) in used:
                     used.add( (subjeid, objeid) )

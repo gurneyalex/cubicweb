@@ -22,6 +22,8 @@ This is used for instance for read security checking in the repository.
 """
 __docformat__ = "restructuredtext en"
 
+from six import text_type, string_types
+
 from rql import nodes as n, stmts, TypeResolverException
 from rql.utils import common_parent
 
@@ -54,7 +56,7 @@ def add_types_restriction(schema, rqlst, newroot=None, solutions=None):
     eschema = schema.eschema
     allpossibletypes = {}
     for solution in solutions:
-        for varname, etype in solution.iteritems():
+        for varname, etype in solution.items():
             # XXX not considering aliases by design, right ?
             if varname not in newroot.defined_vars or eschema(etype).final:
                 continue
@@ -92,7 +94,7 @@ def add_types_restriction(schema, rqlst, newroot=None, solutions=None):
                     for etype in sorted(possibletypes):
                         node.append(n.Constant(etype, 'etype'))
                 else:
-                    etype = iter(possibletypes).next()
+                    etype = next(iter(possibletypes))
                     node = n.Constant(etype, 'etype')
                 comp = mytyperel.children[1]
                 comp.replace(comp.children[0], node)
@@ -286,7 +288,7 @@ class RQLRewriter(object):
                         if fnode.name == 'FTIRANK':
                             # we've to fetch the has_text relation as well
                             var = fnode.children[0].variable
-                            rel = iter(var.stinfo['ftirels']).next()
+                            rel = next(iter(var.stinfo['ftirels']))
                             assert not rel.ored(), 'unsupported'
                             newselect.add_restriction(rel.copy(newselect))
                             # remove relation from the orig select and
@@ -330,7 +332,7 @@ class RQLRewriter(object):
             union.replace(select, newselect)
         elif not () in localchecks:
             union.remove(select)
-        for lcheckdef, lchecksolutions in localchecks.iteritems():
+        for lcheckdef, lchecksolutions in localchecks.items():
             if not lcheckdef:
                 continue
             myrqlst = select.copy(solutions=lchecksolutions)
@@ -427,7 +429,7 @@ class RQLRewriter(object):
     def insert_varmap_snippets(self, varmap, rqlexprs, varexistsmap):
         try:
             self.init_from_varmap(varmap, varexistsmap)
-        except VariableFromSubQuery, ex:
+        except VariableFromSubQuery as ex:
             # variable may have been moved to a newly inserted subquery
             # we should insert snippet in that subquery
             subquery = self.select.aliases[ex.variable].query
@@ -548,7 +550,7 @@ class RQLRewriter(object):
                     'cant check security of %s, ambigous type for %s in %s',
                     stmt, varname, key[0]) # key[0] == the rql expression
                 raise Unauthorized()
-            etype = iter(ptypes).next()
+            etype = next(iter(ptypes))
             eschema = self.schema.eschema(etype)
             if not eschema.has_perm(self.session, action):
                 rqlexprs = eschema.get_rqlexprs(action)
@@ -621,7 +623,7 @@ class RQLRewriter(object):
             while argname in self.kwargs:
                 argname = subselect.allocate_varname()
             subselect.add_constant_restriction(subselect.get_variable(self.u_varname),
-                                               'eid', unicode(argname), 'Substitute')
+                                               'eid', text_type(argname), 'Substitute')
             self.kwargs[argname] = self.session.user.eid
         add_types_restriction(self.schema, subselect, subselect,
                               solutions=self.solutions)
@@ -646,7 +648,7 @@ class RQLRewriter(object):
         # insert "is" where necessary
         varexistsmap = {}
         self.removing_ambiguity = True
-        for (erqlexpr, varmap, oldvarname), etype in variantes[0].iteritems():
+        for (erqlexpr, varmap, oldvarname), etype in variantes[0].items():
             varname = self.rewritten[(erqlexpr, varmap, oldvarname)]
             var = self.select.defined_vars[varname]
             exists = var.references()[0].scope
@@ -655,7 +657,7 @@ class RQLRewriter(object):
         # insert ORED exists where necessary
         for variante in variantes[1:]:
             self.insert_snippets(snippets, varexistsmap)
-            for key, etype in variante.iteritems():
+            for key, etype in variante.items():
                 varname = self.rewritten[key]
                 try:
                     var = self.select.defined_vars[varname]
@@ -674,7 +676,7 @@ class RQLRewriter(object):
         variantes = set()
         for sol in newsolutions:
             variante = []
-            for key, newvar in self.rewritten.iteritems():
+            for key, newvar in self.rewritten.items():
                 variante.append( (key, sol[newvar]) )
             variantes.add(tuple(variante))
         # rebuild variantes as dict
@@ -682,7 +684,7 @@ class RQLRewriter(object):
         # remove variable which have always the same type
         for key in self.rewritten:
             it = iter(variantes)
-            etype = it.next()[key]
+            etype = next(it)[key]
             for variante in it:
                 if variante[key] != etype:
                     break
@@ -700,7 +702,7 @@ class RQLRewriter(object):
                 # no more references, undefine the variable
                 del self.select.defined_vars[vref.name]
                 removed.add(vref.name)
-        for key, newvar in self.rewritten.items(): # I mean items we alter it
+        for key, newvar in list(self.rewritten.items()):
             if newvar in removed:
                 del self.rewritten[key]
 
@@ -760,7 +762,7 @@ class RQLRewriter(object):
                 # insert "U eid %(u)s"
                 stmt.add_constant_restriction(
                     stmt.get_variable(self.u_varname),
-                    'eid', unicode(argname), 'Substitute')
+                    'eid', text_type(argname), 'Substitute')
                 self.kwargs[argname] = self.session.user.eid
             return self.u_varname
         key = (self.current_expr, self.varmap, vname)
@@ -883,7 +885,7 @@ class RQLRewriter(object):
                 return n.Constant(vi['const'], 'Int')
             return n.VariableRef(stmt.get_variable(selectvar))
         vname_or_term = self._get_varname_or_term(node.name)
-        if isinstance(vname_or_term, basestring):
+        if isinstance(vname_or_term, string_types):
             return n.VariableRef(stmt.get_variable(vname_or_term))
         # shared term
         return vname_or_term.copy(stmt)

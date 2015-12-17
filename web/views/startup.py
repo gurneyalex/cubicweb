@@ -22,7 +22,7 @@
 """
 
 __docformat__ = "restructuredtext en"
-_ = unicode
+from cubicweb import _
 
 from logilab.common.textutils import unormalize
 from logilab.common.deprecation import deprecated
@@ -106,7 +106,7 @@ class ManageView(StartupView):
 
     def entity_types_table(self, eschemas):
         infos = sorted(self.entity_types(eschemas),
-                       key=lambda (l,a,e): unormalize(l))
+                       key=lambda t: unormalize(t[0]))
         q, r = divmod(len(infos), 2)
         if r:
             infos.append( (None, '&#160;', '&#160;') )
@@ -172,4 +172,3 @@ class IndexView(ManageView):
     @deprecated('[3.11] display_folders method is deprecated, backport it if needed')
     def display_folders(self):
         return 'Folder' in self._cw.vreg.schema and self._cw.execute('Any COUNT(X) WHERE X is Folder')[0][0]
-

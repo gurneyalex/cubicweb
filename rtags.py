@@ -40,6 +40,8 @@ __docformat__ = "restructuredtext en"
 import logging
 from warnings import warn
 
+from six import string_types
+
 from logilab.common.logging_ext import set_log_methods
 from logilab.common.registry import RegistrableInstance, yes
 
@@ -95,7 +97,7 @@ class RelationTags(RegistrableRtags):
     def init(self, schema, check=True):
         # XXX check existing keys against schema
         if check:
-            for (stype, rtype, otype, tagged), value in self._tagdefs.items():
+            for (stype, rtype, otype, tagged), value in list(self._tagdefs.items()):
                 for ertype in (stype, rtype, otype):
                     if ertype != '*' and not ertype in schema:
                         self.warning('removing rtag %s: %s, %s undefined in schema',
@@ -145,7 +147,7 @@ class RelationTags(RegistrableRtags):
         return tag
 
     def _tag_etype_attr(self, etype, attr, desttype='*', *args, **kwargs):
-        if isinstance(attr, basestring):
+        if isinstance(attr, string_types):
             attr, role = attr, 'subject'
         else:
             attr, role = attr

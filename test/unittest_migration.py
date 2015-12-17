@@ -1,4 +1,4 @@
-# copyright 2003-2013 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2014 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -22,7 +22,7 @@ from logilab.common.testlib import TestCase, unittest_main
 
 from cubicweb.devtools import TestServerConfiguration
 from cubicweb.cwconfig import CubicWebConfiguration
-from cubicweb.migration import MigrationHelper, filter_scripts
+from cubicweb.migration import MigrationHelper, filter_scripts, version_strictly_lower
 from cubicweb.server.migractions import ServerMigrationHelper
 
 
@@ -76,8 +76,6 @@ class MigrationToolsTC(TestCase):
     def test_filter_scripts_for_mode(self):
         config = CubicWebConfiguration('data')
         config.verbosity = 0
-        self.assertNotIsInstance(config.migration_handler(), ServerMigrationHelper)
-        self.assertIsInstance(config.migration_handler(), MigrationHelper)
         config = self.config
         config.__class__.name = 'repository'
         self.assertListEqual(filter_scripts(config, TMIGRDIR, (0,0,4), (0,1,0)),
@@ -90,6 +88,10 @@ class MigrationToolsTC(TestCase):
                                ((0, 1 ,0), TMIGRDIR+'0.1.0_common.py'),
                                ((0, 1 ,0), TMIGRDIR+'0.1.0_repository.py')])
         config.__class__.name = 'repository'
+
+    def test_version_strictly_lower(self):
+        self.assertTrue(version_strictly_lower(None, '1.0.0'))
+        self.assertFalse(version_strictly_lower('1.0.0', None))
 
 
 from cubicweb.devtools import ApptestConfiguration, get_test_db_handler

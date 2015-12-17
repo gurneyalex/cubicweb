@@ -18,7 +18,7 @@
 """Core hooks: synchronize living session on persistent data changes"""
 
 __docformat__ = "restructuredtext en"
-_ = unicode
+from cubicweb import _
 
 from cubicweb import UnknownProperty, BadConnectionId, validation_error
 from cubicweb.predicates import is_instance
@@ -26,7 +26,7 @@ from cubicweb.server import hook
 
 
 def get_user_sessions(repo, ueid):
-    for session in repo._sessions.itervalues():
+    for session in repo._sessions.values():
         if ueid == session.user.eid:
             yield session
 
@@ -114,7 +114,7 @@ class CloseDeletedUserSessionsHook(SyncSessionHook):
     def __call__(self):
         """modify user permission, need to update users"""
         for session in get_user_sessions(self._cw.repo, self.entity.eid):
-            _DelUserOp(self._cw, session.id)
+            _DelUserOp(self._cw, session.sessionid)
 
 
 # CWProperty hooks #############################################################

@@ -99,6 +99,8 @@ from functools import reduce
 from datetime import date
 from warnings import warn
 
+from six import text_type, string_types
+
 from logilab.mtconverter import xml_escape
 from logilab.common.deprecation import deprecated
 from logilab.common.date import todatetime
@@ -282,7 +284,7 @@ class FieldWidget(object):
         """
         posted = form._cw.form
         val = posted.get(field.input_name(form, self.suffix))
-        if isinstance(val, basestring):
+        if isinstance(val, string_types):
             val = val.strip()
         return val
 
@@ -416,7 +418,7 @@ class TextArea(FieldWidget):
         lines = value.splitlines()
         linecount = len(lines)
         for line in lines:
-            linecount += len(line) / self._columns
+            linecount += len(line) // self._columns
         attrs.setdefault('cols', self._columns)
         attrs.setdefault('rows', min(self._maxrows, linecount + self._minrows))
         return tags.textarea(value, name=field.input_name(form, self.suffix),
@@ -474,7 +476,7 @@ class Select(FieldWidget):
             options.append(u'</optgroup>')
         if not 'size' in attrs:
             if self._multiple:
-                size = unicode(min(self.default_size, len(vocab) or 1))
+                size = text_type(min(self.default_size, len(vocab) or 1))
             else:
                 size = u'1'
             attrs['size'] = size
@@ -616,7 +618,7 @@ class CheckBox(Input):
                 iattrs['checked'] = u'checked'
             tag = tags.input(name=field.input_name(form, self.suffix),
                              type=self.type, value=value, **iattrs)
-            options.append(u'%s&#160;%s' % (tag, label))
+            options.append(u'<label>%s&#160;%s</label>' % (tag, xml_escape(label)))
         return sep.join(options)
 
 
@@ -706,7 +708,7 @@ class JQueryDatePicker(FieldWidget):
         else:
             value = self.value
         attrs = self.attributes(form, field)
-        attrs.setdefault('size', unicode(self.default_size))
+        attrs.setdefault('size', text_type(self.default_size))
         return tags.input(name=field.input_name(form, self.suffix),
                           value=value, type='text', **attrs)
 
@@ -779,13 +781,13 @@ class JQueryDateTimePicker(FieldWidget):
         try:
             date = todatetime(req.parse_datetime(datestr, 'Date'))
         except ValueError as exc:
-            raise ProcessFormError(unicode(exc))
+            raise ProcessFormError(text_type(exc))
         if timestr is None:
             return date
         try:
             time = req.parse_datetime(timestr, 'Time')
         except ValueError as exc:
-            raise ProcessFormError(unicode(exc))
+            raise ProcessFormError(text_type(exc))
         return date.replace(hour=time.hour, minute=time.minute, second=time.second)
 
 
@@ -993,12 +995,12 @@ class EditableURLWidget(FieldWidget):
         req = form._cw
         values = {}
         path = req.form.get(field.input_name(form, 'path'))
-        if isinstance(path, basestring):
+        if isinstance(path, string_types):
             path = path.strip()
         if path is None:
             path = u''
         fqs = req.form.get(field.input_name(form, 'fqs'))
-        if isinstance(fqs, basestring):
+        if isinstance(fqs, string_types):
             fqs = fqs.strip() or None
             if fqs:
                 for i, line in enumerate(fqs.split('\n')):
@@ -1009,7 +1011,7 @@ class EditableURLWidget(FieldWidget):
                         except ValueError:
                             raise ProcessFormError(req._("wrong query parameter line %s") % (i+1))
                         # value will be url quoted by build_url_params
-                        values.setdefault(key.encode(req.encoding), []).append(val)
+                        values.setdefault(key, []).append(val)
         if not values:
             return path
         return u'%s?%s' % (path, req.build_url_params(**values))
@@ -1094,4 +1096,3 @@ class ImgButton(object):
                '<img src="%(imgsrc)s" alt="%(label)s"/>%(label)s</a>' % {
             'label': label, 'imgsrc': imgsrc,
             'domid': self.domid, 'href': self.href}
-

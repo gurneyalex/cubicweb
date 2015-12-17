@@ -21,6 +21,8 @@ import time
 from xml.etree.ElementTree import fromstring
 from lxml import html
 
+from six import text_type
+
 from logilab.common.testlib import unittest_main
 
 from cubicweb import Binary, ValidationError
@@ -65,19 +67,19 @@ class EntityFieldsFormTC(CubicWebTC):
             t = req.create_entity('Tag', name=u'x')
             form1 = self.vreg['forms'].select('edition', req, entity=t)
             choices = [reid for rview, reid in form1.field_by_name('tags', 'subject', t.e_schema).choices(form1)]
-            self.assertIn(unicode(b.eid), choices)
+            self.assertIn(text_type(b.eid), choices)
             form2 = self.vreg['forms'].select('edition', req, entity=b)
             choices = [reid for rview, reid in form2.field_by_name('tags', 'object', t.e_schema).choices(form2)]
-            self.assertIn(unicode(t.eid), choices)
+            self.assertIn(text_type(t.eid), choices)
 
             b.cw_clear_all_caches()
             t.cw_clear_all_caches()
             req.cnx.execute('SET X tags Y WHERE X is Tag, Y is BlogEntry')
 
             choices = [reid for rview, reid in form1.field_by_name('tags', 'subject', t.e_schema).choices(form1)]
-            self.assertIn(unicode(b.eid), choices)
+            self.assertIn(text_type(b.eid), choices)
             choices = [reid for rview, reid in form2.field_by_name('tags', 'object', t.e_schema).choices(form2)]
-            self.assertIn(unicode(t.eid), choices)
+            self.assertIn(text_type(t.eid), choices)
 
     def test_form_field_choices_new_entity(self):
         with self.admin_access.web_request() as req:
@@ -217,7 +219,7 @@ class EntityFieldsFormTC(CubicWebTC):
                 eidparam=True, role='subject')
         with self.admin_access.web_request() as req:
             file = req.create_entity('File', data_name=u"pouet.txt", data_encoding=u'UTF-8',
-                                     data=Binary('new widgets system'))
+                                     data=Binary(b'new widgets system'))
             form = FFForm(req, redirect_path='perdu.com', entity=file)
             self.assertMultiLineEqual(self._render_entity_field(req, 'data', form),
                               '''<input id="data-subject:%(eid)s" name="data-subject:%(eid)s" tabindex="1" type="file" value="" />
@@ -241,7 +243,7 @@ detach attached file''' % {'eid': file.eid})
                 eidparam=True, role='subject')
         with self.admin_access.web_request() as req:
             file = req.create_entity('File', data_name=u"pouet.txt", data_encoding=u'UTF-8',
-                                     data=Binary('new widgets system'))
+                                     data=Binary(b'new widgets system'))
             form = EFFForm(req, redirect_path='perdu.com', entity=file)
             self.assertMultiLineEqual(self._render_entity_field(req, 'data', form),
                               '''<input id="data-subject:%(eid)s" name="data-subject:%(eid)s" tabindex="1" type="file" value="" />

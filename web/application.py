@@ -25,7 +25,8 @@ from contextlib import contextmanager
 from warnings import warn
 import json
 
-import httplib
+from six import text_type, binary_type
+from six.moves import http_client
 
 from logilab.common.deprecation import deprecated
 
@@ -68,8 +69,8 @@ class CookieSessionHandler(object):
     def __init__(self, appli):
         self.repo = appli.repo
         self.vreg = appli.vreg
-        self.session_manager = self.vreg['components'].select('sessionmanager',
-                                                              repo=self.repo)
+        self.session_manager = self.vreg['sessions'].select('sessionmanager',
+                                                            repo=self.repo)
         global SESSION_MANAGER
         SESSION_MANAGER = self.session_manager
         if self.vreg.config.mode != 'test':
@@ -80,8 +81,8 @@ class CookieSessionHandler(object):
 
     def reset_session_manager(self):
         data = self.session_manager.dump_data()
-        self.session_manager = self.vreg['components'].select('sessionmanager',
-                                                              repo=self.repo)
+        self.session_manager = self.vreg['sessions'].select('sessionmanager',
+                                                            repo=self.repo)
         self.session_manager.restore_data(data)
         global SESSION_MANAGER
         SESSION_MANAGER = self.session_manager
@@ -256,7 +257,7 @@ class CubicWebPublisher(object):
             # activate realm-based auth
             realm = self.vreg.config['realm']
             req.set_header('WWW-Authenticate', [('Basic', {'realm' : realm })], raw=False)
-        content = ''
+        content = b''
         try:
             try:
                 session = self.get_session(req)
@@ -290,7 +291,7 @@ class CubicWebPublisher(object):
                 if self.vreg.config['auth-mode'] == 'cookie' and ex.url:
                     req.headers_out.setHeader('location', str(ex.url))
                 if ex.status is not None:
-                    req.status_out = httplib.SEE_OTHER
+                    req.status_out = http_client.SEE_OTHER
                 # When the authentification is handled by http we must
                 # explicitly ask for authentification to flush current http
                 # authentification information
@@ -310,23 +311,24 @@ class CubicWebPublisher(object):
             # the request does not use https, redirect to login form
             https_url = self.vreg.config['https-url']
             if https_url and req.base_url() != https_url:
-                req.status_out = httplib.SEE_OTHER
+                req.status_out = http_client.SEE_OTHER
                 req.headers_out.setHeader('location', https_url + 'login')
             else:
                 # We assume here that in http auth mode the user *May* provide
                 # Authentification Credential if asked kindly.
                 if self.vreg.config['auth-mode'] == 'http':
-                    req.status_out = httplib.UNAUTHORIZED
+                    req.status_out = http_client.UNAUTHORIZED
                 # In the other case (coky auth) we assume that there is no way
                 # for the user to provide them...
                 # XXX But WHY ?
                 else:
-                    req.status_out = httplib.FORBIDDEN
+                    req.status_out = http_client.FORBIDDEN
                 # If previous error handling already generated a custom content
                 # do not overwrite it. This is used by LogOut Except
                 # XXX ensure we don't actually serve content
                 if not content:
                     content = self.need_login_content(req)
+        assert isinstance(content, binary_type)
         return content
 
 
@@ -368,7 +370,7 @@ class CubicWebPublisher(object):
             except cors.CORSPreflight:
                 # Return directly an empty 200
                 req.status_out = 200
-                result = ''
+                result = b''
             except StatusResponse as ex:
                 warn('[3.16] StatusResponse is deprecated use req.status_out',
                      DeprecationWarning, stacklevel=2)
@@ -394,12 +396,12 @@ class CubicWebPublisher(object):
         except Unauthorized as ex:
             req.data['errmsg'] = req._('You\'re not authorized to access this page. '
                                        'If you think you should, please contact the site administrator.')
-            req.status_out = httplib.FORBIDDEN
+            req.status_out = http_client.FORBIDDEN
             result = self.error_handler(req, ex, tb=False)
         except Forbidden as ex:
             req.data['errmsg'] = req._('This action is forbidden. '
                                        'If you think it should be allowed, please contact the site administrator.')
-            req.status_out = httplib.FORBIDDEN
+            req.status_out = http_client.FORBIDDEN
             result = self.error_handler(req, ex, tb=False)
         except (BadRQLQuery, RequestError) as ex:
             result = self.error_handler(req, ex, tb=False)
@@ -413,7 +415,7 @@ class CubicWebPublisher(object):
             raise
         ### Last defense line
         except BaseException as ex:
-            req.status_out = httplib.INTERNAL_SERVER_ERROR
+            req.status_out = http_client.INTERNAL_SERVER_ERROR
             result = self.error_handler(req, ex, tb=True)
         finally:
             if req.cnx and not commited:
@@ -437,7 +439,7 @@ class CubicWebPublisher(object):
         req.headers_out.setHeader('location', str(ex.location))
         assert 300 <= ex.status < 400
         req.status_out = ex.status
-        return ''
+        return b''
 
     def validation_error_handler(self, req, ex):
         ex.translate(req._) # translate messages using ui language
@@ -453,9 +455,9 @@ class CubicWebPublisher(object):
             # messages.
             location = req.form['__errorurl'].rsplit('#', 1)[0]
             req.headers_out.setHeader('location', str(location))
-            req.status_out = httplib.SEE_OTHER
-            return ''
-        req.status_out = httplib.CONFLICT
+            req.status_out = http_client.SEE_OTHER
+            return b''
+        req.status_out = http_client.CONFLICT
         return self.error_handler(req, ex, tb=False)
 
     def error_handler(self, req, ex, tb=False):
@@ -491,14 +493,14 @@ class CubicWebPublisher(object):
 
     def ajax_error_handler(self, req, ex):
         req.set_header('content-type', 'application/json')
-        status = httplib.INTERNAL_SERVER_ERROR
+        status = http_client.INTERNAL_SERVER_ERROR
         if isinstance(ex, PublishException) and ex.status is not None:
             status = ex.status
         if req.status_out < 400:
             # don't overwrite it if it's already set
             req.status_out = status
-        json_dumper = getattr(ex, 'dumps', lambda : json.dumps({'reason': unicode(ex)}))
-        return json_dumper()
+        json_dumper = getattr(ex, 'dumps', lambda : json.dumps({'reason': text_type(ex)}))
+        return json_dumper().encode('utf-8')
 
     # special case handling
 

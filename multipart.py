@@ -41,13 +41,12 @@ from tempfile import TemporaryFile
 from wsgiref.headers import Headers
 import re, sys
 try:
-    from urlparse import parse_qs
-except ImportError: # pragma: no cover (fallback for Python 2.5)
-    from cgi import parse_qs
-try:
     from io import BytesIO
 except ImportError: # pragma: no cover (fallback for Python 2.5)
     from StringIO import StringIO as BytesIO
+
+from six import PY3, text_type
+from six.moves.urllib.parse import parse_qs
 
 ##############################################################################
 ################################ Helper & Misc ################################
@@ -63,7 +62,7 @@ class MultiDict(DictMixin):
     """ A dict that remembers old values for each key """
     def __init__(self, *a, **k):
         self.dict = dict()
-        for k, v in dict(*a, **k).iteritems():
+        for k, v in dict(*a, **k).items():
             self[k] = v
 
     def __len__(self): return len(self.dict)
@@ -84,12 +83,12 @@ class MultiDict(DictMixin):
         return self.dict[key][index]
 
     def iterallitems(self):
-        for key, values in self.dict.iteritems():
+        for key, values in self.dict.items():
             for value in values:
                 yield key, value
 
 def tob(data, enc='utf8'): # Convert strings to bytes (py2 and py3)
-    return data.encode(enc) if isinstance(data, unicode) else data
+    return data.encode(enc) if isinstance(data, text_type) else data
 
 def copy_file(stream, target, maxread=-1, buffer_size=2*16):
     ''' Read from :stream and write to :target until :maxread or EOF. '''
@@ -397,17 +396,21 @@ def parse_form_data(environ, charset='utf8', strict=False, **kw):
                               'application/x-url-encoded'):
             mem_limit = kw.get('mem_limit', 2**20)
             if content_length > mem_limit:
-                raise MultipartError("Request to big. Increase MAXMEM.")
+                raise MultipartError("Request too big. Increase MAXMEM.")
             data = stream.read(mem_limit)
             if stream.read(1): # These is more that does not fit mem_limit
-                raise MultipartError("Request to big. Increase MAXMEM.")
+                raise MultipartError("Request too big. Increase MAXMEM.")
+            if PY3:
+                data = data.decode('ascii')
             data = parse_qs(data, keep_blank_values=True)
-            for key, values in data.iteritems():
+            for key, values in data.items():
                 for value in values:
-                    forms[key] = value.decode(charset)
+                    if PY3:
+                        forms[key] = value
+                    else:
+                        forms[key.decode(charset)] = value.decode(charset)
         else:
             raise MultipartError("Unsupported content type.")
     except MultipartError:
         if strict: raise
     return forms, files
-

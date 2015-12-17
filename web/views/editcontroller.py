@@ -24,12 +24,14 @@ from collections import defaultdict
 
 from datetime import datetime
 
+from six import text_type
+
 from logilab.common.deprecation import deprecated
 from logilab.common.graph import ordered_nodes
 
 from rql.utils import rqlvar_maker
 
-from cubicweb import Binary, ValidationError
+from cubicweb import _, Binary, ValidationError
 from cubicweb.view import EntityAdapter
 from cubicweb.predicates import is_instance
 from cubicweb.web import (INTERNAL_FIELD_VALUE, RequestError, NothingToEdit,
@@ -93,9 +95,9 @@ class RqlQuery(object):
 
     def update_query(self, eid):
         varmaker = rqlvar_maker()
-        var = varmaker.next()
+        var = next(varmaker)
         while var in self.kwargs:
-            var = varmaker.next()
+            var = next(varmaker)
         rql = 'SET %s WHERE X eid %%(%s)s' % (','.join(self.edited), var)
         if self.restrictions:
             rql += ', %s' % ','.join(self.restrictions)
@@ -143,7 +145,7 @@ class EditController(basecontrollers.ViewController):
         values_by_eid = dict((eid, req.extract_entity_params(eid, minparams=2))
                              for eid in req.edited_eids())
         # iterate over all the edited entities
-        for eid, values in values_by_eid.iteritems():
+        for eid, values in values_by_eid.items():
             # add eid to the dependency graph
             graph.setdefault(eid, set())
             # search entity's edited fields for mandatory inlined relation
@@ -197,7 +199,7 @@ class EditController(basecontrollers.ViewController):
             if '__linkto' in req.form and 'eid' in req.form:
                 self.execute_linkto()
             elif not ('__delete' in req.form or '__insert' in req.form):
-                raise ValidationError(None, {None: unicode(ex)})
+                raise ValidationError(None, {None: text_type(ex)})
         # all pending inlined relations to newly created entities have been
         # treated now (pop to ensure there are no attempt to add new ones)
         pending_inlined = req.data.pop('pending_inlined')
@@ -215,7 +217,7 @@ class EditController(basecontrollers.ViewController):
                 autoform.delete_relations(self._cw, todelete)
         self._cw.remove_pending_operations()
         if self.errors:
-            errors = dict((f.name, unicode(ex)) for f, ex in self.errors)
+            errors = dict((f.name, text_type(ex)) for f, ex in self.errors)
             raise ValidationError(valerror_eid(form.get('__maineid')), errors)
 
     def _insert_entity(self, etype, eid, rqlquery):
@@ -265,7 +267,7 @@ class EditController(basecontrollers.ViewController):
         for form_, field in req.data['pending_inlined'].pop(entity.eid, ()):
             rqlquery.set_inlined(field.name, form_.edited_entity.eid)
         if self.errors:
-            errors = dict((f.role_name(), unicode(ex)) for f, ex in self.errors)
+            errors = dict((f.role_name(), text_type(ex)) for f, ex in self.errors)
             raise ValidationError(valerror_eid(entity.eid), errors)
         if eid is None: # creation or copy
             entity.eid = eid = self._insert_entity(etype, formparams['eid'], rqlquery)
@@ -316,7 +318,7 @@ class EditController(basecontrollers.ViewController):
         """handle edition for the (rschema, x) relation of the given entity
         """
         if values:
-            rqlquery.set_inlined(field.name, iter(values).next())
+            rqlquery.set_inlined(field.name, next(iter(values)))
         elif form.edited_entity.has_eid():
             self.handle_relation(form, field, values, origvalues)
 
@@ -355,13 +357,13 @@ class EditController(basecontrollers.ViewController):
         for eid, etype in eidtypes:
             entity = self._cw.entity_from_eid(eid, etype)
             path, params = entity.cw_adapt_to('IEditControl').after_deletion_path()
-            redirect_info.add( (path, tuple(params.iteritems())) )
+            redirect_info.add( (path, tuple(params.items())) )
             entity.cw_delete()
         if len(redirect_info) > 1:
             # In the face of ambiguity, refuse the temptation to guess.
             self._after_deletion_path = 'view', ()
         else:
-            self._after_deletion_path = iter(redirect_info).next()
+            self._after_deletion_path = next(iter(redirect_info))
         if len(eidtypes) > 1:
             self._cw.set_message(self._cw._('entities deleted'))
         else:
@@ -387,13 +389,6 @@ class EditController(basecontrollers.ViewController):
     def _action_apply(self):
         self._default_publish()
         self.reset()
-
-    def _action_cancel(self):
-        errorurl = self._cw.form.get('__errorurl')
-        if errorurl:
-            self._cw.cancel_edition(errorurl)
-        self._cw.set_message(self._cw._('edit canceled'))
-        return self.reset()
 
     def _action_delete(self):
         self.delete_entities(self._cw.edited_eids(withtype=True))

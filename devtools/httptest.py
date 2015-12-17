@@ -18,17 +18,18 @@
 """this module contains base classes and utilities for integration with running
 http server
 """
+from __future__ import print_function
+
 __docformat__ = "restructuredtext en"
 
 import random
 import threading
 import socket
-import httplib
-from urlparse import urlparse
 
-from twisted.internet import reactor, error
+from six.moves import range, http_client
+from six.moves.urllib.parse import urlparse
 
-from cubicweb.etwist.server import run
+
 from cubicweb.devtools.testlib import CubicWebTC
 from cubicweb.devtools import ApptestConfiguration
 
@@ -89,6 +90,8 @@ class CubicWebServerTC(CubicWebTC):
     configcls = CubicWebServerConfig
 
     def start_server(self):
+        from twisted.internet import reactor
+        from cubicweb.etwist.server import run
         # use a semaphore to avoid starting test while the http server isn't
         # fully initilialized
         semaphore = threading.Semaphore(0)
@@ -110,12 +113,13 @@ class CubicWebServerTC(CubicWebTC):
         #pre init utils connection
         parseurl = urlparse(self.config['base-url'])
         assert parseurl.port == self.config['port'], (self.config['base-url'], self.config['port'])
-        self._web_test_cnx = httplib.HTTPConnection(parseurl.hostname,
-                                                    parseurl.port)
+        self._web_test_cnx = http_client.HTTPConnection(parseurl.hostname,
+                                                        parseurl.port)
         self._ident_cookie = None
 
     def stop_server(self, timeout=15):
         """Stop the webserver, waiting for the thread to return"""
+        from twisted.internet import reactor
         if self._web_test_cnx is None:
             self.web_logout()
             self._web_test_cnx.close()
@@ -139,7 +143,7 @@ class CubicWebServerTC(CubicWebTC):
             passwd = user
         response = self.web_get("login?__login=%s&__password=%s" %
                                 (user, passwd))
-        assert response.status == httplib.SEE_OTHER, response.status
+        assert response.status == http_client.SEE_OTHER, response.status
         self._ident_cookie = response.getheader('Set-Cookie')
         assert self._ident_cookie
         return True
@@ -151,7 +155,7 @@ class CubicWebServerTC(CubicWebTC):
         self._ident_cookie = None
 
     def web_request(self, path='', method='GET', body=None, headers=None):
-        """Return an httplib.HTTPResponse object for the specified path
+        """Return an http_client.HTTPResponse object for the specified path
 
         Use available credential if available.
         """
@@ -174,9 +178,10 @@ class CubicWebServerTC(CubicWebTC):
         self.start_server()
 
     def tearDown(self):
+        from twisted.internet import error
         try:
             self.stop_server()
         except error.ReactorNotRunning as err:
             # Server could be launched manually
-            print err
+            print(err)
         super(CubicWebServerTC, self).tearDown()
