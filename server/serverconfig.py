@@ -16,12 +16,14 @@
 # You should have received a copy of the GNU Lesser General Public License along
 # with CubicWeb.  If not, see <http://www.gnu.org/licenses/>.
 """server.serverconfig definition"""
+from __future__ import print_function
 
 __docformat__ = "restructuredtext en"
 
 import sys
 from os.path import join, exists
-from StringIO import StringIO
+
+from six.moves import StringIO
 
 import logilab.common.configuration as lgconfig
 from logilab.common.decorators import cached
@@ -234,18 +236,19 @@ notified of every changes.',
 
     def bootstrap_cubes(self):
         from logilab.common.textutils import splitstrip
-        for line in file(join(self.apphome, 'bootstrap_cubes')):
-            line = line.strip()
-            if not line or line.startswith('#'):
-                continue
-            self.init_cubes(self.expand_cubes(splitstrip(line)))
-            break
-        else:
-            # no cubes
-            self.init_cubes(())
+        with open(join(self.apphome, 'bootstrap_cubes')) as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith('#'):
+                    continue
+                self.init_cubes(self.expand_cubes(splitstrip(line)))
+                break
+            else:
+                # no cubes
+                self.init_cubes(())
 
     def write_bootstrap_cubes_file(self, cubes):
-        stream = file(join(self.apphome, 'bootstrap_cubes'), 'w')
+        stream = open(join(self.apphome, 'bootstrap_cubes'), 'w')
         stream.write('# this is a generated file only used for bootstraping\n')
         stream.write('# you should not have to edit this\n')
         stream.write('%s\n' % ','.join(cubes))
@@ -276,7 +279,7 @@ notified of every changes.',
                 assert len(self.sources_mode) == 1
                 if source.connect_for_migration:
                     return True
-                print 'not connecting to source', source.uri, 'during migration'
+                print('not connecting to source', source.uri, 'during migration')
                 return False
             if 'all' in self.sources_mode:
                 assert len(self.sources_mode) == 1

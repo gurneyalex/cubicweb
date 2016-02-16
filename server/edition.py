@@ -38,7 +38,7 @@ class dict_protocol_catcher(object):
 class EditedEntity(dict):
     """encapsulate entities attributes being written by an RQL query"""
     def __init__(self, entity, **kwargs):
-        dict.__init__(self, **kwargs)
+        super(EditedEntity, self).__init__(**kwargs)
         self.entity = entity
         self.skip_security = set()
         self.querier_pending_relations = {}
@@ -50,15 +50,18 @@ class EditedEntity(dict):
 
     def __lt__(self, other):
         # we don't want comparison by value inherited from dict
-        return id(self) < id(other)
+        raise NotImplementedError
 
     def __eq__(self, other):
-        return id(self) == id(other)
+        return self is other
+
+    def __ne__(self, other):
+        return not (self == other)
 
     def __setitem__(self, attr, value):
         assert attr != 'eid'
         # don't add attribute into skip_security if already in edited
-        # attributes, else we may accidentaly skip a desired security check
+        # attributes, else we may accidentally skip a desired security check
         if attr not in self:
             self.skip_security.add(attr)
         self.edited_attribute(attr, value)
@@ -83,7 +86,7 @@ class EditedEntity(dict):
     def setdefault(self, attr, default):
         assert attr != 'eid'
         # don't add attribute into skip_security if already in edited
-        # attributes, else we may accidentaly skip a desired security check
+        # attributes, else we may accidentally skip a desired security check
         if attr not in self:
             self[attr] = default
         return self[attr]
@@ -93,7 +96,7 @@ class EditedEntity(dict):
             setitem = self.__setitem__
         else:
             setitem = self.edited_attribute
-        for attr, value in values.iteritems():
+        for attr, value in values.items():
             setitem(attr, value)
 
     def edited_attribute(self, attr, value):
@@ -103,6 +106,8 @@ class EditedEntity(dict):
         assert not self.saved, 'too late to modify edited attributes'
         super(EditedEntity, self).__setitem__(attr, value)
         self.entity.cw_attr_cache[attr] = value
+        if self.entity._cw.vreg.schema.rschema(attr).final:
+            self.entity._cw_dont_cache_attribute(attr)
 
     def oldnewvalue(self, attr):
         """returns the couple (old attr value, new attr value)

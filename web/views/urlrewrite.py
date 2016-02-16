@@ -19,6 +19,8 @@
 
 import re
 
+from six import string_types, add_metaclass
+
 from cubicweb.uilib import domid
 from cubicweb.appobject import AppObject
 
@@ -51,6 +53,7 @@ class metarewriter(type):
         return super(metarewriter, mcs).__new__(mcs, name, bases, classdict)
 
 
+@add_metaclass(metarewriter)
 class URLRewriter(AppObject):
     """Base class for URL rewriters.
 
@@ -64,7 +67,6 @@ class URLRewriter(AppObject):
     should be tried first. The higher the priority is, the earlier the
     rewriter will be tried.
     """
-    __metaclass__ = metarewriter
     __registry__ = 'urlrewriting'
     __abstract__ = True
     priority = 1
@@ -122,14 +124,14 @@ class SimpleReqRewriter(URLRewriter):
                 required_groups = None
             if required_groups and not req.user.matching_groups(required_groups):
                 continue
-            if isinstance(inputurl, basestring):
+            if isinstance(inputurl, string_types):
                 if inputurl == uri:
                     req.form.update(infos)
                     break
             elif inputurl.match(uri): # it's a regexp
                 # XXX what about i18n? (vtitle for instance)
                 for param, value in infos.items():
-                    if isinstance(value, basestring):
+                    if isinstance(value, string_types):
                         req.form[param] = inputurl.sub(value, uri)
                     else:
                         req.form[param] = value
@@ -222,7 +224,7 @@ class SchemaBasedRewriter(URLRewriter):
                 required_groups = None
             if required_groups and not req.user.matching_groups(required_groups):
                 continue
-            if isinstance(inputurl, basestring):
+            if isinstance(inputurl, string_types):
                 if inputurl == uri:
                     return callback(inputurl, uri, req, self._cw.vreg.schema)
             elif inputurl.match(uri): # it's a regexp

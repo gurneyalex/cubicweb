@@ -105,10 +105,9 @@ class CubicWebSchemaTC(TestCase):
         #
         # isinstance(cstr, RQLConstraint)
         # -> expected to return RQLConstraint instances but not
-        #    RRQLVocabularyConstraint and QLUniqueConstraint
+        #    RQLVocabularyConstraint and RQLUniqueConstraint
         self.assertFalse(issubclass(RQLUniqueConstraint, RQLVocabularyConstraint))
         self.assertFalse(issubclass(RQLUniqueConstraint, RQLConstraint))
-        self.assertTrue(issubclass(RQLConstraint, RQLVocabularyConstraint))
 
     def test_entity_perms(self):
         self.assertEqual(eperson.get_groups('read'), set(('managers', 'users', 'guests')))
@@ -158,7 +157,7 @@ class SchemaReaderClassTest(TestCase):
 
     def test_knownValues_load_schema(self):
         schema = loader.load(config)
-        self.assert_(isinstance(schema, CubicWebSchema))
+        self.assertIsInstance(schema, CubicWebSchema)
         self.assertEqual(schema.name, 'data')
         entities = sorted([str(e) for e in schema.entities()])
         expected_entities = ['Ami', 'BaseTransition', 'BigInt', 'Bookmark', 'Boolean', 'Bytes', 'Card',
@@ -273,11 +272,13 @@ class SchemaReaderClassTest(TestCase):
         config = TestConfiguration('data', apphome=join(dirname(__file__), 'data_schemareader'))
         config.bootstrap_cubes()
         schema = loader.load(config)
-        self.assertEqual(schema['in_group'].rdefs.values()[0].permissions,
+        rdef = next(iter(schema['in_group'].rdefs.values()))
+        self.assertEqual(rdef.permissions,
                          {'read': ('managers',),
                           'add': ('managers',),
                           'delete': ('managers',)})
-        self.assertEqual(schema['cw_for_source'].rdefs.values()[0].permissions,
+        rdef = next(iter(schema['cw_for_source'].rdefs.values()))
+        self.assertEqual(rdef.permissions,
                          {'read': ('managers', 'users'),
                           'add': ('managers',),
                           'delete': ('managers',)})
@@ -355,11 +356,11 @@ class SchemaReaderComputedRelationAndAttributesTest(TestCase):
 
         # check object/subject type
         self.assertEqual([('Person','Service')],
-                         schema['produces_and_buys'].rdefs.keys())
+                         list(schema['produces_and_buys'].rdefs.keys()))
         self.assertEqual([('Person','Service')],
-                         schema['produces_and_buys2'].rdefs.keys())
+                         list(schema['produces_and_buys2'].rdefs.keys()))
         self.assertCountEqual([('Company', 'Service'), ('Person', 'Service')],
-                              schema['reproduce'].rdefs.keys())
+                              list(schema['reproduce'].rdefs.keys()))
         # check relation definitions are marked infered
         rdef = schema['produces_and_buys'].rdefs[('Person','Service')]
         self.assertTrue(rdef.infered)
@@ -426,7 +427,9 @@ class NormalizeExpressionTC(TestCase):
 
     def test(self):
         self.assertEqual(normalize_expression('X  bla Y,Y blur Z  ,  Z zigoulou   X '),
-                                               'X bla Y, Y blur Z, Z zigoulou X')
+                                              'X bla Y, Y blur Z, Z zigoulou X')
+        self.assertEqual(normalize_expression('X bla Y, Y name "x,y"'),
+                                              'X bla Y, Y name "x,y"')
 
 
 class RQLExpressionTC(TestCase):
@@ -553,7 +556,7 @@ class CompositeSchemaTC(CubicWebTC):
             self.set_description('composite rdefs for %s' % etype)
             yield self.assertEqual, self.composites[etype], \
                              sorted([(r.rtype.type, r.subject.type, r.object.type, role)
-                                     for r, role in sorted(schema[etype].composite_rdef_roles)])
+                                     for r, role in schema[etype].composite_rdef_roles])
 
 
 if __name__ == '__main__':

@@ -17,8 +17,11 @@
 # with CubicWeb.  If not, see <http://www.gnu.org/licenses/>.
 """unit tests for cubicweb.web.application"""
 
-import base64, Cookie
-import httplib
+import base64
+
+from six import text_type
+from six.moves import http_client
+from six.moves.http_cookies import SimpleCookie
 
 from logilab.common.testlib import TestCase, unittest_main
 from logilab.common.decorators import clear_cache, classproperty
@@ -178,8 +181,8 @@ class ApplicationTC(CubicWebTC):
 
     def test_publish_validation_error(self):
         with self.admin_access.web_request() as req:
-            user = self.user(req)
-            eid = unicode(user.eid)
+            user = req.user
+            eid = text_type(user.eid)
             req.form = {
                 'eid':       eid,
                 '__type:'+eid:    'CWUser', '_cw_entity_fields:'+eid: 'login-subject',
@@ -519,14 +522,14 @@ class ApplicationTC(CubicWebTC):
                 with self.admin_access.web_request(vid='test.ajax.error') as req:
                     req.ajax_request = True
                     page = app.handle_request(req, '')
-        self.assertEqual(httplib.INTERNAL_SERVER_ERROR,
+        self.assertEqual(http_client.INTERNAL_SERVER_ERROR,
                          req.status_out)
 
     def _test_cleaned(self, kwargs, injected, cleaned):
         with self.admin_access.web_request(**kwargs) as req:
             page = self.app_handle_request(req, 'view')
-            self.assertNotIn(injected, page)
-            self.assertIn(cleaned, page)
+            self.assertNotIn(injected.encode('ascii'), page)
+            self.assertIn(cleaned.encode('ascii'), page)
 
     def test_nonregr_script_kiddies(self):
         """test against current script injection"""
@@ -566,8 +569,8 @@ class ApplicationTC(CubicWebTC):
         self.app.handle_request(req, 'login')
         self.assertEqual(401, req.status_out)
         clear_cache(req, 'get_authorization')
-        authstr = base64.encodestring('%s:%s' % (self.admlogin, self.admpassword))
-        req.set_request_header('Authorization', 'basic %s' % authstr)
+        authstr = base64.encodestring(('%s:%s' % (self.admlogin, self.admpassword)).encode('ascii'))
+        req.set_request_header('Authorization', 'basic %s' % authstr.decode('ascii'))
         self.assertAuthSuccess(req, origsession)
         self.assertRaises(LogOut, self.app_handle_request, req, 'logout')
         self.assertEqual(len(self.open_sessions), 0)
@@ -580,8 +583,8 @@ class ApplicationTC(CubicWebTC):
         except Redirect as redir:
             self.fail('anonymous user should get login form')
         clear_cache(req, 'get_authorization')
-        self.assertIn('__login', form)
-        self.assertIn('__password', form)
+        self.assertIn(b'__login', form)
+        self.assertIn(b'__password', form)
         self.assertFalse(req.cnx) # Mock cnx are False
         req.form['__login'] = self.admlogin
         req.form['__password'] = self.admpassword
@@ -613,7 +616,7 @@ class ApplicationTC(CubicWebTC):
     def _reset_cookie(self, req):
         # preparing the suite of the test
         # set session id in cookie
-        cookie = Cookie.SimpleCookie()
+        cookie = SimpleCookie()
         sessioncookie = self.app.session_handler.session_cookie(req)
         cookie[sessioncookie] = req.session.sessionid
         req.set_request_header('Cookie', cookie[sessioncookie].OutputString(),
@@ -642,11 +645,11 @@ class ApplicationTC(CubicWebTC):
     def test_http_auth_anon_allowed(self):
         req, origsession = self.init_authentication('http', 'anon')
         self._test_auth_anon(req)
-        authstr = base64.encodestring('toto:pouet')
-        req.set_request_header('Authorization', 'basic %s' % authstr)
+        authstr = base64.encodestring(b'toto:pouet')
+        req.set_request_header('Authorization', 'basic %s' % authstr.decode('ascii'))
         self._test_anon_auth_fail(req)
-        authstr = base64.encodestring('%s:%s' % (self.admlogin, self.admpassword))
-        req.set_request_header('Authorization', 'basic %s' % authstr)
+        authstr = base64.encodestring(('%s:%s' % (self.admlogin, self.admpassword)).encode('ascii'))
+        req.set_request_header('Authorization', 'basic %s' % authstr.decode('ascii'))
         self.assertAuthSuccess(req, origsession)
         self.assertRaises(LogOut, self.app_handle_request, req, 'logout')
         self.assertEqual(len(self.open_sessions), 0)

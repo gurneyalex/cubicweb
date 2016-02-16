@@ -76,10 +76,12 @@ views use those text views as a basis.
 """
 
 __docformat__ = "restructuredtext en"
-_ = unicode
+from cubicweb import _
 
 from datetime import timedelta
 from warnings import warn
+
+from six.moves import range
 
 from rql import nodes
 
@@ -231,8 +233,8 @@ class TextView(EntityView):
         """
         rset = self.cw_rset
         if rset is None:
-            raise NotImplementedError, self
-        for i in xrange(len(rset)):
+            raise NotImplementedError(self)
+        for i in range(len(rset)):
             self.wview(self.__regid__, rset, row=i, **kwargs)
             if len(rset) > 1:
                 self.w(u"\n")
@@ -314,7 +316,7 @@ class ListView(EntityView):
             self.w(u'<ul>\n')
         else:
             self.w(u'<ul%s class="%s">\n' % (listid, klass or 'section'))
-        for i in xrange(self.cw_rset.rowcount):
+        for i in range(self.cw_rset.rowcount):
             self.cell_call(row=i, col=0, vid=subvid, klass=klass, **kwargs)
         self.w(u'</ul>\n')
         if title:
@@ -393,7 +395,7 @@ class SameETypeListView(EntityView):
 
     @property
     def title(self):
-        etype = iter(self.cw_rset.column_types(0)).next()
+        etype = next(iter(self.cw_rset.column_types(0)))
         return display_name(self._cw, etype, form='plural')
 
     def call(self, **kwargs):
@@ -427,7 +429,7 @@ class CSVView(SimpleListView):
     def call(self, subvid=None, **kwargs):
         kwargs['vid'] = subvid
         rset = self.cw_rset
-        for i in xrange(len(rset)):
+        for i in range(len(rset)):
             self.cell_call(i, 0, **kwargs)
             if i < rset.rowcount-1:
                 self.w(self.separator)

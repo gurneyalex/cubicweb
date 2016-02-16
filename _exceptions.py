@@ -21,6 +21,8 @@ __docformat__ = "restructuredtext en"
 
 from warnings import warn
 
+from six import PY3, text_type
+
 from logilab.common.decorators import cachedproperty
 
 from yams import ValidationError
@@ -30,23 +32,24 @@ from yams import ValidationError
 class CubicWebException(Exception):
     """base class for cubicweb server exception"""
     msg = ""
-    def __str__(self):
+    def __unicode__(self):
         if self.msg:
             if self.args:
                 return self.msg % tuple(self.args)
             else:
                 return self.msg
         else:
-            return u' '.join(unicode(arg) for arg in self.args)
+            return u' '.join(text_type(arg) for arg in self.args)
+    __str__ = __unicode__ if PY3 else lambda self: self.__unicode__().encode('utf-8')
 
 class ConfigurationError(CubicWebException):
     """a misconfiguration error"""
 
 class InternalError(CubicWebException):
-    """base class for exceptions which should not occurs"""
+    """base class for exceptions which should not occur"""
 
 class SecurityError(CubicWebException):
-    """base class for cubicweb server security exception"""
+    """base class for cubicweb server security exceptions"""
 
 class RepositoryError(CubicWebException):
     """base class for repository exceptions"""
@@ -114,19 +117,19 @@ class Unauthorized(SecurityError):
     """raised when a user tries to perform an action without sufficient
     credentials
     """
-    msg = 'You are not allowed to perform this operation'
-    msg1 = 'You are not allowed to perform %s operation on %s'
+    msg = u'You are not allowed to perform this operation'
+    msg1 = u'You are not allowed to perform %s operation on %s'
     var = None
 
-    def __str__(self):
+    def __unicode__(self):
         try:
             if self.args and len(self.args) == 2:
                 return self.msg1 % self.args
             if self.args:
-                return ' '.join(self.args)
+                return u' '.join(self.args)
             return self.msg
         except Exception as ex:
-            return str(ex)
+            return text_type(ex)
 
 class Forbidden(SecurityError):
     """raised when a user tries to perform a forbidden action
@@ -185,7 +188,7 @@ class UndoTransactionException(QueryError):
          commit time.
 
     :type txuuix: int
-    :param txuuid: Unique identifier of the partialy undone transaction
+    :param txuuid: Unique identifier of the partially undone transaction
 
     :type errors: list
     :param errors: List of errors occurred during undoing
@@ -204,4 +207,3 @@ class ExecutionError(Exception):
 
 # pylint: disable=W0611
 from logilab.common.clcommands import BadCommandUsage
-

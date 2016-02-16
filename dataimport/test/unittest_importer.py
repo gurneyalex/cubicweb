@@ -132,7 +132,7 @@ class ExtEntitiesImporterTC(CubicWebTC):
             importer = self.importer(cnx)
             # First import
             richelieu = ExtEntity('Personne', 11,
-                                  {'nom': {u'Richelieu Diacre'}})
+                                  {'nom': set([u'Richelieu Diacre'])})
             importer.import_entities([richelieu])
             cnx.commit()
             rset = cnx.execute('Any X WHERE X is Personne')
@@ -140,7 +140,7 @@ class ExtEntitiesImporterTC(CubicWebTC):
             self.assertEqual(entity.nom, u'Richelieu Diacre')
             # Second import
             richelieu = ExtEntity('Personne', 11,
-                                  {'nom': {u'Richelieu Cardinal'}})
+                                  {'nom': set([u'Richelieu Cardinal'])})
             importer.import_entities([richelieu])
             cnx.commit()
             rset = cnx.execute('Any X WHERE X is Personne')
@@ -152,14 +152,14 @@ class ExtEntitiesImporterTC(CubicWebTC):
 class UseExtidAsCwuriTC(TestCase):
 
     def test(self):
-        personne = ExtEntity('Personne', 1, {'nom': set([u'de la lune']),
-                                             'prenom': set([u'Jean'])})
+        personne = ExtEntity('Personne', b'1', {'nom': set([u'de la lune']),
+                                                'prenom': set([u'Jean'])})
         mapping = {}
         set_cwuri = use_extid_as_cwuri(mapping)
         list(set_cwuri((personne,)))
         self.assertIn('cwuri', personne.values)
-        self.assertEqual(personne.values['cwuri'], set(['1']))
-        mapping[1] = 'whatever'
+        self.assertEqual(personne.values['cwuri'], set([u'1']))
+        mapping[b'1'] = 'whatever'
         personne.values.pop('cwuri')
         list(set_cwuri((personne,)))
         self.assertNotIn('cwuri', personne.values)
@@ -167,7 +167,7 @@ class UseExtidAsCwuriTC(TestCase):
 
 def extentities_from_csv(fpath):
     """Yield ExtEntity read from `fpath` CSV file."""
-    with open(fpath) as f:
+    with open(fpath, 'rb') as f:
         for uri, name, knows in ucsvreader(f, skipfirst=True, skip_empty=False):
             yield ExtEntity('Personne', uri,
                             {'nom': set([name]), 'connait': set([knows])})

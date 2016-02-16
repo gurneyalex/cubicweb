@@ -25,14 +25,17 @@ repository mainly:
   point to a cubicweb instance.
 * handles session management
 """
+from __future__ import print_function
+
 __docformat__ = "restructuredtext en"
 
 import threading
-import Queue
 from warnings import warn
 from itertools import chain
 from time import time, localtime, strftime
 from contextlib import contextmanager
+
+from six.moves import range, queue
 
 from logilab.common.decorators import cached, clear_cache
 from logilab.common.deprecation import deprecated
@@ -186,18 +189,18 @@ class Repository(object):
         # registry hook to fix user class on registry reload
         @onevent('after-registry-reload', self)
         def fix_user_classes(self):
-            # After registery reload the 'CWUser' class used for CWEtype
-            # changed.  To any existing user object have a different class than
+            # After registry reload the 'CWUser' class used for CWEtype
+            # changed.  So any existing user object have a different class than
             # the new loaded one. We are hot fixing this.
             usercls = self.vreg['etypes'].etype_class('CWUser')
-            for session in self._sessions.itervalues():
+            for session in self._sessions.values():
                 if not isinstance(session.user, InternalManager):
                     session.user.__class__ = usercls
 
     def init_cnxset_pool(self):
         """should be called bootstrap_repository, as this is what it does"""
         config = self.config
-        self._cnxsets_pool = Queue.Queue()
+        self._cnxsets_pool = queue.Queue()
         # 0. init a cnxset that will be used to fetch bootstrap information from
         #    the database
         self._cnxsets_pool.put_nowait(self.system_source.wrapped_connection())
@@ -223,6 +226,11 @@ class Repository(object):
             if not config.creating:
                 self.info("set fs instance'schema")
             self.set_schema(config.load_schema(expand_cubes=True))
+            if not config.creating:
+                # set eids on entities schema
+                with self.internal_cnx() as cnx:
+                    for etype, eid in cnx.execute('Any XN,X WHERE X is CWEType, X name XN'):
+                        self.schema.eschema(etype).eid = eid
         else:
             # normal start: load the instance schema from the database
             self.info('loading schema from the repository')
@@ -240,7 +248,7 @@ class Repository(object):
         #    proper initialization
         self._get_cnxset().close(True)
         self.cnxsets = [] # list of available cnxsets (can't iterate on a Queue)
-        for i in xrange(config['connections-pool-size']):
+        for i in range(config['connections-pool-size']):
             self.cnxsets.append(self.system_source.wrapped_connection())
             self._cnxsets_pool.put_nowait(self.cnxsets[-1])
 
@@ -308,7 +316,7 @@ class Repository(object):
         else:
             self.vreg._set_schema(schema)
         self.querier.set_schema(schema)
-        for source in self.sources_by_uri.itervalues():
+        for source in self.sources_by_uri.values():
             source.set_schema(schema)
         self.schema = schema
 
@@ -377,7 +385,7 @@ class Repository(object):
     def _get_cnxset(self):
         try:
             return self._cnxsets_pool.get(True, timeout=5)
-        except Queue.Empty:
+        except queue.Empty:
             raise Exception('no connections set available after 5 secs, probably either a '
                             'bug in code (too many uncommited/rolled back '
                             'connections) or too much load on the server (in '
@@ -387,13 +395,6 @@ class Repository(object):
     def _free_cnxset(self, cnxset):
         self._cnxsets_pool.put_nowait(cnxset)
 
-    def pinfo(self):
-        # XXX: session.cnxset is accessed from a local storage, would be interesting
-        #      to see if there is a cnxset set in any thread specific data)
-        return '%s: %s (%s)' % (self._cnxsets_pool.qsize(),
-                                ','.join(session.user.login for session in self._sessions.itervalues()
-                                         if session.cnxset),
-                                threading.currentThread())
     def shutdown(self):
         """called on server stop event to properly close opened sessions and
         connections
@@ -441,7 +442,7 @@ class Repository(object):
         """
         # iter on sources_by_uri then check enabled source since sources doesn't
         # contain copy based sources
-        for source in self.sources_by_uri.itervalues():
+        for source in self.sources_by_uri.values():
             if self.config.source_enabled(source) and source.support_entity('CWUser'):
                 try:
                     return source.authenticate(cnx, login, **authinfo)
@@ -575,7 +576,7 @@ class Repository(object):
         """
         sources = {}
         # remove sensitive information
-        for uri, source in self.sources_by_uri.iteritems():
+        for uri, source in self.sources_by_uri.items():
             sources[uri] = source.public_config
         return sources
 
@@ -623,7 +624,7 @@ class Repository(object):
                 raise Exception('bad input for find_user')
         with self.internal_cnx() as cnx:
             varmaker = rqlvar_maker()
-            vars = [(attr, varmaker.next()) for attr in fetch_attrs]
+            vars = [(attr, next(varmaker)) for attr in fetch_attrs]
             rql = 'Any %s WHERE X is CWUser, ' % ','.join(var[1] for var in vars)
             rql += ','.join('X %s %s' % (var[0], var[1]) for var in vars) + ','
             rset = cnx.execute(rql + ','.join('X %s %%(%s)s' % (attr, attr)
@@ -657,12 +658,6 @@ class Repository(object):
     def connect(self, login, **kwargs):
         """open a new session for a given user and return its sessionid """
         return self.new_session(login, **kwargs).sessionid
-
-    def check_session(self, sessionid):
-        """raise `BadConnectionId` if the connection is no more valid, else
-        return its latest activity timestamp.
-        """
-        return self._get_session(sessionid).timestamp
 
     def close(self, sessionid, txid=None, checkshuttingdown=True):
         """close the session with the given id"""
@@ -779,6 +774,7 @@ class Repository(object):
             args[key] = int(args[key])
         return tuple(cachekey)
 
+    @deprecated('[3.22] use the new store API')
     def extid2eid(self, source, extid, etype, cnx, insert=True,
                   sourceparams=None):
         """Return eid from a local id. If the eid is a negative integer, that
@@ -919,7 +915,7 @@ class Repository(object):
         # set caches asap
         extid = self.init_entity_caches(cnx, entity, source)
         if server.DEBUG & server.DBG_REPO:
-            print 'ADD entity', self, entity.cw_etype, entity.eid, edited
+            print('ADD entity', self, entity.cw_etype, entity.eid, edited)
         prefill_entity_caches(entity)
         self.hm.call_hooks('before_add_entity', cnx, entity=entity)
         relations = preprocess_inlined_relations(cnx, entity)
@@ -950,8 +946,8 @@ class Repository(object):
         """
         entity = edited.entity
         if server.DEBUG & server.DBG_REPO:
-            print 'UPDATE entity', entity.cw_etype, entity.eid, \
-                  entity.cw_attr_cache, edited
+            print('UPDATE entity', entity.cw_etype, entity.eid,
+                  entity.cw_attr_cache, edited)
         hm = self.hm
         eschema = entity.e_schema
         cnx.set_entity_cache(entity)
@@ -1043,9 +1039,9 @@ class Repository(object):
             except KeyError:
                 data_by_etype[etype] = [entity]
         source = self.system_source
-        for etype, entities in data_by_etype.iteritems():
+        for etype, entities in data_by_etype.items():
             if server.DEBUG & server.DBG_REPO:
-                print 'DELETE entities', etype, [entity.eid for entity in entities]
+                print('DELETE entities', etype, [entity.eid for entity in entities])
             self.hm.call_hooks('before_delete_entity', cnx, entities=entities)
             self._delete_cascade_multi(cnx, entities)
             source.delete_entities(cnx, entities)
@@ -1067,10 +1063,10 @@ class Repository(object):
         subjects_by_types = {}
         objects_by_types = {}
         activintegrity = cnx.is_hook_category_activated('activeintegrity')
-        for rtype, eids_subj_obj in relations.iteritems():
+        for rtype, eids_subj_obj in relations.items():
             if server.DEBUG & server.DBG_REPO:
                 for subjeid, objeid in eids_subj_obj:
-                    print 'ADD relation', subjeid, rtype, objeid
+                    print('ADD relation', subjeid, rtype, objeid)
             for subjeid, objeid in eids_subj_obj:
                 if rtype in relations_by_rtype:
                     relations_by_rtype[rtype].append((subjeid, objeid))
@@ -1105,22 +1101,22 @@ class Repository(object):
                         objects[objeid] = len(relations_by_rtype[rtype])
                         continue
                     objects[objeid] = len(relations_by_rtype[rtype])
-        for rtype, source_relations in relations_by_rtype.iteritems():
+        for rtype, source_relations in relations_by_rtype.items():
             self.hm.call_hooks('before_add_relation', cnx,
                                rtype=rtype, eids_from_to=source_relations)
-        for rtype, source_relations in relations_by_rtype.iteritems():
+        for rtype, source_relations in relations_by_rtype.items():
             source.add_relations(cnx, rtype, source_relations)
             rschema = self.schema.rschema(rtype)
             for subjeid, objeid in source_relations:
                 cnx.update_rel_cache_add(subjeid, rtype, objeid, rschema.symmetric)
-        for rtype, source_relations in relations_by_rtype.iteritems():
+        for rtype, source_relations in relations_by_rtype.items():
             self.hm.call_hooks('after_add_relation', cnx,
                                rtype=rtype, eids_from_to=source_relations)
 
     def glob_delete_relation(self, cnx, subject, rtype, object):
         """delete a relation from the repository"""
         if server.DEBUG & server.DBG_REPO:
-            print 'DELETE relation', subject, rtype, object
+            print('DELETE relation', subject, rtype, object)
         source = self.system_source
         self.hm.call_hooks('before_delete_relation', cnx,
                            eidfrom=subject, rtype=rtype, eidto=object)
