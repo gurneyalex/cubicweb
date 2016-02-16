@@ -2,8 +2,6 @@
 # http://twistedmatrix.com/trac/wiki/TwistedWeb2
 
 
-from __future__ import generators
-
 import types, time
 from calendar import timegm
 import base64
@@ -934,9 +932,13 @@ def generateStarOrETag(etag):
 
 #### Cookies. Blech!
 class Cookie(object):
-    # __slots__ = ['name', 'value', 'path', 'domain', 'ports', 'expires', 'discard', 'secure', 'comment', 'commenturl', 'version']
+    # __slots__ = ['name', 'value', 'path', 'domain', 'ports', 'expires',
+    #              'discard', 'secure', 'httponly', 'comment', 'commenturl',
+    #              'version']
 
-    def __init__(self, name, value, path=None, domain=None, ports=None, expires=None, discard=False, secure=False, comment=None, commenturl=None, version=0):
+    def __init__(self, name, value, path=None, domain=None, ports=None,
+                 expires=None, discard=False, secure=False, httponly=False,
+                 comment=None, commenturl=None, version=0):
         self.name = name
         self.value = value
         self.path = path
@@ -945,6 +947,7 @@ class Cookie(object):
         self.expires = expires
         self.discard = discard
         self.secure = secure
+        self.httponly = httponly
         self.comment = comment
         self.commenturl = commenturl
         self.version = version
@@ -955,7 +958,8 @@ class Cookie(object):
         if self.domain is not None: s+=", domain=%r" % (self.domain,)
         if self.ports is not None: s+=", ports=%r" % (self.ports,)
         if self.expires is not None: s+=", expires=%r" % (self.expires,)
-        if self.secure is not False: s+=", secure=%r" % (self.secure,)
+        if self.secure: s+=", secure"
+        if self.httponly: s+=", HttpOnly"
         if self.comment is not None: s+=", comment=%r" % (self.comment,)
         if self.commenturl is not None: s+=", commenturl=%r" % (self.commenturl,)
         if self.version != 0: s+=", version=%r" % (self.version,)
@@ -1213,6 +1217,8 @@ def generateSetCookie(cookies):
             out.append("domain=%s" % cookie.domain)
         if cookie.secure:
             out.append("secure")
+        if cookie.httponly:
+            out.append("HttpOnly")
 
         setCookies.append('; '.join(out))
     return setCookies
@@ -1240,6 +1246,8 @@ def generateSetCookie2(cookies):
                 out.append("Port=%s" % quoteString(",".join([str(x) for x in cookie.ports])))
         if cookie.secure:
             out.append("Secure")
+        if cookie.httponly:
+            out.append("HttpOnly")
         out.append('Version="1"')
         setCookies.append('; '.join(out))
     return setCookies
@@ -1339,6 +1347,9 @@ class Headers(object):
         h = self._headers.get(name, None)
         r = self.handler.generate(name, h)
         if r is not None:
+            assert isinstance(r, list)
+            for v in r:
+                assert isinstance(v, str)
             self._raw_headers[name] = r
         return r
 
@@ -1377,6 +1388,9 @@ class Headers(object):
         Value should be a list of strings, each being one header of the
         given name.
         """
+        assert isinstance(value, list)
+        for v in value:
+            assert isinstance(v, str)
         name = name.lower()
         self._raw_headers[name] = value
         self._headers[name] = _RecalcNeeded

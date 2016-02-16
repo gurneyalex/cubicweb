@@ -27,7 +27,8 @@ __docformat__ = "restructuredtext en"
 _ = unicode
 
 from copy import copy
-from yams.schema import BASE_TYPES, RelationSchema, RelationDefinitionSchema
+from yams.schema import (BASE_TYPES, BadSchemaDefinition,
+                         RelationSchema, RelationDefinitionSchema)
 from yams import buildobjs as ybo, schema2sql as y2sql, convert_default_value
 
 from logilab.common.decorators import clear_cache
@@ -38,6 +39,7 @@ from cubicweb.schema import (SCHEMA_TYPES, META_RTYPES, VIRTUAL_RTYPES,
                              CONSTRAINTS, ETYPE_NAME_MAP, display_name)
 from cubicweb.server import hook, schemaserial as ss
 from cubicweb.server.sqlutils import SQL_PREFIX
+from cubicweb.hooks.synccomputed import RecomputeAttributeOperation
 
 # core entity and relation types which can't be removed
 CORE_TYPES = BASE_TYPES | SCHEMA_TYPES | META_RTYPES | set(
@@ -70,14 +72,14 @@ def add_inline_relation_column(cnx, etype, rtype):
     table = SQL_PREFIX + etype
     column = SQL_PREFIX + rtype
     try:
-        cnx.system_sql(str('ALTER TABLE %s ADD %s integer'
-                               % (table, column)), rollback_on_failure=False)
+        cnx.system_sql(str('ALTER TABLE %s ADD %s integer' % (table, column)),
+                       rollback_on_failure=False)
         cnx.info('added column %s to table %s', column, table)
     except Exception:
         # silent exception here, if this error has not been raised because the
         # column already exists, index creation will fail anyway
         cnx.exception('error while adding column %s to table %s',
-                          table, column)
+                      table, column)
     # create index before alter table which may expectingly fail during test
     # (sqlite) while index creation should never fail (test for index existence
     # is done by the dbhelper)
@@ -166,8 +168,8 @@ class DropColumn(hook.Operation):
         # drop index if any
         source.drop_index(cnx, table, column)
         if source.dbhelper.alter_column_support:
-            cnx.system_sql('ALTER TABLE %s DROP COLUMN %s'
-                               % (table, column), rollback_on_failure=False)
+            cnx.system_sql('ALTER TABLE %s DROP COLUMN %s' % (table, column),
+                           rollback_on_failure=False)
             self.info('dropped column %s from table %s', column, table)
         else:
             # not supported by sqlite for instance
@@ -307,7 +309,7 @@ class CWETypeRenameOp(MemSchemaOperation):
 class CWRTypeUpdateOp(MemSchemaOperation):
     """actually update some properties of a relation definition"""
     rschema = entity = values = None # make pylint happy
-    oldvalus = None
+    oldvalues = None
 
     def precommit_event(self):
         rschema = self.rschema
@@ -388,6 +390,21 @@ class CWRTypeUpdateOp(MemSchemaOperation):
         # XXX revert changes on database
 
 
+class CWComputedRTypeUpdateOp(MemSchemaOperation):
+    """actually update some properties of a computed relation definition"""
+    rschema = entity = rule = None # make pylint happy
+    old_rule = None
+
+    def precommit_event(self):
+        # update the in-memory schema first
+        self.old_rule = self.rschema.rule
+        self.rschema.rule = self.rule
+
+    def revertprecommit_event(self):
+        # revert changes on in memory schema
+        self.rschema.rule = self.old_rule
+
+
 class CWAttributeAddOp(MemSchemaOperation):
     """an attribute relation (CWAttribute) has been added:
     * add the necessary column
@@ -407,12 +424,19 @@ class CWAttributeAddOp(MemSchemaOperation):
             description=entity.description, cardinality=entity.cardinality,
             constraints=get_constraints(self.cnx, entity),
             order=entity.ordernum, eid=entity.eid, **kwargs)
-        self.cnx.vreg.schema.add_relation_def(rdefdef)
+        try:
+            self.cnx.vreg.schema.add_relation_def(rdefdef)
+        except BadSchemaDefinition:
+            # rdef has been infered then explicitly added (current consensus is
+            # not clear at all versus infered relation handling (and much
+            # probably buggy)
+            rdef = self.cnx.vreg.schema.rschema(rdefdef.name).rdefs[rdefdef.subject, rdefdef.object]
+            assert rdef.infered
         self.cnx.execute('SET X ordernum Y+1 '
-                             'WHERE X from_entity SE, SE eid %(se)s, X ordernum Y, '
-                             'X ordernum >= %(order)s, NOT X eid %(x)s',
-                             {'x': entity.eid, 'se': fromentity.eid,
-                              'order': entity.ordernum or 0})
+                         'WHERE X from_entity SE, SE eid %(se)s, X ordernum Y, '
+                         'X ordernum >= %(order)s, NOT X eid %(x)s',
+                         {'x': entity.eid, 'se': fromentity.eid,
+                          'order': entity.ordernum or 0})
         return rdefdef
 
     def precommit_event(self):
@@ -427,6 +451,9 @@ class CWAttributeAddOp(MemSchemaOperation):
                  'indexed': entity.indexed,
                  'fulltextindexed': entity.fulltextindexed,
                  'internationalizable': entity.internationalizable}
+        # entity.formula may not exist yet if we're migrating to 3.20
+        if hasattr(entity, 'formula'):
+            props['formula'] = entity.formula
         # update the in-memory schema first
         rdefdef = self.init_rdef(**props)
         # then make necessary changes to the system source database
@@ -447,8 +474,8 @@ class CWAttributeAddOp(MemSchemaOperation):
         column = SQL_PREFIX + rdefdef.name
         try:
             cnx.system_sql(str('ALTER TABLE %s ADD %s %s'
-                                   % (table, column, attrtype)),
-                               rollback_on_failure=False)
+                               % (table, column, attrtype)),
+                           rollback_on_failure=False)
             self.info('added column %s to table %s', column, table)
         except Exception as ex:
             # the column probably already exists. this occurs when
@@ -479,6 +506,12 @@ class CWAttributeAddOp(MemSchemaOperation):
             default = convert_default_value(self.rdefdef, default)
             cnx.system_sql('UPDATE %s SET %s=%%(default)s' % (table, column),
                                {'default': default})
+        # if attribute is computed, compute it
+        if getattr(entity, 'formula', None):
+            # add rtype attribute for RelationDefinitionSchema api compat, this
+            # is what RecomputeAttributeOperation expect
+            rdefdef.rtype = rdefdef.name
+            RecomputeAttributeOperation.get_instance(cnx).add_data(rdefdef)
 
     def revertprecommit_event(self):
         # revert changes on in memory schema
@@ -616,6 +649,8 @@ class RDefUpdateOp(MemSchemaOperation):
             self.null_allowed_changed = True
         if 'fulltextindexed' in self.values:
             UpdateFTIndexOp.get_instance(cnx).add_data(rdef.subject)
+        if 'formula' in self.values:
+            RecomputeAttributeOperation.get_instance(cnx).add_data(rdef)
 
     def revertprecommit_event(self):
         if self.rdef is None:
@@ -994,7 +1029,26 @@ class DelCWRTypeHook(SyncSchemaHook):
         MemSchemaCWRTypeDel(self._cw, rtype=name)
 
 
-class AfterAddCWRTypeHook(DelCWRTypeHook):
+class AfterAddCWComputedRTypeHook(SyncSchemaHook):
+    """after a CWComputedRType entity has been added:
+    * register an operation to add the relation type to the instance's
+      schema on commit
+
+    We don't know yet this point if a table is necessary
+    """
+    __regid__ = 'syncaddcwcomputedrtype'
+    __select__ = SyncSchemaHook.__select__ & is_instance('CWComputedRType')
+    events = ('after_add_entity',)
+
+    def __call__(self):
+        entity = self.entity
+        rtypedef = ybo.ComputedRelation(name=entity.name,
+                                        eid=entity.eid,
+                                        rule=entity.rule)
+        MemSchemaCWRTypeAdd(self._cw, rtypedef=rtypedef)
+
+
+class AfterAddCWRTypeHook(SyncSchemaHook):
     """after a CWRType entity has been added:
     * register an operation to add the relation type to the instance's
       schema on commit
@@ -1002,6 +1056,7 @@ class AfterAddCWRTypeHook(DelCWRTypeHook):
     We don't know yet this point if a table is necessary
     """
     __regid__ = 'syncaddcwrtype'
+    __select__ = SyncSchemaHook.__select__ & is_instance('CWRType')
     events = ('after_add_entity',)
 
     def __call__(self):
@@ -1014,9 +1069,10 @@ class AfterAddCWRTypeHook(DelCWRTypeHook):
         MemSchemaCWRTypeAdd(self._cw, rtypedef=rtypedef)
 
 
-class BeforeUpdateCWRTypeHook(DelCWRTypeHook):
+class BeforeUpdateCWRTypeHook(SyncSchemaHook):
     """check name change, handle final"""
     __regid__ = 'syncupdatecwrtype'
+    __select__ = SyncSchemaHook.__select__ & is_instance('CWRType')
     events = ('before_update_entity',)
 
     def __call__(self):
@@ -1032,6 +1088,23 @@ class BeforeUpdateCWRTypeHook(DelCWRTypeHook):
             rschema = self._cw.vreg.schema.rschema(entity.name)
             CWRTypeUpdateOp(self._cw, rschema=rschema, entity=entity,
                             values=newvalues)
+
+
+class BeforeUpdateCWComputedRTypeHook(SyncSchemaHook):
+    """check name change, handle final"""
+    __regid__ = 'syncupdatecwcomputedrtype'
+    __select__ = SyncSchemaHook.__select__ & is_instance('CWComputedRType')
+    events = ('before_update_entity',)
+
+    def __call__(self):
+        entity = self.entity
+        check_valid_changes(self._cw, entity)
+        if 'rule' in entity.cw_edited:
+            old, new = entity.cw_edited.oldnewvalue('rule')
+            if old != new:
+                rschema = self._cw.vreg.schema.rschema(entity.name)
+                CWComputedRTypeUpdateOp(self._cw, rschema=rschema,
+                                        entity=entity, rule=new)
 
 
 class AfterDelRelationTypeHook(SyncSchemaHook):
@@ -1068,6 +1141,24 @@ class AfterDelRelationTypeHook(SyncSchemaHook):
                 cnx.execute('DELETE X %s Y WHERE X is %s, Y is %s'
                                 % (rschema, subjschema, objschema))
         RDefDelOp(cnx, rdef=rdef)
+
+
+# CWComputedRType hooks #######################################################
+
+class DelCWComputedRTypeHook(SyncSchemaHook):
+    """before deleting a CWComputedRType entity:
+    * check that we don't remove a core relation type
+    * instantiate an operation to delete the relation type on commit
+    """
+    __regid__ = 'syncdelcwcomputedrtype'
+    __select__ = SyncSchemaHook.__select__ & is_instance('CWComputedRType')
+    events = ('before_delete_entity',)
+
+    def __call__(self):
+        name = self.entity.name
+        if name in CORE_TYPES:
+            raise validation_error(self.entity, {None: _("can't be deleted")})
+        MemSchemaCWRTypeDel(self._cw, rtype=name)
 
 
 # CWAttribute / CWRelation hooks ###############################################

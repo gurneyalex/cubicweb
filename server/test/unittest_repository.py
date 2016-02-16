@@ -52,10 +52,10 @@ class RepositoryTC(CubicWebTC):
             with self.assertRaises(ValidationError) as wraperr:
                 cnx.execute('INSERT Societe S: S nom "Logilab", S type "SSLL", S cp "75013"')
             self.assertEqual(
-                {'cp': u'cp is part of violated unicity constraint',
-                 'nom': u'nom is part of violated unicity constraint',
-                 'type': u'type is part of violated unicity constraint',
-                 'unicity constraint': u'some relations violate a unicity constraint'},
+                {'cp': u'%(KEY-rtype)s is part of violated unicity constraint',
+                 'nom': u'%(KEY-rtype)s is part of violated unicity constraint',
+                 'type': u'%(KEY-rtype)s is part of violated unicity constraint',
+                 '': u'some relations violate a unicity constraint'},
                 wraperr.exception.args[1])
 
     def test_unique_together_schema(self):
@@ -280,7 +280,7 @@ class RepositoryTC(CubicWebTC):
         self.assertListEqual(['relation_type',
                               'from_entity', 'to_entity',
                               'constrained_by',
-                              'cardinality', 'ordernum',
+                              'cardinality', 'ordernum', 'formula',
                               'indexed', 'fulltextindexed', 'internationalizable',
                               'defaultval', 'extra_props',
                               'description', 'description_format'],
@@ -498,6 +498,13 @@ class RepositoryTC(CubicWebTC):
             cnx.create_entity('Personne', nom=u'Florent', fiche=c)
             cnx.commit()
             self.assertEqual(len(c.reverse_fiche), 1)
+
+    def test_delete_computed_relation_nonregr(self):
+        with self.admin_access.repo_cnx() as cnx:
+            c = cnx.create_entity('Personne', nom=u'Adam', login_user=cnx.user.eid)
+            cnx.commit()
+            c.cw_delete()
+            cnx.commit()
 
     def test_cw_set_in_before_update(self):
         # local hook

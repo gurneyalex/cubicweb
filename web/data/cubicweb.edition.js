@@ -21,14 +21,14 @@
  */
 
 function setPropValueWidget(varname, tabindex) {
-    var key = firstSelected(document.getElementById('pkey:' + varname));
+    var key = firstSelected(document.getElementById('pkey-subject:' + varname));
     if (key) {
         var args = {
             fname: 'prop_widget',
             pageid: pageid,
-            arg: $.map([key, varname, tabindex], JSON.stringify)
+            arg: $.map([key.value, varname, tabindex], JSON.stringify)
         };
-        cw.jqNode('div:value:' + varname).loadxhtml(AJAX_BASE_URL, args, 'post');
+        cw.jqNode('div:value-subject:' + varname).loadxhtml(AJAX_BASE_URL, args, 'post');
     }
 }
 
@@ -67,7 +67,7 @@ function showMatchingSelect(selectedValue, eid) {
                 rql: rql_for_eid(eid),
                 '__notemplate': 1
             };
-            var d = jQuery('#unrelatedDivs_' + eid).loadxhtml(baseuri() + 'view', args, 'post', 'append');
+            var d = jQuery('#unrelatedDivs_' + eid).loadxhtml(BASE_URL + 'view', args, 'post', 'append');
             d.addCallback(function() {
                 _showMatchingSelect(eid, jQuery('#' + divId));
             });

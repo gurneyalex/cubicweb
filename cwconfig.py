@@ -278,7 +278,7 @@ PERSISTENT_OPTIONS = (
       }),
     ('default-text-format',
      {'type' : 'choice',
-      'choices': ('text/plain', 'text/rest', 'text/html'),
+      'choices': ('text/plain', 'text/rest', 'text/html', 'text/markdown'),
       'default': 'text/html', # use fckeditor in the web ui
       'help': _('default text format for rich text fields.'),
       'group': 'ui',
@@ -328,6 +328,8 @@ class CubicWebNoAppConfiguration(ConfigurationMixIn):
     # log_format = '%(asctime)s - [%(threadName)s] (%(name)s) %(levelname)s: %(message)s'
     # nor remove appobjects based on unused interface [???]
     cleanup_unused_appobjects = True
+
+    quick_start = False
 
     if (CWDEV and _forced_mode != 'system'):
         mode = 'user'
@@ -827,13 +829,6 @@ class CubicWebConfiguration(CubicWebNoAppConfiguration):
     else:
         _INSTANCES_DIR = join(_INSTALL_PREFIX, 'etc', 'cubicweb.d')
 
-    if os.environ.get('APYCOT_ROOT'):
-        _cubes_init = join(CubicWebNoAppConfiguration.CUBES_DIR, '__init__.py')
-        if not exists(_cubes_init):
-            file(join(_cubes_init), 'w').close()
-        if not exists(_INSTANCES_DIR):
-            os.makedirs(_INSTANCES_DIR)
-
     # set to true during repair (shell, migration) to allow some things which
     # wouldn't be possible otherwise
     repairing = False
@@ -1090,7 +1085,7 @@ the repository',
             self._gettext_init()
 
     def _load_site_cubicweb(self, sitefile):
-        # overriden to register cube specific options
+        # overridden to register cube specific options
         mod = super(CubicWebConfiguration, self)._load_site_cubicweb(sitefile)
         if getattr(mod, 'options', None):
             self.register_options(mod.options)

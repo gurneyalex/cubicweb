@@ -210,6 +210,8 @@ class FieldWidget(object):
             attrs['id'] = field.dom_id(form, self.suffix)
         if self.settabindex and not 'tabindex' in attrs:
             attrs['tabindex'] = form._cw.next_tabindex()
+        if 'placeholder' in attrs:
+            attrs['placeholder'] = form._cw._(attrs['placeholder'])
         return attrs
 
     def values(self, form, field):
@@ -398,6 +400,9 @@ class ButtonInput(Input):
 
 class TextArea(FieldWidget):
     """Simple <textarea>, will return a unicode string."""
+    _minrows = 2
+    _maxrows = 15
+    _columns = 80
 
     def _render(self, form, field, renderer):
         values, attrs = self.values_and_attributes(form, field)
@@ -411,9 +416,9 @@ class TextArea(FieldWidget):
         lines = value.splitlines()
         linecount = len(lines)
         for line in lines:
-            linecount += len(line) / 80
-        attrs.setdefault('cols', 80)
-        attrs.setdefault('rows', min(15, linecount + 2))
+            linecount += len(line) / self._columns
+        attrs.setdefault('cols', self._columns)
+        attrs.setdefault('rows', min(self._maxrows, linecount + self._minrows))
         return tags.textarea(value, name=field.input_name(form, self.suffix),
                              **attrs)
 
@@ -1035,11 +1040,11 @@ class Button(Input):
         self.value = ''
         self.onclick = onclick
         self.cwaction = cwaction
-        self.attrs.setdefault('class', self.css_class)
 
     def render(self, form, field=None, renderer=None):
         label = form._cw._(self.label)
         attrs = self.attrs.copy()
+        attrs.setdefault('class', self.css_class)
         if self.cwaction:
             assert self.onclick is None
             attrs['onclick'] = "postForm('__action_%s', \'%s\', \'%s\')" % (

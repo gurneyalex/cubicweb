@@ -131,7 +131,7 @@ Mathematical operators
 +----------+---------------------+-----------+--------+
 |  &       | bitwise AND         | 91 & 15   | 11     |
 +----------+---------------------+-----------+--------+
-|  |       | bitwise OR          | 32 | 3    | 35     |
+|  `|`     | bitwise OR          | 32 | 3    | 35     |
 +----------+---------------------+-----------+--------+
 |  #       | bitwise XOR         | 17 # 5    | 20     |
 +----------+---------------------+-----------+--------+
@@ -370,7 +370,7 @@ tempted to use:
 
 .. sourcecode:: sql
 
-  DISTINCT ANY P WHERE V version_of P
+  DISTINCT Any P WHERE V version_of P
 
 This will work, but is not efficient, as it will use the ``SELECT
 DISTINCT`` SQL predicate, which needs to retrieve all projects, then
@@ -379,7 +379,7 @@ large result sets. So the best way to write this is:
 
 .. sourcecode:: sql
 
-  ANY P WHERE EXISTS V version_of P
+  Any P WHERE EXISTS(V version_of P)
 
 
 You can also use the question mark (`?`) to mark optional relations. This allows

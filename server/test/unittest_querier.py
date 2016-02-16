@@ -173,11 +173,11 @@ class UtilsTC(BaseQuerierTC):
                                            'ET': 'CWEType', 'ETN': 'String'}])
             rql, solutions = partrqls[1]
             self.assertRQLEqual(rql,  'Any ETN,X WHERE X is ET, ET name ETN, ET is CWEType, '
-                                'X is IN(BaseTransition, Bookmark, CWAttribute, CWCache, CWConstraint, '
-                                '        CWConstraintType, CWEType, CWGroup, CWPermission, CWProperty, CWRType, '
-                                '        CWRelation, CWSource, CWUniqueTogetherConstraint, CWUser, Card, Comment, '
-                                '        Division, Email, EmailPart, EmailThread, ExternalUri, File, Folder, Frozable, '
-                                '        Note, Old, Personne, RQLExpression, Societe, State, SubDivision, '
+                                'X is IN(BaseTransition, Bookmark, CWAttribute, CWCache, CWComputedRType, '
+                                '        CWConstraint, CWConstraintType, CWEType, CWGroup, CWPermission, CWProperty, '
+                                '        CWRType, CWRelation, CWSource, CWUniqueTogetherConstraint, CWUser, Card, '
+                                '        Comment, Division, Email, EmailPart, EmailThread, ExternalUri, File, Folder, '
+                                '        Frozable, Note, Old, Personne, RQLExpression, Societe, State, SubDivision, '
                                 '        SubWorkflowExitPoint, Tag, TrInfo, Transition, Workflow, WorkflowTransition)')
             self.assertListEqual(sorted(solutions),
                                   sorted([{'X': 'BaseTransition', 'ETN': 'String', 'ET': 'CWEType'},
@@ -186,6 +186,7 @@ class UtilsTC(BaseQuerierTC):
                                           {'X': 'Comment', 'ETN': 'String', 'ET': 'CWEType'},
                                           {'X': 'Division', 'ETN': 'String', 'ET': 'CWEType'},
                                           {'X': 'CWCache', 'ETN': 'String', 'ET': 'CWEType'},
+                                          {'X': 'CWComputedRType', 'ETN': 'String', 'ET': 'CWEType'},
                                           {'X': 'CWConstraint', 'ETN': 'String', 'ET': 'CWEType'},
                                           {'X': 'CWConstraintType', 'ETN': 'String', 'ET': 'CWEType'},
                                           {'X': 'CWEType', 'ETN': 'String', 'ET': 'CWEType'},
@@ -360,7 +361,7 @@ class QuerierTC(BaseQuerierTC):
         result, descr = rset.rows, rset.description
         self.assertEqual(descr[0][0], 'String')
         self.assertEqual(descr[0][1], 'Int')
-        self.assertEqual(result[0][0], 'CWRelation') # XXX may change as schema evolve
+        self.assertEqual(result[0][0], 'RQLExpression') # XXX may change as schema evolve
 
     def test_select_groupby_orderby(self):
         rset = self.qexecute('Any N GROUPBY N ORDERBY N WHERE X is CWGroup, X name N')
@@ -603,18 +604,18 @@ class QuerierTC(BaseQuerierTC):
                             'WHERE RT name N, RDEF relation_type RT '
                             'HAVING COUNT(RDEF) > 10')
         self.assertListEqual(rset.rows,
-                              [[u'description_format', 12],
-                               [u'description', 13],
-                               [u'name', 18],
-                               [u'created_by', 44],
-                               [u'creation_date', 44],
-                               [u'cw_source', 44],
-                               [u'cwuri', 44],
-                               [u'in_basket', 44],
-                               [u'is', 44],
-                               [u'is_instance_of', 44],
-                               [u'modification_date', 44],
-                               [u'owned_by', 44]])
+                              [[u'description_format', 13],
+                               [u'description', 14],
+                               [u'name', 19],
+                               [u'created_by', 45],
+                               [u'creation_date', 45],
+                               [u'cw_source', 45],
+                               [u'cwuri', 45],
+                               [u'in_basket', 45],
+                               [u'is', 45],
+                               [u'is_instance_of', 45],
+                               [u'modification_date', 45],
+                               [u'owned_by', 45]])
 
     def test_select_aggregat_having_dumb(self):
         # dumb but should not raise an error

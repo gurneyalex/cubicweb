@@ -84,12 +84,13 @@ class SecurityViewMixIn(object):
     """mixin providing methods to display security information for a entity,
     relation or relation definition schema
     """
+    cssclass = "listing schemaInfo"
 
     def permissions_table(self, erschema, permissions=None):
         self._cw.add_css('cubicweb.acl.css')
         w = self.w
         _ = self._cw._
-        w(u'<table class="listing schemaInfo">')
+        w(u'<table class="%s">' % self.cssclass)
         w(u'<tr><th>%s</th><th>%s</th><th>%s</th></tr>' % (
             _("permission"), _('granted to groups'), _('rql expressions')))
         for action in erschema.ACTIONS:
@@ -656,10 +657,13 @@ class SchemaGraphView(StartupView):
                                               }))
         # svg image file
         fd, tmpfile = tempfile.mkstemp('.svg')
-        os.close(fd)
-        generator.generate(visitor, prophdlr, tmpfile)
-        with codecs.open(tmpfile, 'rb', encoding='utf-8') as svgfile:
-            self.w(svgfile.read())
+        try:
+            os.close(fd)
+            generator.generate(visitor, prophdlr, tmpfile)
+            with codecs.open(tmpfile, 'rb', encoding='utf-8') as svgfile:
+                self.w(svgfile.read())
+        finally:
+            os.unlink(tmpfile)
 
 # breadcrumbs ##################################################################
 

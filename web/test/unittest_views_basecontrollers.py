@@ -23,10 +23,15 @@ try:
     from urlparse import parse_qs as url_parse_query
 except ImportError:
     from cgi import parse_qs as url_parse_query
+
+import lxml
+
 from logilab.common.testlib import unittest_main
+
 from logilab.common.decorators import monkeypatch
 
 from cubicweb import Binary, NoSelectableObject, ValidationError
+from cubicweb.schema import RRQLExpression
 from cubicweb.devtools.testlib import CubicWebTC
 from cubicweb.utils import json_dumps
 from cubicweb.uilib import rql_for_eid
@@ -80,6 +85,49 @@ class EditControllerTC(CubicWebTC):
                 cm.exception.translate(unicode)
                 self.assertEqual({'login-subject': 'the value "admin" is already used, use another one'},
                                  cm.exception.errors)
+
+    def test_simultaneous_edition_only_one_commit(self):
+        """ Allow two simultaneous edit view of the same entity as long as only one commits
+        """
+        with self.admin_access.web_request() as req:
+            e = req.create_entity('BlogEntry', title=u'cubicweb.org', content=u"hop")
+            expected_path = e.rest_path()
+            req.cnx.commit()
+            form = self.vreg['views'].select('edition', req, rset=e.as_rset(), row=0)
+            html_form = lxml.html.fromstring(form.render(w=None, action='edit')).forms[0]
+
+        with self.admin_access.web_request() as req2:
+            form2 = self.vreg['views'].select('edition', req, rset=e.as_rset(), row=0)
+
+        with self.admin_access.web_request(**dict(html_form.form_values())) as req:
+            path, args = self.expect_redirect_handle_request(req, path='edit')
+            self.assertEqual(path, expected_path)
+
+    def test_simultaneous_edition_refuse_second_commit(self):
+        """ Disallow committing changes to an entity edited in between """
+        with self.admin_access.web_request() as req:
+            e = req.create_entity('BlogEntry', title=u'cubicweb.org', content=u"hop")
+            eid = e.eid
+            req.cnx.commit()
+            form = self.vreg['views'].select('edition', req, rset=e.as_rset(), row=0)
+            html_form = lxml.html.fromstring(form.render(w=None, action='edit')).forms[0]
+
+        with self.admin_access.web_request() as req2:
+            e = req2.entity_from_eid(eid)
+            e.cw_set(content = u"hip")
+            req2.cnx.commit()
+
+        form_field_name = "content-subject:%d" % eid
+        form_values = dict(html_form.form_values())
+        assert form_field_name in form_values
+        form_values[form_field_name] = u'yep'
+        with self.admin_access.web_request(**form_values) as req:
+            with self.assertRaises(ValidationError) as cm:
+                self.ctrl_publish(req)
+            reported_eid, dict_info = cm.exception.args
+            self.assertEqual(reported_eid, eid)
+            self.assertIn(None, dict_info)
+            self.assertIn("has changed since you started to edit it.", dict_info[None])
 
     def test_user_editing_itself(self):
         """checking that a manager user can edit itself
@@ -760,6 +808,23 @@ class AjaxControllerTC(CubicWebTC):
             self.assertEqual(
                 req.execute('Any N WHERE T tags P, P is CWUser, T name N').rows,
                 [['javascript']])
+
+    def test_maydel_perms(self):
+        """Check that AjaxEditRelationCtxComponent calls rdef.check with a
+        sufficient context"""
+        with self.remote_calling('tag_entity', self.john.eid, ['python']) as (_, req):
+            req.cnx.commit()
+        with self.temporary_permissions(
+                (self.schema['tags'].rdefs['Tag', 'CWUser'],
+                 {'delete': (RRQLExpression('S owned_by U'), )}, )):
+            with self.admin_access.web_request(rql='CWUser P WHERE P login "John"',
+                                   pageid='123', fname='view') as req:
+                ctrl = self.ctrl(req)
+                rset = self.john.as_rset()
+                rset.req = req
+                source = ctrl.publish()
+                # maydel jscall
+                self.assertIn('ajaxBoxRemoveLinkedEntity', source)
 
     def test_pending_insertion(self):
         with self.remote_calling('add_pending_inserts', [['12', 'tags', '13']]) as (_, req):
