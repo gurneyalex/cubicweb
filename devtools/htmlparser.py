@@ -88,8 +88,6 @@ class Validator(object):
         try:
             return etree.fromstring(pdata, self.parser)
         except etree.XMLSyntaxError as exc:
-            def save_in(fname=''):
-                file(fname, 'w').write(data)
             new_exc = AssertionError(u'invalid document: %s' % exc)
             new_exc.position = exc.position
             raise new_exc
@@ -174,23 +172,6 @@ class XMLSyntaxValidator(Validator):
             new_exc.position = (exc._linenum, exc._colnum)
             raise new_exc
         return super(XMLSyntaxValidator, self)._parse(data)
-
-
-class XMLDemotingValidator(XMLValidator):
-    """ some views produce html instead of xhtml, using demote_to_html
-
-    this is typically related to the use of external dependencies
-    which do not produce valid xhtml (google maps, ...)
-    """
-    __metaclass__ = class_deprecated
-    __deprecation_warning__ = '[3.10] this is now handled in testlib.py'
-
-    def preprocess_data(self, data):
-        if data.startswith('<?xml'):
-            self.parser = etree.XMLParser()
-        else:
-            self.parser = etree.HTMLParser()
-        return data
 
 
 class HTMLValidator(Validator):

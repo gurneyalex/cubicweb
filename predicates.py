@@ -188,7 +188,7 @@ import logging
 from warnings import warn
 from operator import eq
 
-from logilab.common.interface import implements as implements_iface
+from logilab.common.deprecation import deprecated
 from logilab.common.registry import Predicate, objectify_predicate, yes
 
 from yams.schema import BASE_TYPES, role_name
@@ -196,12 +196,10 @@ from rql.nodes import Function
 
 from cubicweb import (Unauthorized, NoSelectableObject, NotAnEntity,
                       CW_EVENT_MANAGER, role)
-# even if not used, let yes here so it's importable through this module
 from cubicweb.uilib import eid_param
 from cubicweb.schema import split_expression
 
-# remember, these imports are there for bw compat only
-__BACKWARD_COMPAT_IMPORTS = (yes,)
+yes = deprecated('[3.15] import yes() from use logilab.common.registry')(yes)
 
 
 # abstract predicates / mixin helpers ###########################################
@@ -1508,7 +1506,7 @@ class specified_etype_implements(is_instance):
         score = self.score_class(req.vreg['etypes'].etype_class(etype), req)
         if score:
             eschema = req.vreg.schema.eschema(etype)
-            if eschema.has_local_role('add') or eschema.has_perm(req, 'add'):
+            if eschema.may_have_permission('add', req):
                 return score
         return 0
 

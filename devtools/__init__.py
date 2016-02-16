@@ -33,7 +33,7 @@ import tempfile
 import getpass
 from hashlib import sha1 # pylint: disable=E0611
 from datetime import timedelta
-from os.path import (abspath, join, exists, split, isabs, isdir)
+from os.path import (abspath, realpath, join, exists, split, isabs, isdir)
 from functools import partial
 
 from logilab.common.date import strptime
@@ -401,6 +401,7 @@ class TestDataBaseHandler(object):
         from cubicweb.dbapi import in_memory_repo
         config._cubes = None
         repo = in_memory_repo(config)
+        config.repository = lambda x=None: repo
         # extending Repository class
         repo._has_started = False
         repo._needs_refresh = False
@@ -549,7 +550,9 @@ class PostgresTestDataBaseHandler(TestDataBaseHandler):
 
     def __init__(self, *args, **kwargs):
         super(PostgresTestDataBaseHandler, self).__init__(*args, **kwargs)
-        datadir = join(self.config.apphome, 'pgdb')
+        datadir = realpath(join(self.config.apphome, 'pgdb'))
+        if datadir in self.__CTL:
+            return
         if not exists(datadir):
             try:
                 subprocess.check_call(['initdb', '-D', datadir, '-E', 'utf-8', '--locale=C'])

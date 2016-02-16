@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# copyright 2003-2013 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2014 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -49,12 +49,7 @@ Example of use (run this with `cubicweb-ctl shell instance import-script.py`):
   GENERATORS.append( (gen_users, CHK) )
 
   # create controller
-  if 'cnx' in globals():
-      ctl = CWImportController(RQLObjectStore(cnx))
-  else:
-      print 'debug mode (not connected)'
-      print 'run through cubicweb-ctl shell to access an instance'
-      ctl = CWImportController(ObjectStore())
+  ctl = CWImportController(RQLObjectStore(cnx))
   ctl.askerror = 1
   ctl.generators = GENERATORS
   ctl.data['utilisateurs'] = lazytable(ucsvreader(open('users.csv')))
@@ -77,7 +72,7 @@ import inspect
 from base64 import b64encode
 from collections import defaultdict
 from copy import copy
-from datetime import date, datetime
+from datetime import date, datetime, time
 from time import asctime
 from StringIO import StringIO
 
@@ -105,9 +100,16 @@ def count_lines(stream_or_filename):
     f.seek(0)
     return i+1
 
-def ucsvreader_pb(stream_or_path, encoding='utf-8', separator=',', quote='"',
-                  skipfirst=False, withpb=True, skip_empty=True):
+def ucsvreader_pb(stream_or_path, encoding='utf-8', delimiter=',', quotechar='"',
+                  skipfirst=False, withpb=True, skip_empty=True, separator=None,
+                  quote=None):
     """same as :func:`ucsvreader` but a progress bar is displayed as we iter on rows"""
+    if separator is not None:
+        delimiter = separator
+        warnings.warn("[3.20] 'separator' kwarg is deprecated, use 'delimiter' instead")
+    if quote is not None:
+        quotechar = quote
+        warnings.warn("[3.20] 'quote' kwarg is deprecated, use 'quotechar' instead")
     if isinstance(stream_or_path, basestring):
         if not osp.exists(stream_or_path):
             raise Exception("file doesn't exists: %s" % stream_or_path)
@@ -119,15 +121,16 @@ def ucsvreader_pb(stream_or_path, encoding='utf-8', separator=',', quote='"',
         rowcount -= 1
     if withpb:
         pb = shellutils.ProgressBar(rowcount, 50)
-    for urow in ucsvreader(stream, encoding, separator, quote,
+    for urow in ucsvreader(stream, encoding, delimiter, quotechar,
                            skipfirst=skipfirst, skip_empty=skip_empty):
         yield urow
         if withpb:
             pb.update()
     print ' %s rows imported' % rowcount
 
-def ucsvreader(stream, encoding='utf-8', separator=',', quote='"',
-               skipfirst=False, ignore_errors=False, skip_empty=True):
+def ucsvreader(stream, encoding='utf-8', delimiter=',', quotechar='"',
+               skipfirst=False, ignore_errors=False, skip_empty=True,
+               separator=None, quote=None):
     """A csv reader that accepts files with any encoding and outputs unicode
     strings
 
@@ -135,7 +138,13 @@ def ucsvreader(stream, encoding='utf-8', separator=',', quote='"',
     separators) will be skipped. This is useful for Excel exports which may be
     full of such lines.
     """
-    it = iter(csv.reader(stream, delimiter=separator, quotechar=quote))
+    if separator is not None:
+        delimiter = separator
+        warnings.warn("[3.20] 'separator' kwarg is deprecated, use 'delimiter' instead")
+    if quote is not None:
+        quotechar = quote
+        warnings.warn("[3.20] 'quote' kwarg is deprecated, use 'quotechar' instead")
+    it = iter(csv.reader(stream, delimiter=delimiter, quotechar=quotechar))
     if not ignore_errors:
         if skipfirst:
             it.next()
@@ -371,8 +380,9 @@ def _execmany_thread_copy_from(cu, statement, data, table,
                                columns, encoding='utf-8'):
     """ Execute thread with copy from
     """
-    buf = _create_copyfrom_buffer(data, columns, encoding)
-    if buf is None:
+    try:
+        buf = _create_copyfrom_buffer(data, columns, encoding=encoding)
+    except ValueError:
         _execmany_thread_not_copy_from(cu, statement, data)
     else:
         if columns is None:
@@ -426,16 +436,87 @@ def _execmany_thread(sql_connect, statements, dump_output_dir=None,
         cnx.commit()
         cu.close()
 
-def _create_copyfrom_buffer(data, columns, encoding='utf-8', replace_sep=None):
+
+def _copyfrom_buffer_convert_None(value, **opts):
+    '''Convert None value to "NULL"'''
+    return 'NULL'
+
+def _copyfrom_buffer_convert_number(value, **opts):
+    '''Convert a number into its string representation'''
+    return str(value)
+
+def _copyfrom_buffer_convert_string(value, **opts):
+    '''Convert string value.
+
+    Recognized keywords:
+    :encoding: resulting string encoding (default: utf-8)
+    :replace_sep: character used when input contains characters
+                  that conflict with the column separator.
+    '''
+    encoding = opts.get('encoding','utf-8')
+    replace_sep = opts.get('replace_sep', None)
+    # Remove separators used in string formatting
+    for _char in (u'\t', u'\r', u'\n'):
+        if _char in value:
+            # If a replace_sep is given, replace
+            # the separator
+            # (and thus avoid empty buffer)
+            if replace_sep is None:
+                raise ValueError('conflicting separator: '
+                                 'you must provide the replace_sep option')
+            value = value.replace(_char, replace_sep)
+        value = value.replace('\\', r'\\')
+    if isinstance(value, unicode):
+        value = value.encode(encoding)
+    return value
+
+def _copyfrom_buffer_convert_date(value, **opts):
+    '''Convert date into "YYYY-MM-DD"'''
+    # Do not use strftime, as it yields issue with date < 1900
+    # (http://bugs.python.org/issue1777412)
+    return '%04d-%02d-%02d' % (value.year, value.month, value.day)
+
+def _copyfrom_buffer_convert_datetime(value, **opts):
+    '''Convert date into "YYYY-MM-DD HH:MM:SS.UUUUUU"'''
+    # Do not use strftime, as it yields issue with date < 1900
+    # (http://bugs.python.org/issue1777412)
+    return '%s %s' % (_copyfrom_buffer_convert_date(value, **opts),
+                      _copyfrom_buffer_convert_time(value, **opts))
+
+def _copyfrom_buffer_convert_time(value, **opts):
+    '''Convert time into "HH:MM:SS.UUUUUU"'''
+    return '%02d:%02d:%02d.%06d' % (value.hour, value.minute,
+                                    value.second, value.microsecond)
+
+# (types, converter) list.
+_COPYFROM_BUFFER_CONVERTERS = [
+    (type(None), _copyfrom_buffer_convert_None),
+    ((long, int, float), _copyfrom_buffer_convert_number),
+    (basestring, _copyfrom_buffer_convert_string),
+    (datetime, _copyfrom_buffer_convert_datetime),
+    (date, _copyfrom_buffer_convert_date),
+    (time, _copyfrom_buffer_convert_time),
+]
+
+def _create_copyfrom_buffer(data, columns=None, **convert_opts):
     """
     Create a StringIO buffer for 'COPY FROM' command.
-    Deals with Unicode, Int, Float, Date...
+    Deals with Unicode, Int, Float, Date... (see ``converters``)
+
+    :data: a sequence/dict of tuples
+    :columns: list of columns to consider (default to all columns)
+    :converter_opts: keyword arguements given to converters
     """
     # Create a list rather than directly create a StringIO
     # to correctly write lines separated by '\n' in a single step
     rows = []
-    if isinstance(data[0], (tuple, list)):
-        columns = range(len(data[0]))
+    if columns is None:
+        if isinstance(data[0], (tuple, list)):
+            columns = range(len(data[0]))
+        elif isinstance(data[0], dict):
+            columns = data[0].keys()
+        else:
+            raise ValueError('Could not get columns: you must provide columns.')
     for row in data:
         # Iterate over the different columns and the different values
         # and try to convert them to a correct datatype.
@@ -445,43 +526,19 @@ def _create_copyfrom_buffer(data, columns, encoding='utf-8', replace_sep=None):
             try:
                 value = row[col]
             except KeyError:
-                warnings.warn(u"Column %s is not accessible in row %s" 
+                warnings.warn(u"Column %s is not accessible in row %s"
                               % (col, row), RuntimeWarning)
-                # XXX 'value' set to None so that the import does not end in 
-                # error. 
-                # Instead, the extra keys are set to NULL from the 
+                # XXX 'value' set to None so that the import does not end in
+                # error.
+                # Instead, the extra keys are set to NULL from the
                 # database point of view.
                 value = None
-            if value is None:
-                value = 'NULL'
-            elif isinstance(value, (long, int, float)):
-                value = str(value)
-            elif isinstance(value, (str, unicode)):
-                # Remove separators used in string formatting
-                for _char in (u'\t', u'\r', u'\n'):
-                    if _char in value:
-                        # If a replace_sep is given, replace
-                        # the separator instead of returning None
-                        # (and thus avoid empty buffer)
-                        if replace_sep:
-                            value = value.replace(_char, replace_sep)
-                        else:
-                            return
-                value = value.replace('\\', r'\\')
-                if value is None:
-                    return
-                if isinstance(value, unicode):
-                    value = value.encode(encoding)
-            elif isinstance(value, (date, datetime)):
-                value = '%04d-%02d-%02d' % (value.year,
-                                            value.month,
-                                            value.day)
-                if isinstance(value, datetime):
-                    value += ' %02d:%02d:%02d' % (value.hour,
-                                                  value.minutes,
-                                                  value.second)
+            for types, converter in _COPYFROM_BUFFER_CONVERTERS:
+                if isinstance(value, types):
+                    value = converter(value, **convert_opts)
+                    break
             else:
-                return None
+                raise ValueError("Unsupported value type %s" % type(value))
             # We push the value to the new formatted row
             # if the value is not None and could be converted to a string.
             formatted_row.append(value)
@@ -507,26 +564,14 @@ class ObjectStore(object):
         self.types = {}
         self.relations = set()
         self.indexes = {}
-        self._rql = None
-        self._commit = None
-
-    def _put(self, type, item):
-        self.items.append(item)
-        return len(self.items) - 1
 
     def create_entity(self, etype, **data):
         data = attrdict(data)
-        data['eid'] = eid = self._put(etype, data)
+        data['eid'] = eid = len(self.items)
+        self.items.append(data)
         self.eids[eid] = data
         self.types.setdefault(etype, []).append(eid)
         return data
-
-    @deprecated("[3.11] add is deprecated, use create_entity instead")
-    def add(self, etype, item):
-        assert isinstance(item, dict), 'item is not a dict but a %s' % type(item)
-        data = self.create_entity(etype, **item)
-        item['eid'] = data['eid']
-        return item
 
     def relate(self, eid_from, rtype, eid_to, **kwargs):
         """Add new relation"""
@@ -535,32 +580,12 @@ class ObjectStore(object):
         return relation
 
     def commit(self):
-        """this commit method do nothing by default
-
-        This is voluntary to use the frequent autocommit feature in CubicWeb
-        when you are using hooks or another
-
-        If you want override commit method, please set it by the
-        constructor
-        """
-        pass
+        """this commit method does nothing by default"""
+        return
 
     def flush(self):
-        """The method is provided so that all stores share a common API.
-        It just tries to call the commit method.
-        """
-        print 'starting flush'
-        try:
-            self.commit()
-        except:
-            print 'failed to flush'
-        else:
-            print 'flush done'
-
-    def rql(self, *args):
-        if self._rql is not None:
-            return self._rql(*args)
-        return []
+        """The method is provided so that all stores share a common API"""
+        pass
 
     @property
     def nb_inserted_entities(self):
@@ -574,48 +599,33 @@ class ObjectStore(object):
 
 class RQLObjectStore(ObjectStore):
     """ObjectStore that works with an actual RQL repository (production mode)"""
-    _rql = None # bw compat
 
-    def __init__(self, session=None, commit=None):
-        ObjectStore.__init__(self)
-        if session is None:
-            sys.exit('please provide a session of run this script with cubicweb-ctl shell and pass cnx as session')
-        if not hasattr(session, 'set_cnxset'):
-            if hasattr(session, 'request'):
-                # connection object
-                cnx = session
-                session = session.request()
-            else: # object is already a request
-                cnx = session.cnx
-            session.set_cnxset = lambda : None
-            commit = commit or cnx.commit
-        else:
-            session.set_cnxset()
-        self.session = session
-        self._commit = commit or session.commit
+    def __init__(self, cnx, commit=None):
+        if commit is not None:
+            warnings.warn('[3.19] commit argument should not be specified '
+                          'as the cnx object already provides it.',
+                          DeprecationWarning, stacklevel=2)
+        super(RQLObjectStore, self).__init__()
+        self._cnx = cnx
+        self._commit = commit or cnx.commit
 
     def commit(self):
-        txuuid = self._commit()
-        self.session.set_cnxset()
-        return txuuid
+        return self._commit()
 
     def rql(self, *args):
-        if self._rql is not None:
-            return self._rql(*args)
-        return self.session.execute(*args)
+        return self._cnx.execute(*args)
+
+    @property
+    def session(self):
+        warnings.warn('[3.19] deprecated property.', DeprecationWarning,
+                      stacklevel=2)
+        return self._cnx.repo._get_session(self._cnx.sessionid)
 
     def create_entity(self, *args, **kwargs):
-        entity = self.session.create_entity(*args, **kwargs)
+        entity = self._cnx.create_entity(*args, **kwargs)
         self.eids[entity.eid] = entity
         self.types.setdefault(args[0], []).append(entity.eid)
         return entity
-
-    def _put(self, type, item):
-        query = 'INSERT %s X' % type
-        if item:
-            query += ': ' + ', '.join('X %s %%(%s)s' % (k, k)
-                                      for k in item)
-        return self.rql(query, item)[0][0]
 
     def relate(self, eid_from, rtype, eid_to, **kwargs):
         eid_from, rtype, eid_to = super(RQLObjectStore, self).relate(
@@ -623,13 +633,13 @@ class RQLObjectStore(ObjectStore):
         self.rql('SET X %s Y WHERE X eid %%(x)s, Y eid %%(y)s' % rtype,
                  {'x': int(eid_from), 'y': int(eid_to)})
 
-    @deprecated("[3.19] use session.find(*args, **kwargs).entities() instead")
+    @deprecated("[3.19] use cnx.find(*args, **kwargs).entities() instead")
     def find_entities(self, *args, **kwargs):
-        return self.session.find(*args, **kwargs).entities()
+        return self._cnx.find(*args, **kwargs).entities()
 
-    @deprecated("[3.19] use session.find(*args, **kwargs).one() instead")
+    @deprecated("[3.19] use cnx.find(*args, **kwargs).one() instead")
     def find_one_entity(self, *args, **kwargs):
-        return self.session.find(*args, **kwargs).one()
+        return self._cnx.find(*args, **kwargs).one()
 
 # the import controller ########################################################
 
@@ -756,23 +766,21 @@ class CWImportController(object):
 
 class NoHookRQLObjectStore(RQLObjectStore):
     """ObjectStore that works with an actual RQL repository (production mode)"""
-    _rql = None # bw compat
 
-    def __init__(self, session, metagen=None, baseurl=None):
-        super(NoHookRQLObjectStore, self).__init__(session)
-        self.source = session.repo.system_source
-        self.rschema = session.repo.schema.rschema
+    def __init__(self, cnx, metagen=None, baseurl=None):
+        super(NoHookRQLObjectStore, self).__init__(cnx)
+        self.source = cnx.repo.system_source
+        self.rschema = cnx.repo.schema.rschema
         self.add_relation = self.source.add_relation
         if metagen is None:
-            metagen = MetaGenerator(session, baseurl)
+            metagen = MetaGenerator(cnx, baseurl)
         self.metagen = metagen
         self._nb_inserted_entities = 0
         self._nb_inserted_types = 0
         self._nb_inserted_relations = 0
-        self.rql = session.execute
         # deactivate security
-        session.read_security = False
-        session.write_security = False
+        cnx.read_security = False
+        cnx.write_security = False
 
     def create_entity(self, etype, **kwargs):
         for k, v in kwargs.iteritems():
@@ -782,11 +790,11 @@ class NoHookRQLObjectStore(RQLObjectStore):
         entity = copy(entity)
         entity.cw_edited = copy(entity.cw_edited)
         entity.cw_clear_relation_cache()
-        self.metagen.init_entity(entity)
         entity.cw_edited.update(kwargs, skipsec=False)
-        session = self.session
-        self.source.add_entity(session, entity)
-        self.source.add_info(session, entity, self.source, None, complete=False)
+        entity_source, extid = self.metagen.init_entity(entity)
+        cnx = self._cnx
+        self.source.add_entity(cnx, entity)
+        self.source.add_info(cnx, entity, entity_source, extid)
         kwargs = dict()
         if inspect.getargspec(self.add_relation).keywords:
             kwargs['subjtype'] = entity.cw_etype
@@ -795,20 +803,20 @@ class NoHookRQLObjectStore(RQLObjectStore):
             inlined = self.rschema(rtype).inlined
             try:
                 for targeteid in targeteids:
-                    self.add_relation(session, entity.eid, rtype, targeteid,
+                    self.add_relation(cnx, entity.eid, rtype, targeteid,
                                       inlined, **kwargs)
             except TypeError:
-                self.add_relation(session, entity.eid, rtype, targeteids,
+                self.add_relation(cnx, entity.eid, rtype, targeteids,
                                   inlined, **kwargs)
         self._nb_inserted_entities += 1
         return entity
 
     def relate(self, eid_from, rtype, eid_to, **kwargs):
         assert not rtype.startswith('reverse_')
-        self.add_relation(self.session, eid_from, rtype, eid_to,
+        self.add_relation(self._cnx, eid_from, rtype, eid_to,
                           self.rschema(rtype).inlined)
         if self.rschema(rtype).symmetric:
-            self.add_relation(self.session, eid_to, rtype, eid_from,
+            self.add_relation(self._cnx, eid_to, rtype, eid_from,
                               self.rschema(rtype).inlined)
         self._nb_inserted_relations += 1
 
@@ -822,9 +830,6 @@ class NoHookRQLObjectStore(RQLObjectStore):
     def nb_inserted_relations(self):
         return self._nb_inserted_relations
 
-    def _put(self, type, item):
-        raise RuntimeError('use create entity')
-
 
 class MetaGenerator(object):
     META_RELATIONS = (META_RTYPES
@@ -832,25 +837,31 @@ class MetaGenerator(object):
                       - set(('eid', 'cwuri',
                              'is', 'is_instance_of', 'cw_source')))
 
-    def __init__(self, session, baseurl=None):
-        self.session = session
-        self.source = session.repo.system_source
-        self.time = datetime.now()
+    def __init__(self, cnx, baseurl=None, source=None):
+        self._cnx = cnx
         if baseurl is None:
-            config = session.vreg.config
+            config = cnx.vreg.config
             baseurl = config['base-url'] or config.default_base_url()
         if not baseurl[-1] == '/':
             baseurl += '/'
-        self.baseurl =  baseurl
+        self.baseurl = baseurl
+        if source is None:
+            source = cnx.repo.system_source
+        self.source = source
+        self.create_eid = cnx.repo.system_source.create_eid
+        self.time = datetime.now()
         # attributes/relations shared by all entities of the same type
         self.etype_attrs = []
         self.etype_rels = []
         # attributes/relations specific to each entity
         self.entity_attrs = ['cwuri']
         #self.entity_rels = [] XXX not handled (YAGNI?)
-        schema = session.vreg.schema
+        schema = cnx.vreg.schema
         rschema = schema.rschema
         for rtype in self.META_RELATIONS:
+            # skip owned_by / created_by if user is the internal manager
+            if cnx.user.eid == -1 and rtype in ('owned_by', 'created_by'):
+                continue
             if rschema(rtype).final:
                 self.etype_attrs.append(rtype)
             else:
@@ -858,7 +869,7 @@ class MetaGenerator(object):
 
     @cached
     def base_etype_dicts(self, etype):
-        entity = self.session.vreg['etypes'].etype_class(etype)(self.session)
+        entity = self._cnx.vreg['etypes'].etype_class(etype)(self._cnx)
         # entity are "surface" copied, avoid shared dict between copies
         del entity.cw_extra_kwargs
         entity.cw_edited = EditedEntity(entity)
@@ -874,16 +885,24 @@ class MetaGenerator(object):
         return entity, rels
 
     def init_entity(self, entity):
-        entity.eid = self.source.create_eid(self.session)
+        entity.eid = self.create_eid(self._cnx)
+        extid = entity.cw_edited.get('cwuri')
         for attr in self.entity_attrs:
+            if attr in entity.cw_edited:
+                # already set, skip this attribute
+                continue
             genfunc = self.generate(attr)
             if genfunc:
                 entity.cw_edited.edited_attribute(attr, genfunc(entity))
+        if isinstance(extid, unicode):
+            extid = extid.encode('utf-8')
+        return self.source, extid
 
     def generate(self, rtype):
         return getattr(self, 'gen_%s' % rtype, None)
 
     def gen_cwuri(self, entity):
+        assert self.baseurl, 'baseurl is None while generating cwuri'
         return u'%s%s' % (self.baseurl, entity.eid)
 
     def gen_creation_date(self, entity):
@@ -893,10 +912,10 @@ class MetaGenerator(object):
         return self.time
 
     def gen_created_by(self, entity):
-        return self.session.user.eid
+        return self._cnx.user.eid
 
     def gen_owned_by(self, entity):
-        return self.session.user.eid
+        return self._cnx.user.eid
 
 
 ###########################################################################
@@ -906,27 +925,27 @@ class SQLGenObjectStore(NoHookRQLObjectStore):
     """Controller of the data import process. This version is based
     on direct insertions throught SQL command (COPY FROM or execute many).
 
-    >>> store = SQLGenObjectStore(session)
+    >>> store = SQLGenObjectStore(cnx)
     >>> store.create_entity('Person', ...)
     >>> store.flush()
     """
 
-    def __init__(self, session, dump_output_dir=None, nb_threads_statement=3):
+    def __init__(self, cnx, dump_output_dir=None, nb_threads_statement=3):
         """
         Initialize a SQLGenObjectStore.
 
         Parameters:
 
-          - session: session on the cubicweb instance
+          - cnx: connection on the cubicweb instance
           - dump_output_dir: a directory to dump failed statements
             for easier recovery. Default is None (no dump).
           - nb_threads_statement: number of threads used
             for SQL insertion (default is 3).
         """
-        super(SQLGenObjectStore, self).__init__(session)
+        super(SQLGenObjectStore, self).__init__(cnx)
         ### hijack default source
         self.source = SQLGenSourceWrapper(
-            self.source, session.vreg.schema,
+            self.source, cnx.vreg.schema,
             dump_output_dir=dump_output_dir,
             nb_threads_statement=nb_threads_statement)
         ### XXX This is done in super().__init__(), but should be
@@ -942,16 +961,16 @@ class SQLGenObjectStore(NoHookRQLObjectStore):
         if subj_eid is None or obj_eid is None:
             return
         # XXX Could subjtype be inferred ?
-        self.source.add_relation(self.session, subj_eid, rtype, obj_eid,
+        self.source.add_relation(self._cnx, subj_eid, rtype, obj_eid,
                                  self.rschema(rtype).inlined, **kwargs)
         if self.rschema(rtype).symmetric:
-            self.source.add_relation(self.session, obj_eid, rtype, subj_eid,
+            self.source.add_relation(self._cnx, obj_eid, rtype, subj_eid,
                                      self.rschema(rtype).inlined, **kwargs)
 
     def drop_indexes(self, etype):
         """Drop indexes for a given entity type"""
         if etype not in self.indexes_etypes:
-            cu = self.session.cnxset.cu
+            cu = self._cnx.cnxset.cu
             def index_to_attr(index):
                 """turn an index name to (database) attribute name"""
                 return index.replace(etype.lower(), '').replace('idx', '').strip('_')
@@ -961,13 +980,13 @@ class SQLGenObjectStore(NoHookRQLObjectStore):
                        if not index.endswith('key')]
             self.indexes_etypes[etype] = indices
         for index, attr in self.indexes_etypes[etype]:
-            self.session.system_sql('DROP INDEX %s' % index)
+            self._cnx.system_sql('DROP INDEX %s' % index)
 
     def create_indexes(self, etype):
         """Recreate indexes for a given entity type"""
         for index, attr in self.indexes_etypes.get(etype, []):
             sql = 'CREATE INDEX %s ON cw_%s(%s)' % (index, etype, attr)
-            self.session.system_sql(sql)
+            self._cnx.system_sql(sql)
 
 
 ###########################################################################
@@ -1057,17 +1076,13 @@ class SQLGenSourceWrapper(object):
                                nb_threads=self.nb_threads_statement,
                                support_copy_from=self.support_copy_from,
                                encoding=self.dbencoding)
-        except:
-            print 'failed to flush'
-        else:
-            print 'flush done'
         finally:
             _entities_sql.clear()
             _relations_sql.clear()
             _insertdicts.clear()
             _inlined_relations_sql.clear()
 
-    def add_relation(self, session, subject, rtype, object,
+    def add_relation(self, cnx, subject, rtype, object,
                      inlined=False, **kwargs):
         if inlined:
             _sql = self._sql.inlined_relations
@@ -1096,7 +1111,7 @@ class SQLGenSourceWrapper(object):
         else:
             _sql[statement] = [data]
 
-    def add_entity(self, session, entity):
+    def add_entity(self, cnx, entity):
         with self._storage_handler(entity, 'added'):
             attrs = self.preprocess_entity(entity)
             rtypes = self._inlined_rtypes_cache.get(entity.cw_etype, ())
@@ -1112,25 +1127,25 @@ class SQLGenSourceWrapper(object):
     def _append_to_entities(self, sql, attrs):
         self._sql.entities[sql].append(attrs)
 
-    def _handle_insert_entity_sql(self, session, sql, attrs):
+    def _handle_insert_entity_sql(self, cnx, sql, attrs):
         # We have to overwrite the source given in parameters
         # as here, we directly use the system source
         attrs['asource'] = self.system_source.uri
         self._append_to_entities(sql, attrs)
 
-    def _handle_is_relation_sql(self, session, sql, attrs):
+    def _handle_is_relation_sql(self, cnx, sql, attrs):
         self._append_to_entities(sql, attrs)
 
-    def _handle_is_instance_of_sql(self, session, sql, attrs):
+    def _handle_is_instance_of_sql(self, cnx, sql, attrs):
         self._append_to_entities(sql, attrs)
 
-    def _handle_source_relation_sql(self, session, sql, attrs):
+    def _handle_source_relation_sql(self, cnx, sql, attrs):
         self._append_to_entities(sql, attrs)
 
     # add_info is _copypasted_ from the one in NativeSQLSource. We want it
     # there because it will use the _handlers of the SQLGenSourceWrapper, which
     # are not like the ones in the native source.
-    def add_info(self, session, entity, source, extid, complete):
+    def add_info(self, cnx, entity, source, extid):
         """add type and source info for an eid into the system table"""
         # begin by inserting eid/type/source/extid into the entities table
         if extid is not None:
@@ -1138,24 +1153,22 @@ class SQLGenSourceWrapper(object):
             extid = b64encode(extid)
         attrs = {'type': entity.cw_etype, 'eid': entity.eid, 'extid': extid,
                  'asource': source.uri}
-        self._handle_insert_entity_sql(session, self.sqlgen.insert('entities', attrs), attrs)
+        self._handle_insert_entity_sql(cnx, self.sqlgen.insert('entities', attrs), attrs)
         # insert core relations: is, is_instance_of and cw_source
         try:
-            self._handle_is_relation_sql(session, 'INSERT INTO is_relation(eid_from,eid_to) VALUES (%s,%s)',
-                                         (entity.eid, eschema_eid(session, entity.e_schema)))
+            self._handle_is_relation_sql(cnx, 'INSERT INTO is_relation(eid_from,eid_to) VALUES (%s,%s)',
+                                         (entity.eid, eschema_eid(cnx, entity.e_schema)))
         except IndexError:
             # during schema serialization, skip
             pass
         else:
             for eschema in entity.e_schema.ancestors() + [entity.e_schema]:
-                self._handle_is_relation_sql(session,
+                self._handle_is_relation_sql(cnx,
                                              'INSERT INTO is_instance_of_relation(eid_from,eid_to) VALUES (%s,%s)',
-                                             (entity.eid, eschema_eid(session, eschema)))
+                                             (entity.eid, eschema_eid(cnx, eschema)))
         if 'CWSource' in self.schema and source.eid is not None: # else, cw < 3.10
-            self._handle_is_relation_sql(session, 'INSERT INTO cw_source_relation(eid_from,eid_to) VALUES (%s,%s)',
+            self._handle_is_relation_sql(cnx, 'INSERT INTO cw_source_relation(eid_from,eid_to) VALUES (%s,%s)',
                                          (entity.eid, source.eid))
         # now we can update the full text index
         if self.do_fti and self.need_fti_indexation(entity.cw_etype):
-            if complete:
-                entity.complete(entity.e_schema.indexable_attributes())
-            self.index_entity(session, entity=entity)
+            self.index_entity(cnx, entity=entity)

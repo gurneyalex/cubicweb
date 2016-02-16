@@ -126,6 +126,7 @@ from warnings import warn
 from logilab.mtconverter import xml_escape
 from logilab.common.decorators import iclassmethod, cached
 from logilab.common.deprecation import deprecated
+from logilab.common.registry import NoSelectableObject
 
 from cubicweb import neg_role, uilib
 from cubicweb.schema import display_name
@@ -214,6 +215,12 @@ class InlineEntityEditionFormView(f.FormViewMixIn, EntityView):
         return self.cw_rset.get_entity(self.cw_row, self.cw_col)
 
     @property
+    def petype(self):
+        assert isinstance(self.peid, int)
+        pentity = self._cw.entity_from_eid(self.peid)
+        return pentity.e_schema.type
+
+    @property
     @cached
     def form(self):
         entity = self._entity()
@@ -249,12 +256,25 @@ class InlineEntityEditionFormView(f.FormViewMixIn, EntityView):
         creation form.
         """
         entity = self._entity()
-        if isinstance(self.peid, int):
-            pentity = self._cw.entity_from_eid(self.peid)
-            petype = pentity.e_schema.type
-            rdef = entity.e_schema.rdef(self.rtype, neg_role(self.role), petype)
-            card= rdef.role_cardinality(self.role)
-            if card == '1': # don't display remove link
+        rdef = entity.e_schema.rdef(self.rtype, neg_role(self.role), self.petype)
+        card = rdef.role_cardinality(self.role)
+        if card == '1': # don't display remove link
+            return None
+        # if cardinality is 1..n (+), dont display link to remove an inlined form for the first form
+        # allowing to edit the relation. To detect so:
+        #
+        # * if parent form (pform) is None, we're generated through an ajax call and so we know this
+        #   is not the first form
+        #
+        # * if parent form is not None, look for previous InlinedFormField in the parent's form
+        #   fields
+        if card == '+' and self.pform is not None:
+            # retrieve all field'views handling this relation and return None if we're the first of
+            # them
+            first_view = next(iter((f.view for f in self.pform.fields
+                                    if isinstance(f, InlinedFormField)
+                                    and f.view.rtype == self.rtype and f.view.role == self.role)))
+            if self == first_view:
                 return None
         return self.removejs and self.removejs % (
             self.peid, self.rtype, entity.eid)
@@ -314,7 +334,7 @@ class InlineEntityCreationFormView(InlineEntityEditionFormView):
     def removejs(self):
         entity = self._entity()
         rdef = entity.e_schema.rdef(self.rtype, neg_role(self.role), self.petype)
-        card= rdef.role_cardinality(self.role)
+        card = rdef.role_cardinality(self.role)
         # when one is adding an inline entity for a relation of a single card,
         # the 'add a new xxx' link disappears. If the user then cancel the addition,
         # we have to make this link appears back. This is done by giving add new link
@@ -812,8 +832,7 @@ class AutomaticEntityForm(forms.EntityFieldsForm):
         srels_by_cat = self.editable_relations()
         if not srels_by_cat:
             raise f.FieldNotFound('_cw_generic_field')
-        fieldset = u'%s :' % self._cw.__('This %s' % self.edited_entity.e_schema)
-        fieldset = fieldset.capitalize()
+        fieldset = 'This %s:' % self.edited_entity.e_schema
         return GenericRelationsField(self.editable_relations(),
                                      fieldset=fieldset, label=None)
 
@@ -933,6 +952,8 @@ class AutomaticEntityForm(forms.EntityFieldsForm):
     def check_inlined_rdef_permissions(self, rschema, role, tschema, ttype):
         """return true if permissions are granted on the inlined object and
         relation"""
+        if not tschema.has_perm(self._cw, 'add'):
+            return False
         entity = self.edited_entity
         rdef = entity.e_schema.rdef(rschema, role, ttype)
         if entity.has_eid():
@@ -940,10 +961,8 @@ class AutomaticEntityForm(forms.EntityFieldsForm):
                 rdefkwargs = {'fromeid': entity.eid}
             else:
                 rdefkwargs = {'toeid': entity.eid}
-        else:
-            rdefkwargs = {}
-        return (tschema.has_perm(self._cw, 'add')
-                and rdef.has_perm(self._cw, 'add', **rdefkwargs))
+            return rdef.has_perm(self._cw, 'add', **rdefkwargs)
+        return rdef.may_have_permission('add', self._cw)
 
 
     def should_hide_add_new_relation_link(self, rschema, card):
@@ -974,11 +993,16 @@ class AutomaticEntityForm(forms.EntityFieldsForm):
         """yield inline form views to a newly related (hence created) entity
         through the given relation
         """
-        yield self._cw.vreg['views'].select('inline-creation', self._cw,
-                                            etype=ttype, rtype=rschema, role=role,
-                                            peid=self.edited_entity.eid,
-                                            petype=self.edited_entity.e_schema,
-                                            pform=self)
+        try:
+            yield self._cw.vreg['views'].select('inline-creation', self._cw,
+                                                etype=ttype, rtype=rschema, role=role,
+                                                peid=self.edited_entity.eid,
+                                                petype=self.edited_entity.e_schema,
+                                                pform=self)
+        except NoSelectableObject:
+            # may be raised if user doesn't have the permission to add ttype entities (no checked
+            # earlier) or if there is some custom selector on the view
+            pass
 
 
 ## default form ui configuration ##############################################

@@ -28,6 +28,25 @@ from cubicweb.devtools import htmlparser
 from cubicweb.devtools.testlib import CubicWebTC
 from cubicweb.pytestconf import clean_repo_test_cls
 
+class FakeFormTC(TestCase):
+    def test_fake_form(self):
+        class entity:
+            cw_etype = 'Entity'
+            eid = 0
+        sio = StringIO('hop\n')
+        form = CubicWebTC.fake_form('import',
+                                    {'file': ('filename.txt', sio),
+                                     'encoding': u'utf-8',
+                                    }, [(entity, {'field': 'value'})])
+        self.assertEqual(form, {'__form_id': 'import',
+                                '__maineid': 0,
+                                '__type:0': 'Entity',
+                                '_cw_entity_fields:0': '__type,field',
+                                '_cw_fields': 'file,encoding',
+                                'eid': [0],
+                                'encoding': u'utf-8',
+                                'field:0': 'value',
+                                'file': ('filename.txt', sio)})
 
 class WebTestTC(TestCase):
 
@@ -53,6 +72,16 @@ class WebTestTC(TestCase):
         self.assertEqual(len(result.errors), 0)
         self.assertEqual(len(result.failures), 1)
         clean_repo_test_cls(MyWebTest)
+
+
+class RepoInstancesConsistencyTC(CubicWebTC):
+    test_db_id = 'RepoInstancesConsistencyTC'
+
+    def pre_setup_database(self, cnx, config):
+        self.assertIs(cnx.repo, config.repository())
+
+    def test_pre_setup(self):
+        pass
 
 
 HTML_PAGE = u"""<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
@@ -176,6 +205,18 @@ class CWUtilitiesTC(CubicWebTC):
             self.assertEqual(rdef.permissions['read'], ())
             self.assertTrue(rdef.permissions['add'])
         self.assertTrue(rdef.permissions['read'], ())
+
+    def test_temporary_permissions_rdef_with_exception(self):
+        rdef = self.schema['CWUser'].rdef('in_group')
+        try:
+            with self.temporary_permissions((rdef, {'read': ()})):
+                self.assertEqual(rdef.permissions['read'], ())
+                self.assertTrue(rdef.permissions['add'])
+                raise ValueError('goto')
+        except ValueError:
+            self.assertTrue(rdef.permissions['read'], ())
+        else:
+            self.fail('exception was caught unexpectedly')
 
     def test_temporary_appobjects_registered(self):
 

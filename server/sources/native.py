@@ -293,6 +293,12 @@ class NativeSQLSource(SQLAdapterMixIn, AbstractSource):
           'help': 'database name',
           'group': 'native-source', 'level': 0,
           }),
+        ('db-namespace',
+         {'type' : 'string',
+          'default': '',
+          'help': 'database namespace (schema) name',
+          'group': 'native-source', 'level': 1,
+          }),
         ('db-user',
          {'type' : 'string',
           'default': CubicWebNoAppConfiguration.mode == 'user' and getlogin() or 'cubicweb',
@@ -318,10 +324,16 @@ class NativeSQLSource(SQLAdapterMixIn, AbstractSource):
                   'want trusted authentication for the database connection',
           'group': 'native-source', 'level': 2,
           }),
+        ('db-statement-timeout',
+         {'type': 'int',
+          'default': 0,
+          'help': 'sql statement timeout, in milliseconds (postgres only)',
+          'group': 'native-source', 'level': 2,
+          }),
     )
 
     def __init__(self, repo, source_config, *args, **kwargs):
-        SQLAdapterMixIn.__init__(self, source_config)
+        SQLAdapterMixIn.__init__(self, source_config, repairing=repo.config.repairing)
         self.authentifiers = [LoginPasswordAuthentifier(self)]
         if repo.config['allow-email-login']:
             self.authentifiers.insert(0, EmailPasswordAuthentifier(self))
@@ -440,10 +452,10 @@ class NativeSQLSource(SQLAdapterMixIn, AbstractSource):
 
     # XXX deprecates [un]map_attribute?
     def map_attribute(self, etype, attr, cb, sourcedb=True):
-        self._rql_sqlgen.attr_map['%s.%s' % (etype, attr)] = (cb, sourcedb)
+        self._rql_sqlgen.attr_map[u'%s.%s' % (etype, attr)] = (cb, sourcedb)
 
     def unmap_attribute(self, etype, attr):
-        self._rql_sqlgen.attr_map.pop('%s.%s' % (etype, attr), None)
+        self._rql_sqlgen.attr_map.pop(u'%s.%s' % (etype, attr), None)
 
     def set_storage(self, etype, attr, storage):
         storage_dict = self._storages.setdefault(etype, {})
@@ -560,7 +572,7 @@ class NativeSQLSource(SQLAdapterMixIn, AbstractSource):
                 cursor = self.doexec(cnx, sql, args)
             else:
                 raise
-        results = self.process_result(cursor, cbs, session=cnx)
+        results = self.process_result(cursor, cnx, cbs)
         assert dbg_results(results)
         return results
 
@@ -724,7 +736,7 @@ class NativeSQLSource(SQLAdapterMixIn, AbstractSource):
                     if mo is not None:
                         raise UniqueTogetherError(cnx, cstrname=mo.group(0))
                     # old sqlite
-                    mo = re.search('columns (.*) are not unique', arg)
+                    mo = re.search('columns? (.*) (?:is|are) not unique', arg)
                     if mo is not None: # sqlite in use
                         # we left chop the 'cw_' prefix of attribute names
                         rtypes = [c.strip()[3:]
@@ -885,8 +897,8 @@ class NativeSQLSource(SQLAdapterMixIn, AbstractSource):
         if extid is not None:
             assert isinstance(extid, str)
             extid = b64encode(extid)
-        attrs = {'type': entity.cw_etype, 'eid': entity.eid, 'extid': extid,
-                 'asource': source.uri}
+        attrs = {'type': entity.cw_etype, 'eid': entity.eid, 'extid': extid and unicode(extid),
+                 'asource': unicode(source.uri)}
         self._handle_insert_entity_sql(cnx, self.sqlgen.insert('entities', attrs), attrs)
         # insert core relations: is, is_instance_of and cw_source
         try:
@@ -904,12 +916,12 @@ class NativeSQLSource(SQLAdapterMixIn, AbstractSource):
             self._handle_is_relation_sql(cnx, 'INSERT INTO cw_source_relation(eid_from,eid_to) VALUES (%s,%s)',
                                          (entity.eid, source.eid))
         # now we can update the full text index
-        if self.do_fti and self.need_fti_indexation(entity.cw_etype):
+        if self.need_fti_indexation(entity.cw_etype):
             self.index_entity(cnx, entity=entity)
 
     def update_info(self, cnx, entity, need_fti_update):
         """mark entity as being modified, fulltext reindex if needed"""
-        if self.do_fti and need_fti_update:
+        if need_fti_update:
             # reindex the entity only if this query is updating at least
             # one indexable attribute
             self.index_entity(cnx, entity=entity)
@@ -1307,7 +1319,8 @@ class NativeSQLSource(SQLAdapterMixIn, AbstractSource):
         """create an operation to [re]index textual content of the given entity
         on commit
         """
-        FTIndexEntityOp.get_instance(cnx).add_data(entity.eid)
+        if self.do_fti:
+            FTIndexEntityOp.get_instance(cnx).add_data(entity.eid)
 
     def fti_unindex_entities(self, cnx, entities):
         """remove text content for entities from the full text index
@@ -1464,7 +1477,7 @@ class BaseAuthentifier(object):
 
 class LoginPasswordAuthentifier(BaseAuthentifier):
     passwd_rql = 'Any P WHERE X is CWUser, X login %(login)s, X upassword P'
-    auth_rql = ('Any X WHERE X is CWUser, X login %(login)s, X upassword %(pwd)s, '
+    auth_rql = (u'Any X WHERE X is CWUser, X login %(login)s, X upassword %(pwd)s, '
                 'X cw_source S, S name "system"')
     _sols = ({'X': 'CWUser', 'P': 'Password', 'S': 'CWSource'},)
 
