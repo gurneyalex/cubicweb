@@ -18,8 +18,9 @@
 # with CubicWeb.  If not, see <http://www.gnu.org/licenses/>.
 """unit tests for module cubicweb.utils"""
 
-from urlparse import urlsplit
-import pickle
+from six import string_types
+from six.moves import cPickle as pickle
+from six.moves.urllib.parse import urlsplit
 
 from rql import parse
 
@@ -100,7 +101,11 @@ class ResultSetTC(CubicWebTC):
 
     def test_pickle(self):
         del self.rset.req
-        self.assertEqual(len(pickle.dumps(self.rset)), 376)
+        rs2 = pickle.loads(pickle.dumps(self.rset))
+        self.assertEqual(self.rset.rows, rs2.rows)
+        self.assertEqual(self.rset.rowcount, rs2.rowcount)
+        self.assertEqual(self.rset.rql, rs2.rql)
+        self.assertEqual(self.rset.description, rs2.description)
 
     def test_build_url(self):
         with self.admin_access.web_request() as req:
@@ -274,13 +279,13 @@ class ResultSetTC(CubicWebTC):
         """make sure syntax tree is cached"""
         rqlst1 = self.rset.syntax_tree()
         rqlst2 = self.rset.syntax_tree()
-        self.assert_(rqlst1 is rqlst2)
+        self.assertIs(rqlst1, rqlst2)
 
     def test_get_entity_simple(self):
         with self.admin_access.web_request() as req:
             req.create_entity('CWUser', login=u'adim', upassword='adim',
                                          surname=u'di mascio', firstname=u'adrien')
-            req.cnx.drop_entity_cache()
+            req.drop_entity_cache()
             e = req.execute('Any X,T WHERE X login "adim", X surname T').get_entity(0, 0)
             self.assertEqual(e.cw_attr_cache['surname'], 'di mascio')
             self.assertRaises(KeyError, e.cw_attr_cache.__getitem__, 'firstname')
@@ -293,7 +298,7 @@ class ResultSetTC(CubicWebTC):
     def test_get_entity_advanced(self):
         with self.admin_access.web_request() as req:
             req.create_entity('Bookmark', title=u'zou', path=u'/view')
-            req.cnx.drop_entity_cache()
+            req.drop_entity_cache()
             req.execute('SET X bookmarked_by Y WHERE X is Bookmark, Y login "anon"')
             rset = req.execute('Any X,Y,XT,YN WHERE X bookmarked_by Y, X title XT, Y login YN')
 
@@ -340,7 +345,7 @@ class ResultSetTC(CubicWebTC):
             e = rset.get_entity(0, 0)
             self.assertEqual(e.cw_attr_cache['title'], 'zou')
             self.assertEqual(pprelcachedict(e._cw_related_cache),
-                              [('created_by_subject', [req.user.eid])])
+                             [('created_by_subject', [req.user.eid])])
             # first level of recursion
             u = e.created_by[0]
             self.assertEqual(u.cw_attr_cache['login'], 'admin')
@@ -369,7 +374,7 @@ class ResultSetTC(CubicWebTC):
     def test_get_entity_union(self):
         with self.admin_access.web_request() as req:
             e = req.create_entity('Bookmark', title=u'manger', path=u'path')
-            req.cnx.drop_entity_cache()
+            req.drop_entity_cache()
             rset = req.execute('Any X,N ORDERBY N WITH X,N BEING '
                                 '((Any X,N WHERE X is Bookmark, X title N)'
                                 ' UNION '
@@ -550,18 +555,31 @@ class ResultSetTC(CubicWebTC):
     def test_str(self):
         with self.admin_access.web_request() as req:
             rset = req.execute('(Any X,N WHERE X is CWGroup, X name N)')
-            self.assertIsInstance(str(rset), basestring)
+            self.assertIsInstance(str(rset), string_types)
             self.assertEqual(len(str(rset).splitlines()), 1)
 
     def test_repr(self):
         with self.admin_access.web_request() as req:
             rset = req.execute('(Any X,N WHERE X is CWGroup, X name N)')
-            self.assertIsInstance(repr(rset), basestring)
+            self.assertIsInstance(repr(rset), string_types)
             self.assertTrue(len(repr(rset).splitlines()) > 1)
 
             rset = req.execute('(Any X WHERE X is CWGroup, X name "managers")')
-            self.assertIsInstance(str(rset), basestring)
+            self.assertIsInstance(str(rset), string_types)
             self.assertEqual(len(str(rset).splitlines()), 1)
+
+    def test_slice(self):
+        rs = ResultSet([[12000, 'adim', u'Adim chez les pinguins'],
+                        [12000, 'adim', u'Jardiner facile'],
+                        [13000, 'syt',  u'Le carrelage en 42 leçons'],
+                        [14000, 'nico', u'La tarte tatin en 15 minutes'],
+                        [14000, 'nico', u"L'épluchage du castor commun"]],
+                       'Any U, L, T WHERE U is CWUser, U login L,'\
+                       'D created_by U, D title T',
+                       description=[['CWUser', 'String', 'String']] * 5)
+        self.assertEqual(rs[1::2],
+            [[12000, 'adim', u'Jardiner facile'],
+             [14000, 'nico', u'La tarte tatin en 15 minutes']])
 
     def test_nonregr_symmetric_relation(self):
         # see https://www.cubicweb.org/ticket/4739253

@@ -21,6 +21,7 @@ from yams.buildobjs import (EntityType, RelationType, RelationDefinition,
                             SubjectRelation, Bytes,
                             RichString, String, Int, Boolean, Datetime, Date, Float)
 from yams.constraints import SizeConstraint, UniqueConstraint
+from cubicweb import _
 from cubicweb.schema import (WorkflowableEntityType, RQLConstraint,
                              RQLVocabularyConstraint,
                              ERQLExpression, RRQLExpression)
@@ -210,3 +211,8 @@ class New(EntityType):
 class same_as(RelationDefinition):
     subject = ('Societe',)
     object = 'ExternalUri'
+
+class inlined_rel(RelationDefinition):
+    subject = object = 'Folder2'
+    inlined = True
+    cardinality = '??'

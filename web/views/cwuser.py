@@ -18,9 +18,12 @@
 """Specific views for users and groups"""
 
 __docformat__ = "restructuredtext en"
-_ = unicode
+from cubicweb import _
 
 from hashlib import sha1 # pylint: disable=E0611
+
+from six import text_type
+from six.moves import range
 
 from logilab.mtconverter import xml_escape
 
@@ -64,7 +67,7 @@ class FoafView(EntityView):
 <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
          xmlns:rdfs="http://www.w3org/2000/01/rdf-schema#"
          xmlns:foaf="http://xmlns.com/foaf/0.1/"> '''% self._cw.encoding)
-        for i in xrange(self.cw_rset.rowcount):
+        for i in range(self.cw_rset.rowcount):
             self.cell_call(i, 0)
         self.w(u'</rdf:RDF>\n')
 
@@ -250,6 +253,6 @@ class CWGroupsTable(tableview.EntityTableView):
         'group': tableview.MainEntityColRenderer(),
         'nb_users': tableview.EntityTableColRenderer(
             header=_('num. users'),
-            renderfunc=lambda w,x: w(unicode(x.num_users())),
+            renderfunc=lambda w,x: w(text_type(x.num_users())),
             sortfunc=lambda x: x.num_users()),
         }

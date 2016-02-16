@@ -17,6 +17,7 @@
 # You should have received a copy of the GNU Lesser General Public License along
 # with CubicWeb.  If not, see <http://www.gnu.org/licenses/>.
 """XXX rename, split, reorganize this"""
+from __future__ import print_function
 
 from logilab.common.testlib import unittest_main
 
@@ -76,9 +77,9 @@ class VRegistryTC(ViewSelectorTC):
         try:
             self.assertSetEqual(list(content), expected)
         except Exception:
-            print registry, sorted(expected), sorted(content)
-            print 'no more', [v for v in expected if not v in content]
-            print 'missing', [v for v in content if not v in expected]
+            print(registry, sorted(expected), sorted(content))
+            print('no more', [v for v in expected if not v in content])
+            print('missing', [v for v in content if not v in expected])
             raise
 
     def setUp(self):
@@ -421,7 +422,7 @@ class VRegistryTC(ViewSelectorTC):
 
     def test_interface_selector(self):
         with self.admin_access.web_request() as req:
-            req.create_entity('File', data_name=u'bim.png', data=Binary('bim'))
+            req.create_entity('File', data_name=u'bim.png', data=Binary(b'bim'))
             # image primary view priority
             rset = req.execute('File X WHERE X data_name "bim.png"')
             self.assertIsInstance(self.vreg['views'].select('primary', req, rset=rset),
@@ -430,21 +431,21 @@ class VRegistryTC(ViewSelectorTC):
 
     def test_score_entity_selector(self):
         with self.admin_access.web_request() as req:
-            req.create_entity('File', data_name=u'bim.png', data=Binary('bim'))
+            req.create_entity('File', data_name=u'bim.png', data=Binary(b'bim'))
             # image/ehtml primary view priority
             rset = req.execute('File X WHERE X data_name "bim.png"')
             self.assertIsInstance(self.vreg['views'].select('image', req, rset=rset),
                                   idownloadable.ImageView)
             self.assertRaises(NoSelectableObject, self.vreg['views'].select, 'ehtml', req, rset=rset)
 
-            fileobj = req.create_entity('File', data_name=u'bim.html', data=Binary('<html>bam</html'))
+            fileobj = req.create_entity('File', data_name=u'bim.html', data=Binary(b'<html>bam</html'))
             # image/ehtml primary view priority
             rset = req.execute('File X WHERE X data_name "bim.html"')
             self.assertIsInstance(self.vreg['views'].select('ehtml', req, rset=rset),
                                   idownloadable.EHTMLView)
             self.assertRaises(NoSelectableObject, self.vreg['views'].select, 'image', req, rset=rset)
 
-            fileobj = req.create_entity('File', data_name=u'bim.txt', data=Binary('boum'))
+            fileobj = req.create_entity('File', data_name=u'bim.txt', data=Binary(b'boum'))
             # image/ehtml primary view priority
             rset = req.execute('File X WHERE X data_name "bim.txt"')
             self.assertRaises(NoSelectableObject, self.vreg['views'].select, 'image', req, rset=rset)
@@ -461,7 +462,7 @@ class VRegistryTC(ViewSelectorTC):
                 obj = self.vreg['views'].select(vid, req, rset=rset, **args)
                 return obj.render(**args)
             except Exception:
-                print vid, rset, args
+                print(vid, rset, args)
                 raise
 
     def test_form(self):
@@ -476,12 +477,12 @@ class VRegistryTC(ViewSelectorTC):
 
 
     def test_properties(self):
-        self.assertEqual(sorted(k for k in self.vreg['propertydefs'].iterkeys()
+        self.assertEqual(sorted(k for k in self.vreg['propertydefs']
                                 if k.startswith('ctxcomponents.edit_box')),
                          ['ctxcomponents.edit_box.context',
                           'ctxcomponents.edit_box.order',
                           'ctxcomponents.edit_box.visible'])
-        self.assertEqual([k for k in self.vreg['propertyvalues'].iterkeys()
+        self.assertEqual([k for k in self.vreg['propertyvalues']
                           if not k.startswith('system.version')],
                          [])
         self.assertEqual(self.vreg.property_value('ctxcomponents.edit_box.visible'), True)

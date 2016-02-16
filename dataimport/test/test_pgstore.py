@@ -20,9 +20,11 @@
 
 import datetime as DT
 
+from six import PY2
 from logilab.common.testlib import TestCase, unittest_main
 
 from cubicweb.dataimport import pgstore
+from cubicweb.devtools import testlib
 
 
 class CreateCopyFromBufferTC(TestCase):
@@ -31,24 +33,24 @@ class CreateCopyFromBufferTC(TestCase):
 
     def test_convert_none(self):
         cnvt = pgstore._copyfrom_buffer_convert_None
-        self.assertEqual('NULL', cnvt(None))
+        self.assertEqual(u'NULL', cnvt(None))
 
     def test_convert_number(self):
         cnvt = pgstore._copyfrom_buffer_convert_number
-        self.assertEqual('42', cnvt(42))
-        self.assertEqual('42', cnvt(42L))
-        self.assertEqual('42.42', cnvt(42.42))
+        self.assertEqual(u'42', cnvt(42))
+        if PY2:
+            self.assertEqual(u'42', cnvt(long(42)))
+        self.assertEqual(u'42.42', cnvt(42.42))
 
     def test_convert_string(self):
         cnvt = pgstore._copyfrom_buffer_convert_string
         # simple
-        self.assertEqual('babar', cnvt('babar'))
+        self.assertEqual(u'babar', cnvt('babar'))
         # unicode
-        self.assertEqual('\xc3\xa9l\xc3\xa9phant', cnvt(u'éléphant'))
-        self.assertEqual('\xe9l\xe9phant', cnvt(u'éléphant', encoding='latin1'))
+        self.assertEqual(u'éléphant', cnvt(u'éléphant'))
         # escaping
-        self.assertEqual('babar\\tceleste\\n', cnvt('babar\tceleste\n'))
-        self.assertEqual(r'C:\\new\tC:\\test', cnvt('C:\\new\tC:\\test'))
+        self.assertEqual(u'babar\\tceleste\\n', cnvt(u'babar\tceleste\n'))
+        self.assertEqual(u'C:\\\\new\\tC:\\\\test', cnvt(u'C:\\new\tC:\\test'))
 
     def test_convert_date(self):
         cnvt = pgstore._copyfrom_buffer_convert_date
@@ -64,18 +66,19 @@ class CreateCopyFromBufferTC(TestCase):
 
     # test buffer
     def test_create_copyfrom_buffer_tuple(self):
-        data = ((42, 42L, 42.42, u'éléphant', DT.date(666, 1, 13), DT.time(6, 6, 6),
+        l = long if PY2 else int
+        data = ((42, l(42), 42.42, u'éléphant', DT.date(666, 1, 13), DT.time(6, 6, 6),
                  DT.datetime(666, 6, 13, 6, 6, 6)),
-                (6, 6L, 6.6, u'babar', DT.date(2014, 1, 14), DT.time(4, 2, 1),
+                (6, l(6), 6.6, u'babar', DT.date(2014, 1, 14), DT.time(4, 2, 1),
                  DT.datetime(2014, 1, 1, 0, 0, 0)))
         results = pgstore._create_copyfrom_buffer(data)
         # all columns
-        expected = '''42\t42\t42.42\téléphant\t0666-01-13\t06:06:06.000000\t0666-06-13 06:06:06.000000
+        expected = u'''42\t42\t42.42\téléphant\t0666-01-13\t06:06:06.000000\t0666-06-13 06:06:06.000000
 6\t6\t6.6\tbabar\t2014-01-14\t04:02:01.000000\t2014-01-01 00:00:00.000000'''
         self.assertMultiLineEqual(expected, results.getvalue())
         # selected columns
         results = pgstore._create_copyfrom_buffer(data, columns=(1, 3, 6))
-        expected = '''42\téléphant\t0666-06-13 06:06:06.000000
+        expected = u'''42\téléphant\t0666-06-13 06:06:06.000000
 6\tbabar\t2014-01-01 00:00:00.000000'''
         self.assertMultiLineEqual(expected, results.getvalue())
 
@@ -85,8 +88,18 @@ class CreateCopyFromBufferTC(TestCase):
                 dict(integer=6, double=6.6, text=u'babar',
                      date=DT.datetime(2014, 1, 1, 0, 0, 0)))
         results = pgstore._create_copyfrom_buffer(data, ('integer', 'text'))
-        expected = '''42\téléphant\n6\tbabar'''
-        self.assertMultiLineEqual(expected, results.getvalue())
+        expected = u'''42\téléphant\n6\tbabar'''
+        self.assertEqual(expected, results.getvalue())
+
+
+class SQLGenObjectStoreTC(testlib.CubicWebTC):
+
+    def test_prepare_insert_entity(self):
+        with self.admin_access.repo_cnx() as cnx:
+            store = pgstore.SQLGenObjectStore(cnx)
+            eid = store.prepare_insert_entity('CWUser', login=u'toto',
+                                              upassword=u'pwd')
+            self.assertIsNotNone(eid)
 
 
 if __name__ == '__main__':

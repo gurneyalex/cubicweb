@@ -1,4 +1,4 @@
-# copyright 2003-2014 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2015 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -16,6 +16,7 @@
 # You should have received a copy of the GNU Lesser General Public License along
 # with CubicWeb.  If not, see <http://www.gnu.org/licenses/>.
 """SQL utilities functions and classes."""
+from __future__ import print_function
 
 __docformat__ = "restructuredtext en"
 
@@ -23,15 +24,19 @@ import sys
 import re
 import subprocess
 from os.path import abspath
-from itertools import ifilter
 from logging import getLogger
-from datetime import time, datetime
+from datetime import time, datetime, timedelta
+
+from six import string_types, text_type
+from six.moves import filter
+
+from pytz import utc
 
 from logilab import database as db, common as lgc
 from logilab.common.shellutils import ProgressBar, DummyProgressBar
 from logilab.common.deprecation import deprecated
 from logilab.common.logging_ext import set_log_methods
-from logilab.common.date import utctime, utcdatetime
+from logilab.common.date import utctime, utcdatetime, strptime
 from logilab.database.sqlgen import SQLGenerator
 
 from cubicweb import Binary, ConfigurationError
@@ -43,9 +48,14 @@ from cubicweb.server.utils import crypt_password
 lgc.USE_MX_DATETIME = False
 SQL_PREFIX = 'cw_'
 
+
 def _run_command(cmd):
-    print ' '.join(cmd)
-    return subprocess.call(cmd)
+    if isinstance(cmd, string_types):
+        print(cmd)
+        return subprocess.call(cmd, shell=True)
+    else:
+        print(' '.join(cmd))
+        return subprocess.call(cmd)
 
 
 def sqlexec(sqlstmts, cursor_or_execute, withpb=True,
@@ -69,7 +79,7 @@ def sqlexec(sqlstmts, cursor_or_execute, withpb=True,
     else:
         execute = cursor_or_execute
     sqlstmts_as_string = False
-    if isinstance(sqlstmts, basestring):
+    if isinstance(sqlstmts, string_types):
         sqlstmts_as_string = True
         sqlstmts = sqlstmts.split(delimiter)
     if withpb:
@@ -87,7 +97,7 @@ def sqlexec(sqlstmts, cursor_or_execute, withpb=True,
         try:
             # some dbapi modules doesn't accept unicode for sql string
             execute(str(sql))
-        except Exception, err:
+        except Exception:
             if cnx:
                 cnx.rollback()
             failed.append(sql)
@@ -95,7 +105,7 @@ def sqlexec(sqlstmts, cursor_or_execute, withpb=True,
             if cnx:
                 cnx.commit()
     if withpb:
-        print
+        print()
     if sqlstmts_as_string:
         failed = delimiter.join(failed)
     return failed
@@ -178,9 +188,9 @@ def sql_drop_all_user_tables(driver_or_helper, sqlcursor):
     # for mssql, we need to drop views before tables
     if hasattr(dbhelper, 'list_views'):
         cmds += ['DROP VIEW %s;' % name
-                 for name in ifilter(_SQL_DROP_ALL_USER_TABLES_FILTER_FUNCTION, dbhelper.list_views(sqlcursor))]
+                 for name in filter(_SQL_DROP_ALL_USER_TABLES_FILTER_FUNCTION, dbhelper.list_views(sqlcursor))]
     cmds += ['DROP TABLE %s;' % name
-             for name in ifilter(_SQL_DROP_ALL_USER_TABLES_FILTER_FUNCTION, dbhelper.list_tables(sqlcursor))]
+             for name in filter(_SQL_DROP_ALL_USER_TABLES_FILTER_FUNCTION, dbhelper.list_tables(sqlcursor))]
     return '\n'.join(cmds)
 
 
@@ -370,7 +380,7 @@ class SQLAdapterMixIn(object):
     def merge_args(self, args, query_args):
         if args is not None:
             newargs = {}
-            for key, val in args.iteritems():
+            for key, val in args.items():
                 # convert cubicweb binary into db binary
                 if isinstance(val, Binary):
                     val = self._binary(val.getvalue())
@@ -441,7 +451,7 @@ class SQLAdapterMixIn(object):
         attrs = {}
         eschema = entity.e_schema
         converters = getattr(self.dbhelper, 'TYPE_CONVERTERS', {})
-        for attr, value in entity.cw_edited.iteritems():
+        for attr, value in entity.cw_edited.items():
             if value is not None and eschema.subjrels[attr].final:
                 atype = str(entity.e_schema.destination(attr))
                 if atype in converters:
@@ -472,7 +482,55 @@ set_log_methods(SQLAdapterMixIn, getLogger('cubicweb.sqladapter'))
 
 # connection initialization functions ##########################################
 
-def init_sqlite_connexion(cnx):
+def _install_sqlite_querier_patch():
+    """This monkey-patch hotfixes a bug sqlite causing some dates to be returned as strings rather than
+    date objects (http://www.sqlite.org/cvstrac/tktview?tn=1327,33)
+    """
+    from cubicweb.server.querier import QuerierHelper
+
+    if hasattr(QuerierHelper, '_sqlite_patched'):
+        return  # already monkey patched
+
+    def wrap_execute(base_execute):
+        def new_execute(*args, **kwargs):
+            rset = base_execute(*args, **kwargs)
+            if rset.description:
+                found_date = False
+                for row, rowdesc in zip(rset, rset.description):
+                    for cellindex, (value, vtype) in enumerate(zip(row, rowdesc)):
+                        if vtype in ('TZDatetime', 'Date', 'Datetime') \
+                           and isinstance(value, text_type):
+                            found_date = True
+                            value = value.rsplit('.', 1)[0]
+                            try:
+                                row[cellindex] = strptime(value, '%Y-%m-%d %H:%M:%S')
+                            except Exception:
+                                row[cellindex] = strptime(value, '%Y-%m-%d')
+                            if vtype == 'TZDatetime':
+                                row[cellindex] = row[cellindex].replace(tzinfo=utc)
+                        if vtype == 'Time' and isinstance(value, text_type):
+                            found_date = True
+                            try:
+                                row[cellindex] = strptime(value, '%H:%M:%S')
+                            except Exception:
+                                # DateTime used as Time?
+                                row[cellindex] = strptime(value, '%Y-%m-%d %H:%M:%S')
+                        if vtype == 'Interval' and isinstance(value, int):
+                            found_date = True
+                            # XXX value is in number of seconds?
+                            row[cellindex] = timedelta(0, value, 0)
+                    if not found_date:
+                        break
+            return rset
+        return new_execute
+
+    QuerierHelper.execute = wrap_execute(QuerierHelper.execute)
+    QuerierHelper._sqlite_patched = True
+
+
+def _init_sqlite_connection(cnx):
+    """Internal function that will be called to init a sqlite connection"""
+    _install_sqlite_querier_patch()
 
     class group_concat(object):
         def __init__(self):
@@ -481,7 +539,7 @@ def init_sqlite_connexion(cnx):
             if value is not None:
                 self.values.add(value)
         def finalize(self):
-            return ', '.join(unicode(v) for v in self.values)
+            return ', '.join(text_type(v) for v in self.values)
 
     cnx.create_aggregate("GROUP_CONCAT", 1, group_concat)
 
@@ -519,14 +577,15 @@ def init_sqlite_connexion(cnx):
     yams.constraints.patch_sqlite_decimal()
 
 sqlite_hooks = SQL_CONNECT_HOOKS.setdefault('sqlite', [])
-sqlite_hooks.append(init_sqlite_connexion)
+sqlite_hooks.append(_init_sqlite_connection)
 
 
-def init_postgres_connexion(cnx):
+def _init_postgres_connection(cnx):
+    """Internal function that will be called to init a postgresql connection"""
     cnx.cursor().execute('SET TIME ZONE UTC')
     # commit is needed, else setting are lost if the connection is first
     # rolled back
     cnx.commit()
 
 postgres_hooks = SQL_CONNECT_HOOKS.setdefault('postgres', [])
-postgres_hooks.append(init_postgres_connexion)
+postgres_hooks.append(_init_postgres_connection)

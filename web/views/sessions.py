@@ -1,4 +1,4 @@
-# copyright 2003-2014 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2015 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -19,20 +19,27 @@
 __docformat__ = "restructuredtext en"
 
 from time import time
+from logging import getLogger
 
-from cubicweb import RepositoryError, Unauthorized, BadConnectionId
-from cubicweb.web import InvalidSession, component
+from logilab.common.registry import RegistrableObject, yes
+
+from cubicweb import RepositoryError, Unauthorized, set_log_methods
+from cubicweb.web import InvalidSession
+
+from cubicweb.web.views import authentication
 
 
-class AbstractSessionManager(component.Component):
+class AbstractSessionManager(RegistrableObject):
     """manage session data associated to a session identifier"""
     __abstract__ = True
+    __select__ = yes()
+    __registry__ = 'sessions'
     __regid__ = 'sessionmanager'
 
     def __init__(self, repo):
         vreg = repo.vreg
         self.session_time = vreg.config['http-session-time'] or None
-        self.authmanager = vreg['components'].select('authmanager', repo=repo)
+        self.authmanager = authentication.RepositoryAuthenticationManager(repo)
         interval = (self.session_time or 0) / 2.
         if vreg.config.anonymous_user()[0] is not None:
             self.cleanup_anon_session_time = vreg.config['cleanup-anonymous-session-time'] or 5 * 60
@@ -53,15 +60,7 @@ class AbstractSessionManager(component.Component):
         closed, total = 0, 0
         for session in self.current_sessions():
             total += 1
-            try:
-                last_usage_time = session.cnx.check()
-            except AttributeError:
-                last_usage_time = session.mtime
-            except BadConnectionId:
-                self.close_session(session)
-                closed += 1
-                continue
-
+            last_usage_time = session.mtime
             no_use_time = (time() - last_usage_time)
             if session.anonymous_session:
                 if no_use_time >= self.cleanup_anon_session_time:
@@ -95,11 +94,14 @@ class AbstractSessionManager(component.Component):
         raise NotImplementedError()
 
 
+set_log_methods(AbstractSessionManager, getLogger('cubicweb.sessionmanager'))
+
+
 class InMemoryRepositorySessionManager(AbstractSessionManager):
     """manage session data associated to a session identifier"""
 
     def __init__(self, *args, **kwargs):
-        AbstractSessionManager.__init__(self, *args, **kwargs)
+        super(InMemoryRepositorySessionManager, self).__init__(*args, **kwargs)
         # XXX require a RepositoryAuthenticationManager which violates
         #     authenticate interface by returning a session instead of a user
         #assert isinstance(self.authmanager, RepositoryAuthenticationManager)

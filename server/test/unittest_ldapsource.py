@@ -15,19 +15,26 @@
 #
 # You should have received a copy of the GNU Lesser General Public License along
 # with CubicWeb.  If not, see <http://www.gnu.org/licenses/>.
-"""cubicweb.server.sources.ldapusers unit and functional tests"""
+"""cubicweb.server.sources.ldapfeed unit and functional tests
+
+Those tests expect to have slapd, python-ldap3 and ldapscripts packages installed.
+"""
+from __future__ import print_function
 
 import os
 import sys
 import shutil
 import time
-from os.path import join, exists
 import subprocess
 import tempfile
+import unittest
+from os.path import join
+
+from six import string_types
+from six.moves import range
 
 from cubicweb import AuthenticationError
 from cubicweb.devtools.testlib import CubicWebTC
-from cubicweb.devtools.repotest import RQLGeneratorTC
 from cubicweb.devtools.httptest import get_available_port
 
 
@@ -44,13 +51,14 @@ user-attrs-map=uid=login,mail=email,userPassword=upassword
 
 URL = None
 
+
 def create_slapd_configuration(cls):
     global URL
     slapddir = tempfile.mkdtemp('cw-unittest-ldap')
     config = cls.config
     slapdconf = join(config.apphome, "slapd.conf")
-    confin = file(join(config.apphome, "slapd.conf.in")).read()
-    confstream = file(slapdconf, 'w')
+    confin = open(join(config.apphome, "slapd.conf.in")).read()
+    confstream = open(slapdconf, 'w')
     confstream.write(confin % {'apphome': config.apphome, 'testdir': slapddir})
     confstream.close()
     # fill ldap server with some data
@@ -61,16 +69,16 @@ def create_slapd_configuration(cls):
     slapproc = subprocess.Popen(cmdline, stdout=PIPE, stderr=PIPE)
     stdout, stderr = slapproc.communicate()
     if slapproc.returncode:
-        print >> sys.stderr, ('slapadd returned with status: %s'
-                              % slapproc.returncode)
+        print('slapadd returned with status: %s'
+              % slapproc.returncode, file=sys.stderr)
         sys.stdout.write(stdout)
         sys.stderr.write(stderr)
 
-    #ldapuri = 'ldapi://' + join(basedir, "ldapi").replace('/', '%2f')
-    port = get_available_port(xrange(9000, 9100))
+    # ldapuri = 'ldapi://' + join(basedir, "ldapi").replace('/', '%2f')
+    port = get_available_port(range(9000, 9100))
     host = 'localhost:%s' % port
     ldapuri = 'ldap://%s' % host
-    cmdline = ["/usr/sbin/slapd", "-f",  slapdconf,  "-h",  ldapuri, "-d", "0"]
+    cmdline = ["/usr/sbin/slapd", "-f", slapdconf, "-h", ldapuri, "-d", "0"]
     config.info('Starting slapd:', ' '.join(cmdline))
     PIPE = subprocess.PIPE
     cls.slapd_process = subprocess.Popen(cmdline, stdout=PIPE, stderr=PIPE)
@@ -83,6 +91,7 @@ def create_slapd_configuration(cls):
     URL = u'ldap://%s' % host
     return slapddir
 
+
 def terminate_slapd(cls):
     config = cls.config
     if cls.slapd_process and cls.slapd_process.returncode is None:
@@ -90,12 +99,12 @@ def terminate_slapd(cls):
         if hasattr(cls.slapd_process, 'terminate'):
             cls.slapd_process.terminate()
         else:
-            import os, signal
+            import signal
             os.kill(cls.slapd_process.pid, signal.SIGTERM)
         stdout, stderr = cls.slapd_process.communicate()
         if cls.slapd_process.returncode:
-            print >> sys.stderr, ('slapd returned with status: %s'
-                                  % cls.slapd_process.returncode)
+            print('slapd returned with status: %s'
+                  % cls.slapd_process.returncode, file=sys.stderr)
             sys.stdout.write(stdout)
             sys.stderr.write(stderr)
         config.info('DONE')
@@ -107,6 +116,8 @@ class LDAPFeedTestBase(CubicWebTC):
 
     @classmethod
     def setUpClass(cls):
+        if not os.path.exists('/usr/sbin/slapd'):
+            raise unittest.SkipTest('slapd not found')
         from cubicweb.cwctl import init_cmdline_log_threshold
         init_cmdline_log_threshold(cls.config, cls.loglevel)
         cls._tmpdir = create_slapd_configuration(cls)
@@ -139,7 +150,7 @@ class LDAPFeedTestBase(CubicWebTC):
             cnx.execute('DELETE Any E WHERE E cw_source S, S name "ldap"')
             cnx.execute('SET S config %(conf)s, S url %(url)s '
                         'WHERE S is CWSource, S name "ldap"',
-                        {"conf": CONFIG_LDAPFEED, 'url': URL} )
+                        {"conf": CONFIG_LDAPFEED, 'url': URL})
             cnx.commit()
         with self.repo.internal_cnx() as cnx:
             self.pull(cnx)
@@ -148,32 +159,32 @@ class LDAPFeedTestBase(CubicWebTC):
         """
         add an LDAP entity
         """
-        modcmd = ['dn: %s'%dn, 'changetype: add']
-        for key, values in mods.iteritems():
-            if isinstance(values, basestring):
+        modcmd = ['dn: %s' % dn, 'changetype: add']
+        for key, values in mods.items():
+            if isinstance(values, string_types):
                 values = [values]
             for value in values:
-                modcmd.append('%s: %s'%(key, value))
+                modcmd.append('%s: %s' % (key, value))
         self._ldapmodify(modcmd)
 
     def delete_ldap_entry(self, dn):
         """
         delete an LDAP entity
         """
-        modcmd = ['dn: %s'%dn, 'changetype: delete']
+        modcmd = ['dn: %s' % dn, 'changetype: delete']
         self._ldapmodify(modcmd)
 
     def update_ldap_entry(self, dn, mods):
         """
         modify one or more attributes of an LDAP entity
         """
-        modcmd = ['dn: %s'%dn, 'changetype: modify']
-        for (kind, key), values in mods.iteritems():
+        modcmd = ['dn: %s' % dn, 'changetype: modify']
+        for (kind, key), values in mods.items():
             modcmd.append('%s: %s' % (kind, key))
-            if isinstance(values, basestring):
+            if isinstance(values, string_types):
                 values = [values]
             for value in values:
-                modcmd.append('%s: %s'%(key, value))
+                modcmd.append('%s: %s' % (key, value))
             modcmd.append('-')
         self._ldapmodify(modcmd)
 
@@ -183,10 +194,11 @@ class LDAPFeedTestBase(CubicWebTC):
                      'cn=admin,dc=cubicweb,dc=test', '-w', 'cw']
         PIPE = subprocess.PIPE
         p = subprocess.Popen(updatecmd, stdin=PIPE, stdout=PIPE, stderr=PIPE)
-        p.stdin.write('\n'.join(modcmd))
+        p.stdin.write('\n'.join(modcmd).encode('ascii'))
         p.stdin.close()
         if p.wait():
-            raise RuntimeError("ldap update failed: %s"%('\n'.join(p.stderr.readlines())))
+            raise RuntimeError("ldap update failed: %s" % ('\n'.join(p.stderr.readlines())))
+
 
 class CheckWrongGroup(LDAPFeedTestBase):
     """
@@ -196,16 +208,15 @@ class CheckWrongGroup(LDAPFeedTestBase):
 
     def test_wrong_group(self):
         with self.admin_access.repo_cnx() as cnx:
-            source = cnx.execute('CWSource S WHERE S type="ldapfeed"').get_entity(0,0)
+            source = cnx.execute('CWSource S WHERE S type="ldapfeed"').get_entity(0, 0)
             config = source.repo_source.check_config(source)
             # inject a bogus group here, along with at least a valid one
-            config['user-default-group'] = ('thisgroupdoesnotexists','users')
+            config['user-default-group'] = ('thisgroupdoesnotexists', 'users')
             source.repo_source.update_config(source, config)
             cnx.commit()
             # here we emitted an error log entry
-            stats = source.repo_source.pull_data(cnx, force=True, raise_on_error=True)
+            source.repo_source.pull_data(cnx, force=True, raise_on_error=True)
             cnx.commit()
-
 
 
 class LDAPFeedUserTC(LDAPFeedTestBase):
@@ -284,10 +295,10 @@ class LDAPFeedUserTC(LDAPFeedTestBase):
             # and that the password stored in the system source is not empty or so
             user = cnx.execute('CWUser U WHERE U login "syt"').get_entity(0, 0)
             user.cw_clear_all_caches()
-            pwd = cnx.system_sql("SELECT cw_upassword FROM cw_cwuser WHERE cw_login='syt';").fetchall()[0][0]
+            cu = cnx.system_sql("SELECT cw_upassword FROM cw_cwuser WHERE cw_login='syt';")
+            pwd = cu.fetchall()[0][0]
             self.assertIsNotNone(pwd)
             self.assertTrue(str(pwd))
-
 
 
 class LDAPFeedUserDeletionTC(LDAPFeedTestBase):
@@ -299,7 +310,7 @@ class LDAPFeedUserDeletionTC(LDAPFeedTestBase):
     def test_a_filter_inactivate(self):
         """ filtered out people should be deactivated, unable to authenticate """
         with self.admin_access.repo_cnx() as cnx:
-            source = cnx.execute('CWSource S WHERE S type="ldapfeed"').get_entity(0,0)
+            source = cnx.execute('CWSource S WHERE S type="ldapfeed"').get_entity(0, 0)
             config = source.repo_source.check_config(source)
             # filter with adim's phone number
             config['user-filter'] = u'(%s=%s)' % ('telephoneNumber', '109')
@@ -346,21 +357,22 @@ class LDAPFeedUserDeletionTC(LDAPFeedTestBase):
             self.pull(cnx)
         # reinsert syt
         self.add_ldap_entry('uid=syt,ou=People,dc=cubicweb,dc=test',
-                            { 'objectClass': ['OpenLDAPperson','posixAccount','top','shadowAccount'],
-                              'cn': 'Sylvain Thenault',
-                              'sn': 'Thenault',
-                              'gidNumber': '1004',
-                              'uid': 'syt',
-                              'homeDirectory': '/home/syt',
-                              'shadowFlag': '134538764',
-                              'uidNumber': '1004',
-                              'givenName': 'Sylvain',
-                              'telephoneNumber': '106',
-                              'displayName': 'sthenault',
-                              'gecos': 'Sylvain Thenault',
-                              'mail': ['sylvain.thenault@logilab.fr','syt@logilab.fr'],
-                              'userPassword': 'syt',
-                          })
+                            {'objectClass': ['OpenLDAPperson', 'posixAccount', 'top',
+                                             'shadowAccount'],
+                             'cn': 'Sylvain Thenault',
+                             'sn': 'Thenault',
+                             'gidNumber': '1004',
+                             'uid': 'syt',
+                             'homeDirectory': '/home/syt',
+                             'shadowFlag': '134538764',
+                             'uidNumber': '1004',
+                             'givenName': 'Sylvain',
+                             'telephoneNumber': '106',
+                             'displayName': 'sthenault',
+                             'gecos': 'Sylvain Thenault',
+                             'mail': ['sylvain.thenault@logilab.fr', 'syt@logilab.fr'],
+                             'userPassword': 'syt',
+                             })
         with self.repo.internal_cnx() as cnx:
             self.pull(cnx)
         with self.admin_access.repo_cnx() as cnx:
@@ -433,8 +445,7 @@ class LDAPFeedGroupTC(LDAPFeedTestBase):
 
         try:
             self.update_ldap_entry('cn=logilab,ou=Group,dc=cubicweb,dc=test',
-                                       {('add', 'memberUid'): ['syt']})
-            time.sleep(1.1) # timestamps precision is 1s
+                                   {('add', 'memberUid'): ['syt']})
             with self.repo.internal_cnx() as cnx:
                 self.pull(cnx)
 
@@ -452,7 +463,7 @@ class LDAPFeedGroupTC(LDAPFeedTestBase):
 
     def test_group_member_deleted(self):
         with self.repo.internal_cnx() as cnx:
-            self.pull(cnx) # ensure we are sync'ed
+            self.pull(cnx)  # ensure we are sync'ed
         with self.admin_access.repo_cnx() as cnx:
             rset = cnx.execute('Any L WHERE U in_group G, G name %(name)s, U login L',
                                {'name': 'logilab'})
@@ -462,19 +473,17 @@ class LDAPFeedGroupTC(LDAPFeedTestBase):
         try:
             self.update_ldap_entry('cn=logilab,ou=Group,dc=cubicweb,dc=test',
                                    {('delete', 'memberUid'): ['adim']})
-            time.sleep(1.1) # timestamps precision is 1s
             with self.repo.internal_cnx() as cnx:
                 self.pull(cnx)
 
             with self.admin_access.repo_cnx() as cnx:
                 rset = cnx.execute('Any L WHERE U in_group G, G name %(name)s, U login L',
                                    {'name': 'logilab'})
-                self.assertEqual(len(rset), 0)
+                self.assertEqual(len(rset), 0, rset.rows)
         finally:
             # back to normal ldap setup
             self.tearDownClass()
             self.setUpClass()
-
 
 
 if __name__ == '__main__':

@@ -16,14 +16,17 @@
 # You should have received a copy of the GNU Lesser General Public License along
 # with CubicWeb.  If not, see <http://www.gnu.org/licenses/>.
 """classes to define schemas for CubicWeb"""
+from __future__ import print_function
 
 __docformat__ = "restructuredtext en"
-_ = unicode
 
 import re
 from os.path import join, basename
 from logging import getLogger
 from warnings import warn
+
+from six import PY2, text_type, string_types, add_metaclass
+from six.moves import range
 
 from logilab.common import tempattr
 from logilab.common.decorators import cached, clear_cache, monkeypatch, cachedproperty
@@ -45,7 +48,7 @@ from rql import parse, nodes, RQLSyntaxError, TypeResolverException
 from rql.analyze import ETypeResolver
 
 import cubicweb
-from cubicweb import ETYPE_NAME_MAP, ValidationError, Unauthorized
+from cubicweb import ETYPE_NAME_MAP, ValidationError, Unauthorized, _
 
 try:
     from cubicweb import server
@@ -102,6 +105,9 @@ WORKFLOW_TYPES = set(('Transition', 'State', 'TrInfo', 'Workflow',
 INTERNAL_TYPES = set(('CWProperty', 'CWCache', 'ExternalUri', 'CWDataImport',
                       'CWSource', 'CWSourceHostConfig', 'CWSourceSchemaConfig'))
 
+UNIQUE_CONSTRAINTS = ('SizeConstraint', 'FormatConstraint',
+                      'StaticVocabularyConstraint',
+                      'RQLVocabularyConstraint')
 
 _LOGGER = getLogger('cubicweb.schemaloader')
 
@@ -142,7 +148,10 @@ def normalize_expression(rqlstring):
     suppressing and reinserting an expression if only a space has been
     added/removed for instance)
     """
-    return u', '.join(' '.join(expr.split()) for expr in rqlstring.split(','))
+    union = parse(u'Any 1 WHERE %s' % rqlstring).as_string()
+    if PY2 and isinstance(union, str):
+        union = union.decode('utf-8')
+    return union.split(' WHERE ', 1)[1]
 
 
 def _check_valid_formula(rdef, formula_rqlst):
@@ -204,7 +213,7 @@ class RQLExpression(object):
         """
         self.eid = eid # eid of the entity representing this rql expression
         assert mainvars, 'bad mainvars %s' % mainvars
-        if isinstance(mainvars, basestring):
+        if isinstance(mainvars, string_types):
             mainvars = set(splitstrip(mainvars))
         elif not isinstance(mainvars, set):
             mainvars = set(mainvars)
@@ -246,6 +255,9 @@ class RQLExpression(object):
             return self.expression == other.expression
         return False
 
+    def __ne__(self, other):
+        return not (self == other)
+
     def __hash__(self):
         return hash(self.expression)
 
@@ -271,7 +283,7 @@ class RQLExpression(object):
     def transform_has_permission(self):
         found = None
         rqlst = self.rqlst
-        for var in rqlst.defined_vars.itervalues():
+        for var in rqlst.defined_vars.values():
             for varref in var.references():
                 rel = varref.relation()
                 if rel is None:
@@ -319,7 +331,7 @@ class RQLExpression(object):
         """
         creating = kwargs.get('creating')
         if not creating and self.eid is not None:
-            key = (self.eid, tuple(sorted(kwargs.iteritems())))
+            key = (self.eid, tuple(sorted(kwargs.items())))
             try:
                 return _cw.local_perm_cache[key]
             except KeyError:
@@ -363,7 +375,7 @@ class RQLExpression(object):
             get_eschema = _cw.vreg.schema.eschema
             try:
                 for eaction, col in has_perm_defs:
-                    for i in xrange(len(rset)):
+                    for i in range(len(rset)):
                         eschema = get_eschema(rset.description[i][col])
                         eschema.check_perm(_cw, eaction, eid=rset[i][col])
                 if self.eid is not None:
@@ -400,13 +412,35 @@ class ERQLExpression(RQLExpression):
             return self._check(_cw, x=eid, **kwargs)
         return self._check(_cw, **kwargs)
 
-def constraint_by_eid(self, eid):
-    for cstr in self.constraints:
-        if cstr.eid == eid:
-            return cstr
-    raise ValueError('No constraint with eid %d' % eid)
-RelationDefinitionSchema.constraint_by_eid = constraint_by_eid
 
+class CubicWebRelationDefinitionSchema(RelationDefinitionSchema):
+    def constraint_by_eid(self, eid):
+        for cstr in self.constraints:
+            if cstr.eid == eid:
+                return cstr
+        raise ValueError('No constraint with eid %d' % eid)
+
+    def rql_expression(self, expression, mainvars=None, eid=None):
+        """rql expression factory"""
+        if self.rtype.final:
+            return ERQLExpression(expression, mainvars, eid)
+        return RRQLExpression(expression, mainvars, eid)
+
+    def check_permission_definitions(self):
+        super(CubicWebRelationDefinitionSchema, self).check_permission_definitions()
+        schema = self.subject.schema
+        for action, groups in self.permissions.items():
+            for group_or_rqlexpr in groups:
+                if action == 'read' and \
+                       isinstance(group_or_rqlexpr, RQLExpression):
+                    msg = "can't use rql expression for read permission of %s"
+                    raise BadSchemaDefinition(msg % self)
+                if self.final and isinstance(group_or_rqlexpr, RRQLExpression):
+                    msg = "can't use RRQLExpression on %s, use an ERQLExpression"
+                    raise BadSchemaDefinition(msg % self)
+                if not self.final and isinstance(group_or_rqlexpr, ERQLExpression):
+                    msg = "can't use ERQLExpression on %s, use a RRQLExpression"
+                    raise BadSchemaDefinition(msg % self)
 
 def vargraph(rqlst):
     """ builds an adjacency graph of variables from the rql syntax tree, e.g:
@@ -522,7 +556,7 @@ def order_eschemas(eschemas):
             if not deps:
                 eschemas.append(eschema)
                 del graph[eschema]
-                for deps in graph.itervalues():
+                for deps in graph.values():
                     try:
                         deps.remove(eschema)
                     except KeyError:
@@ -548,9 +582,9 @@ def display_name(req, key, form='', context=None):
         key = key + '_' + form
     # ensure unicode
     if context is not None:
-        return unicode(req.pgettext(context, key))
+        return text_type(req.pgettext(context, key))
     else:
-        return unicode(req._(key))
+        return text_type(req._(key))
 
 
 # Schema objects definition ###################################################
@@ -576,7 +610,7 @@ def get_groups(self, action):
     assert action in self.ACTIONS, action
     #assert action in self._groups, '%s %s' % (self, action)
     try:
-        return frozenset(g for g in self.permissions[action] if isinstance(g, basestring))
+        return frozenset(g for g in self.permissions[action] if isinstance(g, string_types))
     except KeyError:
         return ()
 PermissionMixIn.get_groups = get_groups
@@ -595,7 +629,7 @@ def get_rqlexprs(self, action):
     assert action in self.ACTIONS, action
     #assert action in self._rqlexprs, '%s %s' % (self, action)
     try:
-        return tuple(g for g in self.permissions[action] if not isinstance(g, basestring))
+        return tuple(g for g in self.permissions[action] if not isinstance(g, string_types))
     except KeyError:
         return ()
 PermissionMixIn.get_rqlexprs = get_rqlexprs
@@ -665,7 +699,7 @@ def check_perm(self, _cw, action, **kwargs):
     groups = self.get_groups(action)
     if _cw.user.matching_groups(groups):
         if DBG:
-            print ('check_perm: %r %r: user matches %s' % (action, _self_str, groups))
+            print('check_perm: %r %r: user matches %s' % (action, _self_str, groups))
         return
     # if 'owners' in allowed groups, check if the user actually owns this
     # object, if so that's enough
@@ -676,14 +710,14 @@ def check_perm(self, _cw, action, **kwargs):
           kwargs.get('creating')
           or ('eid' in kwargs and _cw.user.owns(kwargs['eid']))):
         if DBG:
-            print ('check_perm: %r %r: user is owner or creation time' %
-                   (action, _self_str))
+            print('check_perm: %r %r: user is owner or creation time' %
+                  (action, _self_str))
         return
     # else if there is some rql expressions, check them
     if DBG:
-        print ('check_perm: %r %r %s' %
-               (action, _self_str, [(rqlexpr, kwargs, rqlexpr.check(_cw, **kwargs))
-                                    for rqlexpr in self.get_rqlexprs(action)]))
+        print('check_perm: %r %r %s' %
+              (action, _self_str, [(rqlexpr, kwargs, rqlexpr.check(_cw, **kwargs))
+                                   for rqlexpr in self.get_rqlexprs(action)]))
     if any(rqlexpr.check(_cw, **kwargs)
            for rqlexpr in self.get_rqlexprs(action)):
         return
@@ -691,35 +725,10 @@ def check_perm(self, _cw, action, **kwargs):
 PermissionMixIn.check_perm = check_perm
 
 
-RelationDefinitionSchema._RPROPERTIES['eid'] = None
+CubicWebRelationDefinitionSchema._RPROPERTIES['eid'] = None
 # remember rproperties defined at this point. Others will have to be serialized in
 # CWAttribute.extra_props
-KNOWN_RPROPERTIES = RelationDefinitionSchema.ALL_PROPERTIES()
-
-def rql_expression(self, expression, mainvars=None, eid=None):
-    """rql expression factory"""
-    if self.rtype.final:
-        return ERQLExpression(expression, mainvars, eid)
-    return RRQLExpression(expression, mainvars, eid)
-RelationDefinitionSchema.rql_expression = rql_expression
-
-orig_check_permission_definitions = RelationDefinitionSchema.check_permission_definitions
-def check_permission_definitions(self):
-    orig_check_permission_definitions(self)
-    schema = self.subject.schema
-    for action, groups in self.permissions.iteritems():
-        for group_or_rqlexpr in groups:
-            if action == 'read' and \
-                   isinstance(group_or_rqlexpr, RQLExpression):
-                msg = "can't use rql expression for read permission of %s"
-                raise BadSchemaDefinition(msg % self)
-            if self.final and isinstance(group_or_rqlexpr, RRQLExpression):
-                msg = "can't use RRQLExpression on %s, use an ERQLExpression"
-                raise BadSchemaDefinition(msg % self)
-            if not self.final and isinstance(group_or_rqlexpr, ERQLExpression):
-                msg = "can't use ERQLExpression on %s, use a RRQLExpression"
-                raise BadSchemaDefinition(msg % self)
-RelationDefinitionSchema.check_permission_definitions = check_permission_definitions
+KNOWN_RPROPERTIES = CubicWebRelationDefinitionSchema.ALL_PROPERTIES()
 
 
 class CubicWebEntitySchema(EntitySchema):
@@ -763,7 +772,7 @@ class CubicWebEntitySchema(EntitySchema):
 
     def check_permission_definitions(self):
         super(CubicWebEntitySchema, self).check_permission_definitions()
-        for groups in self.permissions.itervalues():
+        for groups in self.permissions.values():
             for group_or_rqlexpr in groups:
                 if isinstance(group_or_rqlexpr, RRQLExpression):
                     msg = "can't use RRQLExpression on %s, use an ERQLExpression"
@@ -870,6 +879,7 @@ class CubicWebEntitySchema(EntitySchema):
 class CubicWebRelationSchema(PermissionMixIn, RelationSchema):
     permissions = {}
     ACTIONS = ()
+    rdef_class = CubicWebRelationDefinitionSchema
 
     def __init__(self, schema=None, rdef=None, eid=None, **kwargs):
         if rdef is not None:
@@ -906,7 +916,7 @@ class CubicWebRelationSchema(PermissionMixIn, RelationSchema):
                 if rdef.may_have_permission(action, req):
                     return True
         else:
-            for rdef in self.rdefs.itervalues():
+            for rdef in self.rdefs.values():
                 if rdef.may_have_permission(action, req):
                     return True
         return False
@@ -948,7 +958,7 @@ class CubicWebRelationSchema(PermissionMixIn, RelationSchema):
                 if not rdef.has_perm(_cw, action, **kwargs):
                     return False
         else:
-            for rdef in self.rdefs.itervalues():
+            for rdef in self.rdefs.values():
                 if not rdef.has_perm(_cw, action, **kwargs):
                     return False
         return True
@@ -986,7 +996,7 @@ class CubicWebSchema(Schema):
 
     etype_name_re = r'[A-Z][A-Za-z0-9]*[a-z]+[A-Za-z0-9]*$'
     def add_entity_type(self, edef):
-        edef.name = edef.name.encode()
+        edef.name = str(edef.name)
         edef.name = bw_normalize_etype(edef.name)
         if not re.match(self.etype_name_re, edef.name):
             raise BadSchemaDefinition(
@@ -1011,7 +1021,7 @@ class CubicWebSchema(Schema):
             raise BadSchemaDefinition(
                 '%r is not a valid name for a relation type. It should be '
                 'lower cased' % rdef.name)
-        rdef.name = rdef.name.encode()
+        rdef.name = str(rdef.name)
         rschema = super(CubicWebSchema, self).add_relation_type(rdef)
         self._eid_index[rschema.eid] = rschema
         return rschema
@@ -1071,7 +1081,7 @@ class CubicWebSchema(Schema):
 
     def iter_computed_attributes(self):
         for relation in self.relations():
-            for rdef in relation.rdefs.itervalues():
+            for rdef in relation.rdefs.values():
                 if rdef.final and rdef.formula is not None:
                     yield rdef
 
@@ -1124,6 +1134,7 @@ class CubicWebSchema(Schema):
 
     def rebuild_infered_relations(self):
         super(CubicWebSchema, self).rebuild_infered_relations()
+        self.finalize_computed_attributes()
         self.finalize_computed_relations()
 
 
@@ -1198,11 +1209,11 @@ class RepoEnforcedRQLConstraintMixIn(object):
         return ';%s;%s\n%s' % (','.join(sorted(self.mainvars)), self.expression,
                                self.msg or '')
 
+    @classmethod
     def deserialize(cls, value):
         value, msg = value.split('\n', 1)
         _, mainvars, expression = value.split(';', 2)
         return cls(expression, mainvars, msg)
-    deserialize = classmethod(deserialize)
 
     def repo_check(self, session, eidfrom, rtype, eidto=None):
         """raise ValidationError if the relation doesn't satisfy the constraint
@@ -1245,7 +1256,7 @@ class RepoEnforcedRQLConstraintMixIn(object):
         return _cw.execute(rql, args, build_descr=False)
 
 
-class RQLConstraint(RepoEnforcedRQLConstraintMixIn, RQLVocabularyConstraint):
+class RQLConstraint(RepoEnforcedRQLConstraintMixIn, BaseRQLConstraint):
     """the rql constraint is similar to the RQLVocabularyConstraint but
     are also enforced at the repository level
     """
@@ -1287,12 +1298,13 @@ class workflowable_definition(ybo.metadefinition):
             make_workflowable(cls)
         return cls
 
+
+@add_metaclass(workflowable_definition)
 class WorkflowableEntityType(ybo.EntityType):
     """Use this base class instead of :class:`EntityType` to have workflow
     relations (i.e. `in_state`, `wf_info_for` and `custom_workflow`) on your
     entity type.
     """
-    __metaclass__ = workflowable_definition
     __abstract__ = True
 
 

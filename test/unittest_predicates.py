@@ -20,14 +20,17 @@
 from operator import eq, lt, le, gt
 from contextlib import contextmanager
 
+from six.moves import range
+
 from logilab.common.testlib import TestCase, unittest_main
 from logilab.common.decorators import clear_cache
 
 from cubicweb import Binary
 from cubicweb.devtools.testlib import CubicWebTC
 from cubicweb.predicates import (is_instance, adaptable, match_kwargs, match_user_groups,
-                                multi_lines_rset, score_entity, is_in_state,
-                                rql_condition, relation_possible, match_form_params)
+                                 multi_lines_rset, score_entity, is_in_state,
+                                 rql_condition, relation_possible, match_form_params,
+                                 paginated_rset)
 from cubicweb.selectors import on_transition # XXX on_transition is deprecated
 from cubicweb.view import EntityAdapter
 from cubicweb.web import action
@@ -37,7 +40,7 @@ from cubicweb.web import action
 class ImplementsTC(CubicWebTC):
     def test_etype_priority(self):
         with self.admin_access.web_request() as req:
-            f = req.create_entity('FakeFile', data_name=u'hop.txt', data=Binary('hop'),
+            f = req.create_entity('FakeFile', data_name=u'hop.txt', data=Binary(b'hop'),
                                   data_format=u'text/plain')
             rset = f.as_rset()
             anyscore = is_instance('Any')(f.__class__, req, rset=rset)
@@ -488,6 +491,34 @@ class MatchFormParamsTC(CubicWebTC):
                          "match_form_params() positional arguments must be strings")
 
 
+class PaginatedTC(CubicWebTC):
+    """tests for paginated_rset predicate"""
+
+    def setup_database(self):
+        with self.admin_access.repo_cnx() as cnx:
+            for i in range(30):
+                cnx.create_entity('CWGroup', name=u"group%d" % i)
+            cnx.commit()
+
+    def test_paginated_rset(self):
+        default_nb_pages = 1
+        web_request = self.admin_access.web_request
+        with web_request() as req:
+            rset = req.execute('Any G WHERE G is CWGroup')
+        self.assertEqual(len(rset), 34)
+        with web_request(vid='list', page_size='10') as req:
+            self.assertEqual(paginated_rset()(None, req, rset), default_nb_pages)
+        with web_request(vid='list', page_size='20') as req:
+            self.assertEqual(paginated_rset()(None, req, rset), default_nb_pages)
+        with web_request(vid='list', page_size='50') as req:
+            self.assertEqual(paginated_rset()(None, req, rset), 0)
+        with web_request(vid='list', page_size='10/') as req:
+            self.assertEqual(paginated_rset()(None, req, rset), 0)
+        with web_request(vid='list', page_size='.1') as req:
+            self.assertEqual(paginated_rset()(None, req, rset), 0)
+        with web_request(vid='list', page_size='not_an_int') as req:
+            self.assertEqual(paginated_rset()(None, req, rset), 0)
+
+
 if __name__ == '__main__':
     unittest_main()
-

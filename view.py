@@ -18,11 +18,13 @@
 """abstract views and templates classes for CubicWeb web client"""
 
 __docformat__ = "restructuredtext en"
-_ = unicode
+from cubicweb import _
 
 from io import BytesIO
 from warnings import warn
 from functools import partial
+
+from six.moves import range
 
 from logilab.common.deprecation import deprecated
 from logilab.common.registry import yes
@@ -173,7 +175,7 @@ class View(AppObject):
         # specific view
         if rset.rowcount != 1:
             kwargs.setdefault('initargs', self.cw_extra_kwargs)
-            for i in xrange(len(rset)):
+            for i in range(len(rset)):
                 if wrap:
                     self.w(u'<div class="section">')
                 self.wview(self.__regid__, rset, row=i, **kwargs)
@@ -213,7 +215,7 @@ class View(AppObject):
             return self._cw.build_url('view', vid=self.__regid__)
         coltypes = rset.column_types(0)
         if len(coltypes) == 1:
-            etype = iter(coltypes).next()
+            etype = next(iter(coltypes))
             if not self._cw.vreg.schema.eschema(etype).final:
                 if len(rset) == 1:
                     entity = rset.get_entity(0, 0)
@@ -281,7 +283,7 @@ class View(AppObject):
             else :
                 etypes = rset.column_types(0)
                 if len(etypes) == 1:
-                    etype = iter(etypes).next()
+                    etype = next(iter(etypes))
                     clabel = display_name(self._cw, etype, 'plural')
                 else :
                     clabel = u'#[*] (%s)' % vtitle
@@ -394,7 +396,7 @@ class EntityStartupView(EntityView):
         if rset is None:
             rset = self.cw_rset = self._cw.execute(self.startup_rql())
         if rset:
-            for i in xrange(len(rset)):
+            for i in range(len(rset)):
                 self.wview(self.__regid__, rset, row=i, **kwargs)
         else:
             self.no_entities(**kwargs)

@@ -16,22 +16,28 @@
 # You should have received a copy of the GNU Lesser General Public License along
 # with CubicWeb.  If not, see <http://www.gnu.org/licenses/>.
 """cubicweb post creation script, set user's workflow"""
+from __future__ import print_function
+
+from six import text_type
+
+from cubicweb import _
+
 
 # insert versions
 create_entity('CWProperty', pkey=u'system.version.cubicweb',
-              value=unicode(config.cubicweb_version()))
+              value=text_type(config.cubicweb_version()))
 for cube in config.cubes():
     create_entity('CWProperty', pkey=u'system.version.%s' % cube.lower(),
-                  value=unicode(config.cube_version(cube)))
+                  value=text_type(config.cube_version(cube)))
 
-# some entities have been added before schema entities, fix the 'is' and
+# some entities have been added before schema entities, add their missing 'is' and
 # 'is_instance_of' relations
 for rtype in ('is', 'is_instance_of'):
     sql('INSERT INTO %s_relation '
         'SELECT X.eid, ET.cw_eid FROM entities as X, cw_CWEType as ET '
         'WHERE X.type=ET.cw_name AND NOT EXISTS('
-        '      SELECT 1 from is_relation '
-        '      WHERE eid_from=X.eid AND eid_to=ET.cw_eid)' % rtype)
+        '      SELECT 1 from %s_relation '
+        '      WHERE eid_from=X.eid AND eid_to=ET.cw_eid)' % (rtype, rtype))
 
 # user workflow
 userwf = add_workflow(_('default user workflow'), 'CWUser')
@@ -46,11 +52,11 @@ userwf.add_transition(_('activate'), (deactivated,), activated,
 if hasattr(config, 'anonymous_user'):
     anonlogin, anonpwd = config.anonymous_user()
     if anonlogin == session.user.login:
-        print 'you are using a manager account as anonymous user.'
-        print 'Hopefully this is not a production instance...'
+        print('you are using a manager account as anonymous user.')
+        print('Hopefully this is not a production instance...')
     elif anonlogin:
         from cubicweb.server import create_user
-        create_user(session, unicode(anonlogin), anonpwd, u'guests')
+        create_user(session, text_type(anonlogin), anonpwd, u'guests')
 
 # need this since we already have at least one user in the database (the default admin)
 for user in rql('Any X WHERE X is CWUser').entities():

@@ -20,9 +20,11 @@ object to handle publication.
 """
 
 __docformat__ = "restructuredtext en"
-_ = unicode
+from cubicweb import _
 
 from warnings import warn
+
+from six import text_type
 
 from logilab.common.deprecation import deprecated
 
@@ -124,10 +126,9 @@ class ViewController(Controller):
     def publish(self, rset=None):
         """publish a request, returning an encoded string"""
         view, rset = self._select_view_and_rset(rset)
-        self.add_to_breadcrumbs(view)
         view.set_http_cache_headers()
         if self._cw.is_client_cache_valid():
-            return ''
+            return b''
         template = self.appli.main_template_id(self._cw)
         return self._cw.vreg['views'].main_template(self._cw, template,
                                                     rset=rset, view=view)
@@ -157,13 +158,6 @@ class ViewController(Controller):
             vid = req.form.get('fallbackvid') or vid_from_rset(req, rset, req.vreg.schema)
             view = req.vreg['views'].select(vid, req, rset=rset)
         return view, rset
-
-    def add_to_breadcrumbs(self, view):
-        # update breadcrumbs **before** validating cache, unless the view
-        # specifies explicitly it should not be added to breadcrumb or the
-        # view is a binary view
-        if view.add_to_breadcrumbs and not view.binary:
-            self._cw.update_breadcrumbs()
 
     def execute_linkto(self, eid=None):
         """XXX __linkto parameter may cause security issue
@@ -233,7 +227,7 @@ def _validate_form(req, vreg):
     except Exception as ex:
         req.cnx.rollback()
         req.exception('unexpected error while validating form')
-        return (False, str(ex).decode('utf-8'), ctrl._edited_entity)
+        return (False, text_type(ex), ctrl._edited_entity)
     return (False, '???', None)
 
 
@@ -255,9 +249,8 @@ class FormValidatorController(Controller):
         # XXX unclear why we have a separated controller here vs
         # js_validate_form on the json controller
         status, args, entity = _validate_form(self._cw, self._cw.vreg)
-        domid = self._cw.form.get('__domid', 'entityForm').encode(
-            self._cw.encoding)
-        return self.response(domid, status, args, entity)
+        domid = self._cw.form.get('__domid', 'entityForm')
+        return self.response(domid, status, args, entity).encode(self._cw.encoding)
 
 
 class JSonController(Controller):
@@ -306,5 +299,4 @@ class UndoController(Controller):
     def redirect(self, msg=None):
         req = self._cw
         msg = msg or req._("transaction undone")
-        self._return_to_lastpage( dict(_cwmsgid= req.set_redirect_message(msg)) )
-
+        self._redirect({'_cwmsgid': req.set_redirect_message(msg)})

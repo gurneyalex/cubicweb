@@ -16,13 +16,18 @@
 # You should have received a copy of the GNU Lesser General Public License along
 # with CubicWeb.  If not, see <http://www.gnu.org/licenses/>.
 """cubicweb server sources support"""
+from __future__ import print_function
 
 __docformat__ = "restructuredtext en"
 
 from time import time
 from logging import getLogger
+from base64 import b64decode
+
+from six import text_type
 
 from logilab.common import configuration
+from logilab.common.textutils import unormalize
 from logilab.common.deprecation import deprecated
 
 from yams.schema import role_name
@@ -35,25 +40,25 @@ from cubicweb.server.edition import EditedEntity
 def dbg_st_search(uri, union, varmap, args, cachekey=None, prefix='rql for'):
     if server.DEBUG & server.DBG_RQL:
         global t
-        print '  %s %s source: %s' % (prefix, uri, repr(union.as_string()))
+        print('  %s %s source: %s' % (prefix, uri, repr(union.as_string())))
         t = time()
         if varmap:
-            print '    using varmap', varmap
+            print('    using varmap', varmap)
         if server.DEBUG & server.DBG_MORE:
-            print '    args', repr(args)
-            print '    cache key', cachekey
-            print '    solutions', ','.join(str(s.solutions)
-                                            for s in union.children)
+            print('    args', repr(args))
+            print('    cache key', cachekey)
+            print('    solutions', ','.join(str(s.solutions)
+                                            for s in union.children))
     # return true so it can be used as assertion (and so be killed by python -O)
     return True
 
 def dbg_results(results):
     if server.DEBUG & server.DBG_RQL:
         if len(results) > 10:
-            print '  -->', results[:10], '...', len(results),
+            print('  -->', results[:10], '...', len(results), end=' ')
         else:
-            print '  -->', results,
-        print 'time: ', time() - t
+            print('  -->', results, end=' ')
+        print('time: ', time() - t)
     # return true so it can be used as assertion (and so be killed by python -O)
     return True
 
@@ -104,7 +109,9 @@ class AbstractSource(object):
         self.public_config['use-cwuri-as-url'] = self.use_cwuri_as_url
         self.remove_sensitive_information(self.public_config)
         self.uri = source_config.pop('uri')
-        set_log_methods(self, getLogger('cubicweb.sources.'+self.uri))
+        # unormalize to avoid non-ascii characters in logger's name, this will cause decoding error
+        # on logging
+        set_log_methods(self, getLogger('cubicweb.sources.' + unormalize(text_type(self.uri))))
         source_config.pop('type')
         self.update_config(None, self.check_conf_dict(eid, source_config,
                                                       fail_if_unknown=False))
@@ -140,7 +147,7 @@ class AbstractSource(object):
         pass
 
     @classmethod
-    def check_conf_dict(cls, eid, confdict, _=unicode, fail_if_unknown=True):
+    def check_conf_dict(cls, eid, confdict, _=text_type, fail_if_unknown=True):
         """check configuration of source entity. Return config dict properly
         typed with defaults set.
         """
@@ -157,7 +164,7 @@ class AbstractSource(object):
                 try:
                     value = configuration._validate(value, optdict, optname)
                 except Exception as ex:
-                    msg = unicode(ex) # XXX internationalization
+                    msg = text_type(ex) # XXX internationalization
                     raise ValidationError(eid, {role_name('config', 'subject'): msg})
             processed[optname] = value
         # cw < 3.10 bw compat
@@ -198,6 +205,12 @@ class AbstractSource(object):
                          if url.strip()]
         else:
             self.urls = []
+
+    @staticmethod
+    def decode_extid(extid):
+        if extid is None:
+            return extid
+        return b64decode(extid)
 
     # source initialization / finalization #####################################
 
