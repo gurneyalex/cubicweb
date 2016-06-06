@@ -1,0 +1,14 @@
+/* sortable tables */
+
+table.listing tr .headerSortUp {
+  background-image: url(asc.gif);
+}
+table.listing tr .headerSortDown {
+  background-image: url(desc.gif);
+}
+table.listing tr .headerSortDown, table.listing tr .headerSortUp {
+   background-color: %(listingBorderColor)s;
+   background-repeat: no-repeat;
+   background-position: center right;
+}
+
