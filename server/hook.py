@@ -248,6 +248,8 @@ Hooks and operations classes
 .. autoclass:: cubicweb.server.hook.LateOperation
 .. autoclass:: cubicweb.server.hook.DataOperationMixIn
 """
+from __future__ import print_function
+
 __docformat__ = "restructuredtext en"
 
 from warnings import warn
@@ -331,7 +333,7 @@ class HooksRegistry(CWRegistry):
                         with cnx.running_hooks_ops():
                             for hook in hooks:
                                 if debug:
-                                    print event, _kwargs, hook
+                                    print(event, _kwargs, hook)
                                 hook()
 
     def get_pruned_hooks(self, cnx, event, entities, eids_from_to, kwargs):
@@ -370,7 +372,7 @@ class HooksRegistry(CWRegistry):
         pruned = set()
         cnx.pruned_hooks_cache[cache_key] = pruned
         if look_for_selector is not None:
-            for id, hooks in self.iteritems():
+            for id, hooks in self.items():
                 for hook in hooks:
                     enabled_cat, main_filter = hook.filterable_selectors()
                     if enabled_cat is not None:
@@ -382,14 +384,14 @@ class HooksRegistry(CWRegistry):
                            (main_filter.frometypes is not None  or \
                             main_filter.toetypes is not None):
                             continue
-                        first_kwargs = _iter_kwargs(entities, eids_from_to, kwargs).next()
+                        first_kwargs = next(_iter_kwargs(entities, eids_from_to, kwargs))
                         if not main_filter(hook, cnx, **first_kwargs):
                             pruned.add(hook)
         return pruned
 
 
     def filtered_possible_objects(self, pruned, *args, **kwargs):
-        for appobjects in self.itervalues():
+        for appobjects in self.values():
             if pruned:
                 filtered_objects = [obj for obj in appobjects if obj not in pruned]
                 if not filtered_objects:
@@ -636,7 +638,7 @@ class PropagateRelationAddHook(Hook):
     # to set in concrete class (mandatory)
     subject_relations = None
     object_relations = None
-    # to set in concrete class (optionaly)
+    # to set in concrete class (optionally)
     skip_subject_relations = ()
     skip_object_relations = ()
 
@@ -713,7 +715,7 @@ class Operation(object):
 
       the transaction has been either rolled back either:
 
-       * intentionaly
+       * intentionally
        * a 'precommit' event failed, in which case all operations are rolled back
          once 'revertprecommit'' has been called
 

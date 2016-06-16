@@ -32,9 +32,12 @@ Example of mapping for CWEntityXMLParser::
 """
 
 from datetime import datetime, time
-import urlparse
 import urllib
 
+from six import text_type
+from six.moves.urllib.parse import urlparse, urlunparse, parse_qs, urlencode
+
+import pytz
 from logilab.common.date import todate, totime
 from logilab.common.textutils import splitstrip, text_to_dict
 from logilab.common.decorators import classproperty
@@ -50,7 +53,7 @@ from cubicweb.server.hook import match_rtype
 # XXX see cubicweb.cwvreg.YAMS_TO_PY
 # XXX see cubicweb.web.views.xmlrss.SERIALIZERS
 DEFAULT_CONVERTERS = BASE_CONVERTERS.copy()
-DEFAULT_CONVERTERS['String'] = unicode
+DEFAULT_CONVERTERS['String'] = text_type
 DEFAULT_CONVERTERS['Password'] = lambda x: x.encode('utf8')
 def convert_date(ustr):
     return todate(datetime.strptime(ustr, '%Y-%m-%d'))
@@ -63,7 +66,11 @@ DEFAULT_CONVERTERS['Datetime'] = convert_datetime
 # XXX handle timezone, though this will be enough as TZDatetime are
 # serialized without time zone by default (UTC time). See
 # cw.web.views.xmlrss.SERIALIZERS.
-DEFAULT_CONVERTERS['TZDatetime'] = convert_datetime
+def convert_tzdatetime(ustr):
+    date = convert_datetime(ustr)
+    date = date.replace(tzinfo=pytz.utc)
+    return date
+DEFAULT_CONVERTERS['TZDatetime'] = convert_tzdatetime
 def convert_time(ustr):
     return totime(datetime.strptime(ustr, '%H:%M:%S'))
 DEFAULT_CONVERTERS['Time'] = convert_time
@@ -124,7 +131,7 @@ class CWEntityXMLParser(datafeed.DataFeedXMLParser):
 
     def list_actions(self):
         reg = self._cw.vreg['components']
-        return sorted(clss[0].action for rid, clss in reg.iteritems()
+        return sorted(clss[0].action for rid, clss in reg.items()
                       if rid.startswith('cw.entityxml.action.'))
 
     # mapping handling #########################################################
@@ -204,7 +211,7 @@ class CWEntityXMLParser(datafeed.DataFeedXMLParser):
         * `rels` is for relations and structured as
            {role: {relation: [(related item, related rels)...]}
         """
-        entity = self.extid2entity(str(item['cwuri']), item['cwtype'],
+        entity = self.extid2entity(item['cwuri'].encode('ascii'), item['cwtype'],
                                    cwsource=item['cwsource'], item=item,
                                    raise_on_error=raise_on_error)
         if entity is None:
@@ -220,7 +227,7 @@ class CWEntityXMLParser(datafeed.DataFeedXMLParser):
 
     def process_relations(self, entity, rels):
         etype = entity.cw_etype
-        for (rtype, role, action), rules in self.source.mapping.get(etype, {}).iteritems():
+        for (rtype, role, action), rules in self.source.mapping.get(etype, {}).items():
             try:
                 related_items = rels[role][rtype]
             except KeyError:
@@ -242,14 +249,14 @@ class CWEntityXMLParser(datafeed.DataFeedXMLParser):
     def normalize_url(self, url):
         """overridden to add vid=xml if vid is not set in the qs"""
         url = super(CWEntityXMLParser, self).normalize_url(url)
-        purl = urlparse.urlparse(url)
+        purl = urlparse(url)
         if purl.scheme in ('http', 'https'):
-            params = urlparse.parse_qs(purl.query)
+            params = parse_qs(purl.query)
             if 'vid' not in params:
                 params['vid'] = ['xml']
                 purl = list(purl)
-                purl[4] = urllib.urlencode(params, doseq=True)
-                return urlparse.urlunparse(purl)
+                purl[4] = urlencode(params, doseq=True)
+                return urlunparse(purl)
         return url
 
     def complete_url(self, url, etype=None, known_relations=None):
@@ -263,8 +270,8 @@ class CWEntityXMLParser(datafeed.DataFeedXMLParser):
         If `known_relations` is given, it should be a dictionary of already
         known relations, so they don't get queried again.
         """
-        purl = urlparse.urlparse(url)
-        params = urlparse.parse_qs(purl.query)
+        purl = urlparse(url)
+        params = parse_qs(purl.query)
         if etype is None:
             etype = purl.path.split('/')[-1]
         try:
@@ -277,8 +284,8 @@ class CWEntityXMLParser(datafeed.DataFeedXMLParser):
                 continue
             relations.add('%s-%s' % (rtype, role))
         purl = list(purl)
-        purl[4] = urllib.urlencode(params, doseq=True)
-        return urlparse.urlunparse(purl)
+        purl[4] = urlencode(params, doseq=True)
+        return urlunparse(purl)
 
     def complete_item(self, item, rels):
         try:
@@ -314,7 +321,7 @@ class CWEntityXMLItemBuilder(Component):
         """
         node = self.node
         item = dict(node.attrib.items())
-        item['cwtype'] = unicode(node.tag)
+        item['cwtype'] = text_type(node.tag)
         item.setdefault('cwsource', None)
         try:
             item['eid'] = int(item['eid'])
@@ -331,7 +338,7 @@ class CWEntityXMLItemBuilder(Component):
                 related += self.parser.parse_etree(child)
             elif child.text:
                 # attribute
-                item[child.tag] = unicode(child.text)
+                item[child.tag] = text_type(child.text)
             else:
                 # None attribute (empty tag)
                 item[child.tag] = None

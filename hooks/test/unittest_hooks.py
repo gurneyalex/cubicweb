@@ -24,8 +24,12 @@ Note:
 
 from datetime import datetime
 
+from six import text_type
+
+from pytz import utc
 from cubicweb import ValidationError, AuthenticationError, BadConnectionId
 from cubicweb.devtools.testlib import CubicWebTC
+
 
 class CoreHooksTC(CubicWebTC):
 
@@ -112,7 +116,7 @@ class CoreHooksTC(CubicWebTC):
 
     def test_metadata_creation_modification_date(self):
         with self.admin_access.repo_cnx() as cnx:
-            _now = datetime.now()
+            _now = datetime.now(utc)
             entity = cnx.create_entity('Workflow', name=u'wf1')
             self.assertEqual((entity.creation_date - _now).seconds, 0)
             self.assertEqual((entity.modification_date - _now).seconds, 0)
@@ -207,7 +211,7 @@ class SchemaHooksTC(CubicWebTC):
             with self.assertRaises(ValidationError) as cm:
                 cnx.execute('INSERT CWUser X: X login "admin"')
             ex = cm.exception
-            ex.translate(unicode)
+            ex.translate(text_type)
             self.assertIsInstance(ex.entity, int)
             self.assertEqual(ex.errors, {'login-subject': 'the value "admin" is already used, use another one'})
 

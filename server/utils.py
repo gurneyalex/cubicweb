@@ -1,4 +1,4 @@
-# copyright 2003-2013 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2016 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -16,6 +16,7 @@
 # You should have received a copy of the GNU Lesser General Public License along
 # with CubicWeb.  If not, see <http://www.gnu.org/licenses/>.
 """Some utilities for the CubicWeb server."""
+from __future__ import print_function
 
 __docformat__ = "restructuredtext en"
 
@@ -24,8 +25,13 @@ import logging
 from threading import Timer, Thread
 from getpass import getpass
 
+from six import PY2, text_type
+from six.moves import input
+
 from passlib.utils import handlers as uh, to_hash_str
 from passlib.context import CryptContext
+
+from logilab.common.deprecation import deprecated
 
 from cubicweb.md5crypt import crypt as md5crypt
 
@@ -60,7 +66,7 @@ def crypt_password(passwd, salt=None):
     """return the encrypted password using the given salt or a generated one
     """
     if salt is None:
-        return _CRYPTO_CTX.encrypt(passwd)
+        return _CRYPTO_CTX.encrypt(passwd).encode('ascii')
     # empty hash, accept any password for backwards compat
     if salt == '':
         return salt
@@ -70,18 +76,16 @@ def crypt_password(passwd, salt=None):
     except ValueError: # e.g. couldn't identify hash
         pass
     # wrong password
-    return ''
+    return b''
 
-
+@deprecated('[3.22] no more necessary, directly get eschema.eid')
 def eschema_eid(cnx, eschema):
-    """get eid of the CWEType entity for the given yams type. You should use
-    this because when schema has been loaded from the file-system, not from the
-    database, (e.g. during tests), eschema.eid is not set.
+    """get eid of the CWEType entity for the given yams type.
+
+    This used to be necessary because when the schema has been loaded from the
+    file-system, not from the database, (e.g. during tests), eschema.eid was
+    not set.
     """
-    if eschema.eid is None:
-        eschema.eid = cnx.execute(
-            'Any X WHERE X is CWEType, X name %(name)s',
-            {'name': unicode(eschema)})[0][0]
     return eschema.eid
 
 
@@ -92,17 +96,18 @@ def manager_userpasswd(user=None, msg=DEFAULT_MSG, confirm=False,
                        passwdmsg='password'):
     if not user:
         if msg:
-            print msg
+            print(msg)
         while not user:
-            user = raw_input('login: ')
-        user = unicode(user, sys.stdin.encoding)
+            user = input('login: ')
+        if PY2:
+            user = unicode(user, sys.stdin.encoding)
     passwd = getpass('%s: ' % passwdmsg)
     if confirm:
         while True:
             passwd2 = getpass('confirm password: ')
             if passwd == passwd2:
                 break
-            print 'password doesn\'t match'
+            print('password doesn\'t match')
             passwd = getpass('password: ')
     # XXX decode password using stdin encoding then encode it using appl'encoding
     return user, passwd
@@ -236,4 +241,3 @@ class TasksManager(object):
 from logging import getLogger
 from cubicweb import set_log_methods
 set_log_methods(TasksManager, getLogger('cubicweb.repository'))
-

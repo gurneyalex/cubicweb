@@ -22,13 +22,13 @@ software
 
 modname = distname = "cubicweb"
 
-numversion = (3, 21, 6)
-version = '.'.join(str(num) for num in numversion)
+numversion = (3, 22, 2)
+version = '.'.join(str(num) for num in numversion) + '.dev0'
 
 description = "a repository of entities / relations for knowledge management"
 author = "Logilab"
 author_email = "contact@logilab.fr"
-web = 'http://www.cubicweb.org'
+web = 'https://www.cubicweb.org'
 license = 'LGPL'
 
 classifiers = [
@@ -39,17 +39,19 @@ classifiers = [
 ]
 
 __depends__ = {
+    'six': '>= 1.4.0',
     'logilab-common': '>= 0.63.1',
     'logilab-mtconverter': '>= 0.8.0',
-    'rql': '>= 0.31.2, < 0.34',
-    'yams': '>= 0.40.0',
+    'rql': '>= 0.34.0',
+    'yams': '>= 0.42.0',
     #gettext                    # for xgettext, msgcat, etc...
     # web dependencies
     'lxml': '',
     # XXX graphviz
     # server dependencies
-    'logilab-database': '>= 1.13.0, < 1.15',
+    'logilab-database': '>= 1.15.0',
     'passlib': '',
+    'pytz': '',
     'Markdown': ''
     }
 
@@ -61,7 +63,7 @@ __recommends__ = {
     'vobject': '>= 0.6.0',      # for ical view
     'rdflib': None,             #
     'pyzmq': None,
-    'Twisted': '',
+    'Twisted': '< 16.0.0',
     #'Products.FCKeditor':'',
     #'SimpleTAL':'>= 4.1.6',
     }

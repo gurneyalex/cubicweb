@@ -21,7 +21,7 @@ have the following API::
 
     >>> user_eid = store.prepare_insert_entity('CWUser', login=u'johndoe')
     >>> group_eid = store.prepare_insert_entity('CWUser', name=u'unknown')
-    >>> store.relate(user_eid, 'in_group', group_eid)
+    >>> store.prepare_insert_relation(user_eid, 'in_group', group_eid)
     >>> store.flush()
     >>> store.commit()
     >>> store.finish()
@@ -60,6 +60,8 @@ import inspect
 import warnings
 from datetime import datetime
 from copy import copy
+
+from six import text_type
 
 from logilab.common.deprecation import deprecated
 from logilab.common.decorators import cached
@@ -101,7 +103,7 @@ class RQLObjectStore(object):
         and inlined relations.
         """
         entity = self._cnx.entity_from_eid(eid)
-        assert entity.cw_etype == etype, 'Trying to update with wrong type {}'.format(etype)
+        assert entity.cw_etype == etype, 'Trying to update with wrong type %s' % etype
         # XXX some inlined relations may already exists
         entity.cw_set(**kwargs)
 
@@ -119,6 +121,10 @@ class RQLObjectStore(object):
     def commit(self):
         """Commit the database transaction."""
         return self._commit()
+
+    def finish(self):
+        """Nothing to do once import is terminated for this store."""
+        pass
 
     @property
     def session(self):
@@ -168,7 +174,7 @@ class NoHookRQLObjectStore(RQLObjectStore):
         """Given an entity type, attributes and inlined relations, returns the inserted entity's
         eid.
         """
-        for k, v in kwargs.iteritems():
+        for k, v in kwargs.items():
             kwargs[k] = getattr(v, 'eid', v)
         entity, rels = self.metagen.base_etype_dicts(etype)
         # make a copy to keep cached entity pristine
@@ -183,7 +189,7 @@ class NoHookRQLObjectStore(RQLObjectStore):
         kwargs = dict()
         if inspect.getargspec(self.add_relation).keywords:
             kwargs['subjtype'] = entity.cw_etype
-        for rtype, targeteids in rels.iteritems():
+        for rtype, targeteids in rels.items():
             # targeteids may be a single eid or a list of eids
             inlined = self.rschema(rtype).inlined
             try:
@@ -253,7 +259,7 @@ class MetaGenerator(object):
             source = cnx.repo.system_source
         self.source = source
         self.create_eid = cnx.repo.system_source.create_eid
-        self.time = datetime.now()
+        self.time = datetime.utcnow()
         # attributes/relations shared by all entities of the same type
         self.etype_attrs = []
         self.etype_rels = []
@@ -298,7 +304,7 @@ class MetaGenerator(object):
             genfunc = self.generate(attr)
             if genfunc:
                 entity.cw_edited.edited_attribute(attr, genfunc(entity))
-        if isinstance(extid, unicode):
+        if isinstance(extid, text_type):
             extid = extid.encode('utf-8')
         return self.source, extid
 
@@ -320,4 +326,3 @@ class MetaGenerator(object):
 
     def gen_owned_by(self, entity):
         return self._cnx.user.eid
-

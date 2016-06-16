@@ -28,16 +28,27 @@ from email.header import Header
 from email.utils import formatdate
 from socket import gethostname
 
+from six import PY2, PY3, text_type
+
+
 def header(ustring):
+    if PY3:
+        return Header(ustring, 'utf-8')
     return Header(ustring.encode('UTF-8'), 'UTF-8')
 
 def addrheader(uaddr, uname=None):
     # even if an email address should be ascii, encode it using utf8 since
     # automatic tests may generate non ascii email address
-    addr = uaddr.encode('UTF-8')
+    if PY2:
+        addr = uaddr.encode('UTF-8')
+    else:
+        addr = uaddr
     if uname:
-        return '%s <%s>' % (header(uname).encode(), addr)
-    return addr
+        val = '%s <%s>' % (header(uname).encode(), addr)
+    else:
+        val = addr
+    assert isinstance(val, str)  # bytes in py2, ascii-encoded unicode in py3
+    return val
 
 
 def construct_message_id(appid, eid, withtimestamp=True):
@@ -46,7 +57,7 @@ def construct_message_id(appid, eid, withtimestamp=True):
     else:
         addrpart = 'eid=%s' % eid
     # we don't want any equal sign nor trailing newlines
-    leftpart = b64encode(addrpart, '.-').rstrip().rstrip('=')
+    leftpart = b64encode(addrpart.encode('ascii'), b'.-').decode('ascii').rstrip().rstrip('=')
     return '<%s@%s.%s>' % (leftpart, appid, gethostname())
 
 
@@ -58,7 +69,7 @@ def parse_message_id(msgid, appid):
     try:
         values, qualif = msgid.split('@')
         padding = len(values) % 4
-        values = b64decode(str(values + '='*padding), '.-')
+        values = b64decode(str(values + '='*padding), '.-').decode('ascii')
         values = dict(v.split('=') for v in values.split('&'))
         fromappid, host = qualif.split('.', 1)
     except Exception:
@@ -75,7 +86,7 @@ def format_mail(uinfo, to_addrs, content, subject="",
     to_addrs and cc_addrs are expected to be a list of email address without
     name
     """
-    assert type(content) is unicode, repr(content)
+    assert isinstance(content, text_type), repr(content)
     msg = MIMEText(content.encode('UTF-8'), 'plain', 'UTF-8')
     # safety: keep only the first newline
     try:
@@ -86,13 +97,13 @@ def format_mail(uinfo, to_addrs, content, subject="",
     if uinfo.get('email'):
         email = uinfo['email']
     elif config and config['sender-addr']:
-        email = unicode(config['sender-addr'])
+        email = text_type(config['sender-addr'])
     else:
         email = u''
     if uinfo.get('name'):
         name = uinfo['name']
     elif config and config['sender-name']:
-        name = unicode(config['sender-name'])
+        name = text_type(config['sender-name'])
     else:
         name = u''
     msg['From'] = addrheader(email, name)

@@ -42,7 +42,7 @@ All those classes are rendered using a *layout*:
 .. autoclass:: cubicweb.web.views.tableview.TableLayout
    :members:
 
-There is by default only on table layout, using the 'table_layout' identifier,
+There is by default only one table layout, using the 'table_layout' identifier,
 that is referenced by table views
 :attr:`cubicweb.web.views.tableview.TableMixIn.layout_id`.  If you want to
 customize the look and feel of your table, you can either replace the default
@@ -52,20 +52,23 @@ one by yours, having multiple variants with proper selectors, or change the
 Notice you can gives options to the layout using a `layout_args` dictionary on
 your class.
 
-If you can still find a view that suit your needs, you should take a look at the
+If you still can't find a view that suit your needs, you should take a look at the
 class below that is the common abstract base class for the three views defined
-above and implements you own class.
+above and implement your own class.
 
 .. autoclass:: cubicweb.web.views.tableview.TableMixIn
    :members:
 """
 
 __docformat__ = "restructuredtext en"
-_ = unicode
+from cubicweb import _
 
 from warnings import warn
 from copy import copy
 from types import MethodType
+
+from six import string_types, add_metaclass, create_bound_method
+from six.moves import range
 
 from logilab.mtconverter import xml_escape
 from logilab.common.decorators import cachedproperty
@@ -162,7 +165,7 @@ class TableLayout(component.Component):
 
     def __init__(self, req, view, **kwargs):
         super(TableLayout, self).__init__(req, **kwargs)
-        for key, val in self.cw_extra_kwargs.items():
+        for key, val in list(self.cw_extra_kwargs.items()):
             if hasattr(self.__class__, key) and not key[0] == '_':
                 setattr(self, key, val)
                 self.cw_extra_kwargs.pop(key)
@@ -225,7 +228,7 @@ class TableLayout(component.Component):
 
     def render_table_body(self, w, colrenderers):
         w(u'<tbody>')
-        for rownum in xrange(self.view.table_size):
+        for rownum in range(self.view.table_size):
             self.render_row(w, rownum, colrenderers)
         w(u'</tbody>')
 
@@ -284,7 +287,7 @@ class TableLayout(component.Component):
         attrs = renderer.attributes.copy()
         if renderer.sortable:
             sortvalue = renderer.sortvalue(rownum)
-            if isinstance(sortvalue, basestring):
+            if isinstance(sortvalue, string_types):
                 sortvalue = sortvalue[:self.sortvalue_limit]
             if sortvalue is not None:
                 attrs[u'cubicweb:sortvalue'] = js_dumps(sortvalue)
@@ -646,10 +649,10 @@ class RsetTableView(TableMixIn, AnyRsetView):
         # compute displayed columns
         if self.displaycols is None:
             if headers is not None:
-                displaycols = range(len(headers))
+                displaycols = list(range(len(headers)))
             else:
                 rqlst = self.cw_rset.syntax_tree()
-                displaycols = range(len(rqlst.children[0].selection))
+                displaycols = list(range(len(rqlst.children[0].selection)))
         else:
             displaycols = self.displaycols
         # compute table headers
@@ -723,7 +726,7 @@ class EntityTableColRenderer(AbstractColumnRenderer):
             for aname, member in[('renderfunc', renderfunc),
                                  ('sortfunc', sortfunc)]:
                 if isinstance(member, MethodType):
-                    member = MethodType(member.im_func, acopy, acopy.__class__)
+                    member = create_bound_method(member.__func__, acopy)
                 setattr(acopy, aname, member)
             return acopy
         finally:
@@ -918,13 +921,13 @@ class EmptyCellView(AnyRsetView):
 ################################################################################
 
 
+@add_metaclass(class_deprecated)
 class TableView(AnyRsetView):
     """The table view accepts any non-empty rset. It uses introspection on the
     result set to compute column names and the proper way to display the cells.
 
     It is however highly configurable and accepts a wealth of options.
     """
-    __metaclass__ = class_deprecated
     __deprecation_warning__ = '[3.14] %(cls)s is deprecated'
     __regid__ = 'table'
     title = _('table')
@@ -977,9 +980,9 @@ class TableView(AnyRsetView):
             if 'displaycols' in self._cw.form:
                 displaycols = [int(idx) for idx in self._cw.form['displaycols']]
             elif headers is not None:
-                displaycols = range(len(headers))
+                displaycols = list(range(len(headers)))
             else:
-                displaycols = range(len(self.cw_rset.syntax_tree().children[0].selection))
+                displaycols = list(range(len(self.cw_rset.syntax_tree().children[0].selection)))
         return displaycols
 
     def _setup_tablesorter(self, divid):
@@ -1143,7 +1146,7 @@ class TableView(AnyRsetView):
             else:
                 column.append_renderer(subvid or 'incontext', colindex)
             if cellattrs and colindex in cellattrs:
-                for name, value in cellattrs[colindex].iteritems():
+                for name, value in cellattrs[colindex].items():
                     column.add_attr(name, value)
             # add column
             columns.append(column)
@@ -1184,8 +1187,8 @@ class EditableTableView(TableView):
     title = _('editable-table')
 
 
+@add_metaclass(class_deprecated)
 class CellView(EntityView):
-    __metaclass__ = class_deprecated
     __deprecation_warning__ = '[3.14] %(cls)s is deprecated'
     __regid__ = 'cell'
     __select__ = nonempty_rset()
@@ -1271,6 +1274,7 @@ class EditableInitialTableTableView(InitialTableView):
     finalview = 'editable-final'
 
 
+@add_metaclass(class_deprecated)
 class EntityAttributesTableView(EntityView):
     """This table displays entity attributes in a table and allow to set a
     specific method to help building cell content for each attribute as well as
@@ -1282,7 +1286,6 @@ class EntityAttributesTableView(EntityView):
     Table will render column header using the method header_for_COLNAME if
     defined otherwise COLNAME will be used.
     """
-    __metaclass__ = class_deprecated
     __deprecation_warning__ = '[3.14] %(cls)s is deprecated'
     __abstract__ = True
     columns = ()
@@ -1298,7 +1301,7 @@ class EntityAttributesTableView(EntityView):
         self.w(u'<table class="%s">' % self.table_css)
         self.table_header(sample)
         self.w(u'<tbody>')
-        for row in xrange(self.cw_rset.rowcount):
+        for row in range(self.cw_rset.rowcount):
             self.cell_call(row=row, col=0)
         self.w(u'</tbody>')
         self.w(u'</table>')
@@ -1333,4 +1336,3 @@ class EntityAttributesTableView(EntityView):
                 colname = self._cw._(column)
             self.w(u'<th>%s</th>' % xml_escape(colname))
         self.w(u'</tr></thead>\n')
-

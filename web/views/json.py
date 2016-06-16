@@ -1,4 +1,4 @@
-# copyright 2003-2012 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2015 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -18,7 +18,7 @@
 """json export views"""
 
 __docformat__ = "restructuredtext en"
-_ = unicode
+from cubicweb import _
 
 from cubicweb.uilib import rest_traceback
 
@@ -27,6 +27,7 @@ from cubicweb.predicates import ExpectedValuePredicate, any_rset, empty_rset
 from cubicweb.view import EntityView, AnyRsetView
 from cubicweb.web.application import anonymized_request
 from cubicweb.web.views import basecontrollers, management
+
 
 class JsonpController(basecontrollers.ViewController):
     """The jsonp controller is the same as a ViewController but :
@@ -49,7 +50,7 @@ class JsonpController(basecontrollers.ViewController):
                 self.warning("vid %s can't be used with jsonp controller, "
                              "falling back to jsonexport", vid)
                 self._cw.form['vid'] = 'jsonexport'
-        else: # if no vid is specified, use jsonexport
+        else:  # if no vid is specified, use jsonexport
             self._cw.form['vid'] = 'jsonexport'
         if self._cw.vreg.config['anonymize-jsonp-queries']:
             with anonymized_request(self._cw):
@@ -59,12 +60,12 @@ class JsonpController(basecontrollers.ViewController):
 
     def _get_json_data(self, rset):
         json_data = super(JsonpController, self).publish(rset)
-        if 'callback' in self._cw.form: # jsonp
+        if 'callback' in self._cw.form:  # jsonp
             json_padding = self._cw.form['callback'].encode('ascii')
             # use ``application/javascript`` if ``callback`` parameter is
             # provided, keep ``application/json`` otherwise
             self._cw.set_content_type('application/javascript')
-            json_data = b'%s(%s)' % (json_padding, json_data)
+            json_data = json_padding + b'(' + json_data + b')'
         return json_data
 
 
@@ -85,13 +86,14 @@ class JsonMixIn(object):
             indent = int(self._cw.form['_indent'])
         else:
             indent = None
-        self.w(json_dumps(data, indent=indent))
+        # python's json.dumps escapes non-ascii characters
+        self.w(json_dumps(data, indent=indent).encode('ascii'))
 
 
 class JsonRsetView(JsonMixIn, AnyRsetView):
     """dumps raw result set in JSON format"""
     __regid__ = 'jsonexport'
-    __select__ = any_rset() # means rset might be empty or have any shape
+    __select__ = any_rset()  # means rset might be empty or have any shape
     title = _('json-export-view')
 
     def call(self):
@@ -105,7 +107,8 @@ class JsonEntityView(JsonMixIn, EntityView):
 
     The following additional metadata is added to each row :
 
-    - ``__cwetype__`` : entity type
+    - ``cw_etype`` : entity type
+    - ``cw_source`` : source url
     """
     __regid__ = 'ejsonexport'
     __select__ = EntityView.__select__ | empty_rset()
@@ -114,12 +117,8 @@ class JsonEntityView(JsonMixIn, EntityView):
     def call(self):
         entities = []
         for entity in self.cw_rset.entities():
-            entity.complete() # fetch all attributes
-            # hack to add extra metadata
-            entity.cw_attr_cache.update({
-                    '__cwetype__': entity.cw_etype,
-                    })
-            entities.append(entity)
+            serializer = entity.cw_adapt_to('ISerializable')
+            entities.append(serializer.serialize())
         self.wdata(entities)
 
 
@@ -148,4 +147,4 @@ class JsonErrorView(JsonMixIn, management.ErrorView):
             'errmsg': errmsg,
             'exclass': exclass,
             'traceback': rest_traceback(excinfo, errmsg),
-            })
+        })

@@ -20,6 +20,8 @@
 
 from datetime import datetime
 
+from six import text_type
+
 from logilab.common import tempattr
 from logilab.common.decorators import clear_cache
 
@@ -136,28 +138,33 @@ class EntityTC(CubicWebTC):
             e.cw_clear_relation_cache('in_state', 'subject')
             self.assertEqual(e.cw_adapt_to('IWorkflowable').state, 'activated')
 
+    def test_copy_exclude_computed_relations(self):
+        """The `CWUser buddies CWUser` (computed) relation should not be copied.
+        """
+        with self.admin_access.cnx() as cnx:
+            friends = cnx.create_entity('CWGroup', name=u'friends')
+            bob = self.create_user(cnx, u'bob', groups=('friends',))
+            cnx.create_entity('EmailAddress', address=u'bob@cubicweb.org',
+                              reverse_use_email=bob)
+            alice = self.create_user(cnx, u'alices', groups=('friends',))
+            cnx.commit()
+            charles = self.create_user(cnx, u'charles')
+            cnx.commit()
+            # Just ensure this does not crash (it would if computed relation
+            # attempted to be copied).
+            charles.copy_relations(bob.eid)
+
     def test_related_cache_both(self):
         with self.admin_access.web_request() as req:
             user = req.execute('Any X WHERE X eid %(x)s', {'x':req.user.eid}).get_entity(0, 0)
             adeleid = req.execute('INSERT EmailAddress X: X address "toto@logilab.org", U use_email X WHERE U login "admin"')[0][0]
-            self.assertEqual({}, user._cw_related_cache)
             req.cnx.commit()
-            self.assertEqual(['primary_email_subject', 'use_email_subject', 'wf_info_for_object'],
-                             sorted(user._cw_related_cache))
+            self.assertEqual(user._cw_related_cache, {})
             email = user.primary_email[0]
-            self.assertEqual(u'toto@logilab.org', email.address)
-            self.assertEqual(['created_by_subject',
-                              'cw_source_subject',
-                              'is_instance_of_subject',
-                              'is_subject',
-                              'owned_by_subject',
-                              'prefered_form_object',
-                              'prefered_form_subject',
-                              'primary_email_object',
-                              'use_email_object'],
-                             sorted(email._cw_related_cache))
-            self.assertEqual('admin', email._cw_related_cache['primary_email_object'][1][0].login)
+            self.assertEqual(sorted(user._cw_related_cache), ['primary_email_subject'])
+            self.assertEqual(list(email._cw_related_cache), ['primary_email_object'])
             groups = user.in_group
+            self.assertEqual(sorted(user._cw_related_cache), ['in_group_subject', 'primary_email_subject'])
             for group in groups:
                 self.assertNotIn('in_group_subject', group._cw_related_cache)
             user.cw_clear_all_caches()
@@ -254,7 +261,7 @@ class EntityTC(CubicWebTC):
                 Personne.fetch_attrs = ('nom', 'prenom', 'travaille')
                 Societe.fetch_attrs = ('nom', 'evaluee')
                 self.assertEqual(Personne.fetch_rql(user),
-                                 'Any X,AA,AB,AC,AD,AE,AF ORDERBY AA,AE DESC '
+                                 'Any X,AA,AB,AC,AD,AE,AF ORDERBY AA '
                                  'WHERE X is_instance_of Personne, X nom AA, X prenom AB, X travaille AC?, '
                                  'AC evaluee AD?, AD modification_date AE, AC nom AF')
                 # testing symmetric relation
@@ -644,7 +651,7 @@ du :eid:`1:*ReST*`'''
 
     def test_printable_value_bytes(self):
         with self.admin_access.web_request() as req:
-            e = req.create_entity('FakeFile', data=Binary('lambda x: 1'), data_format=u'text/x-python',
+            e = req.create_entity('FakeFile', data=Binary(b'lambda x: 1'), data_format=u'text/x-python',
                                   data_encoding=u'ascii', data_name=u'toto.py')
             from cubicweb import mttransforms
             if mttransforms.HAS_PYGMENTS_TRANSFORMS:
@@ -663,8 +670,10 @@ du :eid:`1:*ReST*`'''
     <span style="color: #C00000;">lambda</span> <span style="color: #000000;">x</span><span style="color: #0000C0;">:</span> <span style="color: #0080C0;">1</span>
 </pre>''')
 
-            e = req.create_entity('FakeFile', data=Binary('*héhéhé*'), data_format=u'text/rest',
-                                data_encoding=u'utf-8', data_name=u'toto.txt')
+            e = req.create_entity('FakeFile',
+                                  data=Binary(u'*héhéhé*'.encode('utf-8')),
+                                  data_format=u'text/rest',
+                                  data_encoding=u'utf-8', data_name=u'toto.txt')
             self.assertEqual(e.printable_value('data'),
                               u'<p><em>héhéhé</em></p>')
 
@@ -717,7 +726,7 @@ du :eid:`1:*ReST*`'''
             e = self.vreg['etypes'].etype_class('FakeFile')(req)
             e.cw_attr_cache['description'] = 'du <em>html</em>'
             e.cw_attr_cache['description_format'] = 'text/html'
-            e.cw_attr_cache['data'] = Binary('some <em>data</em>')
+            e.cw_attr_cache['data'] = Binary(b'some <em>data</em>')
             e.cw_attr_cache['data_name'] = 'an html file'
             e.cw_attr_cache['data_format'] = 'text/html'
             e.cw_attr_cache['data_encoding'] = 'ascii'
@@ -769,11 +778,11 @@ du :eid:`1:*ReST*`'''
             # ambiguity test
             person2 = req.create_entity('Personne', prenom=u'remi', nom=u'doe')
             person.cw_clear_all_caches()
-            self.assertEqual(person.rest_path(), unicode(person.eid))
-            self.assertEqual(person2.rest_path(), unicode(person2.eid))
+            self.assertEqual(person.rest_path(), text_type(person.eid))
+            self.assertEqual(person2.rest_path(), text_type(person2.eid))
             # unique attr with None value (nom in this case)
             friend = req.create_entity('Ami', prenom=u'bob')
-            self.assertEqual(friend.rest_path(), unicode(friend.eid))
+            self.assertEqual(friend.rest_path(), text_type(friend.eid))
             # 'ref' below is created without the unique but not required
             # attribute, make sur that the unique _and_ required 'ean' is used
             # as the rest attribute
@@ -853,4 +862,3 @@ du :eid:`1:*ReST*`'''
 if __name__ == '__main__':
     from logilab.common.testlib import unittest_main
     unittest_main()
-

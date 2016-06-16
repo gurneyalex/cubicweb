@@ -22,23 +22,26 @@ __docformat__ = "restructuredtext en"
 
 # ignore the pygments UserWarnings
 import warnings
-import cPickle
 import zlib
 warnings.filterwarnings('ignore', category=UserWarning,
                         message='.*was already imported',
                         module='.*pygments')
 
 
-import __builtin__
-# '_' is available in builtins to mark internationalized string but should
-# not be used to do the actual translation
-if not hasattr(__builtin__, '_'):
-    __builtin__._ = unicode
+from six import PY2, binary_type, text_type
+from six.moves import builtins
 
 CW_SOFTWARE_ROOT = __path__[0]
 
-import sys, os, logging
-from StringIO import StringIO
+import sys
+import logging
+if PY2:
+    # http://bugs.python.org/issue10211
+    from StringIO import StringIO as BytesIO
+else:
+    from io import BytesIO
+
+from six.moves import cPickle as pickle
 
 from logilab.common.deprecation import deprecated
 from logilab.common.logging_ext import set_log_methods
@@ -56,6 +59,14 @@ set_log_methods(sys.modules[__name__], logging.getLogger('cubicweb'))
 from cubicweb._exceptions import *
 from logilab.common.registry import ObjectNotFound, NoSelectableObject, RegistryNotFound
 
+
+# '_' is available to mark internationalized string but should not be used to
+# do the actual translation
+_ = text_type
+if not hasattr(builtins, '_'):
+    builtins._ = deprecated("[3.22] Use 'from cubicweb import _'")(_)
+
+
 # convert eid to the right type, raise ValueError if it's not a valid eid
 @deprecated('[3.17] typed_eid() was removed. replace it with int() when needed.')
 def typed_eid(eid):
@@ -66,17 +77,21 @@ def typed_eid(eid):
 #import threading
 #threading.settrace(log_thread)
 
-class Binary(StringIO):
-    """customize StringIO to make sure we don't use unicode"""
-    def __init__(self, buf=''):
-        assert isinstance(buf, (str, buffer, bytearray)), \
-               "Binary objects must use raw strings, not %s" % buf.__class__
-        StringIO.__init__(self, buf)
+class Binary(BytesIO):
+    """class to hold binary data. Use BytesIO to prevent use of unicode data"""
+    _allowed_types = (binary_type, bytearray, buffer if PY2 else memoryview)
+
+    def __init__(self, buf=b''):
+        assert isinstance(buf, self._allowed_types), \
+               "Binary objects must use bytes/buffer objects, not %s" % buf.__class__
+        # don't call super, BytesIO may be an old-style class (on python < 2.7.4)
+        BytesIO.__init__(self, buf)
 
     def write(self, data):
-        assert isinstance(data, (str, buffer, bytearray)), \
-               "Binary objects must use raw strings, not %s" % data.__class__
-        StringIO.write(self, data)
+        assert isinstance(data, self._allowed_types), \
+               "Binary objects must use bytes/buffer objects, not %s" % data.__class__
+        # don't call super, BytesIO may be an old-style class (on python < 2.7.4)
+        BytesIO.write(self, data)
 
     def to_file(self, fobj):
         """write a binary to disk
@@ -132,22 +147,22 @@ class Binary(StringIO):
     def zpickle(cls, obj):
         """ return a Binary containing a gzipped pickle of obj """
         retval = cls()
-        retval.write(zlib.compress(cPickle.dumps(obj, protocol=2)))
+        retval.write(zlib.compress(pickle.dumps(obj, protocol=2)))
         return retval
 
     def unzpickle(self):
         """ decompress and loads the stream before returning it """
-        return cPickle.loads(zlib.decompress(self.getvalue()))
+        return pickle.loads(zlib.decompress(self.getvalue()))
 
 
 def check_password(eschema, value):
-    return isinstance(value, (str, Binary))
+    return isinstance(value, (binary_type, Binary))
 BASE_CHECKERS['Password'] = check_password
 
 def str_or_binary(value):
     if isinstance(value, Binary):
         return value
-    return str(value)
+    return binary_type(value)
 BASE_CONVERTERS['Password'] = str_or_binary
 
 
@@ -255,4 +270,3 @@ class ProgrammingError(Exception): #DatabaseError):
     not be processed, a memory allocation error occurred during processing,
     etc.
     """
-

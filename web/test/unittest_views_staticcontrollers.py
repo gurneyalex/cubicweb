@@ -70,11 +70,20 @@ class DataControllerTC(staticfilespublishermixin, CubicWebTC):
         with self._publish_static_files(fname) as req:
             self.assertEqual(200, req.status_out)
             self.assertIn('last-modified', req.headers_out)
+            self.assertIn('expires', req.headers_out)
+            self.assertEqual(req.get_response_header('cache-control'),
+                             {'max-age': 604800})
         next_headers = {
             'if-modified-since': req.get_response_header('last-modified', raw=True),
         }
         with self._publish_static_files(fname, next_headers) as req:
             self.assertEqual(304, req.status_out)
+
+    def _check_datafile_redirect(self, fname, expected):
+        with self._publish_static_files(fname) as req:
+            self.assertEqual(302, req.status_out)
+            self.assertEqual(req.get_response_header('location'),
+                             req.base_url() + expected)
 
     def _check_no_datafile(self, fname):
         with self._publish_static_files(fname) as req:
@@ -90,10 +99,12 @@ class DataControllerTC(staticfilespublishermixin, CubicWebTC):
             self._check_no_datafile('data/%s/cubicweb.css' % ('0'*len(hash)))
 
         with tempattr(self.vreg.config, 'mode', 'notest'):
-            self._check_datafile_ok('data/cubicweb.css')
+            self.config._init_base_url()  # reset config.datadir_url
+            self._check_datafile_redirect('data/cubicweb.css', 'data/%s/cubicweb.css' % hash)
             self._check_datafile_ok('data/%s/cubicweb.css' % hash)
-            self._check_no_datafile('data/does/not/exist')
-            self._check_no_datafile('data/%s/cubicweb.css' % ('0'*len(hash)))
+            self._check_no_datafile('data/%s/does/not/exist' % hash)
+            self._check_datafile_redirect('data/%s/does/not/exist' % ('0'*len(hash)),
+                                          'data/%s/%s/does/not/exist' % (hash, '0'*len(hash)))
 
 
 class ConcatFilesTC(CubicWebTC):
@@ -120,12 +131,12 @@ class ConcatFilesTC(CubicWebTC):
             yield res, req
 
     def expected_content(self, js_files):
-        content = u''
+        content = b''
         for js_file in js_files:
             dirpath, rid = self.config.locate_resource(js_file)
             if dirpath is not None: # ignore resources not found
-                with open(osp.join(dirpath, rid)) as f:
-                    content += f.read() + '\n'
+                with open(osp.join(dirpath, rid), 'rb') as f:
+                    content += f.read() + b'\n'
         return content
 
     def test_cache(self):
@@ -162,4 +173,3 @@ class ConcatFilesTC(CubicWebTC):
 if __name__ == '__main__':
     from logilab.common.testlib import unittest_main
     unittest_main()
-

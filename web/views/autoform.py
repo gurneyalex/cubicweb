@@ -119,9 +119,11 @@ checking for dark-corner case where it can't be verified properly.
 """
 
 __docformat__ = "restructuredtext en"
-_ = unicode
+from cubicweb import _
 
 from warnings import warn
+
+from six.moves import range
 
 from logilab.mtconverter import xml_escape
 from logilab.common.decorators import iclassmethod, cached
@@ -355,7 +357,7 @@ class InlineEntityCreationFormView(InlineEntityEditionFormView):
             self.w(self._cw._('no such entity type %s') % self.etype)
             return
         entity = cls(self._cw)
-        entity.eid = self._cw.varmaker.next()
+        entity.eid = next(self._cw.varmaker)
         return entity
 
     def call(self, i18nctx, **kwargs):
@@ -491,7 +493,8 @@ def _remove_pending(req, eidfrom, rel, eidto, kind):
     pendings.remove( (int(eidfrom), rel, int(eidto)) )
 
 @ajaxfunc(output_type='json')
-def remove_pending_insert(self, (eidfrom, rel, eidto)):
+def remove_pending_insert(self, args):
+    eidfrom, rel, eidto = args
     _remove_pending(self._cw, eidfrom, rel, eidto, 'insert')
 
 @ajaxfunc(output_type='json')
@@ -500,11 +503,13 @@ def add_pending_inserts(self, tripletlist):
         _add_pending(self._cw, eidfrom, rel, eidto, 'insert')
 
 @ajaxfunc(output_type='json')
-def remove_pending_delete(self, (eidfrom, rel, eidto)):
+def remove_pending_delete(self, args):
+    eidfrom, rel, eidto = args
     _remove_pending(self._cw, eidfrom, rel, eidto, 'delete')
 
 @ajaxfunc(output_type='json')
-def add_pending_delete(self, (eidfrom, rel, eidto)):
+def add_pending_delete(self, args):
+    eidfrom, rel, eidto = args
     _add_pending(self._cw, eidfrom, rel, eidto, 'delete')
 
 
@@ -608,7 +613,7 @@ class GenericRelationsField(ff.Field):
                     toggleable_rel_link_func = toggleable_relation_link
                 else:
                     toggleable_rel_link_func = lambda x, y, z: u''
-                for row in xrange(rset.rowcount):
+                for row in range(rset.rowcount):
                     nodeid = relation_id(entity.eid, rschema, role,
                                          rset[row][0])
                     if nodeid in pending_deletes:
@@ -737,7 +742,8 @@ class AutomaticEntityForm(forms.EntityFieldsForm):
     copy_nav_params = True
     form_buttons = [fw.SubmitButton(),
                     fw.Button(stdmsgs.BUTTON_APPLY, cwaction='apply'),
-                    fw.Button(stdmsgs.BUTTON_CANCEL, cwaction='cancel')]
+                    fw.Button(stdmsgs.BUTTON_CANCEL,
+                              {'class': fw.Button.css_class + ' cwjs-edition-cancel'})]
     # for attributes selection when searching in uicfg.autoform_section
     formtype = 'main'
     # set this to a list of [(relation, role)] if you want to explictily tell
@@ -893,14 +899,13 @@ class AutomaticEntityForm(forms.EntityFieldsForm):
             ttype = tschema.type
             formviews = list(self.inline_edition_form_view(rschema, ttype, role))
             card = rschema.role_rdef(entity.e_schema, ttype, role).role_cardinality(role)
-            # there is no related entity and we need at least one: we need to
-            # display one explicit inline-creation view
-            if self.should_display_inline_creation_form(rschema, formviews, card):
+            existing = entity.related(rschema, role) if entity.has_eid() else formviews
+            if self.should_display_inline_creation_form(rschema, existing, card):
                 formviews += self.inline_creation_form_view(rschema, ttype, role)
             # we can create more than one related entity, we thus display a link
             # to add new related entities
             if self.must_display_add_new_relation_link(rschema, role, tschema,
-                                                       ttype, formviews, card):
+                                                       ttype, existing, card):
                 addnewlink = self._cw.vreg['views'].select(
                     'inline-addnew-link', self._cw,
                     etype=ttype, rtype=rschema, role=role, card=card,
@@ -910,24 +915,24 @@ class AutomaticEntityForm(forms.EntityFieldsForm):
             allformviews += formviews
         return allformviews
 
-    def should_display_inline_creation_form(self, rschema, existant, card):
+    def should_display_inline_creation_form(self, rschema, existing, card):
         """return true if a creation form should be inlined
 
         by default true if there is no related entity and we need at least one
         """
-        return not existant and card in '1+'
+        return not existing and card in '1+'
 
-    def should_display_add_new_relation_link(self, rschema, existant, card):
+    def should_display_add_new_relation_link(self, rschema, existing, card):
         """return true if we should add a link to add a new creation form
         (through ajax call)
 
         by default true if there is no related entity or if the relation has
         multiple cardinality
         """
-        return not existant or card in '+*'
+        return not existing or card in '+*'
 
     def must_display_add_new_relation_link(self, rschema, role, tschema,
-                                           ttype, existant, card):
+                                           ttype, existing, card):
         """return true if we must add a link to add a new creation form
         (through ajax call)
 
@@ -936,7 +941,7 @@ class AutomaticEntityForm(forms.EntityFieldsForm):
         relation.
         """
         return (self.should_display_add_new_relation_link(
-                    rschema, existant, card) and
+                    rschema, existing, card) and
                 self.check_inlined_rdef_permissions(
                     rschema, role, tschema, ttype))
 
@@ -1048,4 +1053,4 @@ def registration_callback(vreg):
             AutomaticEntityForm.error('field for %s %s may not be found in schema' % (rtype, role))
             return None
 
-    vreg.register_all(globals().itervalues(), __name__)
+    vreg.register_all(globals().values(), __name__)
