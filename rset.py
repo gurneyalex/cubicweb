@@ -16,10 +16,12 @@
 # You should have received a copy of the GNU Lesser General Public License along
 # with CubicWeb.  If not, see <http://www.gnu.org/licenses/>.
 """The `ResultSet` class which is returned as result of an rql query"""
-
 __docformat__ = "restructuredtext en"
 
 from warnings import warn
+
+from six import PY3
+from six.moves import range
 
 from logilab.common import nullobject
 from logilab.common.decorators import cached, clear_cache, copy_cache
@@ -101,7 +103,7 @@ class ResultSet(object):
         if self._rsetactions is None:
             self._rsetactions = {}
         if kwargs:
-            key = tuple(sorted(kwargs.iteritems()))
+            key = tuple(sorted(kwargs.items()))
         else:
             key = None
         try:
@@ -119,10 +121,6 @@ class ResultSet(object):
     def __getitem__(self, i):
         """returns the ith element of the result set"""
         return self.rows[i] #ResultSetRow(self.rows[i])
-
-    def __getslice__(self, i, j):
-        """returns slice [i:j] of the result set"""
-        return self.rows[i:j]
 
     def __iter__(self):
         """Returns an iterator over rows"""
@@ -186,7 +184,7 @@ class ResultSet(object):
         """
         rows, descr = [], []
         rset = self.copy(rows, descr)
-        for i in xrange(len(self)):
+        for i in range(len(self)):
             if not filtercb(self.get_entity(i, col)):
                 continue
             rows.append(self.rows[i])
@@ -215,10 +213,10 @@ class ResultSet(object):
         rset = self.copy(rows, descr)
         if col >= 0:
             entities = sorted(enumerate(self.entities(col)),
-                              key=lambda (i, e): keyfunc(e), reverse=reverse)
+                              key=lambda t: keyfunc(t[1]), reverse=reverse)
         else:
             entities = sorted(enumerate(self),
-                              key=lambda (i, e): keyfunc(e), reverse=reverse)
+                              key=lambda t: keyfunc(t[1]), reverse=reverse)
         for index, _ in entities:
             rows.append(self.rows[index])
             descr.append(self.description[index])
@@ -311,7 +309,7 @@ class ResultSet(object):
             newselect.limit = limit
             newselect.offset = offset
             aliases = [nodes.VariableRef(newselect.get_variable(chr(65+i), i))
-                       for i in xrange(len(rqlst.children[0].selection))]
+                       for i in range(len(rqlst.children[0].selection))]
             for vref in aliases:
                 newselect.append_selected(nodes.VariableRef(vref.variable))
             newselect.set_with([nodes.SubQuery(aliases, rqlst)], check=False)
@@ -322,7 +320,7 @@ class ResultSet(object):
         return rql
 
     def limit(self, limit, offset=0, inplace=False):
-        """limit the result set to the given number of rows optionaly starting
+        """limit the result set to the given number of rows optionally starting
         from an index different than 0
 
         :type limit: int
@@ -373,6 +371,8 @@ class ResultSet(object):
             warn('[3.21] the "encoded" argument is deprecated', DeprecationWarning)
         encoding = self.req.encoding
         rqlstr = self.syntax_tree().as_string(kwargs=self.args)
+        if PY3:
+            return rqlstr
         # sounds like we get encoded or unicode string due to a bug in as_string
         if not encoded:
             if isinstance(rqlstr, unicode):
@@ -387,7 +387,7 @@ class ResultSet(object):
 
     def entities(self, col=0):
         """iter on entities with eid in the `col` column of the result set"""
-        for i in xrange(len(self)):
+        for i in range(len(self)):
             # may have None values in case of outer join (or aggregat on eid
             # hacks)
             if self.rows[i][col] is not None:
@@ -483,7 +483,6 @@ class ResultSet(object):
         #     new attributes found in this resultset ?
         try:
             entity = req.entity_cache(eid)
-            entity._cw = req
         except KeyError:
             pass
         else:
@@ -507,9 +506,9 @@ class ResultSet(object):
             eschema = entity.e_schema
             eid_col, attr_cols, rel_cols = self._rset_structure(eschema, col)
             entity.eid = rowvalues[eid_col]
-            for attr, col_idx in attr_cols.iteritems():
+            for attr, col_idx in attr_cols.items():
                 entity.cw_attr_cache[attr] = rowvalues[col_idx]
-            for (rtype, role), col_idx in rel_cols.iteritems():
+            for (rtype, role), col_idx in rel_cols.items():
                 value = rowvalues[col_idx]
                 if value is None:
                     if role == 'subject':
@@ -606,7 +605,7 @@ class ResultSet(object):
                 except AttributeError:
                     # not a variable
                     continue
-                for i in xrange(len(select.selection)):
+                for i in range(len(select.selection)):
                     if i == col:
                         continue
                     coletype = self.description[row][i]

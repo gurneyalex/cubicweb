@@ -162,8 +162,8 @@ def as_sql(value, dbhelper, prefix):
 
 def check_constraint(eschema, aschema, attr, constraint, dbhelper, prefix=''):
     # XXX should find a better name
-    cstrname = 'cstr' + md5(eschema.type + attr + constraint.type() +
-                            (constraint.serialize() or '')).hexdigest()
+    cstrname = 'cstr' + md5((eschema.type + attr + constraint.type() +
+                             (constraint.serialize() or '')).encode('ascii')).hexdigest()
     if constraint.type() == 'BoundaryConstraint':
         value = as_sql(constraint.boundary, dbhelper, prefix)
         return cstrname, '%s%s %s %s' % (prefix, attr, constraint.operator, value)
@@ -190,8 +190,7 @@ def aschema2sql(dbhelper, eschema, rschema, aschema, creating=True, indent=''):
     """write an attribute schema as SQL statements to stdout"""
     attr = rschema.type
     rdef = rschema.rdef(eschema.type, aschema.type)
-    sqltype = type_from_constraints(dbhelper, aschema.type, rdef.constraints,
-                                    creating)
+    sqltype = type_from_rdef(dbhelper, rdef, creating)
     if SET_DEFAULT:
         default = eschema.default(attr)
         if default is not None:
@@ -215,22 +214,30 @@ def aschema2sql(dbhelper, eschema, rschema, aschema, creating=True, indent=''):
     return sqltype
 
 
-def type_from_constraints(dbhelper, etype, constraints, creating=True):
-    """return a sql type string corresponding to the constraints"""
-    constraints = list(constraints)
+def type_from_rdef(dbhelper, rdef, creating=True):
+    """return a sql type string corresponding to the relation definition"""
+    constraints = list(rdef.constraints)
     unique, sqltype = False, None
-    size_constrained_string = dbhelper.TYPE_MAPPING.get('SizeConstrainedString', 'varchar(%s)')
-    if etype == 'String':
+    if rdef.object.type == 'String':
         for constraint in constraints:
             if isinstance(constraint, SizeConstraint):
                 if constraint.max is not None:
+                    size_constrained_string = dbhelper.TYPE_MAPPING.get(
+                        'SizeConstrainedString', 'varchar(%s)')
                     sqltype = size_constrained_string % constraint.max
             elif isinstance(constraint, UniqueConstraint):
                 unique = True
     if sqltype is None:
-        sqltype = dbhelper.TYPE_MAPPING[etype]
+        sqltype = sql_type(dbhelper, rdef)
     if creating and unique:
         sqltype += ' UNIQUE'
+    return sqltype
+
+
+def sql_type(dbhelper, rdef):
+    sqltype = dbhelper.TYPE_MAPPING[rdef.object]
+    if callable(sqltype):
+        sqltype = sqltype(rdef)
     return sqltype
 
 

@@ -18,7 +18,9 @@
 """abstract box classes for CubicWeb web client"""
 
 __docformat__ = "restructuredtext en"
-_ = unicode
+from cubicweb import _
+
+from six import add_metaclass
 
 from logilab.mtconverter import xml_escape
 from logilab.common.deprecation import class_deprecated, class_renamed
@@ -41,7 +43,7 @@ def sort_by_category(actions, categories_in_order=None):
         actions_by_cat.setdefault(action.category, []).append(
             (action.title, action) )
     for key, values in actions_by_cat.items():
-        actions_by_cat[key] = [act for title, act in sorted(values)]
+        actions_by_cat[key] = [act for title, act in sorted(values, key=lambda x: x[0])]
     if categories_in_order:
         for cat in categories_in_order:
             if cat in actions_by_cat:
@@ -53,6 +55,7 @@ def sort_by_category(actions, categories_in_order=None):
 
 # old box system, deprecated ###################################################
 
+@add_metaclass(class_deprecated)
 class BoxTemplate(View):
     """base template for boxes, usually a (contextual) list of possible
     actions. Various classes attributes may be used to control the box
@@ -66,7 +69,6 @@ class BoxTemplate(View):
 
         box.render(self.w)
     """
-    __metaclass__ = class_deprecated
     __deprecation_warning__ = '[3.10] *BoxTemplate classes are deprecated, use *CtxComponent instead (%(cls)s)'
 
     __registry__ = 'ctxcomponents'
@@ -193,4 +195,3 @@ class EditRelationBoxTemplate(EditRelationMixIn, EntityBoxTemplate):
 AjaxEditRelationBoxTemplate = class_renamed(
     'AjaxEditRelationBoxTemplate', AjaxEditRelationCtxComponent,
     '[3.10] AjaxEditRelationBoxTemplate has been renamed to AjaxEditRelationCtxComponent (%(cls)s)')
-

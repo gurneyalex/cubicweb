@@ -21,6 +21,9 @@
 import os.path as osp
 import re
 import datetime
+import io
+
+from six.moves import range
 
 from logilab.common.testlib import TestCase, unittest_main
 
@@ -50,7 +53,7 @@ class ValueGeneratorTC(TestCase):
             return None
 
     def _available_Person_firstname(self, etype, attrname):
-        return [f.strip() for f in file(osp.join(DATADIR, 'firstnames.txt'))]
+        return [f.strip() for f in io.open(osp.join(DATADIR, 'firstnames.txt'), encoding='latin1')]
 
     def setUp(self):
         config = ApptestConfiguration('data', apphome=DATADIR)
@@ -86,7 +89,7 @@ class ValueGeneratorTC(TestCase):
         # Test for random index
         for index in range(5):
             cost_value = self.bug_valgen.generate_attribute_value({}, 'cost', index)
-            self.assertIn(cost_value, range(index+1))
+            self.assertIn(cost_value, list(range(index+1)))
 
     def test_date(self):
         """test date generation"""

@@ -16,18 +16,18 @@
 # You should have received a copy of the GNU Lesser General Public License along
 # with CubicWeb.  If not, see <http://www.gnu.org/licenses/>.
 """this module contains base classes and utilities for cubicweb tests"""
-__docformat__ = "restructuredtext en"
+from __future__ import print_function
 
 import sys
 import re
-import urlparse
 from os.path import dirname, join, abspath
-from urllib import unquote
 from math import log
 from contextlib import contextmanager
-from warnings import warn
-from types import NoneType
 from itertools import chain
+
+from six import text_type, string_types
+from six.moves import range
+from six.moves.urllib.parse import urlparse, parse_qs, unquote as urlunquote
 
 import yams.schema
 
@@ -40,7 +40,7 @@ from logilab.common.deprecation import deprecated, class_deprecated
 from logilab.common.shellutils import getlogin
 
 from cubicweb import (ValidationError, NoSelectableObject, AuthenticationError,
-                      ProgrammingError, BadConnectionId)
+                      BadConnectionId)
 from cubicweb import cwconfig, devtools, web, server, repoapi
 from cubicweb.utils import json
 from cubicweb.sobjects import notification
@@ -49,7 +49,7 @@ from cubicweb.server.hook import SendMailOp
 from cubicweb.server.session import Session
 from cubicweb.devtools import SYSTEM_ENTITIES, SYSTEM_RELATIONS, VIEW_VALIDATORS
 from cubicweb.devtools import fake, htmlparser, DEFAULT_EMPTY_DB_ID
-from cubicweb.utils import json
+
 
 # low-level utilities ##########################################################
 
@@ -60,9 +60,10 @@ class CubicWebDebugger(Debugger):
     def do_view(self, arg):
         import webbrowser
         data = self._getval(arg)
-        with file('/tmp/toto.html', 'w') as toto:
+        with open('/tmp/toto.html', 'w') as toto:
             toto.write(data)
         webbrowser.open('file:///tmp/toto.html')
+
 
 def line_context_filter(line_no, center, before=3, after=None):
     """return true if line are in context
@@ -72,6 +73,7 @@ def line_context_filter(line_no, center, before=3, after=None):
     if after is None:
         after = before
     return center - before <= line_no <= center + after
+
 
 def unprotected_entities(schema, strict=False):
     """returned a set of each non final entity type, excluding "system" entities
@@ -83,9 +85,11 @@ def unprotected_entities(schema, strict=False):
         protected_entities = yams.schema.BASE_TYPES.union(SYSTEM_ENTITIES)
     return set(schema.entities()) - protected_entities
 
+
 class JsonValidator(object):
     def parse_string(self, data):
-        return json.loads(data)
+        return json.loads(data.decode('ascii'))
+
 
 @contextmanager
 def real_error_handling(app):
@@ -109,9 +113,11 @@ def real_error_handling(app):
     # restore
     app.error_handler = fake_error_handler
 
+
 # email handling, to test emails sent by an application ########################
 
 MAILBOX = []
+
 
 class Email(object):
     """you'll get instances of Email into MAILBOX during tests that trigger
@@ -143,13 +149,17 @@ class Email(object):
         return '<Email to %s with subject %s>' % (','.join(self.recipients),
                                                   self.message.get('Subject'))
 
+
 # the trick to get email into MAILBOX instead of actually sent: monkey patch
 # cwconfig.SMTP object
 class MockSMTP:
+
     def __init__(self, server, port):
         pass
+
     def close(self):
         pass
+
     def sendmail(self, fromaddr, recipients, msg):
         MAILBOX.append(Email(fromaddr, recipients, msg))
 
@@ -220,8 +230,6 @@ class RepoAccess(object):
         req = self.requestcls(self._repo.vreg, url=url, headers=headers,
                               method=method, form=kwargs)
         with self._session.new_cnx() as cnx:
-            if 'ecache' in cnx.transaction_data:
-                del cnx.transaction_data['ecache']
             req.set_cnx(cnx)
             yield req
 
@@ -243,7 +251,6 @@ class RepoAccess(object):
             cnx.commit()
 
 
-
 # base class for cubicweb tests requiring a full cw environments ###############
 
 class CubicWebTC(TestCase):
@@ -261,6 +268,7 @@ class CubicWebTC(TestCase):
     * `admlogin`, login of the admin user
     * `admpassword`, password of the admin user
     * `shell`, create and use shell environment
+    * `anonymous_allowed`: flag telling if anonymous browsing should be allowed
     """
     appid = 'data'
     configcls = devtools.ApptestConfiguration
@@ -283,7 +291,7 @@ class CubicWebTC(TestCase):
         """provide a new RepoAccess object for a given user
 
         The access is automatically closed at the end of the test."""
-        login = unicode(login)
+        login = text_type(login)
         access = RepoAccess(self.repo, login, self.requestcls)
         self._open_access.add(access)
         return access
@@ -293,14 +301,13 @@ class CubicWebTC(TestCase):
             try:
                 self._open_access.pop().close()
             except BadConnectionId:
-                continue # already closed
+                continue  # already closed
 
     @property
     def session(self):
         """return admin session"""
         return self._admin_session
 
-    #XXX this doesn't need to a be classmethod anymore
     def _init_repo(self):
         """init the repository and connection to it.
         """
@@ -310,10 +317,9 @@ class CubicWebTC(TestCase):
         db_handler.restore_database(self.test_db_id)
         self.repo = db_handler.get_repo(startup=True)
         # get an admin session (without actual login)
-        login = unicode(db_handler.config.default_admin_config['login'])
+        login = text_type(db_handler.config.default_admin_config['login'])
         self.admin_access = self.new_access(login)
         self._admin_session = self.admin_access._session
-
 
     # config management ########################################################
 
@@ -323,8 +329,11 @@ class CubicWebTC(TestCase):
 
         Configuration is cached on the test class.
         """
+        if cls is CubicWebTC:
+            # Prevent direct use of CubicWebTC directly to avoid database
+            # caching issues
+            return None
         try:
-            assert not cls is CubicWebTC, "Don't use CubicWebTC directly to prevent database caching issue"
             return cls.__dict__['_config']
         except KeyError:
             home = abspath(join(dirname(sys.modules[cls.__module__].__file__), cls.appid))
@@ -332,7 +341,7 @@ class CubicWebTC(TestCase):
             config.mode = 'test'
             return config
 
-    @classmethod # XXX could be turned into a regular method
+    @classmethod  # XXX could be turned into a regular method
     def init_config(cls, config):
         """configuration initialization hooks.
 
@@ -345,16 +354,16 @@ class CubicWebTC(TestCase):
         been properly bootstrapped.
         """
         admincfg = config.default_admin_config
-        cls.admlogin = unicode(admincfg['login'])
+        cls.admlogin = text_type(admincfg['login'])
         cls.admpassword = admincfg['password']
         # uncomment the line below if you want rql queries to be logged
-        #config.global_set_option('query-log-file',
-        #                         '/tmp/test_rql_log.' + `os.getpid()`)
+        # config.global_set_option('query-log-file',
+        #                          '/tmp/test_rql_log.' + `os.getpid()`)
         config.global_set_option('log-file', None)
         # set default-dest-addrs to a dumb email address to avoid mailbox or
         # mail queue pollution
         config.global_set_option('default-dest-addrs', ['whatever'])
-        send_to =  '%s@logilab.fr' % getlogin()
+        send_to = '%s@logilab.fr' % getlogin()
         config.global_set_option('sender-addr', send_to)
         config.global_set_option('default-dest-addrs', send_to)
         config.global_set_option('sender-name', 'cubicweb-test')
@@ -364,14 +373,12 @@ class CubicWebTC(TestCase):
         # web resources
         try:
             config.global_set_option('embed-allowed', re.compile('.*'))
-        except Exception: # not in server only configuration
+        except Exception:  # not in server only configuration
             pass
-        config.set_anonymous_allowed(cls.anonymous_allowed)
 
     @property
     def vreg(self):
         return self.repo.vreg
-
 
     # global resources accessors ###############################################
 
@@ -404,8 +411,9 @@ class CubicWebTC(TestCase):
                 self.__class__._repo_init_failed = ex
                 raise
             self.addCleanup(self._close_access)
+        self.config.set_anonymous_allowed(self.anonymous_allowed)
         self.setup_database()
-        MAILBOX[:] = [] # reset mailbox
+        MAILBOX[:] = []  # reset mailbox
 
     def tearDown(self):
         # XXX hack until logilab.common.testlib is fixed
@@ -421,8 +429,10 @@ class CubicWebTC(TestCase):
         # monkey patch send mail operation so emails are sent synchronously
         _old_mail_postcommit_event = SendMailOp.postcommit_event
         SendMailOp.postcommit_event = SendMailOp.sendmails
+
         def reverse_SendMailOp_monkey_patch():
             SendMailOp.postcommit_event = _old_mail_postcommit_event
+
         self.addCleanup(reverse_SendMailOp_monkey_patch)
 
     def setup_database(self):
@@ -446,30 +456,29 @@ class CubicWebTC(TestCase):
         else:
             return req.user
 
-    @iclassmethod # XXX turn into a class method
+    @iclassmethod  # XXX turn into a class method
     def create_user(self, req, login=None, groups=('users',), password=None,
                     email=None, commit=True, **kwargs):
         """create and return a new user entity"""
         if password is None:
             password = login
         if login is not None:
-            login = unicode(login)
+            login = text_type(login)
         user = req.create_entity('CWUser', login=login,
                                  upassword=password, **kwargs)
         req.execute('SET X in_group G WHERE X eid %%(x)s, G name IN(%s)'
                     % ','.join(repr(str(g)) for g in groups),
                     {'x': user.eid})
         if email is not None:
-            req.create_entity('EmailAddress', address=unicode(email),
+            req.create_entity('EmailAddress', address=text_type(email),
                               reverse_primary_email=user)
         user.cw_clear_relation_cache('in_group', 'subject')
         if commit:
             try:
-                req.commit() # req is a session
+                req.commit()  # req is a session
             except AttributeError:
                 req.cnx.commit()
         return user
-
 
     # other utilities #########################################################
 
@@ -518,10 +527,10 @@ class CubicWebTC(TestCase):
         similar to `orig_permissions.update(partial_perms)`.
         """
         torestore = []
-        for erschema, etypeperms in chain(perm_overrides, perm_kwoverrides.iteritems()):
-            if isinstance(erschema, basestring):
+        for erschema, etypeperms in chain(perm_overrides, perm_kwoverrides.items()):
+            if isinstance(erschema, string_types):
                 erschema = self.schema[erschema]
-            for action, actionperms in etypeperms.iteritems():
+            for action, actionperms in etypeperms.items():
                 origperms = erschema.permissions[action]
                 erschema.set_action_permissions(action, actionperms)
                 torestore.append([erschema, action, origperms])
@@ -548,7 +557,6 @@ class CubicWebTC(TestCase):
         transitions = entity.cw_adapt_to('IWorkflowable').possible_transitions()
         self.assertListEqual(sorted(tr.name for tr in transitions),
                              sorted(expected))
-
 
     # views and actions registries inspection ##################################
 
@@ -585,6 +593,7 @@ class CubicWebTC(TestCase):
             @property
             def items(self):
                 return self
+
         class fake_box(object):
             def action_link(self, action, **kwargs):
                 return (action.title, action.url())
@@ -611,7 +620,7 @@ class CubicWebTC(TestCase):
                 try:
                     view = viewsvreg._select_best(views, req, rset=rset)
                     if view is None:
-                        raise NoSelectableObject((req,), {'rset':rset}, views)
+                        raise NoSelectableObject((req,), {'rset': rset}, views)
                     if view.linkable():
                         yield view
                     else:
@@ -642,7 +651,6 @@ class CubicWebTC(TestCase):
                 else:
                     not_selected(self.vreg, view)
 
-
     # web ui testing utilities #################################################
 
     @property
@@ -650,8 +658,10 @@ class CubicWebTC(TestCase):
     def app(self):
         """return a cubicweb publisher"""
         publisher = application.CubicWebPublisher(self.repo, self.config)
+
         def raise_error_handler(*args, **kwargs):
             raise
+
         publisher.error_handler = raise_error_handler
         return publisher
 
@@ -703,7 +713,7 @@ class CubicWebTC(TestCase):
           for fields that are not tied to the given entity
         """
         assert field_dict or entity_field_dicts, \
-                'field_dict and entity_field_dicts arguments must not be both unspecified'
+            'field_dict and entity_field_dicts arguments must not be both unspecified'
         if field_dict is None:
             field_dict = {}
         form = {'__form_id': formid}
@@ -711,9 +721,11 @@ class CubicWebTC(TestCase):
         for field, value in field_dict.items():
             fields.append(field)
             form[field] = value
+
         def _add_entity_field(entity, field, value):
             entity_fields.append(field)
             form[eid_param(field, entity.eid)] = value
+
         for entity, field_dict in entity_field_dicts:
             if '__maineid' not in form:
                 form['__maineid'] = entity.eid
@@ -736,9 +748,9 @@ class CubicWebTC(TestCase):
         """
         req = self.request(url=url)
         if isinstance(url, unicode):
-            url = url.encode(req.encoding) # req.setup_params() expects encoded strings
-        querystring = urlparse.urlparse(url)[-2]
-        params = urlparse.parse_qs(querystring)
+            url = url.encode(req.encoding)  # req.setup_params() expects encoded strings
+        querystring = urlparse(url)[-2]
+        params = parse_qs(querystring)
         req.setup_params(params)
         return req
 
@@ -750,9 +762,9 @@ class CubicWebTC(TestCase):
         """
         with self.admin_access.web_request(url=url) as req:
             if isinstance(url, unicode):
-                url = url.encode(req.encoding) # req.setup_params() expects encoded strings
-            querystring = urlparse.urlparse(url)[-2]
-            params = urlparse.parse_qs(querystring)
+                url = url.encode(req.encoding)  # req.setup_params() expects encoded strings
+            querystring = urlparse(url)[-2]
+            params = parse_qs(querystring)
             req.setup_params(params)
             yield req
 
@@ -791,9 +803,9 @@ class CubicWebTC(TestCase):
             path = location
             params = {}
         else:
-            cleanup = lambda p: (p[0], unquote(p[1]))
+            cleanup = lambda p: (p[0], urlunquote(p[1]))
             params = dict(cleanup(p.split('=', 1)) for p in params.split('&') if p)
-        if path.startswith(req.base_url()): # may be relative
+        if path.startswith(req.base_url()):  # may be relative
             path = path[len(req.base_url()):]
         return path, params
 
@@ -812,8 +824,8 @@ class CubicWebTC(TestCase):
         """call the publish method of the application publisher, expecting to
         get a Redirect exception
         """
-        result = self.app_handle_request(req, path)
-        self.assertTrue(300 <= req.status_out <400, req.status_out)
+        self.app_handle_request(req, path)
+        self.assertTrue(300 <= req.status_out < 400, req.status_out)
         location = req.get_response_header('location')
         return self._parse_location(req, location)
 
@@ -821,7 +833,6 @@ class CubicWebTC(TestCase):
                 " (beware of small semantic changes)")
     def expect_redirect_publish(self, *args, **kwargs):
         return self.expect_redirect_handle_request(*args, **kwargs)
-
 
     def set_auth_mode(self, authmode, anonuser=None):
         self.set_option('auth-mode', authmode)
@@ -871,8 +882,8 @@ class CubicWebTC(TestCase):
         #
         # do not set html validators here, we need HTMLValidator for html
         # snippets
-        #'text/html': DTDValidator,
-        #'application/xhtml+xml': DTDValidator,
+        # 'text/html': DTDValidator,
+        # 'application/xhtml+xml': DTDValidator,
         'application/xml': htmlparser.XMLValidator,
         'text/xml': htmlparser.XMLValidator,
         'application/json': JsonValidator,
@@ -884,8 +895,7 @@ class CubicWebTC(TestCase):
         }
     # maps vid : validator name (override content_type_validators)
     vid_validators = dict((vid, htmlparser.VALMAP[valkey])
-                          for vid, valkey in VIEW_VALIDATORS.iteritems())
-
+                          for vid, valkey in VIEW_VALIDATORS.items())
 
     def view(self, vid, rset=None, req=None, template='main-template',
              **kwargs):
@@ -907,19 +917,21 @@ class CubicWebTC(TestCase):
         view = viewsreg.select(vid, req, rset=rset, **kwargs)
         # set explicit test description
         if rset is not None:
+            # coerce to "bytes" on py2 because the description will be sent to
+            # sys.stdout/stderr which takes "bytes" on py2 and "unicode" on py3
+            rql = str(rset.printable_rql())
             self.set_description("testing vid=%s defined in %s with (%s)" % (
-                vid, view.__module__, rset.printable_rql()))
+                vid, view.__module__, rql))
         else:
             self.set_description("testing vid=%s defined in %s without rset" % (
                 vid, view.__module__))
-        if template is None: # raw view testing, no template
+        if template is None:  # raw view testing, no template
             viewfunc = view.render
         else:
             kwargs['view'] = view
             viewfunc = lambda **k: viewsreg.main_template(req, template,
                                                           rset=rset, **kwargs)
         return self._test_view(viewfunc, view, template, kwargs)
-
 
     def _test_view(self, viewfunc, view, template='main-template', kwargs={}):
         """this method does the actual call to the view
@@ -940,7 +952,9 @@ class CubicWebTC(TestCase):
                 msg = '[%s in %s] %s' % (klass, view.__regid__, exc)
             except Exception:
                 msg = '[%s in %s] undisplayable exception' % (klass, view.__regid__)
-            raise AssertionError, msg, tcbk
+            exc = AssertionError(msg)
+            exc.__traceback__ = tcbk
+            raise exc
         return self._check_html(output, view, template)
 
     def get_validator(self, view=None, content_type=None, output=None):
@@ -953,11 +967,11 @@ class CubicWebTC(TestCase):
         if content_type is None:
             content_type = 'text/html'
         if content_type in ('text/html', 'application/xhtml+xml') and output:
-            if output.startswith('<!DOCTYPE html>'):
+            if output.startswith(b'<!DOCTYPE html>'):
                 # only check XML well-formness since HTMLValidator isn't html5
                 # compatible and won't like various other extensions
                 default_validator = htmlparser.XMLSyntaxValidator
-            elif output.startswith('<?xml'):
+            elif output.startswith(b'<?xml'):
                 default_validator = htmlparser.DTDValidator
             else:
                 default_validator = htmlparser.HTMLValidator
@@ -973,13 +987,16 @@ class CubicWebTC(TestCase):
     def _check_html(self, output, view, template='main-template'):
         """raises an exception if the HTML is invalid"""
         output = output.strip()
+        if isinstance(output, text_type):
+            # XXX
+            output = output.encode('utf-8')
         validator = self.get_validator(view, output=output)
         if validator is None:
-            return output # return raw output if no validator is defined
+            return output  # return raw output if no validator is defined
         if isinstance(validator, htmlparser.DTDValidator):
             # XXX remove <canvas> used in progress widget, unknown in html dtd
             output = re.sub('<canvas.*?></canvas>', '', output)
-        return self.assertWellFormed(validator, output.strip(), context= view.__regid__)
+        return self.assertWellFormed(validator, output.strip(), context=view.__regid__)
 
     def assertWellFormed(self, validator, content, context=None):
         try:
@@ -998,7 +1015,7 @@ class CubicWebTC(TestCase):
                 str_exc = str(exc)
             except Exception:
                 str_exc = 'undisplayable exception'
-            msg += str_exc
+            msg += str_exc.encode(sys.getdefaultencoding(), 'replace')
             if content is not None:
                 position = getattr(exc, "position", (0,))[0]
                 if position:
@@ -1015,7 +1032,9 @@ class CubicWebTC(TestCase):
                                          for idx, line in enumerate(content)
                                          if line_context_filter(idx+1, position))
                     msg += u'\nfor content:\n%s' % content
-            raise AssertionError, msg, tcbk
+            exc = AssertionError(msg)
+            exc.__traceback__ = tcbk
+            raise exc
 
     def assertDocTestFile(self, testfile):
         # doctest returns tuple (failure_count, test_count)
@@ -1053,6 +1072,7 @@ from cubicweb.devtools.fill import insert_entity_queries, make_relations_queries
 
 # XXX cleanup unprotected_entities & all mess
 
+
 def how_many_dict(schema, cnx, how_many, skip):
     """given a schema, compute how many entities by type we need to be able to
     satisfy relations cardinality.
@@ -1081,7 +1101,7 @@ def how_many_dict(schema, cnx, how_many, skip):
                 # reverse subj and obj in the above explanation
                 relmap.setdefault((rschema, obj), []).append(str(subj))
     unprotected = unprotected_entities(schema)
-    for etype in skip: # XXX (syt) duh? explain or kill
+    for etype in skip:  # XXX (syt) duh? explain or kill
         unprotected.add(etype)
     howmanydict = {}
     # step 1, compute a base number of each entity types: number of already
@@ -1096,7 +1116,7 @@ def how_many_dict(schema, cnx, how_many, skip):
     # new num for etype = max(current num, sum(num for possible target etypes))
     #
     # XXX we should first check there is no cycle then propagate changes
-    for (rschema, etype), targets in relmap.iteritems():
+    for (rschema, etype), targets in relmap.items():
         relfactor = sum(howmanydict[e] for e in targets)
         howmanydict[str(etype)] = max(relfactor, howmanydict[etype])
     return howmanydict
@@ -1126,7 +1146,6 @@ class AutoPopulateTest(CubicWebTC):
 
     def post_populate(self, cnx):
         pass
-
 
     @nocoverage
     def auto_populate(self, how_many):
@@ -1166,8 +1185,8 @@ class AutoPopulateTest(CubicWebTC):
                 cnx.execute(rql, args)
             except ValidationError as ex:
                 # failed to satisfy some constraint
-                print 'error in automatic db population', ex
-                cnx.commit_state = None # reset uncommitable flag
+                print('error in automatic db population', ex)
+                cnx.commit_state = None  # reset uncommitable flag
         self.post_populate(cnx)
 
     def iter_individual_rsets(self, etypes=None, limit=None):
@@ -1179,7 +1198,7 @@ class AutoPopulateTest(CubicWebTC):
                 else:
                     rql = 'Any X WHERE X is %s' % etype
                 rset = req.execute(rql)
-                for row in xrange(len(rset)):
+                for row in range(len(rset)):
                     if limit and row > limit:
                         break
                     # XXX iirk
@@ -1202,7 +1221,8 @@ class AutoPopulateTest(CubicWebTC):
             # test a mixed query (DISTINCT/GROUP to avoid getting duplicate
             # X which make muledit view failing for instance (html validation fails
             # because of some duplicate "id" attributes)
-            yield req.execute('DISTINCT Any X, MAX(Y) GROUPBY X WHERE X is %s, Y is %s' % (etype1, etype2))
+            yield req.execute('DISTINCT Any X, MAX(Y) GROUPBY X WHERE X is %s, Y is %s' %
+                              (etype1, etype2))
             # test some application-specific queries if defined
             for rql in self.application_rql:
                 yield req.execute(rql)
@@ -1225,7 +1245,8 @@ class AutoPopulateTest(CubicWebTC):
             # resultset's syntax tree
             rset = backup_rset
         for action in self.list_actions_for(rset):
-            yield InnerTest(self._testname(rset, action.__regid__, 'action'), self._test_action, action)
+            yield InnerTest(self._testname(rset, action.__regid__, 'action'),
+                            self._test_action, action)
         for box in self.list_boxes_for(rset):
             w = [].append
             yield InnerTest(self._testname(rset, box.__regid__, 'box'), box.render, w)
@@ -1243,28 +1264,28 @@ class AutomaticWebTest(AutoPopulateTest):
     tags = AutoPopulateTest.tags | Tags('web', 'generated')
 
     def setUp(self):
-        assert not self.__class__ is AutomaticWebTest, 'Please subclass AutomaticWebTest to prevent database caching issue'
+        if self.__class__ is AutomaticWebTest:
+            # Prevent direct use of AutomaticWebTest to avoid database caching
+            # issues.
+            return
         super(AutomaticWebTest, self).setUp()
 
         # access to self.app for proper initialization of the authentication
         # machinery (else some views may fail)
         self.app
 
-    ## one each
     def test_one_each_config(self):
         self.auto_populate(1)
         for rset in self.iter_automatic_rsets(limit=1):
             for testargs in self._test_everything_for(rset):
                 yield testargs
 
-    ## ten each
     def test_ten_each_config(self):
         self.auto_populate(10)
         for rset in self.iter_automatic_rsets(limit=10):
             for testargs in self._test_everything_for(rset):
                 yield testargs
 
-    ## startup views
     def test_startup_views(self):
         for vid in self.list_startup_views():
             with self.admin_access.web_request() as req:
@@ -1284,7 +1305,7 @@ def not_selected(vreg, appobject):
 #     # XXX broken
 #     from cubicweb.devtools.apptest import TestEnvironment
 #     env = testclass._env = TestEnvironment('data', configcls=testclass.configcls)
-#     for reg in env.vreg.itervalues():
+#     for reg in env.vreg.values():
 #         reg._selected = {}
 #         try:
 #             orig_select_best = reg.__class__.__orig_select_best
@@ -1304,10 +1325,10 @@ def not_selected(vreg, appobject):
 
 
 # def print_untested_objects(testclass, skipregs=('hooks', 'etypes')):
-#     for regname, reg in testclass._env.vreg.iteritems():
+#     for regname, reg in testclass._env.vreg.items():
 #         if regname in skipregs:
 #             continue
-#         for appobjects in reg.itervalues():
+#         for appobjects in reg.values():
 #             for appobject in appobjects:
 #                 if not reg._selected.get(appobject):
 #                     print 'not tested', regname, appobject

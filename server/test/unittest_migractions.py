@@ -22,6 +22,7 @@ import os, os.path as osp
 from contextlib import contextmanager
 
 from logilab.common.testlib import unittest_main, Tags, tag
+from logilab.common import tempattr
 
 from yams.constraints import UniqueConstraint
 
@@ -54,7 +55,8 @@ def tearDownModule(*args):
 
 class MigrationConfig(cubicweb.devtools.TestServerConfiguration):
     default_sources = cubicweb.devtools.DEFAULT_PSQL_SOURCES
-    CUBES_PATH = [osp.join(HERE, 'data-migractions', 'cubes')]
+    CUBES_PATH = cubicweb.devtools.TestServerConfiguration.CUBES_PATH + [
+        osp.join(HERE, 'data-migractions', 'cubes')]
 
 
 class MigrationTC(CubicWebTC):
@@ -151,7 +153,7 @@ class MigrationCommandsTC(MigrationTC):
             orderdict2 = dict(mh.rqlexec('Any RTN, O WHERE X name "Note", RDEF from_entity X, '
                                          'RDEF relation_type RT, RDEF ordernum O, RT name RTN'))
             whateverorder = migrschema['whatever'].rdef('Note', 'Int').order
-            for k, v in orderdict.iteritems():
+            for k, v in orderdict.items():
                 if v >= whateverorder:
                     orderdict[k] = v+1
             orderdict['whatever'] = whateverorder
@@ -274,10 +276,10 @@ class MigrationCommandsTC(MigrationTC):
                                'description', 'description_format',
                                'eid',
                                'filed_under2', 'has_text',
-                               'identity', 'in_basket', 'is', 'is_instance_of',
+                               'identity', 'in_basket', 'inlined_rel', 'is', 'is_instance_of',
                                'modification_date', 'name', 'owned_by'])
             self.assertCountEqual([str(rs) for rs in self.schema['Folder2'].object_relations()],
-                                  ['filed_under2', 'identity'])
+                                  ['filed_under2', 'identity', 'inlined_rel'])
             # Old will be missing as it has been renamed into 'New' in the migrated
             # schema while New hasn't been added here.
             self.assertEqual(sorted(str(e) for e in self.schema['filed_under2'].subjects()),
@@ -286,6 +288,20 @@ class MigrationCommandsTC(MigrationTC):
             eschema = self.schema.eschema('Folder2')
             for cstr in eschema.rdef('name').constraints:
                 self.assertTrue(hasattr(cstr, 'eid'))
+
+    def test_add_cube_with_custom_final_type(self):
+        with self.mh() as (cnx, mh):
+            try:
+                mh.cmd_add_cube('fakecustomtype')
+                self.assertIn('Numeric', self.schema)
+                self.assertTrue(self.schema['Numeric'].final)
+                rdef = self.schema['num'].rdefs[('Location', 'Numeric')]
+                self.assertEqual(rdef.scale, 10)
+                self.assertEqual(rdef.precision, 18)
+                fields = self.table_schema(mh, '%sLocation' % SQL_PREFIX)
+                self.assertEqual(fields['%snum' % SQL_PREFIX], ('numeric', None)) # XXX
+            finally:
+                mh.cmd_drop_cube('fakecustomtype')
 
     def test_add_drop_entity_type(self):
         with self.mh() as (cnx, mh):
@@ -524,12 +540,12 @@ class MigrationCommandsTC(MigrationTC):
             # remaining orphan rql expr which should be deleted at commit (composite relation)
             # unattached expressions -> pending deletion on commit
             self.assertEqual(cnx.execute('Any COUNT(X) WHERE X is RQLExpression, X exprtype "ERQLExpression",'
-                                            'NOT ET1 read_permission X, NOT ET2 add_permission X, '
-                                            'NOT ET3 delete_permission X, NOT ET4 update_permission X')[0][0],
+                                         'NOT ET1 read_permission X, NOT ET2 add_permission X, '
+                                         'NOT ET3 delete_permission X, NOT ET4 update_permission X')[0][0],
                               7)
             self.assertEqual(cnx.execute('Any COUNT(X) WHERE X is RQLExpression, X exprtype "RRQLExpression",'
-                                            'NOT ET1 read_permission X, NOT ET2 add_permission X, '
-                                            'NOT ET3 delete_permission X, NOT ET4 update_permission X')[0][0],
+                                         'NOT ET1 read_permission X, NOT ET2 add_permission X, '
+                                         'NOT ET3 delete_permission X, NOT ET4 update_permission X')[0][0],
                               2)
             # finally
             self.assertEqual(cnx.execute('Any COUNT(X) WHERE X is RQLExpression')[0][0],
@@ -579,7 +595,7 @@ class MigrationCommandsTC(MigrationTC):
     def test_add_drop_cube_and_deps(self):
         with self.mh() as (cnx, mh):
             schema = self.repo.schema
-            self.assertEqual(sorted((str(s), str(o)) for s, o in schema['see_also'].rdefs.iterkeys()),
+            self.assertEqual(sorted((str(s), str(o)) for s, o in schema['see_also'].rdefs),
                              sorted([('EmailThread', 'EmailThread'), ('Folder', 'Folder'),
                                      ('Bookmark', 'Bookmark'), ('Bookmark', 'Note'),
                                      ('Note', 'Note'), ('Note', 'Bookmark')]))
@@ -593,7 +609,7 @@ class MigrationCommandsTC(MigrationTC):
                 for ertype in ('Email', 'EmailThread', 'EmailPart', 'File',
                                'sender', 'in_thread', 'reply_to', 'data_format'):
                     self.assertNotIn(ertype, schema)
-                self.assertEqual(sorted(schema['see_also'].rdefs.iterkeys()),
+                self.assertEqual(sorted(schema['see_also'].rdefs),
                                   sorted([('Folder', 'Folder'),
                                           ('Bookmark', 'Bookmark'),
                                           ('Bookmark', 'Note'),
@@ -612,12 +628,12 @@ class MigrationCommandsTC(MigrationTC):
                 for ertype in ('Email', 'EmailThread', 'EmailPart', 'File',
                                'sender', 'in_thread', 'reply_to', 'data_format'):
                     self.assertIn(ertype, schema)
-                self.assertEqual(sorted(schema['see_also'].rdefs.iterkeys()),
-                                  sorted([('EmailThread', 'EmailThread'), ('Folder', 'Folder'),
-                                          ('Bookmark', 'Bookmark'),
-                                          ('Bookmark', 'Note'),
-                                          ('Note', 'Note'),
-                                          ('Note', 'Bookmark')]))
+                self.assertEqual(sorted(schema['see_also'].rdefs),
+                                 sorted([('EmailThread', 'EmailThread'), ('Folder', 'Folder'),
+                                         ('Bookmark', 'Bookmark'),
+                                         ('Bookmark', 'Note'),
+                                         ('Note', 'Note'),
+                                         ('Note', 'Bookmark')]))
                 self.assertEqual(sorted(schema['see_also'].subjects()), ['Bookmark', 'EmailThread', 'Folder', 'Note'])
                 self.assertEqual(sorted(schema['see_also'].objects()), ['Bookmark', 'EmailThread', 'Folder', 'Note'])
                 from cubes.fakeemail.__pkginfo__ import version as email_version
@@ -719,6 +735,24 @@ class MigrationCommandsTC(MigrationTC):
             self.assertEqual(tel, 1.0)
             self.assertIsInstance(tel, float)
 
+    def test_drop_required_inlined_relation(self):
+        with self.mh() as (cnx, mh):
+            bob = mh.cmd_create_entity('Personne', nom=u'bob')
+            note = mh.cmd_create_entity('Note', ecrit_par=bob)
+            mh.commit()
+            rdef = mh.fs_schema.rschema('ecrit_par').rdefs[('Note', 'Personne')]
+            with tempattr(rdef, 'cardinality', '1*'):
+                mh.sync_schema_props_perms('ecrit_par', syncperms=False)
+            mh.cmd_drop_relation_type('ecrit_par')
+            self.assertNotIn('%secrit_par' % SQL_PREFIX,
+                             self.table_schema(mh, '%sPersonne' % SQL_PREFIX))
+
+    def test_drop_inlined_rdef_delete_data(self):
+        with self.mh() as (cnx, mh):
+            note = mh.cmd_create_entity('Note', ecrit_par=cnx.user.eid)
+            mh.commit()
+            mh.drop_relation_definition('Note', 'ecrit_par', 'CWUser')
+            self.assertFalse(mh.sqlexec('SELECT * FROM cw_Note WHERE cw_ecrit_par IS NOT NULL'))
 
 class MigrationCommandsComputedTC(MigrationTC):
     """ Unit tests for computed relations and attributes
@@ -783,6 +817,20 @@ class MigrationCommandsComputedTC(MigrationTC):
             self.assertEqual(self.schema['whatever'].objects(), ('Company',))
             self.assertEqual(self.schema['whatever'].subjects(), ('Company',))
             self.assertFalse(self.table_sql(mh, 'whatever_relation'))
+
+    def test_computed_relation_sync_schema_props_perms_security(self):
+        with self.mh() as (cnx, mh):
+            rdef = next(iter(self.schema['perm_changes'].rdefs.values()))
+            self.assertEqual(rdef.permissions,
+                             {'add': (), 'delete': (),
+                              'read': ('managers', 'users')})
+            mh.cmd_sync_schema_props_perms('perm_changes')
+            self.assertEqual(self.schema['perm_changes'].permissions,
+                             {'read': ('managers',)})
+            rdef = next(iter(self.schema['perm_changes'].rdefs.values()))
+            self.assertEqual(rdef.permissions,
+                             {'add': (), 'delete': (),
+                              'read': ('managers',)})
 
     def test_computed_relation_sync_schema_props_perms_on_rdef(self):
         self.assertIn('whatever', self.schema)
@@ -866,8 +914,10 @@ class MigrationCommandsComputedTC(MigrationTC):
         self.assertIn('note100', self.schema)
         with self.mh() as (cnx, mh):
             mh.cmd_sync_schema_props_perms('note100')
-        self.assertEqual(self.schema['note100'].rdefs['Note', 'Int'].formula,
-                         'Any N*100 WHERE X note N')
+        rdef = self.schema['note100'].rdefs['Note', 'Int']
+        self.assertEqual(rdef.formula_select.as_string(),
+                         'Any (N * 100) WHERE X note N, X is Note')
+        self.assertEqual(rdef.formula, 'Any N*100 WHERE X note N')
 
     def test_computed_attribute_sync_schema_props_perms_rdef(self):
         self.setup_add_score()

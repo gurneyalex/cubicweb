@@ -16,16 +16,20 @@
 # You should have received a copy of the GNU Lesser General Public License along
 # with CubicWeb.  If not, see <http://www.gnu.org/licenses/>.
 """functions for schema / permissions (de)serialization using RQL"""
+from __future__ import print_function
 
 __docformat__ = "restructuredtext en"
 
 import os
 import json
 import sys
+import sqlite3
+
+from six import PY2, text_type, string_types
 
 from logilab.common.shellutils import ProgressBar, DummyProgressBar
 
-from yams import BadSchemaDefinition, schema as schemamod, buildobjs as ybo
+from yams import BadSchemaDefinition, schema as schemamod, buildobjs as ybo, constraints
 
 from cubicweb import Binary
 from cubicweb.schema import (KNOWN_RPROPERTIES, CONSTRAINTS, ETYPE_NAME_MAP,
@@ -49,11 +53,11 @@ def group_mapping(cnx, interactive=True):
         return res
     missing = [g for g in ('owners', 'managers', 'users', 'guests') if not g in res]
     if missing:
-        print 'some native groups are missing but the following groups have been found:'
-        print '\n'.join('* %s (%s)' % (n, eid) for n, eid in res.items())
-        print
-        print 'enter the eid of a to group to map to each missing native group'
-        print 'or just type enter to skip permissions granted to a group'
+        print('some native groups are missing but the following groups have been found:')
+        print('\n'.join('* %s (%s)' % (n, eid) for n, eid in res.items()))
+        print()
+        print('enter the eid of a to group to map to each missing native group')
+        print('or just type enter to skip permissions granted to a group')
         for group in missing:
             while True:
                 value = raw_input('eid for group %s: ' % group).strip()
@@ -62,13 +66,13 @@ def group_mapping(cnx, interactive=True):
                 try:
                     eid = int(value)
                 except ValueError:
-                    print 'eid should be an integer'
+                    print('eid should be an integer')
                     continue
                 for eid_ in res.values():
                     if eid == eid_:
                         break
                 else:
-                    print 'eid is not a group eid'
+                    print('eid is not a group eid')
                     continue
                 res[name] = eid
                 break
@@ -146,7 +150,7 @@ def deserialize_schema(schema, cnx):
                     {'x': etype, 'n': netype})
             cnx.commit(False)
             tocleanup = [eid]
-            tocleanup += (eid for eid, cached in repo._type_source_cache.iteritems()
+            tocleanup += (eid for eid, cached in repo._type_source_cache.items()
                           if etype == cached[0])
             repo.clear_caches(tocleanup)
             cnx.commit(False)
@@ -240,7 +244,7 @@ def deserialize_schema(schema, cnx):
              'order', 'description', 'indexed', 'fulltextindexed',
              'internationalizable', 'default', 'formula'), values))
         typeparams = extra_props.get(attrs['rdefeid'])
-        attrs.update(json.load(typeparams) if typeparams else {})
+        attrs.update(json.loads(typeparams.getvalue().decode('ascii')) if typeparams else {})
         default = attrs['default']
         if default is not None:
             if isinstance(default, Binary):
@@ -281,7 +285,7 @@ def deserialize_schema(schema, cnx):
         else:
             rtype = str(rel)
         relations[1].append(rtype)
-    for eschema, unique_together in unique_togethers.itervalues():
+    for eschema, unique_together in unique_togethers.values():
         eschema._unique_together.append(tuple(sorted(unique_together)))
     schema.infer_specialization_rules()
     cnx.commit()
@@ -309,12 +313,20 @@ def deserialize_ertype_permissions(cnx):
             res.setdefault(eid, {}).setdefault(action, []).append( (expr, mainvars, expreid) )
     return res
 
+
 def deserialize_rdef_constraints(cnx):
     """return the list of relation definition's constraints as instances"""
+    if cnx.repo.system_source.dbdriver != 'sqlite' or sqlite3.sqlite_version_info >= (3, 7, 12):
+            # these are implemented as CHECK constraints in sql, don't do the work twice. Unless we
+            # are using too old version of sqlite which misses the constraint name in the integrity
+            # error so we've to check them by ourselves anyway
+            constraints.StaticVocabularyConstraint.check = lambda *args: True
+            constraints.IntervalBoundConstraint.check = lambda *args: True
+            constraints.BoundaryConstraint.check = lambda *args: True
     res = {}
     for rdefeid, ceid, ct, val in cnx.execute(
-        'Any E, X,TN,V WHERE E constrained_by X, X is CWConstraint, '
-        'X cstrtype T, T name TN, X value V', build_descr=False):
+            'Any E, X,TN,V WHERE E constrained_by X, X is CWConstraint, '
+            'X cstrtype T, T name TN, X value V', build_descr=False):
         cstr = CONSTRAINTS[ct].deserialize(val)
         cstr.eid = ceid
         res.setdefault(rdefeid, []).append(cstr)
@@ -331,7 +343,7 @@ def set_perms(erschema, permsidx):
         thispermsdict = permsidx[erschema.eid]
     except KeyError:
         return
-    for action, somethings in thispermsdict.iteritems():
+    for action, somethings in thispermsdict.items():
         erschema.permissions[action] = tuple(
             isinstance(p, tuple) and erschema.rql_expression(*p) or p
             for p in somethings)
@@ -344,7 +356,7 @@ def serialize_schema(cnx, schema):
     current schema
     """
     _title = '-> storing the schema in the database '
-    print _title,
+    print(_title, end=' ')
     execute = cnx.execute
     eschemas = schema.entities()
     pb_size = (len(eschemas + schema.relations())
@@ -366,7 +378,7 @@ def serialize_schema(cnx, schema):
     cstrtypemap = {}
     rql = 'INSERT CWConstraintType X: X name %(ct)s'
     for cstrtype in CONSTRAINTS:
-        cstrtypemap[cstrtype] = execute(rql, {'ct': unicode(cstrtype)},
+        cstrtypemap[cstrtype] = execute(rql, {'ct': text_type(cstrtype)},
                                         build_descr=False)[0][0]
         pb.update()
     # serialize relations
@@ -381,10 +393,10 @@ def serialize_schema(cnx, schema):
             continue
         execschemarql(execute, rschema, rschema2rql(rschema, addrdef=False))
         if rschema.symmetric:
-            rdefs = [rdef for k, rdef in rschema.rdefs.iteritems()
+            rdefs = [rdef for k, rdef in rschema.rdefs.items()
                      if (rdef.subject, rdef.object) == k]
         else:
-            rdefs = rschema.rdefs.itervalues()
+            rdefs = rschema.rdefs.values()
         for rdef in rdefs:
             execschemarql(execute, rdef,
                           rdef2rql(rdef, cstrtypemap, groupmap))
@@ -397,7 +409,7 @@ def serialize_schema(cnx, schema):
     for rql, kwargs in specialize2rql(schema):
         execute(rql, kwargs, build_descr=False)
         pb.update()
-    print
+    print()
 
 
 # high level serialization functions
@@ -455,8 +467,8 @@ def uniquetogether2rqls(eschema):
     columnset = set()
     for columns in eschema._unique_together:
         if columns in columnset:
-            print ('schemaserial: skipping duplicate unique together %r %r' %
-                   (eschema.type, columns))
+            print('schemaserial: skipping duplicate unique together %r %r' %
+                  (eschema.type, columns))
             continue
         columnset.add(columns)
         rql, args = _uniquetogether2rql(eschema, columns)
@@ -471,7 +483,7 @@ def _uniquetogether2rql(eschema, unique_together):
     for i, name in enumerate(unique_together):
         rschema = eschema.schema.rschema(name)
         rtype = 'T%d' % i
-        substs[rtype] = unicode(rschema.type)
+        substs[rtype] = text_type(rschema.type)
         relations.append('C relations %s' % rtype)
         restrictions.append('%(rtype)s name %%(%(rtype)s)s' % {'rtype': rtype})
     relations = ', '.join(relations)
@@ -483,11 +495,11 @@ def _uniquetogether2rql(eschema, unique_together):
 
 def _ervalues(erschema):
     try:
-        type_ = unicode(erschema.type)
+        type_ = text_type(erschema.type)
     except UnicodeDecodeError as e:
         raise Exception("can't decode %s [was %s]" % (erschema.type, e))
     try:
-        desc = unicode(erschema.description) or u''
+        desc = text_type(erschema.description) or u''
     except UnicodeDecodeError as e:
         raise Exception("can't decode %s [was %s]" % (erschema.description, e))
     return {
@@ -509,7 +521,7 @@ def rschema2rql(rschema, cstrtypemap=None, addrdef=True, groupmap=None):
     if addrdef:
         assert cstrtypemap
         # sort for testing purpose
-        for rdef in sorted(rschema.rdefs.itervalues(),
+        for rdef in sorted(rschema.rdefs.values(),
                            key=lambda x: (x.subject, x.object)):
             for rql, values in rdef2rql(rdef, cstrtypemap, groupmap):
                 yield rql, values
@@ -519,7 +531,7 @@ def rschema_relations_values(rschema):
     values['final'] = rschema.final
     values['symmetric'] = rschema.symmetric
     values['inlined'] = rschema.inlined
-    if isinstance(rschema.fulltext_container, str):
+    if PY2 and isinstance(rschema.fulltext_container, str):
         values['fulltext_container'] = unicode(rschema.fulltext_container)
     else:
         values['fulltext_container'] = rschema.fulltext_container
@@ -535,7 +547,7 @@ def crschema2rql(crschema, groupmap):
 
 def crschema_relations_values(crschema):
     values = _ervalues(crschema)
-    values['rule'] = unicode(crschema.rule)
+    values['rule'] = text_type(crschema.rule)
     # XXX why oh why?
     del values['final']
     relations = ['X %s %%(%s)s' % (attr, attr) for attr in sorted(values)]
@@ -581,20 +593,20 @@ def _rdef_values(rdef):
             value = bool(value)
         elif prop == 'ordernum':
             value = int(value)
-        elif isinstance(value, str):
+        elif PY2 and isinstance(value, str):
             value = unicode(value)
         if value is not None and prop == 'default':
             value = Binary.zpickle(value)
         values[amap.get(prop, prop)] = value
     if extra:
-        values['extra_props'] = Binary(json.dumps(extra))
+        values['extra_props'] = Binary(json.dumps(extra).encode('ascii'))
     relations = ['X %s %%(%s)s' % (attr, attr) for attr in sorted(values)]
     return relations, values
 
 def constraints2rql(cstrtypemap, constraints, rdefeid=None):
     for constraint in constraints:
         values = {'ct': cstrtypemap[constraint.type()],
-                  'value': unicode(constraint.serialize()),
+                  'value': text_type(constraint.serialize()),
                   'x': rdefeid} # when not specified, will have to be set by the caller
         yield 'INSERT CWConstraint X: X value %(value)s, X cstrtype CT, EDEF constrained_by X WHERE \
 CT eid %(ct)s, EDEF eid %(x)s', values
@@ -613,23 +625,23 @@ def _erperms2rql(erschema, groupmap):
             # may occurs when modifying persistent schema
             continue
         for group_or_rqlexpr in grantedto:
-            if isinstance(group_or_rqlexpr, basestring):
+            if isinstance(group_or_rqlexpr, string_types):
                 # group
                 try:
                     yield ('SET X %s_permission Y WHERE Y eid %%(g)s, X eid %%(x)s' % action,
                            {'g': groupmap[group_or_rqlexpr]})
                 except KeyError:
-                    print ("WARNING: group %s used in permissions for %s was ignored because it doesn't exist."
-                           " You may want to add it into a precreate.py file" % (group_or_rqlexpr, erschema))
+                    print("WARNING: group %s used in permissions for %s was ignored because it doesn't exist."
+                          " You may want to add it into a precreate.py file" % (group_or_rqlexpr, erschema))
                     continue
             else:
                 # rqlexpr
                 rqlexpr = group_or_rqlexpr
                 yield ('INSERT RQLExpression E: E expression %%(e)s, E exprtype %%(t)s, '
                        'E mainvars %%(v)s, X %s_permission E WHERE X eid %%(x)s' % action,
-                       {'e': unicode(rqlexpr.expression),
-                        'v': unicode(','.join(sorted(rqlexpr.mainvars))),
-                        't': unicode(rqlexpr.__class__.__name__)})
+                       {'e': text_type(rqlexpr.expression),
+                        'v': text_type(','.join(sorted(rqlexpr.mainvars))),
+                        't': text_type(rqlexpr.__class__.__name__)})
 
 # update functions
 
@@ -641,7 +653,7 @@ def updateeschema2rql(eschema, eid):
 def updaterschema2rql(rschema, eid):
     if rschema.rule:
         yield ('SET X rule %(r)s WHERE X eid %(x)s',
-               {'x': eid, 'r': unicode(rschema.rule)})
+               {'x': eid, 'r': text_type(rschema.rule)})
     else:
         relations, values = rschema_relations_values(rschema)
         values['x'] = eid

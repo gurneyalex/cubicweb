@@ -19,14 +19,20 @@
 database
 """
 
-import urllib2
-import StringIO
+from io import BytesIO
 from os.path import exists
 from datetime import datetime, timedelta
-from base64 import b64decode
-from cookielib import CookieJar
-import urlparse
+
+from six import text_type
+from six.moves.urllib.parse import urlparse
+from six.moves.urllib.request import Request, build_opener, HTTPCookieProcessor
+from six.moves.urllib.error import HTTPError
+from six.moves.http_cookiejar import CookieJar
+
+from pytz import utc
 from lxml import etree
+
+from logilab.common.deprecation import deprecated
 
 from cubicweb import RegistryNotFound, ObjectNotFound, ValidationError, UnknownEid
 from cubicweb.server.repository import preprocess_inlined_relations
@@ -157,10 +163,10 @@ class DataFeedSource(AbstractSource):
     def fresh(self):
         if self.latest_retrieval is None:
             return False
-        return datetime.utcnow() < (self.latest_retrieval + self.synchro_interval)
+        return datetime.now(tz=utc) < (self.latest_retrieval + self.synchro_interval)
 
     def update_latest_retrieval(self, cnx):
-        self.latest_retrieval = datetime.utcnow()
+        self.latest_retrieval = datetime.now(tz=utc)
         cnx.execute('SET X latest_retrieval %(date)s WHERE X eid %(x)s',
                     {'x': self.eid, 'date': self.latest_retrieval})
         cnx.commit()
@@ -168,7 +174,7 @@ class DataFeedSource(AbstractSource):
     def acquire_synchronization_lock(self, cnx):
         # XXX race condition until WHERE of SET queries is executed using
         # 'SELECT FOR UPDATE'
-        now = datetime.utcnow()
+        now = datetime.now(tz=utc)
         if not cnx.execute(
             'SET X in_synchronization %(now)s WHERE X eid %(x)s, '
             'X in_synchronization NULL OR X in_synchronization < %(maxdt)s',
@@ -244,6 +250,7 @@ class DataFeedSource(AbstractSource):
                 error = True
         return error
 
+    @deprecated('[3.21] use the new store API')
     def before_entity_insertion(self, cnx, lid, etype, eid, sourceparams):
         """called by the repository when an eid has been attributed for an
         entity stored here but the entity has not been inserted in the system
@@ -259,6 +266,7 @@ class DataFeedSource(AbstractSource):
         sourceparams['parser'].before_entity_copy(entity, sourceparams)
         return entity
 
+    @deprecated('[3.21] use the new store API')
     def after_entity_insertion(self, cnx, lid, entity, sourceparams):
         """called by the repository after an entity stored here has been
         inserted in the system table.
@@ -282,13 +290,13 @@ class DataFeedSource(AbstractSource):
         sql = ('SELECT extid, eid, type FROM entities, cw_source_relation '
                'WHERE entities.eid=cw_source_relation.eid_from '
                'AND cw_source_relation.eid_to=%s' % self.eid)
-        return dict((b64decode(uri), (eid, type))
+        return dict((self.decode_extid(uri), (eid, type))
                     for uri, eid, type in cnx.system_sql(sql).fetchall())
 
     def init_import_log(self, cnx, **kwargs):
         dataimport = cnx.create_entity('CWDataImport', cw_import_of=self,
-                                           start_timestamp=datetime.utcnow(),
-                                           **kwargs)
+                                       start_timestamp=datetime.now(tz=utc),
+                                       **kwargs)
         dataimport.init()
         return dataimport
 
@@ -328,7 +336,7 @@ class DataFeedParser(AppObject):
         For http URLs, it will try to find a cwclientlib config entry
         (if available) and use it as requester.
         """
-        purl = urlparse.urlparse(url)
+        purl = urlparse(url)
         if purl.scheme == 'file':
             return URLLibResponseAdapter(open(url[7:]), url)
 
@@ -344,7 +352,7 @@ class DataFeedParser(AppObject):
             self.source.info('Using cwclientlib for %s' % url)
             resp = cnx.get(url)
             resp.raise_for_status()
-            return URLLibResponseAdapter(StringIO.StringIO(resp.text), url)
+            return URLLibResponseAdapter(BytesIO(resp.content), url)
         except (ImportError, ValueError, EnvironmentError) as exc:
             # ImportError: not available
             # ValueError: no config entry found
@@ -354,11 +362,11 @@ class DataFeedParser(AppObject):
         # no chance with cwclientlib, fall back to former implementation
         if purl.scheme in ('http', 'https'):
             self.source.info('GET %s', url)
-            req = urllib2.Request(url)
+            req = Request(url)
             return _OPENER.open(req, timeout=self.source.http_timeout)
 
         # url is probably plain content
-        return URLLibResponseAdapter(StringIO.StringIO(url), url)
+        return URLLibResponseAdapter(BytesIO(url.encode('ascii')), url)
 
     def add_schema_config(self, schemacfg, checkonly=False):
         """added CWSourceSchemaConfig, modify mapping accordingly"""
@@ -370,6 +378,7 @@ class DataFeedParser(AppObject):
         msg = schemacfg._cw._("this parser doesn't use a mapping")
         raise ValidationError(schemacfg.eid, {None: msg})
 
+    @deprecated('[3.21] use the new store API')
     def extid2entity(self, uri, etype, **sourceparams):
         """Return an entity for the given uri. May return None if it should be
         skipped.
@@ -388,11 +397,11 @@ class DataFeedParser(AppObject):
         else:
             source = self.source
         sourceparams['parser'] = self
-        if isinstance(uri, unicode):
+        if isinstance(uri, text_type):
             uri = uri.encode('utf-8')
         try:
-            eid = cnx.repo.extid2eid(source, str(uri), etype, cnx,
-                                         sourceparams=sourceparams)
+            eid = cnx.repo.extid2eid(source, uri, etype, cnx,
+                                     sourceparams=sourceparams)
         except ValidationError as ex:
             if raise_on_error:
                 raise
@@ -419,9 +428,11 @@ class DataFeedParser(AppObject):
         """main callback: process the url"""
         raise NotImplementedError
 
+    @deprecated('[3.21] use the new store API')
     def before_entity_copy(self, entity, sourceparams):
         raise NotImplementedError
 
+    @deprecated('[3.21] use the new store API')
     def after_entity_copy(self, entity, sourceparams):
         self.stats['created'].add(entity.eid)
 
@@ -447,10 +458,10 @@ class DataFeedParser(AppObject):
     def handle_deletion(self, config, cnx, myuris):
         if config['delete-entities'] and myuris:
             byetype = {}
-            for extid, (eid, etype) in myuris.iteritems():
+            for extid, (eid, etype) in myuris.items():
                 if self.is_deleted(extid, etype, eid):
                     byetype.setdefault(etype, []).append(str(eid))
-            for etype, eids in byetype.iteritems():
+            for etype, eids in byetype.items():
                 self.warning('delete %s %s entities', len(eids), etype)
                 cnx.execute('DELETE %s X WHERE X eid IN (%s)'
                             % (etype, ','.join(eids)))
@@ -463,7 +474,7 @@ class DataFeedParser(AppObject):
         self.notify_checked(entity)
         mdate = attrs.get('modification_date')
         if not mdate or mdate > entity.modification_date:
-            attrs = dict( (k, v) for k, v in attrs.iteritems()
+            attrs = dict( (k, v) for k, v in attrs.items()
                           if v != getattr(entity, k))
             if attrs:
                 entity.cw_set(**attrs)
@@ -472,6 +483,7 @@ class DataFeedParser(AppObject):
 
 class DataFeedXMLParser(DataFeedParser):
 
+    @deprecated()
     def process(self, url, raise_on_error=False):
         """IDataFeedParser main entry point"""
         try:
@@ -481,23 +493,9 @@ class DataFeedXMLParser(DataFeedParser):
                 raise
             self.import_log.record_error(str(ex))
             return True
-        error = False
-        commit = self._cw.commit
-        rollback = self._cw.rollback
         for args in parsed:
-            try:
-                self.process_item(*args, raise_on_error=raise_on_error)
-                # commit+set_cnxset instead of commit(free_cnxset=False) to let
-                # other a chance to get our connections set
-                commit()
-            except ValidationError as exc:
-                if raise_on_error:
-                    raise
-                self.source.error('Skipping %s because of validation error %s'
-                                  % (args, exc))
-                rollback()
-                error = True
-        return error
+            self.process_item(*args, raise_on_error=raise_on_error)
+        return False
 
     def parse(self, url):
         stream = self.retrieve_url(url)
@@ -530,10 +528,10 @@ class DataFeedXMLParser(DataFeedParser):
             self.source.debug(str(exc))
 
         # no chance with cwclientlib, fall back to former implementation
-        if urlparse.urlparse(url).scheme in ('http', 'https'):
+        if urlparse(url).scheme in ('http', 'https'):
             try:
                 _OPENER.open(url, timeout=self.source.http_timeout)
-            except urllib2.HTTPError as ex:
+            except HTTPError as ex:
                 if ex.code == 404:
                     return True
         return False
@@ -555,15 +553,12 @@ class URLLibResponseAdapter(object):
     def getcode(self):
         return self.code
 
-    def info(self):
-        from mimetools import Message
-        return Message(StringIO.StringIO())
 
 # use a cookie enabled opener to use session cookie if any
-_OPENER = urllib2.build_opener()
+_OPENER = build_opener()
 try:
     from logilab.common import urllib2ext
     _OPENER.add_handler(urllib2ext.HTTPGssapiAuthHandler())
 except ImportError: # python-kerberos not available
     pass
-_OPENER.add_handler(urllib2.HTTPCookieProcessor(CookieJar()))
+_OPENER.add_handler(HTTPCookieProcessor(CookieJar()))

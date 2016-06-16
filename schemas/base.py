@@ -18,7 +18,7 @@
 """core CubicWeb schema, but not necessary at bootstrap time"""
 
 __docformat__ = "restructuredtext en"
-_ = unicode
+from cubicweb import _
 
 from yams.buildobjs import (EntityType, RelationType, RelationDefinition,
                             SubjectRelation,
@@ -150,14 +150,16 @@ class creation_date(RelationType):
     __permissions__ = PUB_SYSTEM_ATTR_PERMS
     cardinality = '11'
     subject = '*'
-    object = 'Datetime'
+    object = 'TZDatetime'
+
 
 class modification_date(RelationType):
     """latest modification time of an entity"""
     __permissions__ = PUB_SYSTEM_ATTR_PERMS
     cardinality = '11'
     subject = '*'
-    object = 'Datetime'
+    object = 'TZDatetime'
+
 
 class cwuri(RelationType):
     """internal entity uri"""
@@ -379,5 +381,3 @@ class see_also(RelationType):
         'add':    ('managers', RRQLExpression('U has_update_permission S'),),
         'delete': ('managers', RRQLExpression('U has_update_permission S'),),
         }
-
-

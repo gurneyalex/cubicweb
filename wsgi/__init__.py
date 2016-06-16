@@ -27,11 +27,9 @@ WSGI corresponding PEP: http://www.python.org/dev/peps/pep-0333/
 __docformat__ = "restructuredtext en"
 
 from email import message, message_from_string
-from Cookie import SimpleCookie
-from StringIO import StringIO
-from cgi import parse_header
 from pprint import pformat as _pformat
 
+from six.moves.http_cookies import SimpleCookie
 
 def pformat(obj):
     """pretty prints `obj` if possible"""

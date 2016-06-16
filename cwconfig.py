@@ -164,9 +164,9 @@ Here are all environment variables that may be used to configure *CubicWeb*:
 
    Directory where pid files will be written
 """
+from __future__ import print_function
 
 __docformat__ = "restructuredtext en"
-_ = unicode
 
 import sys
 import os
@@ -179,6 +179,8 @@ from os.path import (exists, join, expanduser, abspath, normpath,
                      basename, isdir, dirname, splitext)
 from warnings import warn, filterwarnings
 
+from six import text_type
+
 from logilab.common.decorators import cached, classproperty
 from logilab.common.deprecation import deprecated
 from logilab.common.logging_ext import set_log_methods, init_log
@@ -186,7 +188,7 @@ from logilab.common.configuration import (Configuration, Method,
                                           ConfigurationMixIn, merge_options)
 
 from cubicweb import (CW_SOFTWARE_ROOT, CW_MIGRATION_MAP,
-                      ConfigurationError, Binary)
+                      ConfigurationError, Binary, _)
 from cubicweb.toolsutils import create_dir
 
 CONFIGURATIONS = []
@@ -350,7 +352,7 @@ class CubicWebNoAppConfiguration(ConfigurationMixIn):
           }),
         ('umask',
          {'type' : 'int',
-          'default': 077,
+          'default': 0o077,
           'help': 'permission umask for files created by the server',
           'group': 'main', 'level': 2,
           }),
@@ -503,7 +505,7 @@ this option is set to yes",
                 deps = {}
             else:
                 deps = dict( (x[len('cubicweb-'):], v)
-                             for x, v in gendeps.iteritems()
+                             for x, v in gendeps.items()
                              if x.startswith('cubicweb-'))
         for depcube in deps:
             try:
@@ -600,7 +602,7 @@ this option is set to yes",
         cls.cls_adjust_sys_path()
         for ctlfile in ('web/webctl.py',  'etwist/twctl.py',
                         'server/serverctl.py',
-                        'devtools/devctl.py', 'goa/goactl.py'):
+                        'devtools/devctl.py',):
             if exists(join(CW_SOFTWARE_ROOT, ctlfile)):
                 try:
                     load_module_from_file(join(CW_SOFTWARE_ROOT, ctlfile))
@@ -650,7 +652,7 @@ this option is set to yes",
         self.adjust_sys_path()
         self.load_defaults()
         # will be properly initialized later by _gettext_init
-        self.translations = {'en': (unicode, lambda ctx, msgid: unicode(msgid) )}
+        self.translations = {'en': (text_type, lambda ctx, msgid: text_type(msgid) )}
         self._site_loaded = set()
         # don't register ReStructured Text directives by simple import, avoid pb
         # with eg sphinx.
@@ -960,7 +962,7 @@ the repository',
             i = 1
             while exists(path) and i < 100: # arbitrary limit to avoid infinite loop
                 try:
-                    file(path, 'a')
+                    open(path, 'a')
                     break
                 except IOError:
                     path = '%s-%s.log' % (basepath, i)
@@ -994,6 +996,13 @@ the repository',
         rtdir = abspath(os.environ.get('CW_RUNTIME_DIR', default))
         return join(rtdir, '%s-%s.pid' % (self.appid, self.name))
 
+    # config -> repository
+
+    def repository(self, vreg=None):
+        from cubicweb.server.repository import Repository
+        from cubicweb.server.utils import TasksManager
+        return Repository(self, TasksManager(), vreg=vreg)
+
     # instance methods used to get instance specific resources #############
 
     def __init__(self, appid, debugmode=False, creating=False):
@@ -1001,7 +1010,7 @@ the repository',
         # set to true while creating an instance
         self.creating = creating
         super(CubicWebConfiguration, self).__init__(debugmode)
-        fake_gettext = (unicode, lambda ctx, msgid: unicode(msgid))
+        fake_gettext = (text_type, lambda ctx, msgid: text_type(msgid))
         for lang in self.available_languages():
             self.translations[lang] = fake_gettext
         self._cubes = None
@@ -1043,6 +1052,7 @@ the repository',
         if not isinstance(cubes, list):
             cubes = list(cubes)
         self._cubes = self.reorder_cubes(list(self._cubes) + cubes)
+        self.load_site_cubicweb([self.cube_dir(cube) for cube in cubes])
 
     def main_config_file(self):
         """return instance's control configuration file"""
@@ -1050,7 +1060,8 @@ the repository',
 
     def save(self):
         """write down current configuration"""
-        self.generate_config(open(self.main_config_file(), 'w'))
+        with open(self.main_config_file(), 'w') as fobj:
+            self.generate_config(fobj)
 
     def check_writeable_uid_directory(self, path):
         """check given directory path exists, belongs to the user running the
@@ -1101,7 +1112,7 @@ the repository',
             version = self.cube_version(pkg)
             infos.append('%s-%s' % (pkg, version))
         infos.append('cubicweb-%s' % str(self.cubicweb_version()))
-        return md5(';'.join(infos)).hexdigest()
+        return md5((';'.join(infos)).encode('ascii')).hexdigest()
 
     def load_configuration(self, **kw):
         """load instance's configuration files"""
@@ -1156,7 +1167,7 @@ the repository',
 
     def _gettext_init(self):
         """set language for gettext"""
-        from cubicweb.gettext import translation
+        from cubicweb.cwgettext import translation
         path = join(self.apphome, 'i18n')
         for language in self.available_languages():
             self.info("loading language %s", language)
@@ -1181,13 +1192,8 @@ the repository',
 
     def set_sources_mode(self, sources):
         if not 'all' in sources:
-            print 'warning: ignoring specified sources, requires a repository '\
-                  'configuration'
-
-    def migration_handler(self):
-        """return a migration handler instance"""
-        from cubicweb.migration import MigrationHelper
-        return MigrationHelper(self, verbosity=self.verbosity)
+            print('warning: ignoring specified sources, requires a repository '
+                  'configuration')
 
     def i18ncompile(self, langs=None):
         from cubicweb import i18n

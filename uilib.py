@@ -26,12 +26,15 @@ __docformat__ = "restructuredtext en"
 
 import csv
 import re
-from StringIO import StringIO
+from io import StringIO
+
+from six import PY2, PY3, text_type, binary_type, string_types, integer_types
 
 from logilab.mtconverter import xml_escape, html_unescape
 from logilab.common.date import ustrftime
 from logilab.common.deprecation import deprecated
 
+from cubicweb import _
 from cubicweb.utils import js_dumps
 
 
@@ -62,7 +65,7 @@ def print_string(value, req, props, displaytime=True):
     return value
 
 def print_int(value, req, props, displaytime=True):
-    return unicode(value)
+    return text_type(value)
 
 def print_date(value, req, props, displaytime=True):
     return ustrftime(value, req.property_value('ui.date-format'))
@@ -92,7 +95,7 @@ _('%d minutes')
 _('%d seconds')
 
 def print_timedelta(value, req, props, displaytime=True):
-    if isinstance(value, (int, long)):
+    if isinstance(value, integer_types):
         # `date - date`, unlike `datetime - datetime` gives an int
         # (number of days), not a timedelta
         # XXX should rql be fixed to return Int instead of Interval in
@@ -122,7 +125,7 @@ def print_boolean(value, req, props, displaytime=True):
     return req._('no')
 
 def print_float(value, req, props, displaytime=True):
-    return unicode(req.property_value('ui.float-format') % value)
+    return text_type(req.property_value('ui.float-format') % value) # XXX cast needed ?
 
 PRINTERS = {
     'Bytes': print_bytes,
@@ -337,9 +340,8 @@ class _JSId(object):
     def __unicode__(self):
         if self.parent:
             return u'%s.%s' % (self.parent, self.id)
-        return unicode(self.id)
-    def __str__(self):
-        return unicode(self).encode('utf8')
+        return text_type(self.id)
+    __str__ = __unicode__ if PY3 else lambda self: self.__unicode__().encode('utf-8')
     def __getattr__(self, attr):
         return _JSId(attr, self)
     def __call__(self, *args):
@@ -357,6 +359,7 @@ class _JSCallArgs(_JSId):
         if self.parent:
             return u'%s(%s)' % (self.parent, ','.join(args))
         return ','.join(args)
+    __str__ = __unicode__ if PY3 else lambda self: self.__unicode__().encode('utf-8')
 
 class _JS(object):
     def __getattr__(self, attr):
@@ -389,7 +392,7 @@ HTML4_EMPTY_TAGS = frozenset(('base', 'meta', 'link', 'hr', 'br', 'param',
                               'img', 'area', 'input', 'col'))
 
 def sgml_attributes(attrs):
-    return u' '.join(u'%s="%s"' % (attr, xml_escape(unicode(value)))
+    return u' '.join(u'%s="%s"' % (attr, xml_escape(text_type(value)))
                      for attr, value in sorted(attrs.items())
                      if value is not None)
 
@@ -407,7 +410,7 @@ def simple_sgml_tag(tag, content=None, escapecontent=True, **attrs):
         value += u' ' + sgml_attributes(attrs)
     if content:
         if escapecontent:
-            content = xml_escape(unicode(content))
+            content = xml_escape(text_type(content))
         value += u'>%s</%s>' % (content, tag)
     else:
         if tag in HTML4_EMPTY_TAGS:
@@ -436,8 +439,8 @@ def ureport_as_html(layout):
     stream = StringIO() #UStringIO() don't want unicode assertion
     formater.format(layout, stream)
     res = stream.getvalue()
-    if isinstance(res, str):
-        res = unicode(res, 'UTF8')
+    if isinstance(res, binary_type):
+        res = res.decode('UTF8')
     return res
 
 # traceback formatting ########################################################
@@ -445,14 +448,17 @@ def ureport_as_html(layout):
 import traceback
 
 def exc_message(ex, encoding):
-    try:
-        excmsg = unicode(ex)
-    except Exception:
+    if PY3:
+        excmsg = str(ex)
+    else:
         try:
-            excmsg = unicode(str(ex), encoding, 'replace')
+            excmsg = unicode(ex)
         except Exception:
-            excmsg = unicode(repr(ex), encoding, 'replace')
-    exctype = unicode(ex.__class__.__name__)
+            try:
+                excmsg = unicode(str(ex), encoding, 'replace')
+            except Exception:
+                excmsg = unicode(repr(ex), encoding, 'replace')
+    exctype = ex.__class__.__name__
     return u'%s: %s' % (exctype, excmsg)
 
 
@@ -462,7 +468,10 @@ def rest_traceback(info, exception):
     for stackentry in traceback.extract_tb(info[2]):
         res.append(u'\tFile %s, line %s, function %s' % tuple(stackentry[:3]))
         if stackentry[3]:
-            res.append(u'\t  %s' % stackentry[3].decode('utf-8', 'replace'))
+            data = xml_escape(stackentry[3])
+            if PY2:
+                data = data.decode('utf-8', 'replace')
+            res.append(u'\t  %s' % data)
     res.append(u'\n')
     try:
         res.append(u'\t Error: %s\n' % exception)
@@ -496,14 +505,16 @@ def html_traceback(info, exception, title='',
                        u'<b class="function">%s</b>:<br/>'%(
             xml_escape(stackentry[0]), stackentry[1], xml_escape(stackentry[2])))
         if stackentry[3]:
-            string = xml_escape(stackentry[3]).decode('utf-8', 'replace')
+            string = xml_escape(stackentry[3])
+            if PY2:
+                string = string.decode('utf-8', 'replace')
             strings.append(u'&#160;&#160;%s<br/>\n' % (string))
         # add locals info for each entry
         try:
             local_context = tcbk.tb_frame.f_locals
             html_info = []
             chars = 0
-            for name, value in local_context.iteritems():
+            for name, value in local_context.items():
                 value = xml_escape(repr(value))
                 info = u'<span class="name">%s</span>=%s, ' % (name, value)
                 line_length = len(name) + len(value)
@@ -526,7 +537,9 @@ def html_traceback(info, exception, title='',
 # csv files / unicode support #################################################
 
 class UnicodeCSVWriter:
-    """proxies calls to csv.writer.writerow to be able to deal with unicode"""
+    """proxies calls to csv.writer.writerow to be able to deal with unicode
+
+    Under Python 3, this code no longer encodes anything."""
 
     def __init__(self, wfunc, encoding, **kwargs):
         self.writer = csv.writer(self, **kwargs)
@@ -537,9 +550,12 @@ class UnicodeCSVWriter:
         self.wfunc(data)
 
     def writerow(self, row):
+        if PY3:
+            self.writer.writerow(row)
+            return
         csvrow = []
         for elt in row:
-            if isinstance(elt, unicode):
+            if isinstance(elt, text_type):
                 csvrow.append(elt.encode(self.encoding))
             else:
                 csvrow.append(str(elt))
@@ -559,7 +575,7 @@ class limitsize(object):
     def __call__(self, function):
         def newfunc(*args, **kwargs):
             ret = function(*args, **kwargs)
-            if isinstance(ret, basestring):
+            if isinstance(ret, string_types):
                 return ret[:self.maxsize]
             return ret
         return newfunc
@@ -568,6 +584,6 @@ class limitsize(object):
 def htmlescape(function):
     def newfunc(*args, **kwargs):
         ret = function(*args, **kwargs)
-        assert isinstance(ret, basestring)
+        assert isinstance(ret, string_types)
         return xml_escape(ret)
     return newfunc
