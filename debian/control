@@ -10,13 +10,13 @@ Build-Depends:
  python (>= 2.6),
  python-six (>= 1.4.0),
  python-sphinx,
- python-logilab-common,
- python-unittest2 | python (>= 2.7),
+ python-logilab-common (>= 1.2.0),
+ python-unittest2 (>= 0.7.0),
  python-logilab-mtconverter,
  python-markdown,
  python-tz,
  python-rql (>= 0.34.0),
- python-yams (>= 0.42.0),
+ python-yams (>= 0.43.0),
  python-lxml,
 Standards-Version: 3.9.1
 Homepage: https://www.cubicweb.org
@@ -158,9 +158,9 @@ Depends:
  gettext,
  python-six (>= 1.4.0),
  python-logilab-mtconverter (>= 0.8.0),
- python-logilab-common (>= 0.63.1),
+ python-logilab-common (>= 1.2.0),
  python-markdown,
- python-yams (>= 0.42.0),
+ python-yams (>= 0.43.0),
  python-rql (>= 0.34.0),
  python-lxml
 Recommends:
