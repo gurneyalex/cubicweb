@@ -5,7 +5,8 @@
 Dataimport
 ==========
 
-*CubicWeb* is designed to manipulate huge of amount of data, and provides utilities to do so.
+*CubicWeb* is designed to easily manipulate large amounts of data, and provides
+utilities to make imports simple.
 
 The main entry point is :mod:`cubicweb.dataimport.importer` which defines an
 :class:`ExtEntitiesImporter` class responsible for importing data from an external source in the
@@ -54,15 +55,15 @@ insert corresponding entities and relations into the CubicWeb instance.
         """Yield Person ExtEntities read from `fpath` CSV file."""
         with open(fpath) as f:
             for uri, name, knows in ucsvreader(f, skipfirst=True, skip_empty=False):
-                yield ExtEntity('Personne', uri,
-                                {'nom': set([name]), 'connait': set([knows])})
+                yield ExtEntity('Person', uri,
+                                {'name': set([name]), 'knows': set([knows])})
 
     extenties = extentities_from_csv('people.csv')
     store = RQLObjectStore(cnx)
     importer = ExtEntitiesImporter(schema, store)
     importer.import_entities(extenties)
     commit()
-    rset = cnx.execute('String N WHERE X nom N, X connait Y, Y nom "Alice"')
+    rset = cnx.execute('String N WHERE X name N, X knows Y, Y name "Alice"')
     assert rset[0][0] == u'Bob', rset
 
 Importer API
