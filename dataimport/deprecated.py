@@ -58,10 +58,13 @@ Example of use (run this with `cubicweb-ctl shell instance import-script.py`):
 .. BUG file with one column are not parsable
 .. TODO rollback() invocation is not possible yet
 """
+from __future__ import print_function
 
 import sys
 import traceback
-from StringIO import StringIO
+from io import StringIO
+
+from six import add_metaclass
 
 from logilab.common import attrdict, shellutils
 from logilab.common.date import strptime
@@ -78,7 +81,7 @@ def lazytable(reader):
 
     >>> data = lazytable(ucsvreader(open(filename)))
     """
-    header = reader.next()
+    header = next(reader)
     for row in reader:
         yield dict(zip(header, row))
 
@@ -103,7 +106,7 @@ def lazydbtable(cu, table, headers, orderby=None):
 
 @deprecated('[3.21] deprecated')
 def tell(msg):
-    print msg
+    print(msg)
 
 
 @deprecated('[3.21] deprecated')
@@ -115,9 +118,9 @@ def confirm(question):
     return answer == 'Y'
 
 
+@add_metaclass(class_deprecated)
 class catch_error(object):
     """Helper for @contextmanager decorator."""
-    __metaclass__ = class_deprecated
     __deprecation_warning__ = '[3.21] deprecated'
 
     def __init__(self, ctl, key='unexpected error', msg=None):
@@ -166,7 +169,9 @@ def mk_entity(row, map):
                 if res[dest] is None:
                     break
         except ValueError as err:
-            raise ValueError('error with %r field: %s' % (src, err)), None, sys.exc_info()[-1]
+            exc = ValueError('error with %r field: %s' % (src, err))
+            exc.__traceback__ = sys.exc_info()[-1]
+            raise exc
     return res
 
 
@@ -254,6 +259,7 @@ def check_doubles_not_none(buckets):
             if k is not None and len(v) > 1]
 
 
+@add_metaclass(class_deprecated)
 class ObjectStore(object):
     """Store objects in memory for *faster* validation (development mode)
 
@@ -264,7 +270,6 @@ class ObjectStore(object):
     >>> group = store.prepare_insert_entity('CWUser', name=u'unknown')
     >>> store.prepare_insert_relation(user, 'in_group', group)
     """
-    __metaclass__ = class_deprecated
     __deprecation_warning__ = '[3.21] use the new importer API'
 
     def __init__(self):
@@ -289,7 +294,7 @@ class ObjectStore(object):
         """Given an entity type and eid, updates the corresponding fake entity with specified
         attributes and inlined relations.
         """
-        assert eid in self.types[etype], 'Trying to update with wrong type {}'.format(etype)
+        assert eid in self.types[etype], 'Trying to update with wrong type %s' % etype
         data = self.eids[eid]
         data.update(kwargs)
 
@@ -335,6 +340,7 @@ class ObjectStore(object):
         self.prepare_insert_relation(eid_from, rtype, eid_to, **kwargs)
 
 
+@add_metaclass(class_deprecated)
 class CWImportController(object):
     """Controller of the data import process.
 
@@ -343,7 +349,6 @@ class CWImportController(object):
     >>> ctl.data = dict_of_data_tables
     >>> ctl.run()
     """
-    __metaclass__ = class_deprecated
     __deprecation_warning__ = '[3.21] use the new importer API'
 
     def __init__(self, store, askerror=0, catcherrors=None, tell=tell,
@@ -421,7 +426,7 @@ class CWImportController(object):
                     self.tell(pformat(sorted(error[1])))
 
     def _print_stats(self):
-        nberrors = sum(len(err) for err in self.errors.itervalues())
+        nberrors = sum(len(err) for err in self.errors.values())
         self.tell('\nImport statistics: %i entities, %i types, %i relations and %i errors'
                   % (self.store.nb_inserted_entities,
                      self.store.nb_inserted_types,
@@ -456,5 +461,3 @@ class CWImportController(object):
             return callfunc_every(self.store.commit,
                                   self.commitevery,
                                   self.get_data(datakey))
-
-

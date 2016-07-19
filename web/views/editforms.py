@@ -20,23 +20,21 @@ or a list of entities of the same type
 """
 
 __docformat__ = "restructuredtext en"
-_ = unicode
 
 from copy import copy
 
-from logilab.mtconverter import xml_escape
-from logilab.common.decorators import cached
+from six.moves import range
+
 from logilab.common.registry import yes
 from logilab.common.deprecation import class_moved
 
+from cubicweb import _
 from cubicweb import tags
-from cubicweb.predicates import (match_kwargs, one_line_rset, non_final_entity,
-                                specified_etype_implements, is_instance)
+from cubicweb.predicates import (one_line_rset, non_final_entity,
+                                 specified_etype_implements, is_instance)
 from cubicweb.view import EntityView
-from cubicweb.schema import display_name
-from cubicweb.web import stdmsgs, eid_param, \
-     formfields as ff, formwidgets as fw
-from cubicweb.web.form import FormViewMixIn, FieldNotFound
+from cubicweb.web import stdmsgs, eid_param, formwidgets as fw
+from cubicweb.web.form import FormViewMixIn
 from cubicweb.web.views import uicfg, forms, reledit
 
 _pvdc = uicfg.primaryview_display_ctrl
@@ -50,7 +48,8 @@ class DeleteConfForm(forms.CompositeForm):
     domid = 'deleteconf'
     copy_nav_params = True
     form_buttons = [fw.Button(stdmsgs.BUTTON_DELETE, cwaction='delete'),
-                    fw.Button(stdmsgs.BUTTON_CANCEL, cwaction='cancel')]
+                    fw.Button(stdmsgs.BUTTON_CANCEL,
+                              {'class': fw.Button.css_class + ' cwjs-edition-cancel'})]
 
     def __init__(self, *args, **kwargs):
         super(DeleteConfForm, self).__init__(*args, **kwargs)
@@ -145,7 +144,7 @@ class CreationFormView(EditionFormView):
         # selector
         etype = kwargs.pop('etype', self._cw.form.get('etype'))
         entity = self._cw.vreg['etypes'].etype_class(etype)(self._cw)
-        entity.eid = self._cw.varmaker.next()
+        entity.eid = next(self._cw.varmaker)
         self.render_form(entity)
 
     def form_title(self, entity):
@@ -197,7 +196,7 @@ class CopyFormView(EditionFormView):
         entity.complete()
         self.newentity = copy(entity)
         self.copying = entity
-        self.newentity.eid = self._cw.varmaker.next()
+        self.newentity.eid = next(self._cw.varmaker)
         self.w(u'<script type="text/javascript">updateMessage("%s");</script>\n'
                % self._cw._(self.warning_message))
         super(CopyFormView, self).render_form(self.newentity)
@@ -230,7 +229,7 @@ class TableEditForm(forms.CompositeForm):
     def __init__(self, req, rset, **kwargs):
         kwargs.setdefault('__redirectrql', rset.printable_rql())
         super(TableEditForm, self).__init__(req, rset=rset, **kwargs)
-        for row in xrange(len(self.cw_rset)):
+        for row in range(len(self.cw_rset)):
             form = self._cw.vreg['forms'].select('edition', self._cw,
                                                  rset=self.cw_rset, row=row,
                                                  formtype='muledit',

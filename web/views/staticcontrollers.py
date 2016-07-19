@@ -33,7 +33,7 @@ from datetime import datetime, timedelta
 from logging import getLogger
 
 from cubicweb import Forbidden
-from cubicweb.web import NotFound
+from cubicweb.web import NotFound, Redirect
 from cubicweb.web.http_headers import generateDateTime
 from cubicweb.web.controller import Controller
 from cubicweb.web.views.urlrewrite import URLRewriter
@@ -66,9 +66,10 @@ class StaticFileController(Controller):
         if not debugmode:
             # XXX: Don't provide additional resource information to error responses
             #
-            # the HTTP RFC recommands not going further than 1 year ahead
-            expires = datetime.now() + timedelta(days=6*30)
+            # the HTTP RFC recommends not going further than 1 year ahead
+            expires = datetime.now() + timedelta(seconds=self.max_age(path))
             self._cw.set_header('Expires', generateDateTime(mktime(expires.timetuple())))
+            self._cw.set_header('Cache-Control', 'max-age=%s' % self.max_age(path))
 
         # XXX system call to os.stats could be cached once and for all in
         # production mode (where static files are not expected to change)
@@ -140,7 +141,7 @@ class ConcatFilesHandler(object):
         """return the filepath that will be used to cache concatenation of `paths`
         """
         _, ext = osp.splitext(paths[0])
-        fname = 'cache_concat_' + hashlib.md5(';'.join(paths)).hexdigest() + ext
+        fname = 'cache_concat_' + hashlib.md5((';'.join(paths)).encode('ascii')).hexdigest() + ext
         return osp.join(self.config.appdatahome, 'uicache', fname)
 
     def concat_cached_filepath(self, paths):
@@ -167,7 +168,7 @@ class ConcatFilesHandler(object):
                             with open(osp.join(dirpath, rid), 'rb') as source:
                                 for line in source:
                                     f.write(line)
-                            f.write('\n')
+                            f.write(b'\n')
                     f.close()
                 except:
                     os.remove(tmpfile)
@@ -200,11 +201,13 @@ class DataController(StaticFileController):
             paths = relpath[len(self.data_modconcat_basepath):].split(',')
             filepath = self.concat_files_registry.concat_cached_filepath(paths)
         else:
-            # skip leading '/data/' and url params
-            if relpath.startswith(self.base_datapath):
-                prefix = self.base_datapath
-            else:
+            if not relpath.startswith(self.base_datapath):
+                # /data/foo, redirect to /data/{hash}/foo
                 prefix = 'data/'
+                relpath = relpath[len(prefix):]
+                raise Redirect(self._cw.data_url(relpath), 302)
+            # skip leading '/data/{hash}/' and url params
+            prefix = self.base_datapath
             relpath = relpath[len(prefix):]
             relpath = relpath.split('?', 1)[0]
             dirpath, rid = config.locate_resource(relpath)

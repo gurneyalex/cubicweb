@@ -20,6 +20,7 @@
 
 The server module contains functions to initialize a new repository.
 """
+from __future__ import print_function
 
 __docformat__ = "restructuredtext en"
 
@@ -27,6 +28,9 @@ import sys
 from os.path import join, exists
 from glob import glob
 from contextlib import contextmanager
+
+from six import text_type, string_types
+from six.moves import filter
 
 from logilab.common.modutils import LazyObject
 from logilab.common.textutils import splitstrip
@@ -138,7 +142,7 @@ def set_debug(debugmode):
     if not debugmode:
         DEBUG = 0
         return
-    if isinstance(debugmode, basestring):
+    if isinstance(debugmode, string_types):
         for mode in splitstrip(debugmode, sep='|'):
             DEBUG |= globals()[mode]
     else:
@@ -196,7 +200,7 @@ def create_user(session, login, pwd, *groups):
     user = session.create_entity('CWUser', login=login, upassword=pwd)
     for group in groups:
         session.execute('SET U in_group G WHERE U eid %(u)s, G name %(group)s',
-                        {'u': user.eid, 'group': unicode(group)})
+                        {'u': user.eid, 'group': text_type(group)})
     return user
 
 def init_repository(config, interactive=True, drop=False, vreg=None,
@@ -225,78 +229,82 @@ def init_repository(config, interactive=True, drop=False, vreg=None,
     sourcescfg = config.read_sources_file()
     source = sourcescfg['system']
     driver = source['db-driver']
-    sqlcnx = repo.system_source.get_connection()
-    sqlcursor = sqlcnx.cursor()
-    execute = sqlcursor.execute
-    if drop:
-        helper = database.get_db_helper(driver)
-        dropsql = sql_drop_all_user_tables(helper, sqlcursor)
-        # We may fail dropping some tables because of table dependencies, in a first pass.
-        # So, we try a second drop sequence to drop remaining tables if needed.
-        # Note that 2 passes is an arbitrary choice as it seems enougth for our usecases.
-        # (looping may induce infinite recursion when user have no right for example)
-        # Here we try to keep code simple and backend independant. That why we don't try to
-        # distinguish remaining tables (wrong right, dependencies, ...).
-        failed = sqlexec(dropsql, execute, cnx=sqlcnx,
-                         pbtitle='-> dropping tables (first pass)')
+    with repo.internal_cnx() as cnx:
+        sqlcnx = cnx.cnxset.cnx
+        sqlcursor = cnx.cnxset.cu
+        execute = sqlcursor.execute
+        if drop:
+            helper = database.get_db_helper(driver)
+            dropsql = sql_drop_all_user_tables(helper, sqlcursor)
+            # We may fail dropping some tables because of table dependencies, in a first pass.
+            # So, we try a second drop sequence to drop remaining tables if needed.
+            # Note that 2 passes is an arbitrary choice as it seems enough for our usecases
+            # (looping may induce infinite recursion when user have no rights for example).
+            # Here we try to keep code simple and backend independent. That's why we don't try to
+            # distinguish remaining tables (missing privileges, dependencies, ...).
+            failed = sqlexec(dropsql, execute, cnx=sqlcnx,
+                             pbtitle='-> dropping tables (first pass)')
+            if failed:
+                failed = sqlexec(failed, execute, cnx=sqlcnx,
+                                 pbtitle='-> dropping tables (second pass)')
+                remainings = list(filter(drop_filter, helper.list_tables(sqlcursor)))
+                assert not remainings, 'Remaining tables: %s' % ', '.join(remainings)
+        handler = config.migration_handler(schema, interactive=False, repo=repo, cnx=cnx)
+        # install additional driver specific sql files
+        handler.cmd_install_custom_sql_scripts()
+        for cube in reversed(config.cubes()):
+            handler.cmd_install_custom_sql_scripts(cube)
+        _title = '-> creating tables '
+        print(_title, end=' ')
+        # schema entities and relations tables
+        # can't skip entities table even if system source doesn't support them,
+        # they are used sometimes by generated sql. Keeping them empty is much
+        # simpler than fixing this...
+        schemasql = sqlschema(schema, driver)
+        #skip_entities=[str(e) for e in schema.entities()
+        #               if not repo.system_source.support_entity(str(e))])
+        failed = sqlexec(schemasql, execute, pbtitle=_title, delimiter=';;')
         if failed:
-            failed = sqlexec(failed, execute, cnx=sqlcnx,
-                             pbtitle='-> dropping tables (second pass)')
-            remainings = filter(drop_filter, helper.list_tables(sqlcursor))
-            assert not remainings, 'Remaining tables: %s' % ', '.join(remainings)
-    _title = '-> creating tables '
-    print _title,
-    # schema entities and relations tables
-    # can't skip entities table even if system source doesn't support them,
-    # they are used sometimes by generated sql. Keeping them empty is much
-    # simpler than fixing this...
-    schemasql = sqlschema(schema, driver)
-    #skip_entities=[str(e) for e in schema.entities()
-    #               if not repo.system_source.support_entity(str(e))])
-    failed = sqlexec(schemasql, execute, pbtitle=_title, delimiter=';;')
-    if failed:
-        print 'The following SQL statements failed. You should check your schema.'
-        print failed
-        raise Exception('execution of the sql schema failed, you should check your schema')
-    sqlcursor.close()
-    sqlcnx.commit()
-    sqlcnx.close()
+            print('The following SQL statements failed. You should check your schema.')
+            print(failed)
+            raise Exception('execution of the sql schema failed, you should check your schema')
+        sqlcursor.close()
+        sqlcnx.commit()
     with repo.internal_cnx() as cnx:
         # insert entity representing the system source
         ssource = cnx.create_entity('CWSource', type=u'native', name=u'system')
         repo.system_source.eid = ssource.eid
         cnx.execute('SET X cw_source X WHERE X eid %(x)s', {'x': ssource.eid})
         # insert base groups and default admin
-        print '-> inserting default user and default groups.'
+        print('-> inserting default user and default groups.')
         try:
-            login = unicode(sourcescfg['admin']['login'])
+            login = text_type(sourcescfg['admin']['login'])
             pwd = sourcescfg['admin']['password']
         except KeyError:
             if interactive:
                 msg = 'enter login and password of the initial manager account'
                 login, pwd = manager_userpasswd(msg=msg, confirm=True)
             else:
-                login, pwd = unicode(source['db-user']), source['db-password']
+                login, pwd = text_type(source['db-user']), source['db-password']
         # sort for eid predicatability as expected in some server tests
         for group in sorted(BASE_GROUPS):
-            cnx.create_entity('CWGroup', name=unicode(group))
+            cnx.create_entity('CWGroup', name=text_type(group))
         admin = create_user(cnx, login, pwd, u'managers')
         cnx.execute('SET X owned_by U WHERE X is IN (CWGroup,CWSource), U eid %(u)s',
                         {'u': admin.eid})
         cnx.commit()
     repo.shutdown()
-    # reloging using the admin user
+    # re-login using the admin user
     config._cubes = None # avoid assertion error
     repo = get_repository(config=config)
+    # replace previous schema by the new repo's one. This is necessary so that we give the proper
+    # schema to `initialize_schema` above since it will initialize .eid attribute of schema elements
+    schema = repo.schema
     with connect(repo, login, password=pwd) as cnx:
         with cnx.security_enabled(False, False):
             repo.system_source.eid = ssource.eid # redo this manually
             handler = config.migration_handler(schema, interactive=False,
                                                cnx=cnx, repo=repo)
-            # install additional driver specific sql files
-            handler.cmd_install_custom_sql_scripts()
-            for cube in reversed(config.cubes()):
-                handler.cmd_install_custom_sql_scripts(cube)
             # serialize the schema
             initialize_schema(config, schema, handler)
             # yoo !
@@ -310,7 +318,7 @@ def init_repository(config, interactive=True, drop=False, vreg=None,
     # (drop instance attribute to get back to class attribute)
     del config.cubicweb_appobject_path
     del config.cube_appobject_path
-    print '-> database for instance %s initialized.' % config.appid
+    print('-> database for instance %s initialized.' % config.appid)
 
 
 def initialize_schema(config, schema, mhandler, event='create'):

@@ -20,9 +20,11 @@ validity
 """
 
 __docformat__ = "restructuredtext en"
-_ = unicode
+from cubicweb import _
 
 from threading import Lock
+
+from six import text_type
 
 from cubicweb import validation_error, neg_role
 from cubicweb.schema import (META_RTYPES, WORKFLOW_RTYPES,
@@ -45,7 +47,7 @@ def _acquire_unique_cstr_lock(cnx):
 
     This lock used to avoid potential integrity pb when checking
     RQLUniqueConstraint in two different transactions, as explained in
-    http://intranet.logilab.fr/jpl/ticket/36564
+    https://extranet.logilab.fr/3577926
     """
     if 'uniquecstrholder' in cnx.transaction_data:
         return
@@ -109,9 +111,10 @@ class IntegrityHook(hook.Hook):
     category = 'integrity'
 
 
-class EnsureSymmetricRelationsAdd(hook.Hook):
+class _EnsureSymmetricRelationsAdd(hook.Hook):
     """ ensure X r Y => Y r X iff r is symmetric """
     __regid__ = 'cw.add_ensure_symmetry'
+    __abstract__ = True
     category = 'activeintegrity'
     events = ('after_add_relation',)
     # __select__ is set in the registration callback
@@ -121,9 +124,10 @@ class EnsureSymmetricRelationsAdd(hook.Hook):
                                                  self.rtype, self.eidfrom)
 
 
-class EnsureSymmetricRelationsDelete(hook.Hook):
+class _EnsureSymmetricRelationsDelete(hook.Hook):
     """ ensure X r Y => Y r X iff r is symmetric """
     __regid__ = 'cw.delete_ensure_symmetry'
+    __abstract__ = True
     category = 'activeintegrity'
     events = ('after_delete_relation',)
     # __select__ is set in the registration callback
@@ -247,7 +251,7 @@ class CheckUniqueHook(IntegrityHook):
     def __call__(self):
         entity = self.entity
         eschema = entity.e_schema
-        for attr, val in entity.cw_edited.iteritems():
+        for attr, val in entity.cw_edited.items():
             if eschema.subjrels[attr].final and eschema.has_unique_values(attr):
                 if val is None:
                     continue
@@ -286,13 +290,13 @@ class TidyHtmlFields(IntegrityHook):
         entity = self.entity
         metaattrs = entity.e_schema.meta_attributes()
         edited = entity.cw_edited
-        for metaattr, (metadata, attr) in metaattrs.iteritems():
+        for metaattr, (metadata, attr) in metaattrs.items():
             if metadata == 'format' and attr in edited:
                 try:
                     value = edited[attr]
                 except KeyError:
                     continue # no text to tidy
-                if isinstance(value, unicode): # filter out None and Binary
+                if isinstance(value, text_type): # filter out None and Binary
                     if getattr(entity, str(metaattr)) == 'text/html':
                         edited[attr] = soup2xhtml(value, self._cw.encoding)
 
@@ -335,6 +339,9 @@ def registration_callback(vreg):
     vreg.register_all(globals().values(), __name__)
     symmetric_rtypes = [rschema.type for rschema in vreg.schema.relations()
                         if rschema.symmetric]
-    EnsureSymmetricRelationsAdd.__select__ = hook.Hook.__select__ & hook.match_rtype(*symmetric_rtypes)
-    EnsureSymmetricRelationsDelete.__select__ = hook.Hook.__select__ & hook.match_rtype(*symmetric_rtypes)
-
+    class EnsureSymmetricRelationsAdd(_EnsureSymmetricRelationsAdd):
+        __select__ = _EnsureSymmetricRelationsAdd.__select__ & hook.match_rtype(*symmetric_rtypes)
+    vreg.register(EnsureSymmetricRelationsAdd)
+    class EnsureSymmetricRelationsDelete(_EnsureSymmetricRelationsDelete):
+        __select__ = _EnsureSymmetricRelationsDelete.__select__ & hook.match_rtype(*symmetric_rtypes)
+    vreg.register(EnsureSymmetricRelationsDelete)

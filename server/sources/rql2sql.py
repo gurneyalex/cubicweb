@@ -51,6 +51,9 @@ __docformat__ = "restructuredtext en"
 
 import threading
 
+from six import PY2
+from six.moves import range
+
 from logilab.database import FunctionDescr, SQL_FUNCTIONS_REGISTRY
 
 from rql import BadRQLQuery, CoercionError
@@ -172,7 +175,7 @@ def remove_unused_solutions(rqlst, solutions, varmap, schema):
     existssols = {}
     unstable = set()
     invariants = {}
-    for vname, var in rqlst.defined_vars.iteritems():
+    for vname, var in rqlst.defined_vars.items():
         vtype = newsols[0][vname]
         if var._q_invariant or vname in varmap:
             # remove invariant variable from solutions to remove duplicates
@@ -184,18 +187,26 @@ def remove_unused_solutions(rqlst, solutions, varmap, schema):
             try:
                 thisexistssols, thisexistsvars = existssols[var.scope]
             except KeyError:
-                thisexistssols = [newsols[0]]
+                # copy to avoid shared dict in newsols and exists sols
+                thisexistssols = [newsols[0].copy()]
                 thisexistsvars = set()
                 existssols[var.scope] = thisexistssols, thisexistsvars
-            for i in xrange(len(newsols)-1, 0, -1):
+            for i in range(len(newsols)-1, 0, -1):
                 if vtype != newsols[i][vname]:
                     thisexistssols.append(newsols.pop(i))
                     thisexistsvars.add(vname)
         else:
             # remember unstable variables
-            for i in xrange(1, len(newsols)):
+            for i in range(1, len(newsols)):
                 if vtype != newsols[i][vname]:
                     unstable.add(vname)
+    # remove unstable variables from exists solutions: the possible types of these variables are not
+    # properly represented in exists solutions, so we have to remove and reinject them later
+    # according to the outer solution (see `iter_exists_sols`)
+    for sols, _ in existssols.values():
+        for vname in unstable:
+            for sol in sols:
+                sol.pop(vname, None)
     if invariants:
         # filter out duplicates
         newsols_ = []
@@ -205,11 +216,11 @@ def remove_unused_solutions(rqlst, solutions, varmap, schema):
         newsols = newsols_
         # reinsert solutions for invariants
         for sol in newsols:
-            for invvar, vartype in invariants[id(sol)].iteritems():
+            for invvar, vartype in invariants[id(sol)].items():
                 sol[invvar] = vartype
         for sol in existssols:
             try:
-                for invvar, vartype in invariants[id(sol)].iteritems():
+                for invvar, vartype in invariants[id(sol)].items():
                     sol[invvar] = vartype
             except KeyError:
                 continue
@@ -257,7 +268,7 @@ def sort_term_selection(sorts, rqlst, groups):
             append(term)
             if groups:
                 for vref in term.iget_nodes(VariableRef):
-                    if not vref in groups:
+                    if not any(vref.is_equivalent(g) for g in groups):
                         groups.append(vref)
 
 def fix_selection_and_group(rqlst, needwrap, selectsortterms,
@@ -273,7 +284,7 @@ def fix_selection_and_group(rqlst, needwrap, selectsortterms,
                     (isinstance(term, Function) and
                      get_func_descr(term.name).aggregat)):
                 for vref in term.iget_nodes(VariableRef):
-                    if not vref in groupvrefs:
+                    if not any(vref.is_equivalent(group) for group in groupvrefs):
                         groups.append(vref)
                         groupvrefs.append(vref)
     if needwrap and (groups or having):
@@ -364,7 +375,7 @@ class StateInfo(object):
         self.done = set()
         self.tables = self.subtables.copy()
         self.actual_tables = [[]]
-        for _, tsql in self.tables.itervalues():
+        for _, tsql in self.tables.values():
             self.actual_tables[-1].append(tsql)
         self.outer_chains = []
         self.outer_tables = {}
@@ -397,24 +408,30 @@ class StateInfo(object):
         thisexistssols, thisexistsvars = self.existssols[exists]
         notdone_outside_vars = set()
         # when iterating other solutions inner to an EXISTS subquery, we should
-        # reset variables which have this exists node as scope at each iteration
-        for var in exists.stmt.defined_vars.itervalues():
+        # reset variables which have this EXISTS node as scope at each iteration
+        for var in exists.stmt.defined_vars.values():
             if var.scope is exists:
                 thisexistsvars.add(var.name)
             elif var.name not in self.done:
                 notdone_outside_vars.add(var)
-        origsol = self.solution
+        # make a copy of the outer statement's solution for later restore
+        origsol = self.solution.copy()
         origtables = self.tables
         done = self.done
         for thisexistssol in thisexistssols:
             for vname in self.unstablevars:
-                if thisexistssol[vname] != origsol[vname] and vname in thisexistsvars:
+                # check first if variable belong to the EXISTS's scope, else it may be missing from
+                # `thisexistssol`
+                if vname in thisexistsvars and thisexistssol[vname] != origsol[vname]:
                     break
             else:
                 self.tables = origtables.copy()
-                self.solution = thisexistssol
+                # overwrite current outer solution by EXISTS solution (the later will be missing
+                # unstable outer variables)
+                self.solution.update(thisexistssol)
                 yield 1
-                # cleanup self.done from stuff specific to exists
+                # cleanup self.done from stuff specific to EXISTS, so they will be reconsidered in
+                # the next round
                 for var in thisexistsvars:
                     if var in done:
                         done.remove(var)
@@ -425,6 +442,7 @@ class StateInfo(object):
                 for rel in exists.iget_nodes(Relation):
                     if rel in done:
                         done.remove(rel)
+        # restore original solution
         self.solution = origsol
         self.tables = origtables
 
@@ -600,7 +618,7 @@ class StateInfo(object):
             self.outer_chains.remove(lchain)
             rchain += lchain
             self.mark_as_used_in_outer_join(leftalias)
-            for alias, (aouter, aconditions, achain) in outer_tables.iteritems():
+            for alias, (aouter, aconditions, achain) in outer_tables.items():
                 if achain is lchain:
                     outer_tables[alias] = (aouter, aconditions, rchain)
         else:
@@ -1475,7 +1493,7 @@ class SQLGenerator(object):
         """generate SQL name for a function"""
         if func.name == 'FTIRANK':
             try:
-                rel = iter(func.children[0].variable.stinfo['ftirels']).next()
+                rel = next(iter(func.children[0].variable.stinfo['ftirels']))
             except KeyError:
                 raise BadRQLQuery("can't use FTIRANK on variable not used in an"
                                   " 'has_text' relation (eg full-text search)")
@@ -1512,7 +1530,7 @@ class SQLGenerator(object):
                 return self._mapped_term(constant, '%%(%s)s' % value)[0]
             except KeyError:
                 _id = value
-                if isinstance(_id, unicode):
+                if PY2 and isinstance(_id, unicode):
                     _id = _id.encode()
         else:
             _id = str(id(constant)).replace('-', '', 1)
@@ -1561,7 +1579,7 @@ class SQLGenerator(object):
                     # add additional restriction on entities.type column
                     pts = variable.stinfo['possibletypes']
                     if len(pts) == 1:
-                        etype = iter(variable.stinfo['possibletypes']).next()
+                        etype = next(iter(variable.stinfo['possibletypes']))
                         restr = "%s.type='%s'" % (vtablename, etype)
                     else:
                         etypes = ','.join("'%s'" % et for et in pts)
@@ -1609,7 +1627,7 @@ class SQLGenerator(object):
 
     def _temp_table_scope(self, select, table):
         scope = 9999
-        for var, sql in self._varmap.iteritems():
+        for var, sql in self._varmap.items():
             # skip "attribute variable" in varmap (such 'T.login')
             if not '.' in var and table == sql.split('.', 1)[0]:
                 try:
@@ -1668,7 +1686,7 @@ class SQLGenerator(object):
             except KeyError:
                 pass
         rel = (variable.stinfo.get('principal') or
-               iter(variable.stinfo['rhsrelations']).next())
+               next(iter(variable.stinfo['rhsrelations'])))
         linkedvar = rel.children[0].variable
         if rel.r_type == 'eid':
             return linkedvar.accept(self)

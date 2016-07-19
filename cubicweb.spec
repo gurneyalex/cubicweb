@@ -5,30 +5,34 @@
 %define python python
 %define __python /usr/bin/python
 %endif
+%{!?python_sitelib: %define python_sitelib %(%{__python} -c "from distutils.sysconfig import get_python_lib; print get_python_lib()")}
 
 Name:           cubicweb
-Version:        3.21.6
+Version:        3.22.3
 Release:        logilab.1%{?dist}
 Summary:        CubicWeb is a semantic web application framework
-Source0:        http://download.logilab.org/pub/cubicweb/cubicweb-%{version}.tar.gz
+Source0:        https://pypi.python.org/packages/source/c/cubicweb/cubicweb-%{version}.tar.gz
 License:        LGPLv2+
 Group:          Development/Languages/Python
 Vendor:         Logilab <contact@logilab.fr>
-Url:            http://www.cubicweb.org/project/cubicweb
+Url:            https://www.cubicweb.org/project/cubicweb
 
 BuildRoot:      %{_tmppath}/%{name}-%{version}-%{release}-buildroot
 BuildArch:      noarch
 
 Requires:       %{python}
+Requires:       %{python}-six >= 1.4.0
 Requires:       %{python}-logilab-common >= 0.63.1
 Requires:       %{python}-logilab-mtconverter >= 0.8.0
-Requires:       %{python}-rql >= 0.31.2
-Requires:       %{python}-yams >= 0.40.0
-Requires:       %{python}-logilab-database >= 1.13.0
+Requires:       %{python}-rql >= 0.34.0
+Requires:       %{python}-yams >= 0.42.0
+Requires:       %{python}-yams < 0.43
+Requires:       %{python}-logilab-database >= 1.15.0
 Requires:       %{python}-passlib
 Requires:       %{python}-lxml
-Requires:       %{python}-twisted-web
+Requires:       %{python}-twisted-web < 16.0.0
 Requires:       %{python}-markdown
+Requires:       pytz
 # the schema view uses `dot'; at least on el5, png output requires graphviz-gd
 Requires:       graphviz-gd
 Requires:       gettext
@@ -55,5 +59,6 @@ rm -rf $RPM_BUILD_ROOT
 %files 
 %defattr(-, root, root)
 %dir /var/log/cubicweb
-/*
-
+%{_prefix}/share/cubicweb/*
+%{python_sitelib}/*
+%{_bindir}/*

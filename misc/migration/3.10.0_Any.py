@@ -1,3 +1,4 @@
+from six import text_type
 
 for uri, cfg in config.read_sources_file().items():
     if uri in ('system', 'admin'):
@@ -23,7 +24,7 @@ for uri, cfg in config.read_sources_file().items():
     repo.sources_by_uri.pop(uri)
     config = u'\n'.join('%s=%s' % (key, value) for key, value in cfg.items()
                         if key != 'adapter' and value is not None)
-    create_entity('CWSource', name=unicode(uri), type=unicode(cfg['adapter']),
+    create_entity('CWSource', name=text_type(uri), type=text_type(cfg['adapter']),
                   config=config)
 commit()
 
@@ -32,4 +33,3 @@ for x in rql('Any X,XK WHERE X pkey XK, '
              'X pkey ~= "boxes.%" OR '
              'X pkey ~= "contentnavigation.%"').entities():
     x.cw_set(pkey=u'ctxcomponents.' + x.pkey.split('.', 1)[1])
-

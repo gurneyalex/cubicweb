@@ -16,18 +16,20 @@
 # You should have received a copy of the GNU Lesser General Public License along
 # with CubicWeb.  If not, see <http://www.gnu.org/licenses/>.
 """Functions to help importing CSV data"""
+from __future__ import absolute_import, print_function
 
-from __future__ import absolute_import
-
+import codecs
 import csv as csvmod
 import warnings
 import os.path as osp
+
+from six import PY2, PY3, string_types
 
 from logilab.common import shellutils
 
 
 def count_lines(stream_or_filename):
-    if isinstance(stream_or_filename, basestring):
+    if isinstance(stream_or_filename, string_types):
         f = open(stream_or_filename)
     else:
         f = stream_or_filename
@@ -49,10 +51,8 @@ def ucsvreader_pb(stream_or_path, encoding='utf-8', delimiter=',', quotechar='"'
     if quote is not None:
         quotechar = quote
         warnings.warn("[3.20] 'quote' kwarg is deprecated, use 'quotechar' instead")
-    if isinstance(stream_or_path, basestring):
-        if not osp.exists(stream_or_path):
-            raise Exception("file doesn't exists: %s" % stream_or_path)
-        stream = open(stream_or_path)
+    if isinstance(stream_or_path, string_types):
+        stream = open(stream_or_path, 'rb')
     else:
         stream = stream_or_path
     rowcount = count_lines(stream)
@@ -65,7 +65,7 @@ def ucsvreader_pb(stream_or_path, encoding='utf-8', delimiter=',', quotechar='"'
         yield urow
         if withpb:
             pb.update()
-    print ' %s rows imported' % rowcount
+    print(' %s rows imported' % rowcount)
 
 
 def ucsvreader(stream, encoding='utf-8', delimiter=',', quotechar='"',
@@ -78,6 +78,8 @@ def ucsvreader(stream, encoding='utf-8', delimiter=',', quotechar='"',
     separators) will be skipped. This is useful for Excel exports which may be
     full of such lines.
     """
+    if PY3:
+        stream = codecs.getreader(encoding)(stream)
     if separator is not None:
         delimiter = separator
         warnings.warn("[3.20] 'separator' kwarg is deprecated, use 'delimiter' instead")
@@ -87,28 +89,33 @@ def ucsvreader(stream, encoding='utf-8', delimiter=',', quotechar='"',
     it = iter(csvmod.reader(stream, delimiter=delimiter, quotechar=quotechar))
     if not ignore_errors:
         if skipfirst:
-            it.next()
+            next(it)
         for row in it:
-            decoded = [item.decode(encoding) for item in row]
+            if PY2:
+                decoded = [item.decode(encoding) for item in row]
+            else:
+                decoded = row
             if not skip_empty or any(decoded):
                 yield decoded
     else:
         if skipfirst:
             try:
-                row = it.next()
+                row = next(it)
             except csvmod.Error:
                 pass
         # Safe version, that can cope with error in CSV file
         while True:
             try:
-                row = it.next()
+                row = next(it)
             # End of CSV, break
             except StopIteration:
                 break
             # Error in CSV, ignore line and continue
             except csvmod.Error:
                 continue
-            decoded = [item.decode(encoding) for item in row]
+            if PY2:
+                decoded = [item.decode(encoding) for item in row]
+            else:
+                decoded = row
             if not skip_empty or any(decoded):
                 yield decoded
-

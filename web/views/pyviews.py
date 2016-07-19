@@ -19,6 +19,9 @@
 """
 __docformat__ = "restructuredtext en"
 
+from six import text_type
+from six.moves import range
+
 from cubicweb.view import View
 from cubicweb.predicates import match_kwargs
 from cubicweb.web.views import tableview
@@ -38,7 +41,7 @@ class PyValTableColRenderer(tableview.AbstractColumnRenderer):
             w(self.empty_cell_content)
 
     def render_cell(self, w, rownum):
-        w(unicode(self.data[rownum][self.colid]))
+        w(text_type(self.data[rownum][self.colid]))
 
 
 class PyValTableView(tableview.TableMixIn, View):
@@ -100,7 +103,7 @@ class PyValTableView(tableview.TableMixIn, View):
 
     def build_column_renderers(self):
         return [self.column_renderer(colid)
-                for colid in xrange(len(self.pyvalue[0]))]
+                for colid in range(len(self.pyvalue[0]))]
 
     def facets_form(self, mainvar=None):
         return None # not supported

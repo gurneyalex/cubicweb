@@ -19,6 +19,7 @@
 
 This module contains functions to initialize a new repository.
 """
+from __future__ import print_function
 
 __docformat__ = "restructuredtext en"
 
@@ -29,10 +30,9 @@ from logilab.common.testlib import SkipTest
 def tuplify(mylist):
     return [tuple(item) for item in mylist]
 
-def snippet_cmp(a, b):
-    a = (a[0], [e.expression for e in a[1]])
-    b = (b[0], [e.expression for e in b[1]])
-    return cmp(a, b)
+def snippet_key(a):
+    # a[0] may be a dict or a key/value tuple
+    return (sorted(dict(a[0]).items()), [e.expression for e in a[1]])
 
 def test_plan(self, rql, expected, kwargs=None):
     with self.session.new_cnx() as cnx:
@@ -57,7 +57,7 @@ def compare_steps(self, step, expected):
                               'expected %s queries, got %s' % (len(equeries), len(queries)))
             for i, (rql, sol) in enumerate(queries):
                 self.assertEqual(rql, equeries[i][0])
-                self.assertEqual(sorted(sol), sorted(equeries[i][1]))
+                self.assertEqual(sorted(sorted(x.items()) for x in sol), sorted(sorted(x.items()) for x in equeries[i][1]))
             idx = 2
         else:
             idx = 1
@@ -66,7 +66,7 @@ def compare_steps(self, step, expected):
         self.assertEqual(len(step[-1]), len(expected[-1]),
                           'got %s child steps, expected %s' % (len(step[-1]), len(expected[-1])))
     except AssertionError:
-        print 'error on step ',
+        print('error on step ', end=' ')
         pprint(step[:-1])
         raise
     children = step[-1]
@@ -115,7 +115,7 @@ def schema_eids_idx(schema):
         schema_eids[x] = x.eid
     for x in schema.relations():
         schema_eids[x] = x.eid
-        for rdef in x.rdefs.itervalues():
+        for rdef in x.rdefs.values():
             schema_eids[(rdef.subject, rdef.rtype, rdef.object)] = rdef.eid
     return schema_eids
 
@@ -127,7 +127,7 @@ def restore_schema_eids_idx(schema, schema_eids):
     for x in schema.relations():
         x.eid = schema_eids[x]
         schema._eid_index[x.eid] = x
-        for rdef in x.rdefs.itervalues():
+        for rdef in x.rdefs.values():
             rdef.eid = schema_eids[(rdef.subject, rdef.rtype, rdef.object)]
             schema._eid_index[rdef.eid] = rdef
 
@@ -187,7 +187,7 @@ class RQLGeneratorTC(TestCase):
         plan = self.qhelper.plan_factory(union, {}, FakeSession(self.repo))
         plan.preprocess(union)
         for select in union.children:
-            select.solutions.sort()
+            select.solutions.sort(key=lambda x: list(x.items()))
         #print '********* ppsolutions', solutions
         return union
 
@@ -197,7 +197,7 @@ class BaseQuerierTC(TestCase):
 
     def setUp(self):
         self.o = self.repo.querier
-        self.session = self.repo._sessions.values()[0]
+        self.session = next(iter(self.repo._sessions.values()))
         self.ueid = self.session.user.eid
         assert self.ueid != -1
         self.repo._type_source_cache = {} # clear cache
@@ -238,7 +238,7 @@ class BaseQuerierTC(TestCase):
         if simplify:
             rqlhelper.simplify(rqlst)
         for select in rqlst.children:
-            select.solutions.sort()
+            select.solutions.sort(key=lambda x: list(x.items()))
         return self.o.plan_factory(rqlst, kwargs, cnx)
 
     def _prepare(self, cnx, rql, kwargs=None):
@@ -286,13 +286,13 @@ class BasePlannerTC(BaseQuerierTC):
         if rqlst.TYPE == 'select':
             self.repo.vreg.rqlhelper.annotate(rqlst)
             for select in rqlst.children:
-                select.solutions.sort()
+                select.solutions.sort(key=lambda x: list(x.items()))
         else:
-            rqlst.solutions.sort()
+            rqlst.solutions.sort(key=lambda x: list(x.items()))
         return self.o.plan_factory(rqlst, kwargs, cnx)
 
 
-# monkey patch some methods to get predicatable results #######################
+# monkey patch some methods to get predictable results #######################
 
 from cubicweb import rqlrewrite
 _orig_iter_relations = rqlrewrite.iter_relations
@@ -300,16 +300,15 @@ _orig_insert_snippets = rqlrewrite.RQLRewriter.insert_snippets
 _orig_build_variantes = rqlrewrite.RQLRewriter.build_variantes
 
 def _insert_snippets(self, snippets, varexistsmap=None):
-    _orig_insert_snippets(self, sorted(snippets, snippet_cmp), varexistsmap)
+    _orig_insert_snippets(self, sorted(snippets, key=snippet_key), varexistsmap)
 
 def _build_variantes(self, newsolutions):
     variantes = _orig_build_variantes(self, newsolutions)
     sortedvariantes = []
     for variante in variantes:
-        orderedkeys = sorted((k[1], k[2], v) for k, v in variante.iteritems())
-        variante = DumbOrderedDict(sorted(variante.iteritems(),
-                                          lambda a, b: cmp((a[0][1],a[0][2],a[1]),
-                                                           (b[0][1],b[0][2],b[1]))))
+        orderedkeys = sorted((k[1], k[2], v) for k, v in variante.items())
+        variante = DumbOrderedDict(sorted(variante.items(),
+                                          key=lambda a: (a[0][1], a[0][2], a[1])))
         sortedvariantes.append( (orderedkeys, variante) )
     return [v for ok, v in sorted(sortedvariantes)]
 
@@ -318,7 +317,7 @@ _orig_check_permissions = ExecutionPlan._check_permissions
 
 def _check_permissions(*args, **kwargs):
     res, restricted = _orig_check_permissions(*args, **kwargs)
-    res = DumbOrderedDict(sorted(res.iteritems(), lambda a, b: cmp(a[1], b[1])))
+    res = DumbOrderedDict(sorted(res.items(), key=lambda x: [y.items() for y in x[1]]))
     return res, restricted
 
 def _dummy_check_permissions(self, rqlst):
