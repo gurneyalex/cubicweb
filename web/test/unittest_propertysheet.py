@@ -1,23 +1,37 @@
 import os
 from os.path import join, dirname
 from shutil import rmtree
-
-from logilab.common.testlib import TestCase, unittest_main
+import errno
+import tempfile
+from unittest import TestCase, main
 
 from cubicweb.web.propertysheet import PropertySheet, lazystr
 
+
 DATADIR = join(dirname(__file__), 'data')
-CACHEDIR = join(DATADIR, 'uicache')
+
 
 class PropertySheetTC(TestCase):
 
+    def setUp(self):
+        uicache = join(DATADIR, 'uicache')
+        try:
+            os.makedirs(uicache)
+        except OSError as err:
+            if err.errno != errno.EEXIST:
+                raise
+        self.cachedir = tempfile.mkdtemp(dir=uicache)
+
     def tearDown(self):
-        rmtree(CACHEDIR)
+        rmtree(self.cachedir)
+
+    def data(self, filename):
+        return join(DATADIR, filename)
 
     def test(self):
-        ps = PropertySheet(CACHEDIR, datadir_url='http://cwtest.com')
-        ps.load(join(DATADIR, 'sheet1.py'))
-        ps.load(join(DATADIR, 'sheet2.py'))
+        ps = PropertySheet(self.cachedir, datadir_url='http://cwtest.com')
+        ps.load(self.data('sheet1.py'))
+        ps.load(self.data('sheet2.py'))
         # defined by sheet1
         self.assertEqual(ps['logo'], 'http://cwtest.com/logo.png')
         # defined by sheet1, overriden by sheet2
@@ -34,10 +48,10 @@ class PropertySheetTC(TestCase):
         self.assertEqual(ps.compile('a {bgcolor: %(bgcolor)s; size: 1%;}'),
                           'a {bgcolor: #FFFFFF; size: 1%;}')
         self.assertEqual(ps.process_resource(DATADIR, 'pouet.css'),
-                          CACHEDIR)
+                         self.cachedir)
         self.assertIn('pouet.css', ps._cache)
         self.assertFalse(ps.need_reload())
-        os.utime(join(DATADIR, 'sheet1.py'), None)
+        os.utime(self.data('sheet1.py'), None)
         self.assertIn('pouet.css', ps._cache)
         self.assertTrue(ps.need_reload())
         self.assertIn('pouet.css', ps._cache)
@@ -45,9 +59,10 @@ class PropertySheetTC(TestCase):
         self.assertNotIn('pouet.css', ps._cache)
         self.assertFalse(ps.need_reload())
         ps.process_resource(DATADIR, 'pouet.css') # put in cache
-        os.utime(join(DATADIR, 'pouet.css'), None)
+        os.utime(self.data('pouet.css'), None)
         self.assertFalse(ps.need_reload())
         self.assertNotIn('pouet.css', ps._cache)
 
+
 if __name__ == '__main__':
-    unittest_main()
+    main()

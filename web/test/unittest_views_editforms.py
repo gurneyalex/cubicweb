@@ -43,7 +43,7 @@ class AutomaticEntityFormTC(CubicWebTC):
         with self.admin_access.web_request() as req:
             AFFK.tag_subject_of(('CWUser', 'login', '*'),
                                 {'widget': AutoCompletionWidget(autocomplete_initfunc='get_logins')})
-            form = self.vreg['forms'].select('edition', req, entity=self.user(req))
+            form = self.vreg['forms'].select('edition', req, entity=req.user)
             field = form.field_by_name('login', 'subject')
             self.assertIsInstance(field.widget, AutoCompletionWidget)
             AFFK.del_rtag('CWUser', 'login', '*', 'subject')
@@ -54,18 +54,18 @@ class AutomaticEntityFormTC(CubicWebTC):
             e = self.vreg['etypes'].etype_class('CWUser')(req)
             # see custom configuration in views.cwuser
             self.assertEqual(rbc(e, 'main', 'attributes'),
-                              [('login', 'subject'),
-                               ('upassword', 'subject'),
-                               ('firstname', 'subject'),
-                               ('surname', 'subject'),
-                               ('in_group', 'subject'),
-                               ])
-            self.assertListEqual(rbc(e, 'muledit', 'attributes'),
+                             [('login', 'subject'),
+                              ('upassword', 'subject'),
+                              ('firstname', 'subject'),
+                              ('surname', 'subject'),
+                              ('in_group', 'subject'),
+                              ])
+            self.assertEqual(rbc(e, 'muledit', 'attributes'),
                                   [('login', 'subject'),
                                    ('upassword', 'subject'),
                                    ('in_group', 'subject'),
                                    ])
-            self.assertListEqual(rbc(e, 'main', 'metadata'),
+            self.assertCountEqual(rbc(e, 'main', 'metadata'),
                                   [('last_login_time', 'subject'),
                                    ('cw_source', 'subject'),
                                    ('creation_date', 'subject'),
@@ -77,7 +77,7 @@ class AutomaticEntityFormTC(CubicWebTC):
             # XXX skip 'tags' relation here and in the hidden category because
             # of some test interdependancy when pytest is launched on whole cw
             # (appears here while expected in hidden
-            self.assertListEqual([x for x in rbc(e, 'main', 'relations')
+            self.assertCountEqual([x for x in rbc(e, 'main', 'relations')
                                    if x != ('tags', 'object')],
                                   [('connait', 'subject'),
                                    ('custom_workflow', 'subject'),
@@ -125,14 +125,14 @@ class AutomaticEntityFormTC(CubicWebTC):
             self.assertListEqual(rbc(e, 'muledit', 'attributes'),
                                   [('nom', 'subject'),
                                    ])
-            self.assertListEqual(rbc(e, 'main', 'metadata'),
+            self.assertCountEqual(rbc(e, 'main', 'metadata'),
                                   [('cw_source', 'subject'),
                                    ('creation_date', 'subject'),
                                    ('modification_date', 'subject'),
                                    ('created_by', 'subject'),
                                    ('owned_by', 'subject'),
                                    ])
-            self.assertListEqual(rbc(e, 'main', 'relations'),
+            self.assertCountEqual(rbc(e, 'main', 'relations'),
                                   [('travaille', 'subject'),
                                    ('manager', 'object'),
                                    ('connait', 'object'),
@@ -158,15 +158,15 @@ class AutomaticEntityFormTC(CubicWebTC):
     def test_attribute_add_permissions(self):
         # https://www.cubicweb.org/ticket/4342844
         with self.admin_access.repo_cnx() as cnx:
-            self.create_user(cnx, 'toto')
+            self.create_user(cnx, u'toto')
             cnx.commit()
-        with self.new_access('toto').web_request() as req:
+        with self.new_access(u'toto').web_request() as req:
             e = self.vreg['etypes'].etype_class('Personne')(req)
             cform = self.vreg['forms'].select('edition', req, entity=e)
             self.assertIn('sexe',
                           [rschema.type
                            for rschema, _ in cform.editable_attributes()])
-            with self.new_access('toto').repo_cnx() as cnx:
+            with self.new_access(u'toto').repo_cnx() as cnx:
                 person_eid = cnx.create_entity('Personne', nom=u'Robert').eid
                 cnx.commit()
             person = req.entity_from_eid(person_eid)

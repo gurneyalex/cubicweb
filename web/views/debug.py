@@ -24,7 +24,6 @@ from time import strftime, localtime
 
 from logilab.mtconverter import xml_escape
 
-from cubicweb import BadConnectionId
 from cubicweb.predicates import none_rset, match_user_groups
 from cubicweb.view import StartupView
 from cubicweb.web.views import actions, tabs
@@ -98,6 +97,13 @@ class ProcessInformationView(StartupView):
         w(u'<h3>%s</h3>' % _('resources usage'))
         w(u'<table>')
         stats = self._cw.call_service('repo_stats')
+        stats['looping_tasks'] = ', '.join('%s (%s seconds)' % (n, i) for n, i in stats['looping_tasks'])
+        stats['threads'] = ', '.join(sorted(stats['threads']))
+        for k in stats:
+            if k in ('extid_cache_size', 'type_source_cache_size'):
+                continue
+            if k.endswith('_cache_size'):
+                stats[k] = '%s / %s' % (stats[k]['size'], stats[k]['maxsize'])
         for element in sorted(stats):
             w(u'<tr><th align="left">%s</th><td>%s %s</td></tr>'
                    % (element, xml_escape(unicode(stats[element])),
@@ -179,31 +185,13 @@ class GCView(StartupView):
     cache_max_age = 0
 
     def call(self, **kwargs):
-        from cubicweb._gcdebug import gc_info
-        from rql.stmts import Union
-        from cubicweb.appobject import AppObject
-        from cubicweb.rset import ResultSet
-        from cubicweb.dbapi import Connection, Cursor
-        from cubicweb.web.request import CubicWebRequestBase
-        lookupclasses = (AppObject,
-                         Union, ResultSet,
-                         Connection, Cursor,
-                         CubicWebRequestBase)
-        try:
-            from cubicweb.server.session import Session, InternalSession
-            lookupclasses += (InternalSession, Session)
-        except ImportError:
-            pass # no server part installed
+        stats = self._cw.call_service('repo_gc_stats')
         self.w(u'<h2>%s</h2>' % _('Garbage collection information'))
-        counters, ocounters, garbage = gc_info(lookupclasses,
-                                               viewreferrersclasses=())
         self.w(u'<h3>%s</h3>' % self._cw._('Looked up classes'))
-        values = sorted(counters.iteritems(), key=lambda x: x[1], reverse=True)
-        self.wview('pyvaltable', pyvalue=values)
+        self.wview('pyvaltable', pyvalue=stats['lookupclasses'])
         self.w(u'<h3>%s</h3>' % self._cw._('Most referenced classes'))
-        values = sorted(ocounters.iteritems(), key=lambda x: x[1], reverse=True)
-        self.wview('pyvaltable', pyvalue=values[:self._cw.form.get('nb', 20)])
-        if garbage:
+        self.wview('pyvaltable', pyvalue=stats['referenced'])
+        if stats['unreachable']:
             self.w(u'<h3>%s</h3>' % self._cw._('Unreachable objects'))
-            values = sorted(xml_escape(repr(o)) for o in garbage)
+            values = [xml_escape(val) for val in stats['unreachable']]
             self.wview('pyvallist', pyvalue=values)

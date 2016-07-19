@@ -169,7 +169,7 @@ class SchemaReaderClassTest(TestCase):
                              'CWRelation', 'CWPermission', 'CWProperty', 'CWRType',
                              'CWSource', 'CWSourceHostConfig', 'CWSourceSchemaConfig',
                              'CWUniqueTogetherConstraint', 'CWUser',
-                             'ExternalUri', 'File', 'Float', 'Int', 'Interval', 'Note',
+                             'ExternalUri', 'FakeFile', 'Float', 'Int', 'Interval', 'Note',
                              'Password', 'Personne', 'Produit',
                              'RQLExpression', 'Reference',
                              'Service', 'Societe', 'State', 'StateFull', 'String', 'SubNote', 'SubWorkflowExitPoint',
@@ -221,8 +221,6 @@ class SchemaReaderClassTest(TestCase):
                               'value',
 
                               'wf_info_for', 'wikiid', 'workflow_of', 'tr_count']
-        if config.cube_version('file') >= (1, 14, 0):
-            expected_relations.append('data_sha1hex')
 
         self.assertListEqual(sorted(expected_relations), relations)
 
@@ -360,8 +358,8 @@ class SchemaReaderComputedRelationAndAttributesTest(TestCase):
                          schema['produces_and_buys'].rdefs.keys())
         self.assertEqual([('Person','Service')],
                          schema['produces_and_buys2'].rdefs.keys())
-        self.assertEqual([('Company', 'Service'), ('Person', 'Service')],
-                         schema['reproduce'].rdefs.keys())
+        self.assertCountEqual([('Company', 'Service'), ('Person', 'Service')],
+                              schema['reproduce'].rdefs.keys())
         # check relation definitions are marked infered
         rdef = schema['produces_and_buys'].rdefs[('Person','Service')]
         self.assertTrue(rdef.infered)
@@ -418,6 +416,10 @@ class BadSchemaTC(TestCase):
     def test_rrqlexpr_on_attr(self):
         self._test('rrqlexpr_on_attr.py',
                    "can't use RRQLExpression on attribute ToTo.attr[String], use an ERQLExpression")
+
+    def test_rqlexpr_on_computedrel(self):
+        self._test('rqlexpr_on_computedrel.py',
+                   "can't use rql expression for read permission of relation Subject computed Object")
 
 
 class NormalizeExpressionTC(TestCase):
@@ -484,6 +486,7 @@ class CompositeSchemaTC(CubicWebTC):
                        ('cw_schema', 'CWSourceSchemaConfig', 'CWRelation', 'object'),
                        ('delete_permission', 'CWRelation', 'RQLExpression', 'subject'),
                        ('read_permission', 'CWRelation', 'RQLExpression', 'subject')],
+        'CWComputedRType': [('read_permission', 'CWComputedRType', 'RQLExpression', 'subject')],
         'CWSource': [('cw_for_source', 'CWSourceSchemaConfig', 'CWSource', 'object'),
                      ('cw_host_config_of', 'CWSourceHostConfig', 'CWSource', 'object'),
                      ('cw_import_of', 'CWDataImport', 'CWSource', 'object'),
@@ -510,7 +513,7 @@ class CompositeSchemaTC(CubicWebTC):
                      ('cw_source', 'Card', 'CWSource', 'object'),
                      ('cw_source', 'EmailAddress', 'CWSource', 'object'),
                      ('cw_source', 'ExternalUri', 'CWSource', 'object'),
-                     ('cw_source', 'File', 'CWSource', 'object'),
+                     ('cw_source', 'FakeFile', 'CWSource', 'object'),
                      ('cw_source', 'Note', 'CWSource', 'object'),
                      ('cw_source', 'Personne', 'CWSource', 'object'),
                      ('cw_source', 'Produit', 'CWSource', 'object'),

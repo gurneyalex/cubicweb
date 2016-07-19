@@ -89,7 +89,7 @@ CWUser.get_relations('login').next().fulltextindexed = True
 
 class Note(WorkflowableEntityType):
     date = String(maxsize=10)
-    type = String(maxsize=6)
+    type = String(vocabulary=[u'todo', u'a', u'b', u'T', u'lalala'])
     para = String(maxsize=512,
                   __permissions__ = {
                       'add': ('managers', ERQLExpression('X in_state S, S name "todo"')),
@@ -166,6 +166,22 @@ class Old(EntityType):
         'add'    : ('managers', 'users', 'guests'),
         'update' : ()
     })
+
+
+class Email(EntityType):
+    subject = String(fulltextindexed=True)
+    messageid = String(required=True, indexed=True, unique=True)
+    sender = SubjectRelation('EmailAddress', cardinality='?*')
+    recipients = SubjectRelation('EmailAddress')
+    attachment = SubjectRelation('File')
+
+
+class EmailPart(EntityType):
+    pass
+
+
+class EmailThread(EntityType):
+    see_also = SubjectRelation('EmailThread')
 
 
 class connait(RelationType):
@@ -245,6 +261,14 @@ class copain(RelationDefinition):
 class tags(RelationDefinition):
     subject = 'Tag'
     object = ('CWUser', 'CWGroup', 'State', 'Note', 'Card', 'Affaire')
+
+class Folder(EntityType):
+    """folders are used to classify entities. They may be defined as a tree.
+    """
+    name = String(required=True, indexed=True, internationalizable=True,
+                  maxsize=64)
+    description = RichString(fulltextindexed=True)
+    filed_under = SubjectRelation('Folder', description=_('parent folder'))
 
 class filed_under(RelationDefinition):
     subject = ('Note', 'Affaire')

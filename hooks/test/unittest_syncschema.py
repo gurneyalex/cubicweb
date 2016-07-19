@@ -21,15 +21,23 @@ from logilab.common.testlib import unittest_main
 
 from cubicweb import ValidationError, Binary
 from cubicweb.schema import META_RTYPES
+from cubicweb.devtools import startpgcluster, stoppgcluster, PostgresApptestConfiguration
 from cubicweb.devtools.testlib import CubicWebTC
 from cubicweb.server.sqlutils import SQL_PREFIX
 from cubicweb.devtools.repotest import schema_eids_idx
 
 
+def setUpModule():
+    startpgcluster(__file__)
+
+
 def tearDownModule(*args):
+    stoppgcluster(__file__)
     del SchemaModificationHooksTC.schema_eids
 
+
 class SchemaModificationHooksTC(CubicWebTC):
+    configcls = PostgresApptestConfiguration
 
     def setUp(self):
         super(SchemaModificationHooksTC, self).setUp()
@@ -38,12 +46,11 @@ class SchemaModificationHooksTC(CubicWebTC):
 
     def index_exists(self, cnx, etype, attr, unique=False):
         dbhelper = self.repo.system_source.dbhelper
-        with cnx.ensure_cnx_set:
-            sqlcursor = cnx.cnxset.cu
-            return dbhelper.index_exists(sqlcursor,
-                                         SQL_PREFIX + etype,
-                                         SQL_PREFIX + attr,
-                                         unique=unique)
+        sqlcursor = cnx.cnxset.cu
+        return dbhelper.index_exists(sqlcursor,
+                                     SQL_PREFIX + etype,
+                                     SQL_PREFIX + attr,
+                                     unique=unique)
 
     def _set_perms(self, cnx, eid):
         cnx.execute('SET X read_permission G WHERE X eid %(x)s, G is CWGroup',
@@ -296,6 +303,7 @@ class SchemaModificationHooksTC(CubicWebTC):
             cnx.execute('SET DEF cardinality "11" '
                          'WHERE DEF relation_type RT, DEF from_entity E,'
                          'RT name "surname", E name "CWUser"')
+            cnx.execute('SET U surname "Doe" WHERE U surname NULL')
             cnx.commit()
             # should not be able anymore to add cwuser without surname
             self.assertRaises(ValidationError, self.create_user, cnx, "toto")

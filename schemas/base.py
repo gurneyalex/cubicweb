@@ -23,7 +23,7 @@ _ = unicode
 from yams.buildobjs import (EntityType, RelationType, RelationDefinition,
                             SubjectRelation,
                             String, TZDatetime, Datetime, Password, Interval,
-                            Boolean)
+                            Boolean, UniqueConstraint)
 from cubicweb.schema import (
     RQLConstraint, WorkflowableEntityType, ERQLExpression, RRQLExpression,
     PUB_SYSTEM_ENTITY_PERMS, PUB_SYSTEM_REL_PERMS, PUB_SYSTEM_ATTR_PERMS,
@@ -182,7 +182,6 @@ class for_user(RelationType):
     object = 'CWUser'
     composite = 'object'
     cardinality = '?*'
-
 
 
 class ExternalUri(EntityType):

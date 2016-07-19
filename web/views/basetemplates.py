@@ -490,7 +490,7 @@ class LogForm(BaseLogForm):
 
 
 class LogFormView(View):
-    # XXX an awfull lot of hardcoded assumptions there
+    # XXX an awful lot of hardcoded assumptions there
     #     makes it unobvious to reuse/specialize
     __regid__ = 'logform'
     __select__ = match_kwargs('id', 'klass')
@@ -516,10 +516,6 @@ class LogFormView(View):
         if config['auth-mode'] != 'http':
             self.login_form(id) # Cookie authentication
         w(u'</div>')
-        if self._cw.https and config.anonymous_user()[0] and config['https-deny-anonymous']:
-            path = xml_escape(config['base-url'] + self._cw.relative_path())
-            w(u'<div class="loginMessage"><a href="%s">%s</a></div>\n'
-              % (path, self._cw._('No account? Try public access at %s') % path))
         w(u'</div>\n')
 
     def login_form(self, id):

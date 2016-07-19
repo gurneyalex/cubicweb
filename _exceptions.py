@@ -82,6 +82,8 @@ class UniqueTogetherError(RepositoryError):
         self.session = session
         assert 'rtypes' in kwargs or 'cstrname' in kwargs
         self.kwargs = kwargs
+        # fill cache while the session is open
+        self.rtypes
 
     @cachedproperty
     def rtypes(self):
@@ -98,6 +100,12 @@ class UniqueTogetherError(RepositoryError):
              DeprecationWarning)
         # the first argument, etype, is never used and was never garanteed anyway
         return None, self.rtypes
+
+
+class ViolatedConstraint(RepositoryError):
+    def __init__(self, cnx, cstrname):
+        self.cnx = cnx
+        self.cstrname = cstrname
 
 
 # security exceptions #########################################################

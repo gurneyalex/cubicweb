@@ -57,7 +57,7 @@ if applcubicwebversion <= (3, 13, 0) and cubicwebversion >= (3, 13, 1):
     commit()
 
 if applcubicwebversion <= (3, 14, 4) and cubicwebversion >= (3, 14, 4):
-    from yams import schema2sql as y2sql
+    from cubicweb.server import schema2sql as y2sql
     dbhelper = repo.system_source.dbhelper
     rdefdef = schema['CWSource'].rdef('name')
     attrtype = y2sql.type_from_constraints(dbhelper, rdefdef.object, rdefdef.constraints).split()[0]
@@ -433,6 +433,12 @@ if applcubicwebversion < (3, 2, 2) and cubicwebversion >= (3, 2, 1):
 
 if applcubicwebversion < (3, 2, 0) and cubicwebversion >= (3, 2, 0):
     add_cube('card', update_database=False)
+
+
+if applcubicwebversion < (3, 21, 1) and cubicwebversion >= (3, 21, 1):
+    add_relation_definition('CWComputedRType', 'read_permission', 'CWGroup')
+    add_relation_definition('CWComputedRType', 'read_permission', 'RQLExpression')
+
 
 def sync_constraint_types():
     """Make sure the repository knows about all constraint types defined in the code"""

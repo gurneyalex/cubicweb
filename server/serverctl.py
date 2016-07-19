@@ -38,7 +38,6 @@ from cubicweb import AuthenticationError, ExecutionError, ConfigurationError
 from cubicweb.toolsutils import Command, CommandHandler, underline_title
 from cubicweb.cwctl import CWCTL, check_options_consistency, ConfigureInstanceCommand
 from cubicweb.server import SOURCE_TYPES
-from cubicweb.server.repository import Repository
 from cubicweb.server.serverconfig import (
     USER_OPTIONS, ServerConfiguration, SourceConfiguration,
     ask_source_config, generate_source_config)
@@ -167,11 +166,6 @@ class RepositoryCreateHandler(CommandHandler):
         if not automatic:
             print underline_title('Configuring the repository')
             config.input_config('email', inputlevel)
-            # ask for pyro configuration if pyro is activated and we're not
-            # using a all-in-one config, in which case this is done by the web
-            # side command handler
-            if config.pyro_enabled() and config.name != 'all-in-one':
-                config.input_config('pyro', inputlevel)
             print '\n'+underline_title('Configuring the sources')
         sourcesfile = config.sources_file()
         # hack to make Method('default_instance_id') usable in db option defs
@@ -299,33 +293,6 @@ class RepositoryDeleteHandler(CommandHandler):
                                    default_is_yes=False):
                         continue
                     raise ExecutionError(str(exc))
-
-
-class RepositoryStartHandler(CommandHandler):
-    cmdname = 'start'
-    cfgname = 'repository'
-
-    def start_server(self, config):
-        command = ['cubicweb-ctl', 'start-repository']
-        if config.debugmode:
-            command.append('--debug')
-        command.append('--loglevel')
-        command.append(config['log-threshold'].lower())
-        command.append(config.appid)
-        subprocess.call(command)
-        return 1
-
-
-class RepositoryStopHandler(CommandHandler):
-    cmdname = 'stop'
-    cfgname = 'repository'
-
-    def poststop(self):
-        """if pyro is enabled, ensure the repository is correctly unregistered
-        """
-        if self.config.pyro_enabled():
-            from cubicweb.server.repository import pyro_unregister
-            pyro_unregister(self.config)
 
 
 # repository specific commands ################################################
@@ -530,51 +497,55 @@ class AddSourceCommand(Command):
         appid = args[0]
         config = ServerConfiguration.config_for(appid)
         repo, cnx = repo_cnx(config)
-        with cnx:
-            used = set(n for n, in cnx.execute('Any SN WHERE S is CWSource, S name SN'))
-            cubes = repo.get_cubes()
-            while True:
-                type = raw_input('source type (%s): '
-                                    % ', '.join(sorted(SOURCE_TYPES)))
-                if type not in SOURCE_TYPES:
-                    print '-> unknown source type, use one of the available types.'
-                    continue
-                sourcemodule = SOURCE_TYPES[type].module
-                if not sourcemodule.startswith('cubicweb.'):
-                    # module names look like cubes.mycube.themodule
-                    sourcecube = SOURCE_TYPES[type].module.split('.', 2)[1]
-                    # if the source adapter is coming from an external component,
-                    # ensure it's specified in used cubes
-                    if not sourcecube in cubes:
-                        print ('-> this source type require the %s cube which is '
-                               'not used by the instance.')
+        repo.hm.call_hooks('server_maintenance', repo=repo)
+        try:
+            with cnx:
+                used = set(n for n, in cnx.execute('Any SN WHERE S is CWSource, S name SN'))
+                cubes = repo.get_cubes()
+                while True:
+                    type = raw_input('source type (%s): '
+                                        % ', '.join(sorted(SOURCE_TYPES)))
+                    if type not in SOURCE_TYPES:
+                        print '-> unknown source type, use one of the available types.'
                         continue
-                break
-            while True:
-                parser = raw_input('parser type (%s): '
-                                    % ', '.join(sorted(repo.vreg['parsers'])))
-                if parser in repo.vreg['parsers']:
+                    sourcemodule = SOURCE_TYPES[type].module
+                    if not sourcemodule.startswith('cubicweb.'):
+                        # module names look like cubes.mycube.themodule
+                        sourcecube = SOURCE_TYPES[type].module.split('.', 2)[1]
+                        # if the source adapter is coming from an external component,
+                        # ensure it's specified in used cubes
+                        if not sourcecube in cubes:
+                            print ('-> this source type require the %s cube which is '
+                                   'not used by the instance.')
+                            continue
                     break
-                print '-> unknown parser identifier, use one of the available types.'
-            while True:
-                sourceuri = raw_input('source identifier (a unique name used to '
-                                      'tell sources apart): ').strip()
-                if not sourceuri:
-                    print '-> mandatory.'
-                else:
-                    sourceuri = unicode(sourceuri, sys.stdin.encoding)
-                    if sourceuri in used:
-                        print '-> uri already used, choose another one.'
-                    else:
+                while True:
+                    parser = raw_input('parser type (%s): '
+                                        % ', '.join(sorted(repo.vreg['parsers'])))
+                    if parser in repo.vreg['parsers']:
                         break
-            url = raw_input('source URL (leave empty for none): ').strip()
-            url = unicode(url) if url else None
-            # XXX configurable inputlevel
-            sconfig = ask_source_config(config, type, inputlevel=self.config.config_level)
-            cfgstr = unicode(generate_source_config(sconfig), sys.stdin.encoding)
-            cnx.create_entity('CWSource', name=sourceuri, type=unicode(type),
-                              config=cfgstr, parser=unicode(parser), url=unicode(url))
-            cnx.commit()
+                    print '-> unknown parser identifier, use one of the available types.'
+                while True:
+                    sourceuri = raw_input('source identifier (a unique name used to '
+                                          'tell sources apart): ').strip()
+                    if not sourceuri:
+                        print '-> mandatory.'
+                    else:
+                        sourceuri = unicode(sourceuri, sys.stdin.encoding)
+                        if sourceuri in used:
+                            print '-> uri already used, choose another one.'
+                        else:
+                            break
+                url = raw_input('source URL (leave empty for none): ').strip()
+                url = unicode(url) if url else None
+                # XXX configurable inputlevel
+                sconfig = ask_source_config(config, type, inputlevel=self.config.config_level)
+                cfgstr = unicode(generate_source_config(sconfig), sys.stdin.encoding)
+                cnx.create_entity('CWSource', name=sourceuri, type=unicode(type),
+                                  config=cfgstr, parser=unicode(parser), url=unicode(url))
+                cnx.commit()
+        finally:
+            repo.hm.call_hooks('server_shutdown')
 
 
 class GrantUserOnInstanceCommand(Command):
@@ -685,77 +656,6 @@ class ResetAdminPasswordCommand(Command):
             print '-> password reset, sources file regenerated.'
         cnx.close()
 
-
-class StartRepositoryCommand(Command):
-    """Start a CubicWeb RQL server for a given instance.
-
-    The server will be remotely accessible through pyro or ZMQ
-
-    <instance>
-      the identifier of the instance to initialize.
-    """
-    name = 'start-repository'
-    arguments = '<instance>'
-    min_args = max_args = 1
-    options = (
-        ('debug',
-         {'short': 'D', 'action' : 'store_true',
-          'help': 'start server in debug mode.'}),
-        ('loglevel',
-         {'short': 'l', 'type' : 'choice', 'metavar': '<log level>',
-          'default': None, 'choices': ('debug', 'info', 'warning', 'error'),
-          'help': 'debug if -D is set, error otherwise',
-          }),
-        ('address',
-         {'short': 'a', 'type': 'string', 'metavar': '<protocol>://<host>:<port>',
-          'default': '',
-          'help': ('specify a ZMQ URI on which to bind, or use "pyro://"'
-                   'to create a pyro-based repository'),
-          }),
-        )
-
-    def create_repo(self, config):
-        address = self['address']
-        if not address:
-            address = config.get('zmq-repository-address') or 'pyro://'
-        if address.startswith('pyro://'):
-            from cubicweb.server.server import RepositoryServer
-            return RepositoryServer(config), config['host']
-        else:
-            from cubicweb.server.utils import TasksManager
-            from cubicweb.server.cwzmq import ZMQRepositoryServer
-            repo = Repository(config, TasksManager())
-            return ZMQRepositoryServer(repo), address
-
-    def run(self, args):
-        from logilab.common.daemon import daemonize, setugid
-        from cubicweb.cwctl import init_cmdline_log_threshold
-        print 'WARNING: Standalone repository with pyro or zmq access is deprecated'
-        appid = args[0]
-        debug = self['debug']
-        if sys.platform == 'win32' and not debug:
-            logger = logging.getLogger('cubicweb.ctl')
-            logger.info('Forcing debug mode on win32 platform')
-            debug = True
-        config = ServerConfiguration.config_for(appid, debugmode=debug)
-        init_cmdline_log_threshold(config, self['loglevel'])
-        # create the server
-        server, address = self.create_repo(config)
-        # ensure the directory where the pid-file should be set exists (for
-        # instance /var/run/cubicweb may be deleted on computer restart)
-        pidfile = config['pid-file']
-        piddir = os.path.dirname(pidfile)
-        # go ! (don't daemonize in debug mode)
-        if not os.path.exists(piddir):
-            os.makedirs(piddir)
-        if not debug and daemonize(pidfile, umask=config['umask']):
-            return
-        uid = config['uid']
-        if uid is not None:
-            setugid(uid)
-        server.install_sig_handlers()
-        server.connect(address)
-        server.run()
 
 
 def _remote_dump(host, appid, output, sudo=False):
@@ -1061,7 +961,7 @@ class RebuildFTICommand(Command):
         config = ServerConfiguration.config_for(appid)
         repo, cnx = repo_cnx(config)
         with cnx:
-            reindex_entities(repo.schema, cnx._cnx, etypes=etypes)
+            reindex_entities(repo.schema, cnx, etypes=etypes)
             cnx.commit()
 
 
@@ -1084,20 +984,23 @@ class SynchronizeSourceCommand(Command):
     )
 
     def run(self, args):
+        from cubicweb import repoapi
         from cubicweb.cwctl import init_cmdline_log_threshold
         config = ServerConfiguration.config_for(args[0])
         config.global_set_option('log-file', None)
         config.log_format = '%(levelname)s %(name)s: %(message)s'
         init_cmdline_log_threshold(config, self['loglevel'])
-        # only retrieve cnx to trigger authentication, close it right away
-        repo, cnx = repo_cnx(config)
-        cnx.close()
+        repo = repoapi.get_repository(config=config)
+        repo.hm.call_hooks('server_maintenance', repo=repo)
         try:
-            source = repo.sources_by_uri[args[1]]
-        except KeyError:
-            raise ExecutionError('no source named %r' % args[1])
-        session = repo.internal_session()
-        stats = source.pull_data(session, force=True, raise_on_error=True)
+            try:
+                source = repo.sources_by_uri[args[1]]
+            except KeyError:
+                raise ExecutionError('no source named %r' % args[1])
+            with repo.internal_cnx() as cnx:
+                stats = source.pull_data(cnx, force=True, raise_on_error=True)
+        finally:
+            repo.shutdown()
         for key, val in stats.iteritems():
             if val:
                 print key, ':', val
@@ -1135,18 +1038,17 @@ class SchemaDiffCommand(Command):
 
     def run(self, args):
         from yams.diff import schema_diff
+        from cubicweb import repoapi
         appid = args.pop(0)
         diff_tool = args.pop(0)
         config = ServerConfiguration.config_for(appid)
-        repo, cnx = repo_cnx(config)
-        cnx.close()
+        repo = repoapi.get_repository(config=config)
         fsschema = config.load_schema(expand_cubes=True)
         schema_diff(fsschema, repo.schema, permissionshandler, diff_tool, ignore=('eid',))
 
 
 for cmdclass in (CreateInstanceDBCommand, InitInstanceCommand,
                  GrantUserOnInstanceCommand, ResetAdminPasswordCommand,
-                 StartRepositoryCommand,
                  DBDumpCommand, DBRestoreCommand, DBCopyCommand,
                  AddSourceCommand, CheckRepositoryCommand, RebuildFTICommand,
                  SynchronizeSourceCommand, SchemaDiffCommand,

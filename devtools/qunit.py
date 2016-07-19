@@ -29,7 +29,9 @@ from logilab.common.testlib import unittest_main, with_tempdir, InnerTest, Tags
 from logilab.common.shellutils import getlogin
 
 import cubicweb
+from cubicweb.view import View
 from cubicweb.web.controller import Controller
+from cubicweb.web.views.staticcontrollers import StaticFileController, STATIC_CONTROLLERS
 from cubicweb.devtools.httptest import CubicWebServerTC
 
 
@@ -66,7 +68,7 @@ class FirefoxHelper(object):
         self.firefox_cmd = ['firefox', '-no-remote']
         if os.name == 'posix':
             self.firefox_cmd = [osp.join(osp.dirname(__file__), 'data', 'xvfb-run.sh'),
-                                '-a', '-s', '-noreset -screen 0 640x480x8'] + self.firefox_cmd
+                                '-a', '-s', '-noreset -screen 0 800x600x24'] + self.firefox_cmd
 
     def start(self, url):
         self.stop()
@@ -102,11 +104,14 @@ class QUnitTestCase(CubicWebServerTC):
             test_queue = self.test_queue
         self._qunit_controller = MyQUnitResultController
         self.vreg.register(MyQUnitResultController)
+        self.vreg.register(QUnitView)
+        self.vreg.register(CWSoftwareRootStaticController)
 
     def tearDown(self):
         super(QUnitTestCase, self).tearDown()
         self.vreg.unregister(self._qunit_controller)
-
+        self.vreg.unregister(QUnitView)
+        self.vreg.unregister(CWSoftwareRootStaticController)
 
     def abspath(self, path):
         """use self.__module__ to build absolute path if necessary"""
@@ -130,35 +135,21 @@ class QUnitTestCase(CubicWebServerTC):
                 yield js_test
 
     @with_tempdir
-    def _test_qunit(self, test_file, depends=(), data_files=(), timeout=30):
+    def _test_qunit(self, test_file, depends=(), data_files=(), timeout=10):
         assert osp.exists(test_file), test_file
         for dep in depends:
             assert osp.exists(dep), dep
         for data in data_files:
             assert osp.exists(data), data
 
-        # generate html test file
-        jquery_dir = 'file://' + self.config.locate_resource('jquery.js')[0]
-        html_test_file = NamedTemporaryFile(suffix='.html', delete=False)
-        html_test_file.write(make_qunit_html(test_file, depends,
-                             base_url=self.config['base-url'],
-                             web_data_path=jquery_dir))
-        html_test_file.flush()
-        # copying data file
-        for data in data_files:
-            copyfile(data, tempfile.tempdir)
+        QUnitView.test_file = test_file
+        QUnitView.depends = depends
 
         while not self.test_queue.empty():
             self.test_queue.get(False)
 
         browser = FirefoxHelper()
-        # start firefox once to let it init the profile (and run system-wide
-        # add-ons post setup, blegh), and then kill it ...
-        browser.start('about:blank')
-        import time; time.sleep(5)
-        browser.stop()
-        # ... then actually run the test file
-        browser.start(html_test_file.name)
+        browser.start(self.config['base-url'] + "?vid=qunit")
         test_count = 0
         error = False
         def raise_exception(cls, *data):
@@ -220,100 +211,114 @@ class QUnitResultController(Controller):
 
     def handle_log(self):
         result = self._cw.form['result']
-        message = self._cw.form['message']
-        self._log_stack.append('%s: %s' % (result, message))
+        message = self._cw.form.get('message', '<no message>')
+        actual = self._cw.form.get('actual')
+        expected = self._cw.form.get('expected')
+        source = self._cw.form.get('source')
+        log = '%s: %s' % (result, message)
+        if result == 'false' and actual is not None and expected is not None:
+            log += ' (got: %s, expected: %s)' % (actual, expected)
+            if source is not None:
+                log += '\n' + source
+        self._log_stack.append(log)
 
 
-def cw_path(*paths):
-  return file_path(osp.join(cubicweb.CW_SOFTWARE_ROOT, *paths))
+class QUnitView(View):
+    __regid__ = 'qunit'
 
-def file_path(path):
-    return 'file://' + osp.abspath(path)
+    templatable = False
 
-def build_js_script(host):
-    return """
-    var host = '%s';
+    depends = None
+    test_file = None
 
-    QUnit.moduleStart = function (name) {
-      jQuery.ajax({
-                  url: host+'/qunit_result',
-                 data: {"event": "module_start",
-                        "name": name},
-                 async: false});
-    }
-
-    QUnit.testDone = function (name, failures, total) {
-      jQuery.ajax({
-                  url: host+'/qunit_result',
-                 data: {"event": "test_done",
-                        "name": name,
-                        "failures": failures,
-                        "total":total},
-                 async: false});
-    }
-
-    QUnit.done = function (failures, total) {
-      jQuery.ajax({
-                   url: host+'/qunit_result',
-                   data: {"event": "done",
-                          "failures": failures,
-                          "total":total},
-                   async: false});
-      window.close();
-    }
-
-    QUnit.log = function (result, message) {
-      jQuery.ajax({
-                   url: host+'/qunit_result',
-                   data: {"event": "log",
-                          "result": result,
-                          "message": message},
-                   async: false});
-    }
-    """ % host
-
-def make_qunit_html(test_file, depends=(), base_url=None,
-                    web_data_path=cw_path('web', 'data')):
-    """"""
-    data = {
-            'web_data': web_data_path,
-            'web_test': cw_path('devtools', 'data'),
+    def call(self, **kwargs):
+        w = self.w
+        req = self._cw
+        data = {
+            'jquery': req.data_url('jquery.js'),
+            'web_test': req.build_url('cwsoftwareroot/devtools/data'),
         }
+        w(u'''<!DOCTYPE html>
+        <html>
+        <head>
+        <meta http-equiv="content-type" content="application/html; charset=UTF-8"/>
+        <!-- JS lib used as testing framework -->
+        <link rel="stylesheet" type="text/css" media="all" href="%(web_test)s/qunit.css" />
+        <script src="%(jquery)s" type="text/javascript"></script>
+        <script src="%(web_test)s/cwmock.js" type="text/javascript"></script>
+        <script src="%(web_test)s/qunit.js" type="text/javascript"></script>'''
+        % data)
+        w(u'<!-- result report tools -->')
+        w(u'<script type="text/javascript">')
+        w(u"var BASE_URL = '%s';" % req.base_url())
+        w(u'''
+            QUnit.moduleStart(function (details) {
+              jQuery.ajax({
+                          url: BASE_URL + 'qunit_result',
+                         data: {"event": "module_start",
+                                "name": details.name},
+                         async: false});
+            });
 
-    html = ['''<!DOCTYPE html>
-<html>
-  <head>
-    <meta http-equiv="content-type" content="application/html; charset=UTF-8"/>
-    <!-- JS lib used as testing framework -->
-    <link rel="stylesheet" type="text/css" media="all" href="%(web_test)s/qunit.css" />
-    <script src="%(web_data)s/jquery.js" type="text/javascript"></script>
-    <script src="%(web_test)s/cwmock.js" type="text/javascript"></script>
-    <script src="%(web_test)s/qunit.js" type="text/javascript"></script>'''
-    % data]
-    if base_url is not None:
-        html.append('<!-- result report tools -->')
-        html.append('<script type="text/javascript">')
-        html.append(build_js_script(base_url))
-        html.append('</script>')
-    html.append('<!-- Test script dependencies (tested code for example) -->')
+            QUnit.testDone(function (details) {
+              jQuery.ajax({
+                          url: BASE_URL + 'qunit_result',
+                         data: {"event": "test_done",
+                                "name": details.name,
+                                "failures": details.failed,
+                                "total": details.total},
+                         async: false});
+            });
 
-    for dep in depends:
-        html.append('    <script src="%s" type="text/javascript"></script>' % file_path(dep))
+            QUnit.done(function (details) {
+              jQuery.ajax({
+                           url: BASE_URL + 'qunit_result',
+                           data: {"event": "done",
+                                  "failures": details.failed,
+                                  "total": details.total},
+                           async: false});
+            });
 
-    html.append('    <!-- Test script itself -->')
-    html.append('    <script src="%s" type="text/javascript"></script>'% (file_path(test_file),))
-    html.append('''  </head>
-  <body>
-    <div id="main">
-    </div>
-    <h1 id="qunit-header">QUnit example</h1>
-    <h2 id="qunit-banner"></h2>
-    <h2 id="qunit-userAgent"></h2>
-    <ol id="qunit-tests"></ol>
-  </body>
-</html>''')
-    return u'\n'.join(html)
+            QUnit.log(function (details) {
+              jQuery.ajax({
+                           url: BASE_URL + 'qunit_result',
+                           data: {"event": "log",
+                                  "result": details.result,
+                                  "actual": details.actual,
+                                  "expected": details.expected,
+                                  "source": details.source,
+                                  "message": details.message},
+                           async: false});
+            });''')
+        w(u'</script>')
+        w(u'<!-- Test script dependencies (tested code for example) -->')
 
+        prefix = len(cubicweb.CW_SOFTWARE_ROOT) + 1
+        for dep in self.depends:
+            dep = req.build_url('cwsoftwareroot/') + dep[prefix:]
+            w(u'    <script src="%s" type="text/javascript"></script>' % dep)
+
+        w(u'    <!-- Test script itself -->')
+        test_url = req.build_url('cwsoftwareroot/') + self.test_file[prefix:]
+        w(u'    <script src="%s" type="text/javascript"></script>' % test_url)
+        w(u'''  </head>
+        <body>
+        <div id="qunit-fixture"></div>
+        <div id="qunit"></div>
+        </body>
+        </html>''')
+
+
+class CWSoftwareRootStaticController(StaticFileController):
+    __regid__ = 'cwsoftwareroot'
+
+    def publish(self, rset=None):
+        staticdir = cubicweb.CW_SOFTWARE_ROOT
+        relpath = self.relpath[len(self.__regid__) + 1:]
+        return self.static_file(osp.join(staticdir, relpath))
+
+
+STATIC_CONTROLLERS.append(CWSoftwareRootStaticController)
 
 
 if __name__ == '__main__':

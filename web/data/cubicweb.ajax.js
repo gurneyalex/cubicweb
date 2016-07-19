@@ -39,7 +39,7 @@ jQuery.extend(Deferred.prototype, {
     },
 
     addCallback: function(callback) {
-        if ((this._req.readyState == 4) && this._result) {
+        if (this._req && (this._req.readyState == 4) && this._result) {
             var args = [this._result, this._req];
             jQuery.merge(args, cw.utils.sliceList(arguments, 1));
             callback.apply(null, args);
@@ -51,7 +51,7 @@ jQuery.extend(Deferred.prototype, {
     },
 
     addErrback: function(callback) {
-        if (this._req.readyState == 4 && this._error) {
+        if (this._req && this._req.readyState == 4 && this._error) {
             callback.apply(null, [this._error, this._req]);
         }
         else {
@@ -274,9 +274,6 @@ function _postAjaxLoad(node) {
     }
     if (typeof roundedCorners != 'undefined') {
         roundedCorners(node);
-    }
-    if (typeof setFormsTarget != 'undefined') {
-        setFormsTarget(node);
     }
     _loadDynamicFragments(node);
     jQuery(cw).trigger('server-response', [true, node]);
@@ -503,7 +500,7 @@ function _loadDynamicFragments(node) {
 function unloadPageData() {
     // NOTE: do not make async calls on unload if you want to avoid
     //       strange bugs
-    loadRemote(AJAX_BASE_URL, ajaxFuncArgs('unload_page_data'), 'GET', true);
+    loadRemote(AJAX_BASE_URL, ajaxFuncArgs('unload_page_data'), 'POST', true);
 }
 
 function removeBookmark(beid) {
@@ -517,59 +514,6 @@ function removeBookmark(beid) {
         updateMessage(_("bookmark has been removed"));
     });
 }
-
-userCallback = cw.utils.deprecatedFunction(
-    '[3.19] use a plain ajaxfunc instead of user callbacks',
-    function userCallback(cbname) {
-    setProgressCursor();
-    var d = loadRemote(AJAX_BASE_URL, ajaxFuncArgs('user_callback', null, cbname));
-    d.addCallback(resetCursor);
-    d.addErrback(resetCursor);
-    d.addErrback(remoteCallFailed);
-    return d;
-});
-
-userCallbackThenUpdateUI = cw.utils.deprecatedFunction(
-    '[3.19] use a plain ajaxfunc instead of user callbacks',
-    function userCallbackThenUpdateUI(cbname, compid, rql, msg, registry, nodeid) {
-    var d = userCallback(cbname);
-    d.addCallback(function() {
-        $('#' + nodeid).loadxhtml(AJAX_BASE_URL, ajaxFuncArgs('render', {'rql': rql},
-                                                       registry, compid), null, 'swap');
-        if (msg) {
-            updateMessage(msg);
-        }
-    });
-});
-
-userCallbackThenReloadPage = cw.utils.deprecatedFunction(
-    '[3.19] use a plain ajaxfunc instead of user callbacks',
-    function userCallbackThenReloadPage(cbname, msg) {
-    var d = userCallback(cbname);
-    d.addCallback(function() {
-        window.location.reload();
-        if (msg) {
-            updateMessage(msg);
-        }
-    });
-});
-
-/**
- * .. function:: unregisterUserCallback(cbname)
- *
- * unregisters the python function registered on the server's side
- * while the page was generated.
- */
-unregisterUserCallback = cw.utils.deprecatedFunction(
-    '[3.19] use a plain ajaxfunc instead of user callbacks',
-    function unregisterUserCallback(cbname) {
-    setProgressCursor();
-    var d = loadRemote(AJAX_BASE_URL, ajaxFuncArgs('unregister_user_callback',
-                                            null, cbname));
-    d.addCallback(resetCursor);
-    d.addErrback(resetCursor);
-    d.addErrback(remoteCallFailed);
-});
 
 
 //============= XXX move those functions? ====================================//
