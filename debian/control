@@ -20,7 +20,7 @@ Build-Depends:
  python-lxml,
 Standards-Version: 3.9.1
 Homepage: http://www.cubicweb.org
-XS-Python-Version: >= 2.6
+X-Python-Version: >= 2.6
 
 Package: cubicweb
 Architecture: all
@@ -58,10 +58,10 @@ Depends:
  | python-pysqlite2,
  python-passlib
 Recommends:
- pyro (<< 4.0.0),
- cubicweb-documentation (= ${source:Version})
+ cubicweb-documentation (= ${source:Version}),
 Suggests:
- python-zmq
+ python-zmq,
+ python-cwclientlib (>= 0.4.0),
 Description: server part of the CubicWeb framework
  CubicWeb is a semantic web application framework.
  .
@@ -109,7 +109,6 @@ Depends:
  cubicweb-ctl (= ${source:Version}),
  python-twisted-web
 Recommends:
- pyro (<< 4.0.0),
  cubicweb-documentation (= ${source:Version})
 Description: twisted-based web interface for the CubicWeb framework
  CubicWeb is a semantic web application framework.
@@ -137,6 +136,7 @@ Recommends:
 Breaks:
  cubicweb-inlinedit (<< 1.1.1),
  cubicweb-bootstrap (<< 0.6.6),
+ cubicweb-folder (<< 1.10.0),
 Description: web interface library for the CubicWeb framework
  CubicWeb is a semantic web application framework.
  .

@@ -26,7 +26,6 @@ import logging
 import shutil
 import pickle
 import glob
-import random
 import subprocess
 import warnings
 import tempfile
@@ -93,8 +92,6 @@ DEFAULT_SOURCES = {'system': {'adapter' : 'native',
 DEFAULT_PSQL_SOURCES = DEFAULT_SOURCES.copy()
 DEFAULT_PSQL_SOURCES['system'] = DEFAULT_SOURCES['system'].copy()
 DEFAULT_PSQL_SOURCES['system']['db-driver'] = 'postgres'
-DEFAULT_PSQL_SOURCES['system']['db-host'] = '/tmp'
-DEFAULT_PSQL_SOURCES['system']['db-port'] = str(random.randrange(5432, 2**16))
 DEFAULT_PSQL_SOURCES['system']['db-user'] = unicode(getpass.getuser())
 DEFAULT_PSQL_SOURCES['system']['db-password'] = None
 
@@ -176,8 +173,8 @@ class TestServerConfiguration(ServerConfiguration):
         return self._apphome
     appdatahome = apphome
 
-    def load_configuration(self):
-        super(TestServerConfiguration, self).load_configuration()
+    def load_configuration(self, **kw):
+        super(TestServerConfiguration, self).load_configuration(**kw)
         # no undo support in tests
         self.global_set_option('undo-enabled', 'n')
 
@@ -237,10 +234,6 @@ class BaseApptestConfiguration(TestServerConfiguration, WebConfigurationBase):
     def available_languages(self, *args):
         return self.cw_languages()
 
-    def pyro_enabled(self):
-        # but export PYRO_MULTITHREAD=0 or you get problems with sqlite and
-        # threads
-        return True
 
 # XXX merge with BaseApptestConfiguration ?
 class ApptestConfiguration(BaseApptestConfiguration):
@@ -251,7 +244,7 @@ class ApptestConfiguration(BaseApptestConfiguration):
     skip_db_create_and_restore = False
 
     def __init__(self, appid, apphome=None,
-                 log_threshold=logging.CRITICAL, sourcefile=None):
+                 log_threshold=logging.WARNING, sourcefile=None):
         BaseApptestConfiguration.__init__(self, appid, apphome,
                                           log_threshold=log_threshold)
         self.init_repository = sourcefile is None
@@ -302,6 +295,14 @@ class TestDataBaseHandler(object):
         self._repo = None
         # pure consistency check
         assert self.system_source['db-driver'] == self.DRIVER
+
+        # some handlers want to store info here, avoid a warning
+        from cubicweb.server.sources.native import NativeSQLSource
+        NativeSQLSource.options += (
+            ('global-db-name',
+             {'type': 'string', 'help': 'for internal use only'
+            }),
+        )
 
     def _ensure_test_backup_db_dir(self):
         """Return path of directory for database backup.
@@ -398,9 +399,9 @@ class TestDataBaseHandler(object):
 
     def _new_repo(self, config):
         """Factory method to create a new Repository Instance"""
-        from cubicweb.dbapi import in_memory_repo
+        from cubicweb.repoapi import _get_inmemory_repo
         config._cubes = None
-        repo = in_memory_repo(config)
+        repo = _get_inmemory_repo(config)
         config.repository = lambda x=None: repo
         # extending Repository class
         repo._has_started = False
@@ -499,7 +500,7 @@ class TestDataBaseHandler(object):
             repo = self.get_repo(startup=True)
             cnx = self.get_cnx()
             with cnx:
-                pre_setup_func(cnx._cnx, self.config)
+                pre_setup_func(cnx, self.config)
                 cnx.commit()
         self.backup_database(test_db_id)
 
@@ -534,6 +535,48 @@ class NoCreateDropDatabaseHandler(TestDataBaseHandler):
 
 ### postgres test database handling ############################################
 
+def startpgcluster(pyfile):
+    """Start a postgresql cluster next to pyfile"""
+    datadir = join(os.path.dirname(pyfile), 'data',
+                   'pgdb-%s' % os.path.splitext(os.path.basename(pyfile))[0])
+    if not exists(datadir):
+        try:
+            subprocess.check_call(['initdb', '-D', datadir, '-E', 'utf-8', '--locale=C'])
+
+        except OSError, err:
+            if err.errno == errno.ENOENT:
+                raise OSError('"initdb" could not be found. '
+                              'You should add the postgresql bin folder to your PATH '
+                              '(/usr/lib/postgresql/9.1/bin for example).')
+            raise
+    datadir = os.path.abspath(datadir)
+    pgport = '5432'
+    env = os.environ.copy()
+    sockdir = tempfile.mkdtemp(prefix='cwpg')
+    DEFAULT_PSQL_SOURCES['system']['db-host'] = sockdir
+    DEFAULT_PSQL_SOURCES['system']['db-port'] = pgport
+    options = '-h "" -k %s -p %s' % (sockdir, pgport)
+    options += ' -c fsync=off -c full_page_writes=off'
+    options += ' -c synchronous_commit=off'
+    try:
+        subprocess.check_call(['pg_ctl', 'start', '-w', '-D', datadir,
+                               '-o', options],
+                              env=env)
+    except OSError, err:
+        if err.errno == errno.ENOENT:
+            raise OSError('"pg_ctl" could not be found. '
+                          'You should add the postgresql bin folder to your PATH '
+                          '(/usr/lib/postgresql/9.1/bin for example).')
+        raise
+
+
+def stoppgcluster(pyfile):
+    """Kill the postgresql cluster running next to pyfile"""
+    datadir = join(os.path.dirname(pyfile), 'data',
+                   'pgdb-%s' % os.path.splitext(os.path.basename(pyfile))[0])
+    subprocess.call(['pg_ctl', 'stop', '-D', datadir, '-m', 'fast'])
+
+
 class PostgresTestDataBaseHandler(TestDataBaseHandler):
     DRIVER = 'postgres'
 
@@ -543,51 +586,21 @@ class PostgresTestDataBaseHandler(TestDataBaseHandler):
 
     __CTL = set()
 
-    @classmethod
-    def killall(cls):
-        for datadir in cls.__CTL:
-            subprocess.call(['pg_ctl', 'stop', '-D', datadir, '-m', 'fast'])
-
     def __init__(self, *args, **kwargs):
         super(PostgresTestDataBaseHandler, self).__init__(*args, **kwargs)
-        datadir = realpath(join(self.config.apphome, 'pgdb'))
-        if datadir in self.__CTL:
-            return
-        if not exists(datadir):
-            try:
-                subprocess.check_call(['initdb', '-D', datadir, '-E', 'utf-8', '--locale=C'])
-
-            except OSError, err:
-                if err.errno == errno.ENOENT:
-                    raise OSError('"initdb" could not be found. '
-                                  'You should add the postgresql bin folder to your PATH '
-                                  '(/usr/lib/postgresql/9.1/bin for example).')
-                raise
-        port = self.system_source['db-port']
-        directory = self.system_source['db-host']
-        env = os.environ.copy()
-        env['PGPORT'] = str(port)
-        env['PGHOST'] = str(directory)
-        options = '-h "" -k %s -p %s' % (directory, port)
-        options += ' -c fsync=off -c full_page_writes=off'
-        options += ' -c synchronous_commit=off'
-        try:
-            subprocess.check_call(['pg_ctl', 'start', '-w', '-D', datadir,
-                                   '-o', options],
-                                  env=env)
-        except OSError, err:
-            if err.errno == errno.ENOENT:
-                raise OSError('"pg_ctl" could not be found. '
-                              'You should add the postgresql bin folder to your PATH '
-                              '(/usr/lib/postgresql/9.1/bin for example).')
-            raise
-        self.__CTL.add(datadir)
+        if 'global-db-name' not in self.system_source:
+            self.system_source['global-db-name'] = self.system_source['db-name']
+            self.system_source['db-name'] = self.system_source['db-name'] + str(os.getpid())
 
     @property
     @cached
     def helper(self):
         from logilab.database import get_db_helper
         return get_db_helper('postgres')
+
+    @property
+    def dbname(self):
+        return self.system_source['global-db-name']
 
     @property
     def dbcnx(self):
@@ -615,13 +628,18 @@ class PostgresTestDataBaseHandler(TestDataBaseHandler):
             return backup_name
         return None
 
+    def has_cache(self, db_id):
+        backup_name = self._backup_name(db_id)
+        return (super(PostgresTestDataBaseHandler, self).has_cache(db_id)
+                and backup_name in self.helper.list_databases(self.cursor))
+
     def init_test_database(self):
         """initialize a fresh postgresql database used for testing purpose"""
         from cubicweb.server import init_repository
         from cubicweb.server.serverctl import system_source_cnx, createdb
         # connect on the dbms system base to create our base
         try:
-            self._drop(self.dbname)
+            self._drop(self.system_source['db-name'])
             createdb(self.helper, self.system_source, self.dbcnx, self.cursor)
             self.dbcnx.commit()
             cnx = system_source_cnx(self.system_source, special_privs='LANGUAGE C',
@@ -699,7 +717,7 @@ class PostgresTestDataBaseHandler(TestDataBaseHandler):
         """Actual restore of the current database.
 
         Use the value tostored in db_cache as input """
-        self._drop(self.dbname)
+        self._drop(self.system_source['db-name'])
         createdb(self.helper, self.system_source, self.dbcnx, self.cursor,
                  template=backup_coordinates)
         self.dbcnx.commit()
@@ -771,7 +789,7 @@ class SQLiteTestDataBaseHandler(TestDataBaseHandler):
         dbfile = self.absolute_dbfile()
         backup_file = self.absolute_backup_file(db_id, 'sqlite')
         shutil.copy(dbfile, backup_file)
-        # Usefull to debug WHO write a database
+        # Useful to debug WHO writes a database
         # backup_stack = self.absolute_backup_file(db_id, '.stack')
         #with open(backup_stack, 'w') as backup_stack_file:
         #    import traceback
@@ -800,7 +818,6 @@ class SQLiteTestDataBaseHandler(TestDataBaseHandler):
 
 import atexit
 atexit.register(SQLiteTestDataBaseHandler._cleanup_all_tmpdb)
-atexit.register(PostgresTestDataBaseHandler.killall)
 
 
 def install_sqlite_patch(querier):

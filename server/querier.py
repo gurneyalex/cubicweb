@@ -37,6 +37,7 @@ from cubicweb.server.rqlannotation import SQLGenAnnotator, set_qdata
 from cubicweb.server.ssplanner import READ_ONLY_RTYPES, add_types_restriction
 from cubicweb.server.edition import EditedEntity
 from cubicweb.server.ssplanner import SSPlanner
+from cubicweb.statsd_logger import statsd_timeit, statsd_c
 
 ETYPE_PYOBJ_MAP[Binary] = 'Bytes'
 
@@ -75,7 +76,7 @@ def term_etype(cnx, term, solution, args):
 
 def check_relations_read_access(cnx, select, args):
     """Raise :exc:`Unauthorized` if the given user doesn't have credentials to
-    read relations used in the givel syntaxt tree
+    read relations used in the given syntax tree
     """
     # use `term_etype` since we've to deal with rewritten constants here,
     # when used as an external source by another repository.
@@ -516,6 +517,7 @@ class QuerierHelper(object):
             return InsertPlan(self, rqlst, args, cnx)
         return ExecutionPlan(self, rqlst, args, cnx)
 
+    @statsd_timeit
     def execute(self, cnx, rql, args=None, build_descr=True):
         """execute a rql query, return resulting rows and their description in
         a `ResultSet` object
@@ -558,8 +560,10 @@ class QuerierHelper(object):
                         return empty_rset(rql, args)
             rqlst = self._rql_cache[cachekey]
             self.cache_hit += 1
+            statsd_c('cache_hit')
         except KeyError:
             self.cache_miss += 1
+            statsd_c('cache_miss')
             rqlst = self.parse(rql)
             try:
                 # compute solutions for rqlst and return named args in query
@@ -570,7 +574,7 @@ class QuerierHelper(object):
             except UnknownEid:
                 # we want queries such as "Any X WHERE X eid 9999" return an
                 # empty result instead of raising UnknownEid
-                return empty_rset(rql, args, rqlst)
+                return empty_rset(rql, args)
             if args and rql not in self._rql_ck_cache:
                 self._rql_ck_cache[rql] = eidkeys
                 if eidkeys:
@@ -580,9 +584,6 @@ class QuerierHelper(object):
         if rqlst.TYPE != 'select':
             if cnx.read_security:
                 check_no_password_selected(rqlst)
-            # write query, ensure connection's mode is 'write' so connections
-            # won't be released until commit/rollback
-            cnx.mode = 'write'
             cachekey = None
         else:
             if cnx.read_security:

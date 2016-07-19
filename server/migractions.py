@@ -44,7 +44,6 @@ from logilab.common.deprecation import deprecated
 from logilab.common.decorators import cached, clear_cache
 
 from yams.constraints import SizeConstraint
-from yams.schema2sql import eschema2sql, rschema2sql, unique_index_name
 from yams.schema import RelationDefinitionSchema
 
 from cubicweb import CW_SOFTWARE_ROOT, AuthenticationError, ExecutionError
@@ -56,12 +55,10 @@ from cubicweb.cwvreg import CW_EVENT_MANAGER
 from cubicweb import repoapi
 from cubicweb.migration import MigrationHelper, yes
 from cubicweb.server import hook, schemaserial as ss
+from cubicweb.server.schema2sql import eschema2sql, rschema2sql, unique_index_name
 from cubicweb.server.utils import manager_userpasswd
 from cubicweb.server.sqlutils import sqlexec, SQL_PREFIX
 
-
-def mock_object(**params):
-    return type('Mock', (), params)()
 
 class ClearGroupMap(hook.Hook):
     __regid__ = 'cw.migration.clear_group_mapping'
@@ -94,10 +91,10 @@ class ServerMigrationHelper(MigrationHelper):
             assert repo
             self.cnx = cnx
             self.repo = repo
-            self.session = cnx._session
+            self.session = cnx.session
         elif connect:
             self.repo_connect()
-            self.set_session()
+            self.set_cnx()
         else:
             self.session = None
         # no config on shell to a remote instance
@@ -125,7 +122,9 @@ class ServerMigrationHelper(MigrationHelper):
         self.fs_schema = schema
         self._synchronized = set()
 
-    def set_session(self):
+    # overriden from base MigrationHelper ######################################
+
+    def set_cnx(self):
         try:
             login = self.repo.config.default_admin_config['login']
             pwd = self.repo.config.default_admin_config['password']
@@ -149,9 +148,7 @@ class ServerMigrationHelper(MigrationHelper):
                 print 'aborting...'
                 sys.exit(0)
         self.session = self.repo._get_session(self.cnx.sessionid)
-        self.session.keep_cnxset_mode('transaction')
 
-    # overriden from base MigrationHelper ######################################
 
     @cached
     def repo_connect(self):
@@ -178,15 +175,14 @@ class ServerMigrationHelper(MigrationHelper):
             super(ServerMigrationHelper, self).migrate(vcconf, toupgrade, options)
 
     def cmd_process_script(self, migrscript, funcname=None, *args, **kwargs):
-        with self.cnx._cnx.ensure_cnx_set:
-            try:
-                return super(ServerMigrationHelper, self).cmd_process_script(
-                      migrscript, funcname, *args, **kwargs)
-            except ExecutionError as err:
-                sys.stderr.write("-> %s\n" % err)
-            except BaseException:
-                self.rollback()
-                raise
+        try:
+            return super(ServerMigrationHelper, self).cmd_process_script(
+                  migrscript, funcname, *args, **kwargs)
+        except ExecutionError as err:
+            sys.stderr.write("-> %s\n" % err)
+        except BaseException:
+            self.rollback()
+            raise
 
     # Adjust docstring
     cmd_process_script.__doc__ = MigrationHelper.cmd_process_script.__doc__
@@ -287,12 +283,10 @@ class ServerMigrationHelper(MigrationHelper):
         print '-> database restored.'
 
     def commit(self):
-        if hasattr(self, 'cnx'):
-            self.cnx.commit(free_cnxset=False)
+        self.cnx.commit()
 
     def rollback(self):
-        if hasattr(self, 'cnx'):
-            self.cnx.rollback(free_cnxset=False)
+        self.cnx.rollback()
 
     def rqlexecall(self, rqliter, ask_confirm=False):
         for rql, kwargs in rqliter:
@@ -310,7 +304,7 @@ class ServerMigrationHelper(MigrationHelper):
                         'schema': self.repo.get_schema(),
                         'cnx': self.cnx,
                         'fsschema': self.fs_schema,
-                        'session' : self.cnx._cnx,
+                        'session' : self.cnx,
                         'repo' : self.repo,
                         })
         return context
@@ -961,7 +955,6 @@ class ServerMigrationHelper(MigrationHelper):
                              % (rtype, new.eid, oldeid), ask_confirm=False)
             # delete relations using SQL to avoid relations content removal
             # triggered by schema synchronization hooks.
-            session = self.session
             for rdeftype in ('CWRelation', 'CWAttribute'):
                 thispending = set( (eid for eid, in self.sqlexec(
                     'SELECT cw_eid FROM cw_%s WHERE cw_from_entity=%%(eid)s OR '
@@ -971,10 +964,10 @@ class ServerMigrationHelper(MigrationHelper):
                 # get some validation error on commit since integrity hooks
                 # may think some required relation is missing... This also ensure
                 # repository caches are properly cleanup
-                hook.CleanupDeletedEidsCacheOp.get_instance(session).union(thispending)
+                hook.CleanupDeletedEidsCacheOp.get_instance(self.cnx).union(thispending)
                 # and don't forget to remove record from system tables
                 entities = [self.cnx.entity_from_eid(eid, rdeftype) for eid in thispending]
-                self.repo.system_source.delete_info_multi(self.cnx._cnx, entities)
+                self.repo.system_source.delete_info_multi(self.cnx, entities)
                 self.sqlexec('DELETE FROM cw_%s WHERE cw_from_entity=%%(eid)s OR '
                              'cw_to_entity=%%(eid)s' % rdeftype,
                              {'eid': oldeid}, ask_confirm=False)
@@ -1027,7 +1020,8 @@ class ServerMigrationHelper(MigrationHelper):
             print 'warning: relation type %s is already known, skip addition' % (
                 rtype)
         elif rschema.rule:
-            ss.execschemarql(execute, rschema, ss.crschema2rql(rschema))
+            gmap = self.group_mapping()
+            ss.execschemarql(execute, rschema, ss.crschema2rql(rschema, gmap))
         else:
             # register the relation into CWRType and insert necessary relation
             # definitions
@@ -1086,7 +1080,7 @@ class ServerMigrationHelper(MigrationHelper):
             if not self.confirm('Relation %s is still present in the filesystem schema,'
                                 ' do you really want to drop it?' % oldname,
                                 default='n'):
-                raise SystemExit(1)
+                return
         self.cmd_add_relation_type(newname, commit=True)
         if not self.repo.schema[oldname].rule:
             self.rqlexec('SET X %s Y WHERE X %s Y' % (newname, oldname),
@@ -1284,6 +1278,7 @@ class ServerMigrationHelper(MigrationHelper):
             return 'missing workflow relations, see make_workflowable(%s)' % etype
         for etype in wfof:
             eschema = self.repo.schema[etype]
+            etype = unicode(etype)
             if ensure_workflowable:
                 assert 'in_state' in eschema.subjrels, _missing_wf_rel(etype)
                 assert 'custom_workflow' in eschema.subjrels, _missing_wf_rel(etype)
@@ -1396,7 +1391,7 @@ class ServerMigrationHelper(MigrationHelper):
         indexable entity types
         """
         from cubicweb.server.checkintegrity import reindex_entities
-        reindex_entities(self.repo.schema, self.cnx._cnx, etypes=etypes)
+        reindex_entities(self.repo.schema, self.cnx, etypes=etypes)
 
     @contextmanager
     def cmd_dropped_constraints(self, etype, attrname, cstrtype=None,
@@ -1486,19 +1481,28 @@ class ServerMigrationHelper(MigrationHelper):
         * the actual schema won't be updated until next startup
         """
         rschema = self.repo.schema.rschema(attr)
-        oldtype = rschema.objects(etype)[0]
-        rdefeid = rschema.rdef(etype, oldtype).eid
-        allownull = rschema.rdef(etype, oldtype).cardinality[0] != '1'
+        oldschema = rschema.objects(etype)[0]
+        rdef = rschema.rdef(etype, oldschema)
         sql = ("UPDATE cw_CWAttribute "
                "SET cw_to_entity=(SELECT cw_eid FROM cw_CWEType WHERE cw_name='%s')"
-               "WHERE cw_eid=%s") % (newtype, rdefeid)
+               "WHERE cw_eid=%s") % (newtype, rdef.eid)
         self.sqlexec(sql, ask_confirm=False)
         dbhelper = self.repo.system_source.dbhelper
         sqltype = dbhelper.TYPE_MAPPING[newtype]
-        cursor = self.cnx._cnx.cnxset.cu
-        dbhelper.change_col_type(cursor, 'cw_%s'  % etype, 'cw_%s' % attr, sqltype, allownull)
+        cursor = self.cnx.cnxset.cu
+        allownull = rdef.cardinality[0] != '1'
+        dbhelper.change_col_type(cursor, 'cw_%s' % etype, 'cw_%s' % attr, sqltype, allownull)
         if commit:
             self.commit()
+            # manually update live schema
+            eschema = self.repo.schema[etype]
+            rschema._subj_schemas[eschema].remove(oldschema)
+            rschema._obj_schemas[oldschema].remove(eschema)
+            newschema = self.repo.schema[newtype]
+            rschema._update(eschema, newschema)
+            rdef.object = newschema
+            del rschema.rdefs[(eschema, oldschema)]
+            rschema.rdefs[(eschema, newschema)] = rdef
 
     def cmd_add_entity_type_table(self, etype, commit=True):
         """low level method to create the sql table for an existing entity.

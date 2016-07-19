@@ -29,7 +29,6 @@ from cubicweb.devtools.fake import FakeRequest
 from cubicweb.web import LogOut, Redirect, INTERNAL_FIELD_VALUE
 from cubicweb.web.views.basecontrollers import ViewController
 from cubicweb.web.application import anonymized_request
-from cubicweb.dbapi import DBAPISession, _NeedAuthAccessMock
 from cubicweb import repoapi
 
 class FakeMapping:
@@ -620,15 +619,11 @@ class ApplicationTC(CubicWebTC):
         req.set_request_header('Cookie', cookie[sessioncookie].OutputString(),
                                raw=True)
         clear_cache(req, 'get_authorization')
-        # reset session as if it was a new incoming request
-        req.session = DBAPISession(None)
-        req.user = req.cnx = _NeedAuthAccessMock
-        
 
     def _test_auth_anon(self, req):
         asession = self.app.get_session(req)
         # important otherwise _reset_cookie will not use the right session
-        req.set_cnx(repoapi.ClientConnection(asession))
+        req.set_cnx(repoapi.Connection(asession))
         self.assertEqual(len(self.open_sessions), 1)
         self.assertEqual(asession.login, 'anon')
         self.assertTrue(asession.anonymous_session)
@@ -638,7 +633,7 @@ class ApplicationTC(CubicWebTC):
         self.assertEqual(1, len(self.open_sessions))
         session = self.app.get_session(req)
         # important otherwise _reset_cookie will not use the right session
-        req.set_cnx(repoapi.ClientConnection(session))
+        req.set_cnx(repoapi.Connection(session))
         self.assertEqual(req.message, 'authentication failure')
         self.assertEqual(req.session.anonymous_session, True)
         self.assertEqual(1, len(self.open_sessions))

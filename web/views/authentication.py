@@ -1,4 +1,4 @@
-# copyright 2003-2012 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2014 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -26,9 +26,8 @@ from logilab.common.deprecation import class_renamed
 
 from cubicweb import AuthenticationError, BadConnectionId
 from cubicweb.view import Component
-from cubicweb.dbapi import _repo_connect, ConnectionProperties
 from cubicweb.web import InvalidSession
-from cubicweb.web.application import AbstractAuthenticationManager
+
 
 class NoAuthInfo(Exception): pass
 
@@ -100,6 +99,36 @@ LoginPasswordRetreiver = class_renamed(
     'LoginPasswordRetreiver', LoginPasswordRetriever,
     '[3.17] LoginPasswordRetreiver had been renamed into LoginPasswordRetriever '
     '("ie" instead of "ei")')
+
+
+class AbstractAuthenticationManager(Component):
+    """authenticate user associated to a request and check session validity"""
+    __abstract__ = True
+    __regid__ = 'authmanager'
+
+    def __init__(self, repo):
+        self.vreg = repo.vreg
+
+    def validate_session(self, req, session):
+        """check session validity, reconnecting it to the repository if the
+        associated connection expired in the repository side (hence the
+        necessity for this method).
+
+        raise :exc:`InvalidSession` if session is corrupted for a reason or
+        another and should be closed
+        """
+        raise NotImplementedError()
+
+    def authenticate(self, req):
+        """authenticate user using connection information found in the request,
+        and return corresponding a :class:`~cubicweb.dbapi.Connection` instance,
+        as well as login and authentication information dictionary used to open
+        the connection.
+
+        raise :exc:`cubicweb.AuthenticationError` if authentication failed
+        (no authentication info found or wrong user/password)
+        """
+        raise NotImplementedError()
 
 
 class RepositoryAuthenticationManager(AbstractAuthenticationManager):

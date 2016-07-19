@@ -31,10 +31,9 @@ from cubicweb import (BadConnectionId, ValidationError,
                       UnknownEid, AuthenticationError, Unauthorized, QueryError)
 from cubicweb.predicates import is_instance
 from cubicweb.schema import RQLConstraint
-from cubicweb.dbapi import connect, multiple_connections_unfix
 from cubicweb.devtools.testlib import CubicWebTC
 from cubicweb.devtools.repotest import tuplify
-from cubicweb.server import repository, hook
+from cubicweb.server import hook
 from cubicweb.server.sqlutils import SQL_PREFIX
 from cubicweb.server.hook import Hook
 from cubicweb.server.sources import native
@@ -93,34 +92,16 @@ class RepositoryTC(CubicWebTC):
         self.assertRaises(AuthenticationError,
                           self.repo.connect, None)
 
-    def test_execute(self):
-        repo = self.repo
-        cnxid = repo.connect(self.admlogin, password=self.admpassword)
-        repo.execute(cnxid, 'Any X')
-        repo.execute(cnxid, 'Any X where X is Personne')
-        repo.execute(cnxid, 'Any X where X is Personne, X nom ~= "to"')
-        repo.execute(cnxid, 'Any X WHERE X has_text %(text)s', {'text': u'\xe7a'})
-        repo.close(cnxid)
-
     def test_login_upassword_accent(self):
+        with self.admin_access.repo_cnx() as cnx:
+            cnx.execute('INSERT CWUser X: X login %(login)s, X upassword %(passwd)s, '
+                        'X in_group G WHERE G name "users"',
+                        {'login': u"barnabé", 'passwd': u"héhéhé".encode('UTF8')})
+            cnx.commit()
         repo = self.repo
-        cnxid = repo.connect(self.admlogin, password=self.admpassword)
-        repo.execute(cnxid, 'INSERT CWUser X: X login %(login)s, X upassword %(passwd)s, X in_group G WHERE G name "users"',
-                     {'login': u"barnabé", 'passwd': u"héhéhé".encode('UTF8')})
-        repo.commit(cnxid)
-        repo.close(cnxid)
         cnxid = repo.connect(u"barnabé", password=u"héhéhé".encode('UTF8'))
         self.assert_(cnxid)
         repo.close(cnxid)
-
-    def test_rollback_on_commit_error(self):
-        cnxid = self.repo.connect(self.admlogin, password=self.admpassword)
-        self.repo.execute(cnxid,
-                          'INSERT CWUser X: X login %(login)s, X upassword %(passwd)s',
-                          {'login': u"tutetute", 'passwd': 'tutetute'})
-        self.assertRaises(ValidationError, self.repo.commit, cnxid)
-        self.assertFalse(self.repo.execute(cnxid, 'CWUser X WHERE X login "tutetute"'))
-        self.repo.close(cnxid)
 
     def test_rollback_on_execute_validation_error(self):
         class ValidationErrorAfterHook(Hook):
@@ -166,31 +147,6 @@ class RepositoryTC(CubicWebTC):
         cnxid = repo.connect(self.admlogin, password=self.admpassword)
         self.assert_(cnxid)
         repo.close(cnxid)
-        self.assertRaises(BadConnectionId, repo.execute, cnxid, 'Any X')
-
-    def test_invalid_cnxid(self):
-        self.assertRaises(BadConnectionId, self.repo.execute, 0, 'Any X')
-        self.assertRaises(BadConnectionId, self.repo.close, None)
-
-    def test_shared_data(self):
-        repo = self.repo
-        cnxid = repo.connect(self.admlogin, password=self.admpassword)
-        repo.set_shared_data(cnxid, 'data', 4)
-        cnxid2 = repo.connect(self.admlogin, password=self.admpassword)
-        self.assertEqual(repo.get_shared_data(cnxid, 'data'), 4)
-        self.assertEqual(repo.get_shared_data(cnxid2, 'data'), None)
-        repo.set_shared_data(cnxid2, 'data', 5)
-        self.assertEqual(repo.get_shared_data(cnxid, 'data'), 4)
-        self.assertEqual(repo.get_shared_data(cnxid2, 'data'), 5)
-        repo.get_shared_data(cnxid2, 'data', pop=True)
-        self.assertEqual(repo.get_shared_data(cnxid, 'data'), 4)
-        self.assertEqual(repo.get_shared_data(cnxid2, 'data'), None)
-        repo.close(cnxid)
-        repo.close(cnxid2)
-        self.assertRaises(BadConnectionId, repo.get_shared_data, cnxid, 'data')
-        self.assertRaises(BadConnectionId, repo.get_shared_data, cnxid2, 'data')
-        self.assertRaises(BadConnectionId, repo.set_shared_data, cnxid, 'data', 1)
-        self.assertRaises(BadConnectionId, repo.set_shared_data, cnxid2, 'data', 1)
 
     def test_check_session(self):
         repo = self.repo
@@ -198,76 +154,6 @@ class RepositoryTC(CubicWebTC):
         self.assertIsInstance(repo.check_session(cnxid), float)
         repo.close(cnxid)
         self.assertRaises(BadConnectionId, repo.check_session, cnxid)
-
-    def test_transaction_base(self):
-        repo = self.repo
-        cnxid = repo.connect(self.admlogin, password=self.admpassword)
-        # check db state
-        result = repo.execute(cnxid, 'Personne X')
-        self.assertEqual(result.rowcount, 0)
-        # rollback entity insertion
-        repo.execute(cnxid, "INSERT Personne X: X nom 'bidule'")
-        result = repo.execute(cnxid, 'Personne X')
-        self.assertEqual(result.rowcount, 1)
-        repo.rollback(cnxid)
-        result = repo.execute(cnxid, 'Personne X')
-        self.assertEqual(result.rowcount, 0, result.rows)
-        # commit
-        repo.execute(cnxid, "INSERT Personne X: X nom 'bidule'")
-        repo.commit(cnxid)
-        result = repo.execute(cnxid, 'Personne X')
-        self.assertEqual(result.rowcount, 1)
-        repo.close(cnxid)
-
-    def test_transaction_base2(self):
-        repo = self.repo
-        cnxid = repo.connect(self.admlogin, password=self.admpassword)
-        # rollback relation insertion
-        repo.execute(cnxid, "SET U in_group G WHERE U login 'admin', G name 'guests'")
-        result = repo.execute(cnxid, "Any U WHERE U in_group G, U login 'admin', G name 'guests'")
-        self.assertEqual(result.rowcount, 1)
-        repo.rollback(cnxid)
-        result = repo.execute(cnxid, "Any U WHERE U in_group G, U login 'admin', G name 'guests'")
-        self.assertEqual(result.rowcount, 0, result.rows)
-        repo.close(cnxid)
-
-    def test_transaction_base3(self):
-        repo = self.repo
-        cnxid = repo.connect(self.admlogin, password=self.admpassword)
-        # rollback state change which trigger TrInfo insertion
-        session = repo._get_session(cnxid)
-        user = session.user
-        user.cw_adapt_to('IWorkflowable').fire_transition('deactivate')
-        rset = repo.execute(cnxid, 'TrInfo T WHERE T wf_info_for X, X eid %(x)s', {'x': user.eid})
-        self.assertEqual(len(rset), 1)
-        repo.rollback(cnxid)
-        rset = repo.execute(cnxid, 'TrInfo T WHERE T wf_info_for X, X eid %(x)s', {'x': user.eid})
-        self.assertEqual(len(rset), 0)
-        repo.close(cnxid)
-
-    def test_close_kill_processing_request(self):
-        repo = self.repo
-        cnxid = repo.connect(self.admlogin, password=self.admpassword)
-        repo.execute(cnxid, 'INSERT CWUser X: X login "toto", X upassword "tutu", X in_group G WHERE G name "users"')
-        repo.commit(cnxid)
-        lock = threading.Lock()
-        lock.acquire()
-        # close has to be in the thread due to sqlite limitations
-        def close_in_a_few_moment():
-            lock.acquire()
-            repo.close(cnxid)
-        t = threading.Thread(target=close_in_a_few_moment)
-        t.start()
-        def run_transaction():
-            lock.release()
-            repo.execute(cnxid, 'DELETE CWUser X WHERE X login "toto"')
-            repo.commit(cnxid)
-        try:
-            with self.assertRaises(SessionClosedError) as cm:
-                run_transaction()
-            self.assertEqual(str(cm.exception), 'try to access connections set on a closed session %s' % cnxid)
-        finally:
-            t.join()
 
     def test_initial_schema(self):
         schema = self.repo.schema
@@ -312,118 +198,14 @@ class RepositoryTC(CubicWebTC):
         ownedby = schema.rschema('owned_by')
         self.assertEqual(ownedby.objects('CWEType'), ('CWUser',))
 
-    def test_pyro(self):
-        import Pyro
-        Pyro.config.PYRO_MULTITHREADED = 0
-        done = []
-        self.repo.config.global_set_option('pyro-ns-host', 'NO_PYRONS')
-        daemon = self.repo.pyro_register()
-        try:
-            uri = self.repo.pyro_uri.replace('PYRO', 'pyroloc')
-            # the client part has to be in the thread due to sqlite limitations
-            t = threading.Thread(target=self._pyro_client, args=(uri, done))
-            t.start()
-            while not done:
-                daemon.handleRequests(1.0)
-            t.join(1)
-            if t.isAlive():
-                self.fail('something went wrong, thread still alive')
-        finally:
-            repository.pyro_unregister(self.repo.config)
-            from logilab.common import pyro_ext
-            pyro_ext._DAEMONS.clear()
-
-
-    def _pyro_client(self, uri, done):
-        cnx = connect(uri,
-                      u'admin', password='gingkow',
-                      initlog=False) # don't reset logging configuration
-        try:
-            cnx.load_appobjects(subpath=('entities',))
-            # check we can get the schema
-            schema = cnx.get_schema()
-            self.assertTrue(cnx.vreg)
-            self.assertTrue('etypes'in cnx.vreg)
-            cu = cnx.cursor()
-            rset = cu.execute('Any U,G WHERE U in_group G')
-            user = iter(rset.entities()).next()
-            self.assertTrue(user._cw)
-            self.assertTrue(user._cw.vreg)
-            from cubicweb.entities import authobjs
-            self.assertIsInstance(user._cw.user, authobjs.CWUser)
-            # make sure the tcp connection is closed properly; yes, it's disgusting.
-            adapter = cnx._repo.adapter
-            cnx.close()
-            adapter.release()
-            done.append(True)
-        finally:
-            # connect monkey patch some method by default, remove them
-            multiple_connections_unfix()
-
-
-    def test_zmq(self):
-        try:
-            import zmq
-        except ImportError:
-            self.skipTest("zmq in not available")
-        done = []
-        from cubicweb.devtools import TestServerConfiguration as ServerConfiguration
-        from cubicweb.server.cwzmq import ZMQRepositoryServer
-        # the client part has to be in a thread due to sqlite limitations
-        t = threading.Thread(target=self._zmq_client, args=(done,))
-        t.start()
-
-        zmq_server = ZMQRepositoryServer(self.repo)
-        zmq_server.connect('zmqpickle-tcp://127.0.0.1:41415')
-
-        t2 = threading.Thread(target=self._zmq_quit, args=(done, zmq_server,))
-        t2.start()
-
-        zmq_server.run()
-
-        t2.join(1)
-        t.join(1)
-
-        if t.isAlive():
-            self.fail('something went wrong, thread still alive')
-
-    def _zmq_quit(self, done, srv):
-        while not done:
-            time.sleep(0.1)
-        srv.quit()
-
-    def _zmq_client(self, done):
-        try:
-            cnx = connect('zmqpickle-tcp://127.0.0.1:41415', u'admin', password=u'gingkow',
-                          initlog=False) # don't reset logging configuration
-            try:
-                cnx.load_appobjects(subpath=('entities',))
-                # check we can get the schema
-                schema = cnx.get_schema()
-                self.assertTrue(cnx.vreg)
-                self.assertTrue('etypes'in cnx.vreg)
-                cu = cnx.cursor()
-                rset = cu.execute('Any U,G WHERE U in_group G')
-                user = iter(rset.entities()).next()
-                self.assertTrue(user._cw)
-                self.assertTrue(user._cw.vreg)
-                from cubicweb.entities import authobjs
-                self.assertIsInstance(user._cw.user, authobjs.CWUser)
-                cnx.close()
-                done.append(True)
-            finally:
-                # connect monkey patch some method by default, remove them
-                multiple_connections_unfix()
-        finally:
-            done.append(False)
-
     def test_internal_api(self):
         repo = self.repo
         cnxid = repo.connect(self.admlogin, password=self.admpassword)
-        session = repo._get_session(cnxid, setcnxset=True)
-        self.assertEqual(repo.type_and_source_from_eid(2, session),
-                         ('CWGroup', None, 'system'))
-        self.assertEqual(repo.type_from_eid(2, session), 'CWGroup')
+        session = repo._get_session(cnxid)
+        with session.new_cnx() as cnx:
+            self.assertEqual(repo.type_and_source_from_eid(2, cnx),
+                             ('CWGroup', None, 'system'))
+            self.assertEqual(repo.type_from_eid(2, cnx), 'CWGroup')
         repo.close(cnxid)
 
     def test_public_api(self):
@@ -435,44 +217,10 @@ class RepositoryTC(CubicWebTC):
         # .properties() return a result set
         self.assertEqual(self.repo.properties().rql, 'Any K,V WHERE P is CWProperty,P pkey K, P value V, NOT P for_user U')
 
-    def test_session_api(self):
-        repo = self.repo
-        cnxid = repo.connect(self.admlogin, password=self.admpassword)
-        self.assertEqual(repo.user_info(cnxid), (6, 'admin', set([u'managers']), {}))
-        self.assertEqual({'type': u'CWGroup', 'extid': None, 'source': 'system'},
-                         repo.entity_metas(cnxid, 2))
-        self.assertEqual(repo.describe(cnxid, 2), (u'CWGroup', 'system', None, 'system'))
-        repo.close(cnxid)
-        self.assertRaises(BadConnectionId, repo.user_info, cnxid)
-        self.assertRaises(BadConnectionId, repo.describe, cnxid, 1)
-
-    def test_shared_data_api(self):
-        repo = self.repo
-        cnxid = repo.connect(self.admlogin, password=self.admpassword)
-        self.assertEqual(repo.get_shared_data(cnxid, 'data'), None)
-        repo.set_shared_data(cnxid, 'data', 4)
-        self.assertEqual(repo.get_shared_data(cnxid, 'data'), 4)
-        repo.get_shared_data(cnxid, 'data', pop=True)
-        repo.get_shared_data(cnxid, 'whatever', pop=True)
-        self.assertEqual(repo.get_shared_data(cnxid, 'data'), None)
-        repo.close(cnxid)
-        self.assertRaises(BadConnectionId, repo.set_shared_data, cnxid, 'data', 0)
-        self.assertRaises(BadConnectionId, repo.get_shared_data, cnxid, 'data')
-
     def test_schema_is_relation(self):
         with self.admin_access.repo_cnx() as cnx:
             no_is_rset = cnx.execute('Any X WHERE NOT X is ET')
             self.assertFalse(no_is_rset, no_is_rset.description)
-
-#     def test_perfo(self):
-#         self.set_debug(True)
-#         from time import time, clock
-#         t, c = time(), clock()
-#         try:
-#             self.create_user('toto')
-#         finally:
-#             self.set_debug(False)
-#         print 'test time: %.3f (time) %.3f (cpu)' % ((time() - t), clock() - c)
 
     def test_delete_if_singlecard1(self):
         with self.admin_access.repo_cnx() as cnx:
@@ -626,38 +374,37 @@ class SchemaDeserialTC(CubicWebTC):
             namecol = SQL_PREFIX + 'name'
             finalcol = SQL_PREFIX + 'final'
             with self.admin_access.repo_cnx() as cnx:
-                with cnx.ensure_cnx_set:
-                    cu = cnx.system_sql('SELECT %s FROM %s WHERE %s is NULL'
-                                        % (namecol, table, finalcol))
-                    self.assertEqual(cu.fetchall(), [])
-                    cu = cnx.system_sql('SELECT %s FROM %s '
-                                        'WHERE %s=%%(final)s ORDER BY %s'
-                                        % (namecol, table, finalcol, namecol),
-                                        {'final': True})
-                    self.assertEqual(cu.fetchall(),
-                                     [(u'BabarTestType',),
-                                      (u'BigInt',), (u'Boolean',), (u'Bytes',),
-                                      (u'Date',), (u'Datetime',),
-                                      (u'Decimal',),(u'Float',),
-                                      (u'Int',),
-                                      (u'Interval',), (u'Password',),
-                                      (u'String',),
-                                      (u'TZDatetime',), (u'TZTime',), (u'Time',)])
-                    sql = ("SELECT etype.cw_eid, etype.cw_name, cstr.cw_eid, rel.eid_to "
-                           "FROM cw_CWUniqueTogetherConstraint as cstr, "
-                           "     relations_relation as rel, "
-                           "     cw_CWEType as etype "
-                           "WHERE cstr.cw_eid = rel.eid_from "
-                           "  AND cstr.cw_constraint_of = etype.cw_eid "
-                           "  AND etype.cw_name = 'Personne' "
-                           ";")
-                    cu = cnx.system_sql(sql)
-                    rows = cu.fetchall()
-                    self.assertEqual(len(rows), 3)
-                    person = self.repo.schema.eschema('Personne')
-                    self.assertEqual(len(person._unique_together), 1)
-                    self.assertItemsEqual(person._unique_together[0],
-                                          ('nom', 'prenom', 'inline2'))
+                cu = cnx.system_sql('SELECT %s FROM %s WHERE %s is NULL'
+                                    % (namecol, table, finalcol))
+                self.assertEqual(cu.fetchall(), [])
+                cu = cnx.system_sql('SELECT %s FROM %s '
+                                    'WHERE %s=%%(final)s ORDER BY %s'
+                                    % (namecol, table, finalcol, namecol),
+                                    {'final': True})
+                self.assertEqual(cu.fetchall(),
+                                 [(u'BabarTestType',),
+                                  (u'BigInt',), (u'Boolean',), (u'Bytes',),
+                                  (u'Date',), (u'Datetime',),
+                                  (u'Decimal',),(u'Float',),
+                                  (u'Int',),
+                                  (u'Interval',), (u'Password',),
+                                  (u'String',),
+                                  (u'TZDatetime',), (u'TZTime',), (u'Time',)])
+                sql = ("SELECT etype.cw_eid, etype.cw_name, cstr.cw_eid, rel.eid_to "
+                       "FROM cw_CWUniqueTogetherConstraint as cstr, "
+                       "     relations_relation as rel, "
+                       "     cw_CWEType as etype "
+                       "WHERE cstr.cw_eid = rel.eid_from "
+                       "  AND cstr.cw_constraint_of = etype.cw_eid "
+                       "  AND etype.cw_name = 'Personne' "
+                       ";")
+                cu = cnx.system_sql(sql)
+                rows = cu.fetchall()
+                self.assertEqual(len(rows), 3)
+                person = self.repo.schema.eschema('Personne')
+                self.assertEqual(len(person._unique_together), 1)
+                self.assertItemsEqual(person._unique_together[0],
+                                      ('nom', 'prenom', 'inline2'))
 
         finally:
             self.repo.set_schema(origshema)
@@ -680,30 +427,26 @@ class DataHelpersTC(CubicWebTC):
 
     def test_type_from_eid(self):
         with self.admin_access.repo_cnx() as cnx:
-            with cnx.ensure_cnx_set:
-                self.assertEqual(self.repo.type_from_eid(2, cnx), 'CWGroup')
+            self.assertEqual(self.repo.type_from_eid(2, cnx), 'CWGroup')
 
     def test_type_from_eid_raise(self):
         with self.admin_access.repo_cnx() as cnx:
-            with cnx.ensure_cnx_set:
-                self.assertRaises(UnknownEid, self.repo.type_from_eid, -2, cnx)
+            self.assertRaises(UnknownEid, self.repo.type_from_eid, -2, cnx)
 
     def test_add_delete_info(self):
         with self.admin_access.repo_cnx() as cnx:
-            with cnx.ensure_cnx_set:
-                cnx.mode = 'write'
-                entity = self.repo.vreg['etypes'].etype_class('Personne')(cnx)
-                entity.eid = -1
-                entity.complete = lambda x: None
-                self.repo.add_info(cnx, entity, self.repo.system_source)
-                cu = cnx.system_sql('SELECT * FROM entities WHERE eid = -1')
-                data = cu.fetchall()
-                self.assertEqual(tuplify(data), [(-1, 'Personne', 'system', None)])
-                self.repo.delete_info(cnx, entity, 'system')
-                #self.repo.commit()
-                cu = cnx.system_sql('SELECT * FROM entities WHERE eid = -1')
-                data = cu.fetchall()
-                self.assertEqual(data, [])
+            entity = self.repo.vreg['etypes'].etype_class('Personne')(cnx)
+            entity.eid = -1
+            entity.complete = lambda x: None
+            self.repo.add_info(cnx, entity, self.repo.system_source)
+            cu = cnx.system_sql('SELECT * FROM entities WHERE eid = -1')
+            data = cu.fetchall()
+            self.assertEqual(tuplify(data), [(-1, 'Personne', 'system', None)])
+            self.repo._delete_cascade_multi(cnx, [entity])
+            self.repo.system_source.delete_info_multi(cnx, [entity])
+            cu = cnx.system_sql('SELECT * FROM entities WHERE eid = -1')
+            data = cu.fetchall()
+            self.assertEqual(data, [])
 
 
 class FTITC(CubicWebTC):
@@ -757,9 +500,7 @@ class DBInitTC(CubicWebTC):
                               u'system.version.card',
                               u'system.version.comment',
                               u'system.version.cubicweb',
-                              u'system.version.email',
                               u'system.version.file',
-                              u'system.version.folder',
                               u'system.version.localperms',
                               u'system.version.tag'])
 

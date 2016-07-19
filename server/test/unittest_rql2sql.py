@@ -396,13 +396,13 @@ FROM cw_Tag AS _X
 ORDER BY 1'''),
 
     # DISTINCT, can use relation under exists scope as principal
-    ('DISTINCT Any X,Y WHERE X name "CWGroup", Y eid IN(1, 2, 3), EXISTS(X read_permission Y)',
+    ('DISTINCT Any X,Y WHERE X name "CWGroup", X is CWEType, Y eid IN(1, 2, 3), EXISTS(X read_permission Y)',
      '''SELECT DISTINCT _X.cw_eid, rel_read_permission0.eid_to
 FROM cw_CWEType AS _X, read_permission_relation AS rel_read_permission0
 WHERE _X.cw_name=CWGroup AND rel_read_permission0.eid_to IN(1, 2, 3) AND EXISTS(SELECT 1 WHERE rel_read_permission0.eid_from=_X.cw_eid)'''),
 
     # no distinct, Y can't be invariant
-    ('Any X,Y WHERE X name "CWGroup", Y eid IN(1, 2, 3), EXISTS(X read_permission Y)',
+    ('Any X,Y WHERE X name "CWGroup", X is CWEType, Y eid IN(1, 2, 3), EXISTS(X read_permission Y)',
      '''SELECT _X.cw_eid, _Y.cw_eid
 FROM cw_CWEType AS _X, cw_CWGroup AS _Y
 WHERE _X.cw_name=CWGroup AND _Y.cw_eid IN(1, 2, 3) AND EXISTS(SELECT 1 FROM read_permission_relation AS rel_read_permission0 WHERE rel_read_permission0.eid_from=_X.cw_eid AND rel_read_permission0.eid_to=_Y.cw_eid)
@@ -412,7 +412,7 @@ FROM cw_CWEType AS _X, cw_RQLExpression AS _Y
 WHERE _X.cw_name=CWGroup AND _Y.cw_eid IN(1, 2, 3) AND EXISTS(SELECT 1 FROM read_permission_relation AS rel_read_permission0 WHERE rel_read_permission0.eid_from=_X.cw_eid AND rel_read_permission0.eid_to=_Y.cw_eid)'''),
 
     # DISTINCT but NEGED exists, can't be invariant
-    ('DISTINCT Any X,Y WHERE X name "CWGroup", Y eid IN(1, 2, 3), NOT EXISTS(X read_permission Y)',
+    ('DISTINCT Any X,Y WHERE X name "CWGroup", X is CWEType, Y eid IN(1, 2, 3), NOT EXISTS(X read_permission Y)',
      '''SELECT DISTINCT _X.cw_eid, _Y.cw_eid
 FROM cw_CWEType AS _X, cw_CWGroup AS _Y
 WHERE _X.cw_name=CWGroup AND _Y.cw_eid IN(1, 2, 3) AND NOT (EXISTS(SELECT 1 FROM read_permission_relation AS rel_read_permission0 WHERE rel_read_permission0.eid_from=_X.cw_eid AND rel_read_permission0.eid_to=_Y.cw_eid))
@@ -422,7 +422,7 @@ FROM cw_CWEType AS _X, cw_RQLExpression AS _Y
 WHERE _X.cw_name=CWGroup AND _Y.cw_eid IN(1, 2, 3) AND NOT (EXISTS(SELECT 1 FROM read_permission_relation AS rel_read_permission0 WHERE rel_read_permission0.eid_from=_X.cw_eid AND rel_read_permission0.eid_to=_Y.cw_eid))'''),
 
     # should generate the same query as above
-    ('DISTINCT Any X,Y WHERE X name "CWGroup", Y eid IN(1, 2, 3), NOT X read_permission Y',
+    ('DISTINCT Any X,Y WHERE X name "CWGroup", X is CWEType, Y eid IN(1, 2, 3), NOT X read_permission Y',
      '''SELECT DISTINCT _X.cw_eid, _Y.cw_eid
 FROM cw_CWEType AS _X, cw_CWGroup AS _Y
 WHERE _X.cw_name=CWGroup AND _Y.cw_eid IN(1, 2, 3) AND NOT (EXISTS(SELECT 1 FROM read_permission_relation AS rel_read_permission0 WHERE rel_read_permission0.eid_from=_X.cw_eid AND rel_read_permission0.eid_to=_Y.cw_eid))
@@ -432,7 +432,7 @@ FROM cw_CWEType AS _X, cw_RQLExpression AS _Y
 WHERE _X.cw_name=CWGroup AND _Y.cw_eid IN(1, 2, 3) AND NOT (EXISTS(SELECT 1 FROM read_permission_relation AS rel_read_permission0 WHERE rel_read_permission0.eid_from=_X.cw_eid AND rel_read_permission0.eid_to=_Y.cw_eid))'''),
 
     # neged relation, can't be inveriant
-    ('Any X,Y WHERE X name "CWGroup", Y eid IN(1, 2, 3), NOT X read_permission Y',
+    ('Any X,Y WHERE X name "CWGroup", X is CWEType, Y eid IN(1, 2, 3), NOT X read_permission Y',
      '''SELECT _X.cw_eid, _Y.cw_eid
 FROM cw_CWEType AS _X, cw_CWGroup AS _Y
 WHERE _X.cw_name=CWGroup AND _Y.cw_eid IN(1, 2, 3) AND NOT (EXISTS(SELECT 1 FROM read_permission_relation AS rel_read_permission0 WHERE rel_read_permission0.eid_from=_X.cw_eid AND rel_read_permission0.eid_to=_Y.cw_eid))
@@ -563,6 +563,17 @@ WHERE _R2.eid=rel_concerne0.eid_from AND _R2.eid>rel_concerne0.eid_to'''),
      '''SELECT _X.cw_eid
 FROM cw_Note AS _X
 WHERE _X.cw_eid IN(999998, 999999) AND NOT (EXISTS(SELECT 1 FROM cw_source_relation AS rel_cw_source0 WHERE rel_cw_source0.eid_from=_X.cw_eid))'''),
+
+    # Test for https://www.cubicweb.org/ticket/5503548
+    ('''Any X
+        WHERE X is CWSourceSchemaConfig,
+        EXISTS(X created_by U, U login L),
+        X cw_schema X_CW_SCHEMA,
+        X owned_by X_OWNED_BY?
+    ''', '''SELECT _X.cw_eid
+FROM cw_CWSourceSchemaConfig AS _X LEFT OUTER JOIN owned_by_relation AS rel_owned_by1 ON (rel_owned_by1.eid_from=_X.cw_eid)
+WHERE EXISTS(SELECT 1 FROM created_by_relation AS rel_created_by0, cw_CWUser AS _U WHERE rel_created_by0.eid_from=_X.cw_eid AND rel_created_by0.eid_to=_U.cw_eid) AND _X.cw_cw_schema IS NOT NULL
+''')
     ]
 
 ADVANCED_WITH_GROUP_CONCAT = [

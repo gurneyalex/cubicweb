@@ -43,16 +43,16 @@ from logilab.common.configuration import Method
 from logilab.common.shellutils import getlogin, ASK
 from logilab.database import get_db_helper, sqlgen
 
-from yams import schema2sql as y2sql
 from yams.schema import role_name
 
 from cubicweb import (UnknownEid, AuthenticationError, ValidationError, Binary,
-                      UniqueTogetherError, UndoTransactionException)
+                      UniqueTogetherError, UndoTransactionException, ViolatedConstraint)
 from cubicweb import transaction as tx, server, neg_role
 from cubicweb.utils import QueryCache
 from cubicweb.schema import VIRTUAL_RTYPES
 from cubicweb.cwconfig import CubicWebNoAppConfiguration
 from cubicweb.server import hook
+from cubicweb.server import schema2sql as y2sql
 from cubicweb.server.utils import crypt_password, eschema_eid, verify_and_update
 from cubicweb.server.sqlutils import SQL_PREFIX, SQLAdapterMixIn
 from cubicweb.server.rqlannotation import set_qdata
@@ -60,6 +60,7 @@ from cubicweb.server.hook import CleanupDeletedEidsCacheOp
 from cubicweb.server.edition import EditedEntity
 from cubicweb.server.sources import AbstractSource, dbg_st_search, dbg_results
 from cubicweb.server.sources.rql2sql import SQLGenerator
+from cubicweb.statsd_logger import statsd_timeit
 
 
 ATTR_MAP = {}
@@ -272,7 +273,7 @@ class NativeSQLSource(SQLAdapterMixIn, AbstractSource):
          {'type' : 'string',
           'default': 'postgres',
           # XXX use choice type
-          'help': 'database driver (postgres, mysql, sqlite, sqlserver2005)',
+          'help': 'database driver (postgres, sqlite, sqlserver2005)',
           'group': 'native-source', 'level': 0,
           }),
         ('db-host',
@@ -376,6 +377,7 @@ class NativeSQLSource(SQLAdapterMixIn, AbstractSource):
         self._cache.pop('Any X WHERE X eid %s' % eid, None)
         self._cache.pop('Any %s' % eid, None)
 
+    @statsd_timeit
     def sqlexec(self, cnx, sql, args=None):
         """execute the query and return its result"""
         return self.process_result(self.doexec(cnx, sql, args))
@@ -480,6 +482,7 @@ class NativeSQLSource(SQLAdapterMixIn, AbstractSource):
 
     # ISource interface #######################################################
 
+    @statsd_timeit
     def compile_rql(self, rql, sols):
         rqlst = self.repo.vreg.rqlhelper.parse(rql)
         rqlst.restricted_vars = ()
@@ -517,6 +520,7 @@ class NativeSQLSource(SQLAdapterMixIn, AbstractSource):
         # can't claim not supporting a relation
         return True #not rtype == 'content_for'
 
+    @statsd_timeit
     def authenticate(self, cnx, login, **kwargs):
         """return CWUser eid for the given login and other authentication
         information found in kwargs, else raise `AuthenticationError`
@@ -553,31 +557,22 @@ class NativeSQLSource(SQLAdapterMixIn, AbstractSource):
                 self._cache[cachekey] = sql, qargs, cbs
         args = self.merge_args(args, qargs)
         assert isinstance(sql, basestring), repr(sql)
-        try:
-            cursor = self.doexec(cnx, sql, args)
-        except (self.OperationalError, self.InterfaceError):
-            if cnx.mode == 'write':
-                # do not attempt to reconnect if there has been some write
-                # during the transaction
-                raise
-            # FIXME: better detection of deconnection pb
-            self.warning("trying to reconnect")
-            cnx.cnxset.reconnect()
-            cursor = self.doexec(cnx, sql, args)
-        except self.DbapiError as exc:
-            # We get this one with pyodbc and SQL Server when connection was reset
-            if exc.args[0] == '08S01' and cnx.mode != 'write':
-                self.warning("trying to reconnect")
-                cnx.cnxset.reconnect()
-                cursor = self.doexec(cnx, sql, args)
-            else:
-                raise
+        cursor = self.doexec(cnx, sql, args)
         results = self.process_result(cursor, cnx, cbs)
         assert dbg_results(results)
         return results
 
     @contextmanager
-    def _storage_handler(self, entity, event):
+    def _fixup_cw(self, cnx, entity):
+        _cw = entity._cw
+        entity._cw = cnx
+        try:
+            yield
+        finally:
+            entity._cw = _cw
+
+    @contextmanager
+    def _storage_handler(self, cnx, entity, event):
         # 1/ memorize values as they are before the storage is called.
         #    For instance, the BFSStorage will replace the `data`
         #    binary value with a Binary containing the destination path
@@ -592,14 +587,15 @@ class NativeSQLSource(SQLAdapterMixIn, AbstractSource):
         etype = entities[0].__regid__
         for attr, storage in self._storages.get(etype, {}).items():
             for entity in entities:
-                if event == 'deleted':
-                    storage.entity_deleted(entity, attr)
-                else:
-                    edited = entity.cw_edited
-                    if attr in edited:
-                        handler = getattr(storage, 'entity_%s' % event)
-                        to_restore = handler(entity, attr)
-                        restore_values.append((entity, attr, to_restore))
+                with self._fixup_cw(cnx, entity):
+                    if event == 'deleted':
+                        storage.entity_deleted(entity, attr)
+                    else:
+                        edited = entity.cw_edited
+                        if attr in edited:
+                            handler = getattr(storage, 'entity_%s' % event)
+                            to_restore = handler(entity, attr)
+                            restore_values.append((entity, attr, to_restore))
         try:
             yield # 2/ execute the source's instructions
         finally:
@@ -609,22 +605,22 @@ class NativeSQLSource(SQLAdapterMixIn, AbstractSource):
 
     def add_entity(self, cnx, entity):
         """add a new entity to the source"""
-        with self._storage_handler(entity, 'added'):
+        with self._storage_handler(cnx, entity, 'added'):
             attrs = self.preprocess_entity(entity)
             sql = self.sqlgen.insert(SQL_PREFIX + entity.cw_etype, attrs)
             self.doexec(cnx, sql, attrs)
             if cnx.ertype_supports_undo(entity.cw_etype):
-                self._record_tx_action(cnx, 'tx_entity_actions', 'C',
-                                       etype=entity.cw_etype, eid=entity.eid)
+                self._record_tx_action(cnx, 'tx_entity_actions', u'C',
+                                       etype=unicode(entity.cw_etype), eid=entity.eid)
 
     def update_entity(self, cnx, entity):
         """replace an entity in the source"""
-        with self._storage_handler(entity, 'updated'):
+        with self._storage_handler(cnx, entity, 'updated'):
             attrs = self.preprocess_entity(entity)
             if cnx.ertype_supports_undo(entity.cw_etype):
                 changes = self._save_attrs(cnx, entity, attrs)
-                self._record_tx_action(cnx, 'tx_entity_actions', 'U',
-                                       etype=entity.cw_etype, eid=entity.eid,
+                self._record_tx_action(cnx, 'tx_entity_actions', u'U',
+                                       etype=unicode(entity.cw_etype), eid=entity.eid,
                                        changes=self._binary(dumps(changes)))
             sql = self.sqlgen.update(SQL_PREFIX + entity.cw_etype, attrs,
                                      ['cw_eid'])
@@ -632,14 +628,14 @@ class NativeSQLSource(SQLAdapterMixIn, AbstractSource):
 
     def delete_entity(self, cnx, entity):
         """delete an entity from the source"""
-        with self._storage_handler(entity, 'deleted'):
+        with self._storage_handler(cnx, entity, 'deleted'):
             if cnx.ertype_supports_undo(entity.cw_etype):
                 attrs = [SQL_PREFIX + r.type
                          for r in entity.e_schema.subject_relations()
                          if (r.final or r.inlined) and not r in VIRTUAL_RTYPES]
                 changes = self._save_attrs(cnx, entity, attrs)
-                self._record_tx_action(cnx, 'tx_entity_actions', 'D',
-                                       etype=entity.cw_etype, eid=entity.eid,
+                self._record_tx_action(cnx, 'tx_entity_actions', u'D',
+                                       etype=unicode(entity.cw_etype), eid=entity.eid,
                                        changes=self._binary(dumps(changes)))
             attrs = {'cw_eid': entity.eid}
             sql = self.sqlgen.delete(SQL_PREFIX + entity.cw_etype, attrs)
@@ -649,16 +645,16 @@ class NativeSQLSource(SQLAdapterMixIn, AbstractSource):
         """add a relation to the source"""
         self._add_relations(cnx,  rtype, [(subject, object)], inlined)
         if cnx.ertype_supports_undo(rtype):
-            self._record_tx_action(cnx, 'tx_relation_actions', 'A',
-                                   eid_from=subject, rtype=rtype, eid_to=object)
+            self._record_tx_action(cnx, 'tx_relation_actions', u'A',
+                                   eid_from=subject, rtype=unicode(rtype), eid_to=object)
 
     def add_relations(self, cnx,  rtype, subj_obj_list, inlined=False):
         """add a relations to the source"""
         self._add_relations(cnx, rtype, subj_obj_list, inlined)
         if cnx.ertype_supports_undo(rtype):
             for subject, object in subj_obj_list:
-                self._record_tx_action(cnx, 'tx_relation_actions', 'A',
-                                       eid_from=subject, rtype=rtype, eid_to=object)
+                self._record_tx_action(cnx, 'tx_relation_actions', u'A',
+                                       eid_from=subject, rtype=unicode(rtype), eid_to=object)
 
     def _add_relations(self, cnx, rtype, subj_obj_list, inlined=False):
         """add a relation to the source"""
@@ -689,8 +685,8 @@ class NativeSQLSource(SQLAdapterMixIn, AbstractSource):
         rschema = self.schema.rschema(rtype)
         self._delete_relation(cnx, subject, rtype, object, rschema.inlined)
         if cnx.ertype_supports_undo(rtype):
-            self._record_tx_action(cnx, 'tx_relation_actions', 'R',
-                                   eid_from=subject, rtype=rtype, eid_to=object)
+            self._record_tx_action(cnx, 'tx_relation_actions', u'R',
+                                   eid_from=subject, rtype=unicode(rtype), eid_to=object)
 
     def _delete_relation(self, cnx, subject, rtype, object, inlined=False):
         """delete a relation from the source"""
@@ -705,6 +701,7 @@ class NativeSQLSource(SQLAdapterMixIn, AbstractSource):
             sql = self.sqlgen.delete('%s_relation' % rtype, attrs)
         self.doexec(cnx, sql, attrs)
 
+    @statsd_timeit
     def doexec(self, cnx, query, args=None, rollback=True):
         """Execute a query.
         it's a function just so that it shows up in profiling
@@ -749,15 +746,28 @@ class NativeSQLSource(SQLAdapterMixIn, AbstractSource):
                         columns = arg.split(':', 1)[1].split(',')
                         rtypes = [c.split('.', 1)[1].strip()[3:] for c in columns]
                         raise UniqueTogetherError(cnx, rtypes=rtypes)
+
+                    mo = re.search('"cstr[a-f0-9]{32}"', arg)
+                    if mo is not None:
+                        # postgresql
+                        raise ViolatedConstraint(cnx, cstrname=mo.group(0)[1:-1])
+                    if arg.startswith('CHECK constraint failed:'):
+                        # sqlite3 (new)
+                        raise ViolatedConstraint(cnx, cstrname=arg.split(':', 1)[1].strip())
+                    mo = re.match('^constraint (cstr.*) failed$', arg)
+                    if mo is not None:
+                        # sqlite3 (old)
+                        raise ViolatedConstraint(cnx, cstrname=mo.group(1))
             raise
         return cursor
 
+    @statsd_timeit
     def doexecmany(self, cnx, query, args):
         """Execute a query.
         it's a function just so that it shows up in profiling
         """
         if server.DEBUG & server.DBG_SQL:
-            print 'execmany', query, 'with', len(args), 'arguments'
+            print 'execmany', query, 'with', len(args), 'arguments', cnx.cnxset.cnx
         cursor = cnx.cnxset.cu
         try:
             # str(query) to avoid error if it's a unicode string
@@ -829,23 +839,17 @@ class NativeSQLSource(SQLAdapterMixIn, AbstractSource):
 
     # system source interface #################################################
 
-    def _eid_type_source(self, cnx, eid, sql, _retry=True):
+    def _eid_type_source(self, cnx, eid, sql):
         try:
             res = self.doexec(cnx, sql).fetchone()
             if res is not None:
                 return res
-        except (self.OperationalError, self.InterfaceError):
-            if cnx.mode == 'read' and _retry:
-                self.warning("trying to reconnect (eid_type_source())")
-                cnx.cnxset.reconnect()
-                return self._eid_type_source(cnx, eid, sql, _retry=False)
         except Exception:
-            assert cnx.cnxset, 'connection has no connections set'
             self.exception('failed to query entities table for eid %s', eid)
         raise UnknownEid(eid)
 
     def eid_type_source(self, cnx, eid): # pylint: disable=E0202
-        """return a tuple (type, source, extid) for the entity with id <eid>"""
+        """return a tuple (type, extid, source) for the entity with id <eid>"""
         sql = 'SELECT type, extid, asource FROM entities WHERE eid=%s' % eid
         res = self._eid_type_source(cnx, eid, sql)
         if res[-2] is not None:
@@ -855,7 +859,7 @@ class NativeSQLSource(SQLAdapterMixIn, AbstractSource):
         return res
 
     def eid_type_source_pre_131(self, cnx, eid):
-        """return a tuple (type, source, extid) for the entity with id <eid>"""
+        """return a tuple (type, extid, source) for the entity with id <eid>"""
         sql = 'SELECT type, extid FROM entities WHERE eid=%s' % eid
         res = self._eid_type_source(cnx, eid, sql)
         if not isinstance(res, list):
@@ -868,9 +872,10 @@ class NativeSQLSource(SQLAdapterMixIn, AbstractSource):
     def extid2eid(self, cnx, extid):
         """get eid from an external id. Return None if no record found."""
         assert isinstance(extid, str)
+        args = {'x': b64encode(extid)}
         cursor = self.doexec(cnx,
                              'SELECT eid FROM entities WHERE extid=%(x)s',
-                             {'x': b64encode(extid)})
+                             args)
         # XXX testing rowcount cause strange bug with sqlite, results are there
         #     but rowcount is 0
         #if cursor.rowcount > 0:
@@ -878,6 +883,17 @@ class NativeSQLSource(SQLAdapterMixIn, AbstractSource):
             result = cursor.fetchone()
             if result:
                 return result[0]
+        except Exception:
+            pass
+        cursor = self.doexec(cnx,
+                             'SELECT eid FROM moved_entities WHERE extid=%(x)s',
+                             args)
+        try:
+            result = cursor.fetchone()
+            if result:
+                # entity was moved to the system source, return negative
+                # number to tell the external source to ignore it
+                return -result[0]
         except Exception:
             pass
         return None
@@ -897,7 +913,7 @@ class NativeSQLSource(SQLAdapterMixIn, AbstractSource):
         if extid is not None:
             assert isinstance(extid, str)
             extid = b64encode(extid)
-        attrs = {'type': entity.cw_etype, 'eid': entity.eid, 'extid': extid and unicode(extid),
+        attrs = {'type': unicode(entity.cw_etype), 'eid': entity.eid, 'extid': extid and unicode(extid),
                  'asource': unicode(source.uri)}
         self._handle_insert_entity_sql(cnx, self.sqlgen.insert('entities', attrs), attrs)
         # insert core relations: is, is_instance_of and cw_source
@@ -940,7 +956,7 @@ class NativeSQLSource(SQLAdapterMixIn, AbstractSource):
     # undo support #############################################################
 
     def undoable_transactions(self, cnx, ueid=None, **actionfilters):
-        """See :class:`cubicweb.repoapi.ClientConnection.undoable_transactions`"""
+        """See :class:`cubicweb.repoapi.Connection.undoable_transactions`"""
         # force filtering to connection's user if not a manager
         if not cnx.user.is_in_group('managers'):
             ueid = cnx.user.eid
@@ -965,7 +981,7 @@ class NativeSQLSource(SQLAdapterMixIn, AbstractSource):
                     # only, and with no eid specified
                     assert actionfilters.get('action', 'C') in 'CUD'
                     assert not 'eid' in actionfilters
-                    tearestr['etype'] = val
+                    tearestr['etype'] = unicode(val)
                 elif key == 'eid':
                     # eid filter may apply to 'eid' of tx_entity_actions or to
                     # 'eid_from' OR 'eid_to' of tx_relation_actions
@@ -976,10 +992,10 @@ class NativeSQLSource(SQLAdapterMixIn, AbstractSource):
                         trarestr['eid_to'] = val
                 elif key == 'action':
                     if val in 'CUD':
-                        tearestr['txa_action'] = val
+                        tearestr['txa_action'] = unicode(val)
                     else:
                         assert val in 'AR'
-                        trarestr['txa_action'] = val
+                        trarestr['txa_action'] = unicode(val)
                 else:
                     raise AssertionError('unknow filter %s' % key)
             assert trarestr or tearestr, "can't only filter on 'public'"
@@ -1007,17 +1023,17 @@ class NativeSQLSource(SQLAdapterMixIn, AbstractSource):
             restr.update(tearestr)
         # we want results ordered by transaction's time descendant
         sql += ' ORDER BY tx_time DESC'
-        with cnx.ensure_cnx_set:
-            cu = self.doexec(cnx, sql, restr)
-            # turn results into transaction objects
-            return [tx.Transaction(*args) for args in cu.fetchall()]
+        cu = self.doexec(cnx, sql, restr)
+        # turn results into transaction objects
+        return [tx.Transaction(cnx, *args) for args in cu.fetchall()]
 
     def tx_info(self, cnx, txuuid):
-        """See :class:`cubicweb.repoapi.ClientConnection.transaction_info`"""
-        return tx.Transaction(txuuid, *self._tx_info(cnx, txuuid))
+        """See :class:`cubicweb.repoapi.Connection.transaction_info`"""
+        return tx.Transaction(cnx, txuuid, *self._tx_info(cnx, unicode(txuuid)))
 
     def tx_actions(self, cnx, txuuid, public):
-        """See :class:`cubicweb.repoapi.ClientConnection.transaction_actions`"""
+        """See :class:`cubicweb.repoapi.Connection.transaction_actions`"""
+        txuuid = unicode(txuuid)
         self._tx_info(cnx, txuuid)
         restr = {'tx_uuid': txuuid}
         if public:
@@ -1039,13 +1055,11 @@ class NativeSQLSource(SQLAdapterMixIn, AbstractSource):
         return sorted(actions, key=lambda x: x.order)
 
     def undo_transaction(self, cnx, txuuid):
-        """See :class:`cubicweb.repoapi.ClientConnection.undo_transaction`
+        """See :class:`cubicweb.repoapi.Connection.undo_transaction`
 
         important note: while undoing of a transaction, only hooks in the
         'integrity', 'activeintegrity' and 'undo' categories are called.
         """
-        # set mode so connections set isn't released subsquently until commit/rollback
-        cnx.mode = 'write'
         errors = []
         cnx.transaction_data['undoing_uuid'] = txuuid
         with cnx.deny_all_hooks_but('integrity', 'activeintegrity', 'undo'):
@@ -1097,7 +1111,7 @@ class NativeSQLSource(SQLAdapterMixIn, AbstractSource):
         kwargs['tx_uuid'] = cnx.transaction_uuid()
         kwargs['txa_action'] = action
         kwargs['txa_order'] = cnx.transaction_inc_action_counter()
-        kwargs['txa_public'] = cnx.running_dbapi_query
+        kwargs['txa_public'] = not cnx.hooks_in_progress
         self.doexec(cnx, self.sqlgen.insert(table, kwargs), kwargs)
 
     def _tx_info(self, cnx, txuuid):
@@ -1106,19 +1120,18 @@ class NativeSQLSource(SQLAdapterMixIn, AbstractSource):
         raise `NoSuchTransaction` if there is no such transaction of if the
         connection's user isn't allowed to see it.
         """
-        with cnx.ensure_cnx_set:
-            restr = {'tx_uuid': txuuid}
-            sql = self.sqlgen.select('transactions', restr,
-                                     ('tx_time', 'tx_user'))
-            cu = self.doexec(cnx, sql, restr)
-            try:
-                time, ueid = cu.fetchone()
-            except TypeError:
-                raise tx.NoSuchTransaction(txuuid)
-            if not (cnx.user.is_in_group('managers')
-                    or cnx.user.eid == ueid):
-                raise tx.NoSuchTransaction(txuuid)
-            return time, ueid
+        restr = {'tx_uuid': txuuid}
+        sql = self.sqlgen.select('transactions', restr,
+                                 ('tx_time', 'tx_user'))
+        cu = self.doexec(cnx, sql, restr)
+        try:
+            time, ueid = cu.fetchone()
+        except TypeError:
+            raise tx.NoSuchTransaction(txuuid)
+        if not (cnx.user.is_in_group('managers')
+                or cnx.user.eid == ueid):
+            raise tx.NoSuchTransaction(txuuid)
+        return time, ueid
 
     def _reedit_entity(self, entity, changes, err):
         cnx = entity._cw
@@ -1151,6 +1164,7 @@ class NativeSQLSource(SQLAdapterMixIn, AbstractSource):
                         err(cnx._("can't restore entity %(eid)s of type %(eschema)s, "
                                       "target of %(rtype)s (eid %(value)s) does not exist any longer")
                             % locals())
+                        changes[column] = None
             elif eschema.destination(rtype) in ('Bytes', 'Password'):
                 changes[column] = self._binary(value)
                 edited[rtype] = Binary(value)
@@ -1182,10 +1196,10 @@ class NativeSQLSource(SQLAdapterMixIn, AbstractSource):
         self.repo.hm.call_hooks('before_add_entity', cnx, entity=entity)
         # restore the entity
         action.changes['cw_eid'] = eid
-        sql = self.sqlgen.insert(SQL_PREFIX + etype, action.changes)
-        self.doexec(cnx, sql, action.changes)
         # restore record in entities (will update fti if needed)
         self.add_info(cnx, entity, self, None)
+        sql = self.sqlgen.insert(SQL_PREFIX + etype, action.changes)
+        self.doexec(cnx, sql, action.changes)
         self.repo.hm.call_hooks('after_add_entity', cnx, entity=entity)
         return errors
 
@@ -1390,7 +1404,10 @@ CREATE TABLE entities (
   extid VARCHAR(256)
 );;
 CREATE INDEX entities_type_idx ON entities(type);;
-CREATE INDEX entities_extid_idx ON entities(extid);;
+CREATE TABLE moved_entities (
+  eid INTEGER PRIMARY KEY NOT NULL,
+  extid VARCHAR(256) UNIQUE NOT NULL
+);;
 
 CREATE TABLE transactions (
   tx_uuid CHAR(32) PRIMARY KEY NOT NULL,
@@ -1442,18 +1459,22 @@ FOR EACH ROW BEGIN
     DELETE FROM tx_relation_actions WHERE tx_uuid=OLD.tx_uuid;
 END;;
 '''
+    schema += ';;'.join(helper.sqls_create_multicol_unique_index('entities', ['extid']))
+    schema += ';;\n'
     return schema
 
 
 def sql_drop_schema(driver):
     helper = get_db_helper(driver)
     return """
+%s;
 %s
 DROP TABLE entities;
 DROP TABLE tx_entity_actions;
 DROP TABLE tx_relation_actions;
 DROP TABLE transactions;
-""" % helper.sql_drop_numrange('entities_id_seq')
+""" % (';'.join(helper.sqls_drop_multicol_unique_index('entities', ['extid'])),
+       helper.sql_drop_numrange('entities_id_seq'))
 
 
 def grant_schema(user, set_owner=True):
@@ -1530,7 +1551,7 @@ class LoginPasswordAuthentifier(BaseAuthentifier):
                                         SQL_PREFIX + 'login'),
                                        {'newhash': self.source._binary(newhash),
                                         'login': login})
-                    cnx.commit(free_cnxset=False)
+                    cnx.commit()
             return user
         except IndexError:
             raise AuthenticationError('bad password')

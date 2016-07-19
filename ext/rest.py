@@ -35,7 +35,6 @@ following ReST directives:
 __docformat__ = "restructuredtext en"
 
 import sys
-from cStringIO import StringIO
 from itertools import chain
 from logging import getLogger
 from os.path import join
@@ -411,7 +410,7 @@ def rest_publish(context, data):
         # remove unprintable characters unauthorized in xml
         data = data.translate(ESC_CAR_TABLE)
     settings = {'input_encoding': encoding, 'output_encoding': 'unicode',
-                'warning_stream': StringIO(),
+                'warning_stream': False,
                 'traceback': True, # don't sys.exit
                 'stylesheet': None, # don't try to embed stylesheet (may cause
                                     # obscure bug due to docutils computing
