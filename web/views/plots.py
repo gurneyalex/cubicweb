@@ -18,7 +18,10 @@
 """basic plot views"""
 
 __docformat__ = "restructuredtext en"
-_ = unicode
+from cubicweb import _
+
+from six import add_metaclass
+from six.moves import range
 
 from logilab.common.date import datetime2ticks
 from logilab.common.deprecation import class_deprecated
@@ -83,9 +86,10 @@ class PlotWidget(object):
     def _render(self, *args, **kwargs):
         raise NotImplementedError
 
+
+@add_metaclass(class_deprecated)
 class FlotPlotWidget(PlotWidget):
     """PlotRenderer widget using Flot"""
-    __metaclass__ = class_deprecated
     __deprecation_warning__ = '[3.14] cubicweb.web.views.plots module is deprecated, use the jqplot cube instead'
     onload = u"""
 var fig = jQuery('#%(figid)s');
@@ -117,7 +121,7 @@ if (fig.attr('cubicweb:type') != 'prepared-plot') {
         if req.ie_browser():
             req.add_js('excanvas.js')
         req.add_js(('jquery.flot.js', 'cubicweb.flot.js'))
-        figid = u'figure%s' % req.varmaker.next()
+        figid = u'figure%s' % next(req.varmaker)
         plotdefs = []
         plotdata = []
         self.w(u'<div id="%s" style="width: %spx; height: %spx;"></div>' %
@@ -137,8 +141,8 @@ if (fig.attr('cubicweb:type') != 'prepared-plot') {
                                      'dateformat': '"%s"' % fmt})
 
 
+@add_metaclass(class_deprecated)
 class PlotView(baseviews.AnyRsetView):
-    __metaclass__ = class_deprecated
     __deprecation_warning__ = '[3.14] cubicweb.web.views.plots module is deprecated, use the jqplot cube instead'
     __regid__ = 'plot'
     title = _('generic plot')
@@ -154,7 +158,7 @@ class PlotView(baseviews.AnyRsetView):
         abscissa = [row[0] for row in self.cw_rset]
         plots = []
         nbcols = len(self.cw_rset.rows[0])
-        for col in xrange(1, nbcols):
+        for col in range(1, nbcols):
             data = [row[col] for row in self.cw_rset]
             plots.append(filterout_nulls(abscissa, data))
         plotwidget = FlotPlotWidget(varnames, plots, timemode=self.timemode)

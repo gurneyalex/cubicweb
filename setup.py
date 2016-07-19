@@ -42,7 +42,7 @@ from distutils.command import install_data
 from __pkginfo__ import modname, version, license, description, web, \
      author, author_email
 
-long_description = file('README').read()
+long_description = open('README').read()
 
 # import optional features
 import __pkginfo__
@@ -51,7 +51,7 @@ if USE_SETUPTOOLS:
     for entry in ("__depends__",): # "__recommends__"):
         requires.update(getattr(__pkginfo__, entry, {}))
     install_requires = [("%s %s" % (d, v and v or "")).strip()
-                       for d, v in requires.iteritems()]
+                       for d, v in requires.items()]
 else:
     install_requires = []
 

@@ -1,3 +1,5 @@
+from __future__ import print_function
+
 from cubicweb.schema import PURE_VIRTUAL_RTYPES
 from cubicweb.server.schema2sql import rschema_has_table
 
@@ -27,7 +29,7 @@ def add_foreign_keys_relation(rschema):
                 '    SELECT eid FROM entities) AS eids' % args,
                 ask_confirm=False)[0][0]
     if count:
-        print '%s references %d unknown entities, deleting' % (rschema, count)
+        print('%s references %d unknown entities, deleting' % (rschema, count))
         sql('DELETE FROM %(r)s_relation '
             'WHERE eid_from IN (SELECT eid_from FROM %(r)s_relation EXCEPT SELECT eid FROM entities)' % args)
         sql('DELETE FROM %(r)s_relation '
@@ -65,14 +67,14 @@ def add_foreign_keys_inlined(rschema):
             broken_eids = sql('SELECT cw_eid FROM cw_%(e)s WHERE cw_%(r)s IS NULL' % args,
                               ask_confirm=False)
             if broken_eids:
-                print 'Required relation %(e)s.%(r)s missing' % args
+                print('Required relation %(e)s.%(r)s missing' % args)
                 args['eids'] = ', '.join(str(eid) for eid, in broken_eids)
                 rql('DELETE %(e)s X WHERE X eid IN (%(eids)s)' % args)
             broken_eids = sql('SELECT cw_eid FROM cw_%(e)s WHERE cw_%(r)s IN (SELECT cw_%(r)s FROM cw_%(e)s '
                               'EXCEPT SELECT eid FROM entities)' % args,
                               ask_confirm=False)
             if broken_eids:
-                print 'Required relation %(e)s.%(r)s references unknown objects, deleting subject entities' % args
+                print('Required relation %(e)s.%(r)s references unknown objects, deleting subject entities' % args)
                 args['eids'] = ', '.join(str(eid) for eid, in broken_eids)
                 rql('DELETE %(e)s X WHERE X eid IN (%(eids)s)' % args)
         else:
@@ -81,7 +83,7 @@ def add_foreign_keys_inlined(rschema):
                    '  EXCEPT'
                    '    SELECT eid FROM entities) AS eids' % args,
                    ask_confirm=False)[0][0]:
-                print '%(e)s.%(r)s references unknown entities, deleting relation' % args
+                print('%(e)s.%(r)s references unknown entities, deleting relation' % args)
                 sql('UPDATE cw_%(e)s SET cw_%(r)s = NULL WHERE cw_%(r)s IS NOT NULL AND cw_%(r)s IN '
                     '(SELECT cw_%(r)s FROM cw_%(e)s EXCEPT SELECT eid FROM entities)' % args)
 
@@ -104,7 +106,7 @@ def add_foreign_key_etype(eschema):
            '  EXCEPT'
            '    SELECT eid FROM entities) AS eids' % args,
            ask_confirm=False)[0][0]:
-        print '%(e)s has nonexistent entities, deleting' % args
+        print('%(e)s has nonexistent entities, deleting' % args)
         sql('DELETE FROM cw_%(e)s WHERE cw_eid IN '
             '(SELECT cw_eid FROM cw_%(e)s EXCEPT SELECT eid FROM entities)' % args)
     args['c'] = 'cw_%(e)s_cw_eid_fkey' % args
@@ -164,9 +166,9 @@ for cwconstraint in rql('Any C WHERE R constrained_by C').entities():
             cstr, helper, prefix='cw_')
     args = {'e': rdef.subject.type, 'c': cstrname, 'v': check}
     if repo.system_source.dbdriver == 'postgres':
-        sql('ALTER TABLE cw_%(e)s DROP CONSTRAINT IF EXISTS %(c)s' % args)
+        sql('ALTER TABLE cw_%(e)s DROP CONSTRAINT IF EXISTS %(c)s' % args, ask_confirm=False)
     elif repo.system_source.dbdriver.startswith('sqlserver'):
         sql("IF OBJECT_ID('%(c)s', 'C') IS NOT NULL "
-            "ALTER TABLE cw_%(e)s DROP CONSTRAINT %(c)s" % args)
-    sql('ALTER TABLE cw_%(e)s ADD CONSTRAINT %(c)s CHECK(%(v)s)' % args)
+            "ALTER TABLE cw_%(e)s DROP CONSTRAINT %(c)s" % args, ask_confirm=False)
+    sql('ALTER TABLE cw_%(e)s ADD CONSTRAINT %(c)s CHECK(%(v)s)' % args, ask_confirm=False)
 commit()

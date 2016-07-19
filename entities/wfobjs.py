@@ -21,9 +21,11 @@
 * workflow history (TrInfo)
 * adapter for workflowable entities (IWorkflowableAdapter)
 """
+from __future__ import print_function
 
 __docformat__ = "restructuredtext en"
 
+from six import text_type, string_types
 
 from logilab.common.decorators import cached, clear_cache
 from logilab.common.deprecation import deprecated
@@ -97,7 +99,7 @@ class Workflow(AnyEntity):
     def transition_by_name(self, trname):
         rset = self._cw.execute('Any T, TN WHERE T name TN, T name %(n)s, '
                                 'T transition_of WF, WF eid %(wf)s',
-                                {'n': unicode(trname), 'wf': self.eid})
+                                {'n': text_type(trname), 'wf': self.eid})
         if rset:
             return rset.get_entity(0, 0)
         return None
@@ -114,7 +116,7 @@ class Workflow(AnyEntity):
 
     def add_state(self, name, initial=False, **kwargs):
         """add a state to this workflow"""
-        state = self._cw.create_entity('State', name=unicode(name), **kwargs)
+        state = self._cw.create_entity('State', name=text_type(name), **kwargs)
         self._cw.execute('SET S state_of WF WHERE S eid %(s)s, WF eid %(wf)s',
                          {'s': state.eid, 'wf': self.eid})
         if initial:
@@ -126,7 +128,7 @@ class Workflow(AnyEntity):
 
     def _add_transition(self, trtype, name, fromstates,
                         requiredgroups=(), conditions=(), **kwargs):
-        tr = self._cw.create_entity(trtype, name=unicode(name), **kwargs)
+        tr = self._cw.create_entity(trtype, name=text_type(name), **kwargs)
         self._cw.execute('SET T transition_of WF '
                          'WHERE T eid %(t)s, WF eid %(wf)s',
                          {'t': tr.eid, 'wf': self.eid})
@@ -224,19 +226,19 @@ class BaseTransition(AnyEntity):
             matches = user.matching_groups(groups)
             if matches:
                 if DBG:
-                    print 'may_be_fired: %r may fire: user matches %s' % (self.name, groups)
+                    print('may_be_fired: %r may fire: user matches %s' % (self.name, groups))
                 return matches
             if 'owners' in groups and user.owns(eid):
                 if DBG:
-                    print 'may_be_fired: %r may fire: user is owner' % self.name
+                    print('may_be_fired: %r may fire: user is owner' % self.name)
                 return True
         # check one of the rql expression conditions matches if any
         if self.condition:
             if DBG:
-                print ('my_be_fired: %r: %s' %
-                       (self.name, [(rqlexpr.expression,
+                print('my_be_fired: %r: %s' %
+                      (self.name, [(rqlexpr.expression,
                                     rqlexpr.check_expression(self._cw, eid))
-                                   for rqlexpr in self.condition]))
+                                    for rqlexpr in self.condition]))
             for rqlexpr in self.condition:
                 if rqlexpr.check_expression(self._cw, eid):
                     return True
@@ -256,13 +258,13 @@ class BaseTransition(AnyEntity):
         for gname in requiredgroups:
             rset = self._cw.execute('SET T require_group G '
                                     'WHERE T eid %(x)s, G name %(gn)s',
-                                    {'x': self.eid, 'gn': unicode(gname)})
+                                    {'x': self.eid, 'gn': text_type(gname)})
             assert rset, '%s is not a known group' % gname
-        if isinstance(conditions, basestring):
+        if isinstance(conditions, string_types):
             conditions = (conditions,)
         for expr in conditions:
-            if isinstance(expr, basestring):
-                kwargs = {'expr': unicode(expr)}
+            if isinstance(expr, string_types):
+                kwargs = {'expr': text_type(expr)}
             else:
                 assert isinstance(expr, dict)
                 kwargs = expr
@@ -414,7 +416,7 @@ class IWorkflowableAdapter(EntityAdapter):
         """return the default workflow for entities of this type"""
         # XXX CWEType method
         wfrset = self._cw.execute('Any WF WHERE ET default_workflow WF, '
-                                  'ET name %(et)s', {'et': unicode(self.entity.cw_etype)})
+                                  'ET name %(et)s', {'et': text_type(self.entity.cw_etype)})
         if wfrset:
             return wfrset.get_entity(0, 0)
         self.warning("can't find any workflow for %s", self.entity.cw_etype)
@@ -479,7 +481,7 @@ class IWorkflowableAdapter(EntityAdapter):
             'Any T,TT, TN WHERE S allowed_transition T, S eid %(x)s, '
             'T type TT, T type %(type)s, '
             'T name TN, T transition_of WF, WF eid %(wfeid)s',
-            {'x': self.current_state.eid, 'type': unicode(type),
+            {'x': self.current_state.eid, 'type': text_type(type),
              'wfeid': self.current_workflow.eid})
         for tr in rset.entities():
             if tr.may_be_fired(self.entity.eid):
@@ -528,7 +530,7 @@ class IWorkflowableAdapter(EntityAdapter):
 
     def _get_transition(self, tr):
         assert self.current_workflow
-        if isinstance(tr, basestring):
+        if isinstance(tr, string_types):
             _tr = self.current_workflow.transition_by_name(tr)
             assert _tr is not None, 'not a %s transition: %s' % (
                 self.__regid__, tr)
@@ -549,7 +551,7 @@ class IWorkflowableAdapter(EntityAdapter):
         tr = self._get_transition(tr)
         if any(tr_ for tr_ in self.possible_transitions()
                if tr_.eid == tr.eid):
-            self.fire_transition(tr)
+            self.fire_transition(tr, comment, commentformat)
 
     def change_state(self, statename, comment=None, commentformat=None, tr=None):
         """change the entity's state to the given state (name or entity) in

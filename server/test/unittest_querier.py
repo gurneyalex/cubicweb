@@ -21,8 +21,12 @@
 
 from datetime import date, datetime, timedelta, tzinfo
 
+import pytz
+
+from six import PY2, integer_types, binary_type, text_type
+
 from logilab.common.testlib import TestCase, unittest_main
-from rql import BadRQLQuery, RQLSyntaxError
+from rql import BadRQLQuery
 
 from cubicweb import QueryError, Unauthorized, Binary
 from cubicweb.server.sqlutils import SQL_PREFIX
@@ -31,6 +35,7 @@ from cubicweb.server.querier import manual_build_descr, _make_description
 from cubicweb.devtools import get_test_db_handler, TestServerConfiguration
 from cubicweb.devtools.testlib import CubicWebTC
 from cubicweb.devtools.repotest import tuplify, BaseQuerierTC
+
 
 class FixedOffset(tzinfo):
     def __init__(self, hours=0):
@@ -129,8 +134,8 @@ class UtilsTC(BaseQuerierTC):
 
     def assertRQLEqual(self, expected, got):
         from rql import parse
-        self.assertMultiLineEqual(unicode(parse(expected)),
-                                  unicode(parse(got)))
+        self.assertMultiLineEqual(text_type(parse(expected)),
+                                  text_type(parse(got)))
 
     def test_preprocess_security(self):
         s = self.user_groups_session('users')
@@ -178,46 +183,46 @@ class UtilsTC(BaseQuerierTC):
                                 '        Comment, Division, Email, EmailPart, EmailThread, ExternalUri, File, Folder, '
                                 '        Frozable, Note, Old, Personne, RQLExpression, Societe, State, SubDivision, '
                                 '        SubWorkflowExitPoint, Tag, TrInfo, Transition, Workflow, WorkflowTransition)')
-            self.assertListEqual(sorted(solutions),
-                                  sorted([{'X': 'BaseTransition', 'ETN': 'String', 'ET': 'CWEType'},
-                                          {'X': 'Bookmark', 'ETN': 'String', 'ET': 'CWEType'},
-                                          {'X': 'Card', 'ETN': 'String', 'ET': 'CWEType'},
-                                          {'X': 'Comment', 'ETN': 'String', 'ET': 'CWEType'},
-                                          {'X': 'Division', 'ETN': 'String', 'ET': 'CWEType'},
-                                          {'X': 'CWCache', 'ETN': 'String', 'ET': 'CWEType'},
-                                          {'X': 'CWComputedRType', 'ETN': 'String', 'ET': 'CWEType'},
-                                          {'X': 'CWConstraint', 'ETN': 'String', 'ET': 'CWEType'},
-                                          {'X': 'CWConstraintType', 'ETN': 'String', 'ET': 'CWEType'},
-                                          {'X': 'CWEType', 'ETN': 'String', 'ET': 'CWEType'},
-                                          {'X': 'CWAttribute', 'ETN': 'String', 'ET': 'CWEType'},
-                                          {'X': 'CWGroup', 'ETN': 'String', 'ET': 'CWEType'},
-                                          {'X': 'CWRelation', 'ETN': 'String', 'ET': 'CWEType'},
-                                          {'X': 'CWPermission', 'ETN': 'String', 'ET': 'CWEType'},
-                                          {'X': 'CWProperty', 'ETN': 'String', 'ET': 'CWEType'},
-                                          {'X': 'CWRType', 'ETN': 'String', 'ET': 'CWEType'},
-                                          {'X': 'CWSource', 'ETN': 'String', 'ET': 'CWEType'},
-                                          {'X': 'CWUniqueTogetherConstraint', 'ETN': 'String', 'ET': 'CWEType'},
-                                          {'X': 'CWUser', 'ETN': 'String', 'ET': 'CWEType'},
-                                          {'X': 'Email', 'ETN': 'String', 'ET': 'CWEType'},
-                                          {'X': 'EmailPart', 'ETN': 'String', 'ET': 'CWEType'},
-                                          {'X': 'EmailThread', 'ETN': 'String', 'ET': 'CWEType'},
-                                          {'X': 'ExternalUri', 'ETN': 'String', 'ET': 'CWEType'},
-                                          {'X': 'File', 'ETN': 'String', 'ET': 'CWEType'},
-                                          {'X': 'Folder', 'ETN': 'String', 'ET': 'CWEType'},
-                                          {'X': 'Frozable', 'ETN': 'String', 'ET': 'CWEType'},
-                                          {'X': 'Note', 'ETN': 'String', 'ET': 'CWEType'},
-                                          {'X': 'Old', 'ETN': 'String', 'ET': 'CWEType'},
-                                          {'X': 'Personne', 'ETN': 'String', 'ET': 'CWEType'},
-                                          {'X': 'RQLExpression', 'ETN': 'String', 'ET': 'CWEType'},
-                                          {'X': 'Societe', 'ETN': 'String', 'ET': 'CWEType'},
-                                          {'X': 'State', 'ETN': 'String', 'ET': 'CWEType'},
-                                          {'X': 'SubDivision', 'ETN': 'String', 'ET': 'CWEType'},
-                                          {'X': 'SubWorkflowExitPoint', 'ETN': 'String', 'ET': 'CWEType'},
-                                          {'X': 'Tag', 'ETN': 'String', 'ET': 'CWEType'},
-                                          {'X': 'Transition', 'ETN': 'String', 'ET': 'CWEType'},
-                                          {'X': 'TrInfo', 'ETN': 'String', 'ET': 'CWEType'},
-                                          {'X': 'Workflow', 'ETN': 'String', 'ET': 'CWEType'},
-                                          {'X': 'WorkflowTransition', 'ETN': 'String', 'ET': 'CWEType'}]))
+            self.assertCountEqual(solutions,
+                                  [{'X': 'BaseTransition', 'ETN': 'String', 'ET': 'CWEType'},
+                                   {'X': 'Bookmark', 'ETN': 'String', 'ET': 'CWEType'},
+                                   {'X': 'Card', 'ETN': 'String', 'ET': 'CWEType'},
+                                   {'X': 'Comment', 'ETN': 'String', 'ET': 'CWEType'},
+                                   {'X': 'Division', 'ETN': 'String', 'ET': 'CWEType'},
+                                   {'X': 'CWCache', 'ETN': 'String', 'ET': 'CWEType'},
+                                   {'X': 'CWComputedRType', 'ETN': 'String', 'ET': 'CWEType'},
+                                   {'X': 'CWConstraint', 'ETN': 'String', 'ET': 'CWEType'},
+                                   {'X': 'CWConstraintType', 'ETN': 'String', 'ET': 'CWEType'},
+                                   {'X': 'CWEType', 'ETN': 'String', 'ET': 'CWEType'},
+                                   {'X': 'CWAttribute', 'ETN': 'String', 'ET': 'CWEType'},
+                                   {'X': 'CWGroup', 'ETN': 'String', 'ET': 'CWEType'},
+                                   {'X': 'CWRelation', 'ETN': 'String', 'ET': 'CWEType'},
+                                   {'X': 'CWPermission', 'ETN': 'String', 'ET': 'CWEType'},
+                                   {'X': 'CWProperty', 'ETN': 'String', 'ET': 'CWEType'},
+                                   {'X': 'CWRType', 'ETN': 'String', 'ET': 'CWEType'},
+                                   {'X': 'CWSource', 'ETN': 'String', 'ET': 'CWEType'},
+                                   {'X': 'CWUniqueTogetherConstraint', 'ETN': 'String', 'ET': 'CWEType'},
+                                   {'X': 'CWUser', 'ETN': 'String', 'ET': 'CWEType'},
+                                   {'X': 'Email', 'ETN': 'String', 'ET': 'CWEType'},
+                                   {'X': 'EmailPart', 'ETN': 'String', 'ET': 'CWEType'},
+                                   {'X': 'EmailThread', 'ETN': 'String', 'ET': 'CWEType'},
+                                   {'X': 'ExternalUri', 'ETN': 'String', 'ET': 'CWEType'},
+                                   {'X': 'File', 'ETN': 'String', 'ET': 'CWEType'},
+                                   {'X': 'Folder', 'ETN': 'String', 'ET': 'CWEType'},
+                                   {'X': 'Frozable', 'ETN': 'String', 'ET': 'CWEType'},
+                                   {'X': 'Note', 'ETN': 'String', 'ET': 'CWEType'},
+                                   {'X': 'Old', 'ETN': 'String', 'ET': 'CWEType'},
+                                   {'X': 'Personne', 'ETN': 'String', 'ET': 'CWEType'},
+                                   {'X': 'RQLExpression', 'ETN': 'String', 'ET': 'CWEType'},
+                                   {'X': 'Societe', 'ETN': 'String', 'ET': 'CWEType'},
+                                   {'X': 'State', 'ETN': 'String', 'ET': 'CWEType'},
+                                   {'X': 'SubDivision', 'ETN': 'String', 'ET': 'CWEType'},
+                                   {'X': 'SubWorkflowExitPoint', 'ETN': 'String', 'ET': 'CWEType'},
+                                   {'X': 'Tag', 'ETN': 'String', 'ET': 'CWEType'},
+                                   {'X': 'Transition', 'ETN': 'String', 'ET': 'CWEType'},
+                                   {'X': 'TrInfo', 'ETN': 'String', 'ET': 'CWEType'},
+                                   {'X': 'Workflow', 'ETN': 'String', 'ET': 'CWEType'},
+                                   {'X': 'WorkflowTransition', 'ETN': 'String', 'ET': 'CWEType'}])
             rql, solutions = partrqls[2]
             self.assertEqual(rql,
                              'Any ETN,X WHERE X is ET, ET name ETN, EXISTS(%(D)s use_email X), '
@@ -263,8 +268,9 @@ class UtilsTC(BaseQuerierTC):
         self.assertEqual(rset.description[0][0], 'Datetime')
         rset = self.qexecute('Any %(x)s', {'x': 1})
         self.assertEqual(rset.description[0][0], 'Int')
-        rset = self.qexecute('Any %(x)s', {'x': 1L})
-        self.assertEqual(rset.description[0][0], 'Int')
+        if PY2:
+            rset = self.qexecute('Any %(x)s', {'x': long(1)})
+            self.assertEqual(rset.description[0][0], 'Int')
         rset = self.qexecute('Any %(x)s', {'x': True})
         self.assertEqual(rset.description[0][0], 'Boolean')
         rset = self.qexecute('Any %(x)s', {'x': 1.0})
@@ -307,10 +313,6 @@ class QuerierTC(BaseQuerierTC):
     setUpClass = classmethod(setUpClass)
     tearDownClass = classmethod(tearDownClass)
 
-    def test_encoding_pb(self):
-        self.assertRaises(RQLSyntaxError, self.qexecute,
-                          'Any X WHERE X is CWRType, X name "öwned_by"')
-
     def test_unknown_eid(self):
         # should return an empty result set
         self.assertFalse(self.qexecute('Any X WHERE X eid 99999999'))
@@ -318,15 +320,15 @@ class QuerierTC(BaseQuerierTC):
     def test_typed_eid(self):
         # should return an empty result set
         rset = self.qexecute('Any X WHERE X eid %(x)s', {'x': '1'})
-        self.assertIsInstance(rset[0][0], (int, long))
+        self.assertIsInstance(rset[0][0], integer_types)
 
     def test_bytes_storage(self):
         feid = self.qexecute('INSERT File X: X data_name "foo.pdf", '
                              'X data_format "text/plain", X data %(data)s',
-                            {'data': Binary("xxx")})[0][0]
+                            {'data': Binary(b"xxx")})[0][0]
         fdata = self.qexecute('Any D WHERE X data D, X eid %(x)s', {'x': feid})[0][0]
         self.assertIsInstance(fdata, Binary)
-        self.assertEqual(fdata.getvalue(), 'xxx')
+        self.assertEqual(fdata.getvalue(), b'xxx')
 
     # selection queries tests #################################################
 
@@ -849,8 +851,15 @@ class QuerierTC(BaseQuerierTC):
         self.assertIsInstance(rset.rows[0][0], datetime)
         rset = self.qexecute('Tag X WHERE X creation_date TODAY')
         self.assertEqual(len(rset.rows), 2)
-        rset = self.qexecute('Any MAX(D) WHERE X is Tag, X creation_date D')
+
+    def test_sqlite_patch(self):
+        """this test monkey patch done by sqlutils._install_sqlite_querier_patch"""
+        self.qexecute("INSERT Personne X: X nom 'bidule', X datenaiss NOW, X tzdatenaiss NOW")
+        rset = self.qexecute('Any MAX(D) WHERE X is Personne, X datenaiss D')
         self.assertIsInstance(rset[0][0], datetime)
+        rset = self.qexecute('Any MAX(D) WHERE X is Personne, X tzdatenaiss D')
+        self.assertIsInstance(rset[0][0], datetime)
+        self.assertEqual(rset[0][0].tzinfo, pytz.utc)
 
     def test_today(self):
         self.qexecute("INSERT Tag X: X name 'bidule', X creation_date TODAY")
@@ -886,18 +895,18 @@ class QuerierTC(BaseQuerierTC):
     def test_select_constant(self):
         rset = self.qexecute('Any X, "toto" ORDERBY X WHERE X is CWGroup')
         self.assertEqual(rset.rows,
-                          map(list, zip((2,3,4,5), ('toto','toto','toto','toto',))))
-        self.assertIsInstance(rset[0][1], unicode)
+                         [list(x) for x in zip((2,3,4,5), ('toto','toto','toto','toto',))])
+        self.assertIsInstance(rset[0][1], text_type)
         self.assertEqual(rset.description,
-                          zip(('CWGroup', 'CWGroup', 'CWGroup', 'CWGroup'),
-                              ('String', 'String', 'String', 'String',)))
+                         list(zip(('CWGroup', 'CWGroup', 'CWGroup', 'CWGroup'),
+                                  ('String', 'String', 'String', 'String',))))
         rset = self.qexecute('Any X, %(value)s ORDERBY X WHERE X is CWGroup', {'value': 'toto'})
         self.assertEqual(rset.rows,
-                          map(list, zip((2,3,4,5), ('toto','toto','toto','toto',))))
-        self.assertIsInstance(rset[0][1], unicode)
+                         list(map(list, zip((2,3,4,5), ('toto','toto','toto','toto',)))))
+        self.assertIsInstance(rset[0][1], text_type)
         self.assertEqual(rset.description,
-                          zip(('CWGroup', 'CWGroup', 'CWGroup', 'CWGroup'),
-                              ('String', 'String', 'String', 'String',)))
+                         list(zip(('CWGroup', 'CWGroup', 'CWGroup', 'CWGroup'),
+                                  ('String', 'String', 'String', 'String',))))
         rset = self.qexecute('Any X,GN WHERE X is CWUser, G is CWGroup, X login "syt", '
                              'X in_group G, G name GN')
 
@@ -1015,7 +1024,7 @@ Any P1,B,E WHERE P1 identity P2 WITH
         self.assertEqual(len(rset.rows), 1)
         self.assertEqual(rset.description, [('Personne',)])
         rset = self.qexecute('Personne X WHERE X nom "bidule"')
-        self.assert_(rset.rows)
+        self.assertTrue(rset.rows)
         self.assertEqual(rset.description, [('Personne',)])
 
     def test_insert_1_multiple(self):
@@ -1029,20 +1038,20 @@ Any P1,B,E WHERE P1 identity P2 WITH
         rset = self.qexecute("INSERT Personne X, Personne Y: X nom 'bidule', Y nom 'tutu'")
         self.assertEqual(rset.description, [('Personne', 'Personne')])
         rset = self.qexecute('Personne X WHERE X nom "bidule" or X nom "tutu"')
-        self.assert_(rset.rows)
+        self.assertTrue(rset.rows)
         self.assertEqual(rset.description, [('Personne',), ('Personne',)])
 
     def test_insert_3(self):
         self.qexecute("INSERT Personne X: X nom Y WHERE U login 'admin', U login Y")
         rset = self.qexecute('Personne X WHERE X nom "admin"')
-        self.assert_(rset.rows)
+        self.assertTrue(rset.rows)
         self.assertEqual(rset.description, [('Personne',)])
 
     def test_insert_4(self):
         self.qexecute("INSERT Societe Y: Y nom 'toto'")
         self.qexecute("INSERT Personne X: X nom 'bidule', X travaille Y WHERE Y nom 'toto'")
         rset = self.qexecute('Any X, Y WHERE X nom "bidule", Y nom "toto", X travaille Y')
-        self.assert_(rset.rows)
+        self.assertTrue(rset.rows)
         self.assertEqual(rset.description, [('Personne', 'Societe',)])
 
     def test_insert_4bis(self):
@@ -1057,17 +1066,17 @@ Any P1,B,E WHERE P1 identity P2 WITH
     def test_insert_4ter(self):
         peid = self.qexecute("INSERT Personne X: X nom 'bidule'")[0][0]
         seid = self.qexecute("INSERT Societe Y: Y nom 'toto', X travaille Y WHERE X eid %(x)s",
-                             {'x': unicode(peid)})[0][0]
+                             {'x': text_type(peid)})[0][0]
         self.assertEqual(len(self.qexecute('Any X, Y WHERE X travaille Y')), 1)
         self.qexecute("INSERT Personne X: X nom 'chouette', X travaille Y WHERE Y eid %(x)s",
-                      {'x': unicode(seid)})
+                      {'x': text_type(seid)})
         self.assertEqual(len(self.qexecute('Any X, Y WHERE X travaille Y')), 2)
 
     def test_insert_5(self):
         self.qexecute("INSERT Personne X: X nom 'bidule'")
         self.qexecute("INSERT Societe Y: Y nom 'toto', X travaille Y WHERE X nom 'bidule'")
         rset = self.qexecute('Any X, Y WHERE X nom "bidule", Y nom "toto", X travaille Y')
-        self.assert_(rset.rows)
+        self.assertTrue(rset.rows)
         self.assertEqual(rset.description, [('Personne', 'Societe',)])
 
     def test_insert_5bis(self):
@@ -1075,20 +1084,20 @@ Any P1,B,E WHERE P1 identity P2 WITH
         self.qexecute("INSERT Societe Y: Y nom 'toto', X travaille Y WHERE X eid %(x)s",
                      {'x': peid})
         rset = self.qexecute('Any X, Y WHERE X nom "bidule", Y nom "toto", X travaille Y')
-        self.assert_(rset.rows)
+        self.assertTrue(rset.rows)
         self.assertEqual(rset.description, [('Personne', 'Societe',)])
 
     def test_insert_6(self):
         self.qexecute("INSERT Personne X, Societe Y: X nom 'bidule', Y nom 'toto', X travaille Y")
         rset = self.qexecute('Any X, Y WHERE X nom "bidule", Y nom "toto", X travaille Y')
-        self.assert_(rset.rows)
+        self.assertTrue(rset.rows)
         self.assertEqual(rset.description, [('Personne', 'Societe',)])
 
     def test_insert_7(self):
         self.qexecute("INSERT Personne X, Societe Y: X nom N, Y nom 'toto', "
                       "X travaille Y WHERE U login 'admin', U login N")
         rset = self.qexecute('Any X, Y WHERE X nom "admin", Y nom "toto", X travaille Y')
-        self.assert_(rset.rows)
+        self.assertTrue(rset.rows)
         self.assertEqual(rset.description, [('Personne', 'Societe',)])
 
     def test_insert_7_2(self):
@@ -1103,7 +1112,7 @@ Any P1,B,E WHERE P1 identity P2 WITH
         self.qexecute("INSERT Societe Y, Personne X: Y nom N, X nom 'toto', X travaille Y "
                       "WHERE U login 'admin', U login N")
         rset = self.qexecute('Any X, Y WHERE X nom "toto", Y nom "admin", X travaille Y')
-        self.assert_(rset.rows)
+        self.assertTrue(rset.rows)
         self.assertEqual(rset.description, [('Personne', 'Societe',)])
 
     def test_insert_9(self):
@@ -1267,7 +1276,7 @@ Any P1,B,E WHERE P1 identity P2 WITH
         rset = self.qexecute("INSERT Personne X, Societe Y: X nom 'bidule', Y nom 'toto'")
         eid1, eid2 = rset[0][0], rset[0][1]
         self.qexecute("SET X travaille Y WHERE X eid %(x)s, Y eid %(y)s",
-                      {'x': unicode(eid1), 'y': unicode(eid2)})
+                      {'x': text_type(eid1), 'y': text_type(eid2)})
         rset = self.qexecute('Any X, Y WHERE X travaille Y')
         self.assertEqual(len(rset.rows), 1)
 
@@ -1317,7 +1326,7 @@ Any P1,B,E WHERE P1 identity P2 WITH
         eid1, eid2 = rset[0][0], rset[0][1]
         rset = self.qexecute("SET X travaille Y WHERE X eid %(x)s, Y eid %(y)s, "
                             "NOT EXISTS(Z ecrit_par X)",
-                            {'x': unicode(eid1), 'y': unicode(eid2)})
+                            {'x': text_type(eid1), 'y': text_type(eid2)})
         self.assertEqual(tuplify(rset.rows), [(eid1, eid2)])
 
     def test_update_query_error(self):
@@ -1364,7 +1373,7 @@ Any P1,B,E WHERE P1 identity P2 WITH
             cursor = cnx.cnxset.cu
             cursor.execute("SELECT %supassword from %sCWUser WHERE %slogin='bob'"
                            % (SQL_PREFIX, SQL_PREFIX, SQL_PREFIX))
-            passwd = str(cursor.fetchone()[0])
+            passwd = binary_type(cursor.fetchone()[0])
             self.assertEqual(passwd, crypt_password('toto', passwd))
         rset = self.qexecute("Any X WHERE X is CWUser, X login 'bob', X upassword %(pwd)s",
                             {'pwd': Binary(passwd)})
@@ -1377,11 +1386,11 @@ Any P1,B,E WHERE P1 identity P2 WITH
                                {'pwd': 'toto'})
             self.assertEqual(rset.description[0][0], 'CWUser')
             rset = cnx.execute("SET X upassword %(pwd)s WHERE X is CWUser, X login 'bob'",
-                               {'pwd': 'tutu'})
+                               {'pwd': b'tutu'})
             cursor = cnx.cnxset.cu
             cursor.execute("SELECT %supassword from %sCWUser WHERE %slogin='bob'"
                            % (SQL_PREFIX, SQL_PREFIX, SQL_PREFIX))
-            passwd = str(cursor.fetchone()[0])
+            passwd = binary_type(cursor.fetchone()[0])
             self.assertEqual(passwd, crypt_password('tutu', passwd))
             rset = cnx.execute("Any X WHERE X is CWUser, X login 'bob', X upassword %(pwd)s",
                                {'pwd': Binary(passwd)})
@@ -1394,7 +1403,7 @@ Any P1,B,E WHERE P1 identity P2 WITH
         self.qexecute("INSERT Personne X: X nom 'bob', X tzdatenaiss %(date)s",
                      {'date': datetime(1977, 6, 7, 2, 0, tzinfo=FixedOffset(1))})
         datenaiss = self.qexecute("Any XD WHERE X nom 'bob', X tzdatenaiss XD")[0][0]
-        self.assertEqual(datenaiss.tzinfo, None)
+        self.assertIsNotNone(datenaiss.tzinfo)
         self.assertEqual(datenaiss.utctimetuple()[:5], (1977, 6, 7, 1, 0))
 
     def test_tz_datetime_cache_nonregr(self):

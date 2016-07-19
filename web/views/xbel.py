@@ -18,7 +18,9 @@
 """xbel views"""
 
 __docformat__ = "restructuredtext en"
-_ = unicode
+from cubicweb import _
+
+from six.moves import range
 
 from logilab.mtconverter import xml_escape
 
@@ -42,7 +44,7 @@ class XbelView(XMLView):
         self.w(u'<!DOCTYPE xbel PUBLIC "+//IDN python.org//DTD XML Bookmark Exchange Language 1.0//EN//XML" "http://www.python.org/topics/xml/dtds/xbel-1.0.dtd">')
         self.w(u'<xbel version="1.0">')
         self.w(u'<title>%s</title>' % self._cw._('bookmarks'))
-        for i in xrange(self.cw_rset.rowcount):
+        for i in range(self.cw_rset.rowcount):
             self.cell_call(i, 0)
         self.w(u"</xbel>")
 
@@ -65,4 +67,3 @@ class XbelItemBookmarkView(XbelItemView):
 
     def url(self, entity):
         return entity.actual_url()
-

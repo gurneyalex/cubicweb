@@ -15,52 +15,27 @@
 #
 # You should have received a copy of the GNU Lesser General Public License along
 # with CubicWeb.  If not, see <http://www.gnu.org/licenses/>.
+from __future__ import absolute_import
 
 import os, os.path as osp
-from tempfile import mkdtemp, NamedTemporaryFile, TemporaryFile
-import tempfile
-from Queue import Queue, Empty
-from subprocess import Popen, check_call, CalledProcessError
-from shutil import rmtree, copy as copyfile
-from uuid import uuid4
+import errno
+from tempfile import mkdtemp
+from subprocess import Popen, PIPE, STDOUT
+
+from six.moves.queue import Queue, Empty
 
 # imported by default to simplify further import statements
 from logilab.common.testlib import unittest_main, with_tempdir, InnerTest, Tags
-from logilab.common.shellutils import getlogin
+import webtest.http
 
 import cubicweb
 from cubicweb.view import View
 from cubicweb.web.controller import Controller
 from cubicweb.web.views.staticcontrollers import StaticFileController, STATIC_CONTROLLERS
-from cubicweb.devtools.httptest import CubicWebServerTC
-
-
-class VerboseCalledProcessError(CalledProcessError):
-
-    def __init__(self, returncode, command, stdout, stderr):
-        super(VerboseCalledProcessError, self).__init__(returncode, command)
-        self.stdout = stdout
-        self.stderr = stderr
-
-    def __str__(self):
-        str = [ super(VerboseCalledProcessError, self).__str__()]
-        if self.stdout.strip():
-            str.append('******************')
-            str.append('* process stdout *')
-            str.append('******************')
-            str.append(self.stdout)
-        if self.stderr.strip():
-            str.append('******************')
-            str.append('* process stderr *')
-            str.append('******************')
-            str.append(self.stderr)
-        return '\n'.join(str)
-
+from cubicweb.devtools import webtest as cwwebtest
 
 
 class FirefoxHelper(object):
-
-    profile_name_mask = 'PYTEST_PROFILE_%(uid)s'
 
     def __init__(self, url=None):
         self._process = None
@@ -69,6 +44,17 @@ class FirefoxHelper(object):
         if os.name == 'posix':
             self.firefox_cmd = [osp.join(osp.dirname(__file__), 'data', 'xvfb-run.sh'),
                                 '-a', '-s', '-noreset -screen 0 800x600x24'] + self.firefox_cmd
+
+    def test(self):
+        try:
+            proc = Popen(['firefox', '--help'], stdout=PIPE, stderr=STDOUT)
+            stdout, _ = proc.communicate()
+            return proc.returncode == 0, stdout
+        except OSError as exc:
+            if exc.errno == errno.ENOENT:
+                msg = '[%s] %s' % (errno.errorcode[exc.errno], exc.strerror)
+                return False, msg
+            raise
 
     def start(self, url):
         self.stop()
@@ -88,60 +74,46 @@ class FirefoxHelper(object):
         self.stop()
 
 
-class QUnitTestCase(CubicWebServerTC):
+class QUnitTestCase(cwwebtest.CubicWebTestTC):
 
-    tags = CubicWebServerTC.tags | Tags(('qunit',))
+    tags = cwwebtest.CubicWebTestTC.tags | Tags(('qunit',))
 
     # testfile, (dep_a, dep_b)
     all_js_tests = ()
 
     def setUp(self):
-        self.config.global_set_option('access-control-allow-origin', '*')
         super(QUnitTestCase, self).setUp()
         self.test_queue = Queue()
         class MyQUnitResultController(QUnitResultController):
             tc = self
             test_queue = self.test_queue
         self._qunit_controller = MyQUnitResultController
-        self.vreg.register(MyQUnitResultController)
-        self.vreg.register(QUnitView)
-        self.vreg.register(CWSoftwareRootStaticController)
+        self.webapp.app.appli.vreg.register(MyQUnitResultController)
+        self.webapp.app.appli.vreg.register(QUnitView)
+        self.webapp.app.appli.vreg.register(CWDevtoolsStaticController)
+        self.server = webtest.http.StopableWSGIServer.create(self.webapp.app)
+        self.config.global_set_option('base-url', self.server.application_url)
 
     def tearDown(self):
+        self.server.shutdown()
+        self.webapp.app.appli.vreg.unregister(self._qunit_controller)
+        self.webapp.app.appli.vreg.unregister(QUnitView)
+        self.webapp.app.appli.vreg.unregister(CWDevtoolsStaticController)
         super(QUnitTestCase, self).tearDown()
-        self.vreg.unregister(self._qunit_controller)
-        self.vreg.unregister(QUnitView)
-        self.vreg.unregister(CWSoftwareRootStaticController)
-
-    def abspath(self, path):
-        """use self.__module__ to build absolute path if necessary"""
-        if not osp.isabs(path):
-           dirname = osp.dirname(__import__(self.__module__).__file__)
-           return osp.abspath(osp.join(dirname,path))
-        return path
 
     def test_javascripts(self):
         for args in self.all_js_tests:
-            test_file = self.abspath(args[0])
+            self.assertIn(len(args), (1, 2))
+            test_file = args[0]
             if len(args) > 1:
-                depends   = [self.abspath(dep) for dep in args[1]]
+                depends = args[1]
             else:
                 depends = ()
-            if len(args) > 2:
-                data   = [self.abspath(data) for data in args[2]]
-            else:
-                data = ()
-            for js_test in self._test_qunit(test_file, depends, data):
+            for js_test in self._test_qunit(test_file, depends):
                 yield js_test
 
     @with_tempdir
-    def _test_qunit(self, test_file, depends=(), data_files=(), timeout=10):
-        assert osp.exists(test_file), test_file
-        for dep in depends:
-            assert osp.exists(dep), dep
-        for data in data_files:
-            assert osp.exists(data), data
-
+    def _test_qunit(self, test_file, depends=(), timeout=10):
         QUnitView.test_file = test_file
         QUnitView.depends = depends
 
@@ -149,6 +121,9 @@ class QUnitTestCase(CubicWebServerTC):
             self.test_queue.get(False)
 
         browser = FirefoxHelper()
+        isavailable, reason = browser.test()
+        if not isavailable:
+            self.fail('firefox not available or not working properly (%s)' % reason)
         browser.start(self.config['base-url'] + "?vid=qunit")
         test_count = 0
         error = False
@@ -188,6 +163,7 @@ class QUnitResultController(Controller):
     def publish(self, rset=None):
         event = self._cw.form['event']
         getattr(self, 'handle_%s' % event)()
+        return b''
 
     def handle_module_start(self):
         self.__class__._current_module_name = self._cw.form.get('name', '')
@@ -234,20 +210,15 @@ class QUnitView(View):
     def call(self, **kwargs):
         w = self.w
         req = self._cw
-        data = {
-            'jquery': req.data_url('jquery.js'),
-            'web_test': req.build_url('cwsoftwareroot/devtools/data'),
-        }
         w(u'''<!DOCTYPE html>
         <html>
         <head>
         <meta http-equiv="content-type" content="application/html; charset=UTF-8"/>
         <!-- JS lib used as testing framework -->
-        <link rel="stylesheet" type="text/css" media="all" href="%(web_test)s/qunit.css" />
-        <script src="%(jquery)s" type="text/javascript"></script>
-        <script src="%(web_test)s/cwmock.js" type="text/javascript"></script>
-        <script src="%(web_test)s/qunit.js" type="text/javascript"></script>'''
-        % data)
+        <link rel="stylesheet" type="text/css" media="all" href="/devtools/qunit.css" />
+        <script src="/data/jquery.js" type="text/javascript"></script>
+        <script src="/devtools/cwmock.js" type="text/javascript"></script>
+        <script src="/devtools/qunit.js" type="text/javascript"></script>''')
         w(u'<!-- result report tools -->')
         w(u'<script type="text/javascript">')
         w(u"var BASE_URL = '%s';" % req.base_url())
@@ -293,14 +264,11 @@ class QUnitView(View):
         w(u'</script>')
         w(u'<!-- Test script dependencies (tested code for example) -->')
 
-        prefix = len(cubicweb.CW_SOFTWARE_ROOT) + 1
         for dep in self.depends:
-            dep = req.build_url('cwsoftwareroot/') + dep[prefix:]
-            w(u'    <script src="%s" type="text/javascript"></script>' % dep)
+            w(u'    <script src="%s" type="text/javascript"></script>\n' % dep)
 
         w(u'    <!-- Test script itself -->')
-        test_url = req.build_url('cwsoftwareroot/') + self.test_file[prefix:]
-        w(u'    <script src="%s" type="text/javascript"></script>' % test_url)
+        w(u'    <script src="%s" type="text/javascript"></script>' % self.test_file)
         w(u'''  </head>
         <body>
         <div id="qunit-fixture"></div>
@@ -309,16 +277,16 @@ class QUnitView(View):
         </html>''')
 
 
-class CWSoftwareRootStaticController(StaticFileController):
-    __regid__ = 'cwsoftwareroot'
+class CWDevtoolsStaticController(StaticFileController):
+    __regid__ = 'devtools'
 
     def publish(self, rset=None):
-        staticdir = cubicweb.CW_SOFTWARE_ROOT
+        staticdir = osp.join(osp.dirname(__file__), 'data')
         relpath = self.relpath[len(self.__regid__) + 1:]
         return self.static_file(osp.join(staticdir, relpath))
 
 
-STATIC_CONTROLLERS.append(CWSoftwareRootStaticController)
+STATIC_CONTROLLERS.append(CWDevtoolsStaticController)
 
 
 if __name__ == '__main__':

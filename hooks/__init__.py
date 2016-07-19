@@ -33,7 +33,7 @@ class TransactionsCleanupStartupHook(hook.Hook):
         # which may cause reloading pb
         lifetime = timedelta(days=self.repo.config['keep-transaction-lifetime'])
         def cleanup_old_transactions(repo=self.repo, lifetime=lifetime):
-            mindate = datetime.now() - lifetime
+            mindate = datetime.utcnow() - lifetime
             with repo.internal_cnx() as cnx:
                 cnx.system_sql(
                     'DELETE FROM transactions WHERE tx_time < %(time)s',
@@ -52,7 +52,7 @@ class UpdateFeedsStartupHook(hook.Hook):
         def update_feeds(repo):
             # take a list to avoid iterating on a dictionary whose size may
             # change
-            for uri, source in list(repo.sources_by_uri.iteritems()):
+            for uri, source in list(repo.sources_by_uri.items()):
                 if (uri == 'system'
                     or not repo.config.source_enabled(source)
                     or not source.config['synchronize']):
@@ -72,12 +72,12 @@ class DataImportsCleanupStartupHook(hook.Hook):
 
     def __call__(self):
         def expire_dataimports(repo=self.repo):
-            for uri, source in repo.sources_by_uri.iteritems():
+            for uri, source in repo.sources_by_uri.items():
                 if (uri == 'system'
                     or not repo.config.source_enabled(source)):
                     continue
                 with repo.internal_cnx() as cnx:
-                    mindate = datetime.now() - timedelta(seconds=source.config['logs-lifetime'])
+                    mindate = datetime.utcnow() - timedelta(seconds=source.config['logs-lifetime'])
                     cnx.execute('DELETE CWDataImport X WHERE X start_timestamp < %(time)s',
                                     {'time': mindate})
                     cnx.commit()

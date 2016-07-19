@@ -33,9 +33,11 @@ Here are the base renderers available:
 """
 
 __docformat__ = "restructuredtext en"
-_ = unicode
+from cubicweb import _
 
 from warnings import warn
+
+from six import text_type
 
 from logilab.mtconverter import xml_escape
 from logilab.common.registry import yes
@@ -119,7 +121,7 @@ class FormRenderer(AppObject):
             data.insert(0, errormsg)
         # NOTE: we call unicode because `tag` objects may be found within data
         #       e.g. from the cwtags library
-        w(''.join(unicode(x) for x in data))
+        w(''.join(text_type(x) for x in data))
 
     def render_content(self, w, form, values):
         if self.display_progress_div:
@@ -241,7 +243,7 @@ class FormRenderer(AppObject):
         if form.fieldsets_in_order:
             fieldsets = form.fieldsets_in_order
         else:
-            fieldsets = byfieldset.iterkeys()
+            fieldsets = byfieldset
         for fieldset in list(fieldsets):
             try:
                 fields = byfieldset.pop(fieldset)
@@ -542,4 +544,3 @@ class EntityInlinedFormRenderer(EntityFormRenderer):
             self._render_fields(fields, w, form)
         self.render_child_forms(w, form, values)
         w(u'</fieldset>')
-

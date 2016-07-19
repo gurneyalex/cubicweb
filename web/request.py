@@ -22,15 +22,16 @@ __docformat__ = "restructuredtext en"
 import time
 import random
 import base64
-import urllib
-from StringIO import StringIO
 from hashlib import sha1 # pylint: disable=E0611
-from Cookie import SimpleCookie
 from calendar import timegm
 from datetime import date, datetime
-from urlparse import urlsplit
-import httplib
 from warnings import warn
+from io import BytesIO
+
+from six import PY2, binary_type, text_type, string_types
+from six.moves import http_client
+from six.moves.urllib.parse import urlsplit, quote as urlquote
+from six.moves.http_cookies import SimpleCookie
 
 from rql.utils import rqlvar_maker
 
@@ -41,7 +42,7 @@ from logilab.mtconverter import xml_escape
 from cubicweb import AuthenticationError
 from cubicweb.req import RequestSessionBase
 from cubicweb.uilib import remove_html_tags, js
-from cubicweb.utils import SizeConstrainedList, HTMLHead, make_uid
+from cubicweb.utils import HTMLHead, make_uid
 from cubicweb.view import TRANSITIONAL_DOCTYPE_NOEXT
 from cubicweb.web import (INTERNAL_FIELD_VALUE, LOGGER, NothingToEdit,
                           RequestError, StatusResponse)
@@ -51,7 +52,7 @@ from cubicweb.web.http_headers import Headers, Cookie, parseDateTime
 _MARKER = object()
 
 def build_cb_uid(seed):
-    sha = sha1('%s%s%s' % (time.time(), seed, random.random()))
+    sha = sha1(('%s%s%s' % (time.time(), seed, random.random())).encode('ascii'))
     return 'cb_%s' % (sha.hexdigest())
 
 
@@ -137,12 +138,12 @@ class _CubicWebRequestBase(RequestSessionBase):
         #: received headers
         self._headers_in = Headers()
         if headers is not None:
-            for k, v in headers.iteritems():
+            for k, v in headers.items():
                 self._headers_in.addRawHeader(k, v)
         #: form parameters
         self.setup_params(form)
         #: received body
-        self.content = StringIO()
+        self.content = BytesIO()
         # prepare output header
         #: Header used for the final response
         self.headers_out = Headers()
@@ -242,7 +243,7 @@ class _CubicWebRequestBase(RequestSessionBase):
                                  '__redirectvid', '__redirectrql'))
 
     def setup_params(self, params):
-        """WARNING: we're intentionaly leaving INTERNAL_FIELD_VALUE here
+        """WARNING: we're intentionally leaving INTERNAL_FIELD_VALUE here
 
         subclasses should overrides to
         """
@@ -250,12 +251,13 @@ class _CubicWebRequestBase(RequestSessionBase):
         if params is None:
             return
         encoding = self.encoding
-        for param, val in params.iteritems():
+        for param, val in params.items():
             if isinstance(val, (tuple, list)):
-                val = [unicode(x, encoding) for x in val]
+                if PY2:
+                    val = [unicode(x, encoding) for x in val]
                 if len(val) == 1:
                     val = val[0]
-            elif isinstance(val, str):
+            elif PY2 and isinstance(val, str):
                 val = unicode(val, encoding)
             if param in self.no_script_form_params and val:
                 val = self.no_script_form_param(param, val)
@@ -317,7 +319,7 @@ class _CubicWebRequestBase(RequestSessionBase):
                 return None
 
     def set_message(self, msg):
-        assert isinstance(msg, unicode)
+        assert isinstance(msg, text_type)
         self.reset_message()
         self._msg = msg
 
@@ -330,7 +332,7 @@ class _CubicWebRequestBase(RequestSessionBase):
 
     def set_redirect_message(self, msg):
         # TODO - this should probably be merged with append_to_redirect_message
-        assert isinstance(msg, unicode)
+        assert isinstance(msg, text_type)
         msgid = self.redirect_message_id()
         self.session.data[msgid] = msg
         return msgid
@@ -396,26 +398,6 @@ class _CubicWebRequestBase(RequestSessionBase):
                 return False
         return True
 
-    def update_breadcrumbs(self):
-        """stores the last visisted page in session data"""
-        searchstate = self.search_state[0]
-        if searchstate == 'normal':
-            breadcrumbs = self.session.data.get('breadcrumbs')
-            if breadcrumbs is None:
-                breadcrumbs = SizeConstrainedList(10)
-                self.session.data['breadcrumbs'] = breadcrumbs
-                breadcrumbs.append(self.url())
-            else:
-                url = self.url()
-                if breadcrumbs and breadcrumbs[-1] != url:
-                    breadcrumbs.append(url)
-
-    def last_visited_page(self):
-        breadcrumbs = self.session.data.get('breadcrumbs')
-        if breadcrumbs:
-            return breadcrumbs.pop()
-        return self.base_url()
-
     # web edition helpers #####################################################
 
     @cached # so it's writed only once
@@ -437,7 +419,7 @@ class _CubicWebRequestBase(RequestSessionBase):
             eids = form['eid']
         except KeyError:
             raise NothingToEdit(self._('no selected entities'))
-        if isinstance(eids, basestring):
+        if isinstance(eids, string_types):
             eids = (eids,)
         for peid in eids:
             if withtype:
@@ -569,18 +551,18 @@ class _CubicWebRequestBase(RequestSessionBase):
             header = [disposition]
             unicode_filename = None
             try:
-                ascii_filename = filename.encode('ascii')
+                ascii_filename = filename.encode('ascii').decode('ascii')
             except UnicodeEncodeError:
                 # fallback filename for very old browser
                 unicode_filename = filename
-                ascii_filename = filename.encode('ascii', 'ignore')
+                ascii_filename = filename.encode('ascii', 'ignore').decode('ascii')
             # escape " and \
             # see http://greenbytes.de/tech/tc2231/#attwithfilenameandextparamescaped
             ascii_filename = ascii_filename.replace('\x5c', r'\\').replace('"', r'\"')
             header.append('filename="%s"' % ascii_filename)
             if unicode_filename is not None:
                 # encoded filename according RFC5987
-                urlquoted_filename = urllib.quote(unicode_filename.encode('utf-8'), '')
+                urlquoted_filename = urlquote(unicode_filename.encode('utf-8'), '')
                 header.append("filename*=utf-8''" + urlquoted_filename)
             self.set_header('content-disposition', ';'.join(header))
 
@@ -596,7 +578,7 @@ class _CubicWebRequestBase(RequestSessionBase):
         :param localfile: if True, the default data dir prefix is added to the
                           JS filename
         """
-        if isinstance(jsfiles, basestring):
+        if isinstance(jsfiles, string_types):
             jsfiles = (jsfiles,)
         for jsfile in jsfiles:
             if localfile:
@@ -616,7 +598,7 @@ class _CubicWebRequestBase(RequestSessionBase):
                        the css inclusion. cf:
                        http://msdn.microsoft.com/en-us/library/ms537512(VS.85).aspx
         """
-        if isinstance(cssfiles, basestring):
+        if isinstance(cssfiles, string_types):
             cssfiles = (cssfiles,)
         if ieonly:
             if self.ie_browser():
@@ -702,7 +684,7 @@ class _CubicWebRequestBase(RequestSessionBase):
         return urlsplit(self.base_url())[2]
 
     def data_url(self, relpath):
-        """returns the absolute path for a data resouce"""
+        """returns the absolute path for a data resource"""
         return self.datadir_url + relpath
 
     @cached
@@ -722,25 +704,19 @@ class _CubicWebRequestBase(RequestSessionBase):
         Some response cache headers may be set by this method.
         """
         modified = True
-        if self.get_header('Cache-Control') not in ('max-age=0', 'no-cache'):
-            # Here, we search for any invalid 'not modified' condition
-            # see http://www.w3.org/Protocols/rfc2616/rfc2616-sec13.html#sec13.3
-            validators = get_validators(self._headers_in)
-            if validators: # if we have no
-                modified = any(func(val, self.headers_out) for func, val in validators)
+        # Here, we search for any invalid 'not modified' condition
+        # see http://www.w3.org/Protocols/rfc2616/rfc2616-sec13.html#sec13.3
+        validators = get_validators(self._headers_in)
+        if validators: # if we have no
+            modified = any(func(val, self.headers_out) for func, val in validators)
         # Forge expected response
-        if modified:
-            if 'Expires' not in self.headers_out:
-                # Expires header seems to be required by IE7 -- Are you sure ?
-                self.add_header('Expires', 'Sat, 01 Jan 2000 00:00:00 GMT')
-            # /!\ no raise, the function returns and we keep processing the request
-        else:
+        if not modified:
             # overwrite headers_out to forge a brand new not-modified response
             self.headers_out = self._forge_cached_headers()
             if self.http_method() in ('HEAD', 'GET'):
-                self.status_out = httplib.NOT_MODIFIED
+                self.status_out = http_client.NOT_MODIFIED
             else:
-                self.status_out = httplib.PRECONDITION_FAILED
+                self.status_out = http_client.PRECONDITION_FAILED
             # XXX replace by True once validate_cache bw compat method is dropped
             return self.status_out
         # XXX replace by False once validate_cache bw compat method is dropped
@@ -770,7 +746,7 @@ class _CubicWebRequestBase(RequestSessionBase):
             'cache-control', 'vary',
             # Others:
             'server', 'proxy-authenticate', 'www-authenticate', 'warning'):
-            value = self._headers_in.getRawHeaders(header)
+            value = self.headers_out.getRawHeaders(header)
             if value is not None:
                 headers.setRawHeaders(header, value)
         return headers
@@ -800,7 +776,7 @@ class _CubicWebRequestBase(RequestSessionBase):
     def header_accept_language(self):
         """returns an ordered list of preferred languages"""
         acceptedlangs = self.get_header('Accept-Language', raw=False) or {}
-        for lang, _ in sorted(acceptedlangs.iteritems(), key=lambda x: x[1],
+        for lang, _ in sorted(acceptedlangs.items(), key=lambda x: x[1],
                               reverse=True):
             lang = lang.split('-')[0]
             yield lang
@@ -844,7 +820,7 @@ class _CubicWebRequestBase(RequestSessionBase):
             scheme = scheme.lower()
             try:
                 assert scheme == "basic"
-                user, passwd = base64.decodestring(rest).split(":", 1)
+                user, passwd = base64.decodestring(rest.encode('ascii')).split(b":", 1)
                 # XXX HTTP header encoding: use email.Header?
                 return user.decode('UTF8'), passwd
             except Exception as ex:
@@ -908,9 +884,15 @@ class _CubicWebRequestBase(RequestSessionBase):
             self.session.data.pop(self.pageid, None)
         else:
             try:
-                del self.session.data[self.pageid][key]
+                page_data = self.session.data[self.pageid]
+                del page_data[key]
             except KeyError:
                 pass
+            else:
+                # make sure we write the session data value in the
+                # self.session.data dict-like object so any session
+                # handler can "detect" and manage the persistency
+                self.session.data[self.pageid] = page_data
 
     # user-agent detection ####################################################
 
@@ -966,8 +948,10 @@ class _NeedAuthAccessMock(object):
     def __getattribute__(self, attr):
         raise AuthenticationError()
 
-    def __nonzero__(self):
+    def __bool__(self):
         return False
+    
+    __nonzero__ = __bool__
 
 class _MockAnonymousSession(object):
     sessionid = 'thisisnotarealsession'
@@ -1002,8 +986,6 @@ class ConnectionCubicWebRequestBase(_CubicWebRequestBase):
         return self.cnx.transaction_data
 
     def set_cnx(self, cnx):
-        if 'ecache' in cnx.transaction_data:
-            del cnx.transaction_data['ecache']
         self.cnx = cnx
         self.session = cnx.session
         self._set_user(cnx.user)
@@ -1023,8 +1005,8 @@ class ConnectionCubicWebRequestBase(_CubicWebRequestBase):
             self.set_language(lang)
         except KeyError:
             # this occurs usually during test execution
-            self._ = self.__ = unicode
-            self.pgettext = lambda x, y: unicode(y)
+            self._ = self.__ = text_type
+            self.pgettext = lambda x, y: text_type(y)
 
     entity_metas = _cnx_func('entity_metas')
     source_defs = _cnx_func('source_defs')
@@ -1043,12 +1025,21 @@ class ConnectionCubicWebRequestBase(_CubicWebRequestBase):
 
     # entities cache management ###############################################
 
-    entity_cache = _cnx_func('entity_cache')
-    set_entity_cache = _cnx_func('set_entity_cache')
-    cached_entities = _cnx_func('cached_entities')
-    drop_entity_cache = _cnx_func('drop_entity_cache')
+    def entity_cache(self, eid):
+        return self.transaction_data['req_ecache'][eid]
 
+    def set_entity_cache(self, entity):
+        ecache = self.transaction_data.setdefault('req_ecache', {})
+        ecache.setdefault(entity.eid, entity)
 
+    def cached_entities(self):
+        return self.transaction_data.get('req_ecache', {}).values()
+
+    def drop_entity_cache(self, eid=None):
+        if eid is None:
+            self.transaction_data.pop('req_ecache', None)
+        else:
+            del self.transaction_data['req_ecache'][eid]
 
 
 CubicWebRequestBase = ConnectionCubicWebRequestBase

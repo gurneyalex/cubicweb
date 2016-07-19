@@ -4,7 +4,7 @@
 # copyright 2003-2010 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
-# This file is part of CubicWeb tag cube.
+# This file is part of CubicWeb.
 #
 # CubicWeb is free software: you can redistribute it and/or modify it under the
 # terms of the GNU Lesser General Public License as published by the Free
@@ -44,7 +44,7 @@ from __pkginfo__ import modname, version, license, description, web, \
     author, author_email, classifiers
 
 if exists('README'):
-    long_description = file('README').read()
+    long_description = open('README').read()
 else:
     long_description = ''
 
@@ -55,7 +55,7 @@ if USE_SETUPTOOLS:
     for entry in ("__depends__",):  # "__recommends__"):
         requires.update(getattr(__pkginfo__, entry, {}))
     install_requires = [("%s %s" % (d, v and v or "")).strip()
-                        for d, v in requires.iteritems()]
+                        for d, v in requires.items()]
 else:
     install_requires = []
 

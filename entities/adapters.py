@@ -1,4 +1,4 @@
-# copyright 2010-2013 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2010-2015 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -18,19 +18,15 @@
 """some basic entity adapter implementations, for interfaces used in the
 framework itself.
 """
-
-__docformat__ = "restructuredtext en"
-_ = unicode
+from cubicweb import _
 
 from itertools import chain
-from warnings import warn
 from hashlib import md5
 
 from logilab.mtconverter import TransformError
 from logilab.common.decorators import cached
 
-from cubicweb import ValidationError, view, ViolatedConstraint
-from cubicweb.schema import CONSTRAINTS
+from cubicweb import ValidationError, view, ViolatedConstraint, UniqueTogetherError
 from cubicweb.predicates import is_instance, relation_possible, match_exception
 
 
@@ -63,8 +59,8 @@ class IEmailableAdapter(view.EntityAdapter):
         NOTE: the dictionary keys should match the list returned by the
         `allowed_massmail_keys` method.
         """
-        return dict( (attr, getattr(self.entity, attr))
-                     for attr in self.allowed_massmail_keys() )
+        return dict((attr, getattr(self.entity, attr))
+                    for attr in self.allowed_massmail_keys())
 
 
 class INotifiableAdapter(view.EntityAdapter):
@@ -156,39 +152,45 @@ class IFTIndexableAdapter(view.EntityAdapter):
             if role == 'subject':
                 for entity_ in getattr(entity, rschema.type):
                     merge_weight_dict(words, entity_.cw_adapt_to('IFTIndexable').get_words())
-            else: # if role == 'object':
+            else:  # if role == 'object':
                 for entity_ in getattr(entity, 'reverse_%s' % rschema.type):
                     merge_weight_dict(words, entity_.cw_adapt_to('IFTIndexable').get_words())
         return words
 
+
 def merge_weight_dict(maindict, newdict):
-    for weight, words in newdict.iteritems():
+    for weight, words in newdict.items():
         maindict.setdefault(weight, []).extend(words)
+
 
 class IDownloadableAdapter(view.EntityAdapter):
     """interface for downloadable entities"""
     __regid__ = 'IDownloadable'
     __abstract__ = True
 
-    def download_url(self, **kwargs): # XXX not really part of this interface
-        """return a URL to download entity's content"""
+    def download_url(self, **kwargs):  # XXX not really part of this interface
+        """return a URL to download entity's content
+
+        It should be a unicode object containing url-encoded ASCII.
+        """
         raise NotImplementedError
 
     def download_content_type(self):
-        """return MIME type of the downloadable content"""
+        """return MIME type (unicode) of the downloadable content"""
         raise NotImplementedError
 
     def download_encoding(self):
-        """return encoding of the downloadable content"""
+        """return encoding (unicode) of the downloadable content"""
         raise NotImplementedError
 
     def download_file_name(self):
-        """return file name of the downloadable content"""
+        """return file name (unicode) of the downloadable content"""
         raise NotImplementedError
 
     def download_data(self):
-        """return actual data of the downloadable content"""
+        """return actual data (bytes) of the downloadable content"""
         raise NotImplementedError
+
 
 # XXX should propose to use two different relations for children/parent
 class ITreeAdapter(view.EntityAdapter):
@@ -337,7 +339,7 @@ class ITreeAdapter(view.EntityAdapter):
             try:
                 # check we are not jumping to another tree
                 if (adapter.tree_relation != self.tree_relation or
-                    adapter.child_role != self.child_role):
+                        adapter.child_role != self.child_role):
                     break
                 entity = adapter.parent()
                 adapter = entity.cw_adapt_to('ITree')
@@ -347,9 +349,35 @@ class ITreeAdapter(view.EntityAdapter):
         return path
 
 
+class ISerializableAdapter(view.EntityAdapter):
+    """Adapter to serialize an entity to a bare python structure that may be
+    directly serialized to e.g. JSON.
+    """
+
+    __regid__ = 'ISerializable'
+    __select__ = is_instance('Any')
+
+    def serialize(self):
+        entity = self.entity
+        entity.complete()
+        data = {
+            'cw_etype': entity.cw_etype,
+            'cw_source': entity.cw_metainformation()['source']['uri'],
+            'eid': entity.eid,
+        }
+        for rschema, __ in entity.e_schema.attribute_definitions():
+            attr = rschema.type
+            try:
+                value = entity.cw_attr_cache[attr]
+            except KeyError:
+                # Bytes
+                continue
+            data[attr] = value
+        return data
+
+
 # error handling adapters ######################################################
 
-from cubicweb import UniqueTogetherError
 
 class IUserFriendlyError(view.EntityAdapter):
     __regid__ = 'IUserFriendlyError'
@@ -380,13 +408,14 @@ class IUserFriendlyCheckConstraint(IUserFriendlyError):
     __select__ = match_exception(ViolatedConstraint)
 
     def raise_user_exception(self):
-        _ = self._cw._
         cstrname = self.exc.cstrname
         eschema = self.entity.e_schema
         for rschema, attrschema in eschema.attribute_definitions():
             rdef = rschema.rdef(eschema, attrschema)
             for constraint in rdef.constraints:
-                if cstrname == 'cstr' + md5(eschema.type + rschema.type + constraint.type() + (constraint.serialize() or '')).hexdigest():
+                if cstrname == 'cstr' + md5(
+                        (eschema.type + rschema.type + constraint.type() +
+                         (constraint.serialize() or '')).encode('ascii')).hexdigest():
                     break
             else:
                 continue
@@ -394,5 +423,9 @@ class IUserFriendlyCheckConstraint(IUserFriendlyError):
         else:
             assert 0
         key = rschema.type + '-subject'
-        msg, args = constraint.failed_message(key, self.entity.cw_edited[rschema.type])
+        # use .get since a constraint may be associated to an attribute that isn't edited (e.g.
+        # constraint between two attributes). This should be the purpose of an api rework at some
+        # point, we currently rely on the fact that such constraint will provide a dedicated user
+        # message not relying on the `value` argument
+        msg, args = constraint.failed_message(key, self.entity.cw_edited.get(rschema.type))
         raise ValidationError(self.entity.eid, {key: msg}, args)

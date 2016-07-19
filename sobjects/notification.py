@@ -18,9 +18,11 @@
 """some views to handle notification on data changes"""
 
 __docformat__ = "restructuredtext en"
-_ = unicode
+from cubicweb import _
 
 from itertools import repeat
+
+from six import text_type
 
 from logilab.common.textutils import normalize_text
 from logilab.common.deprecation import class_renamed, class_moved, deprecated
@@ -181,8 +183,8 @@ class NotificationView(EntityView):
 
     def context(self, **kwargs):
         entity = self.cw_rset.get_entity(self.cw_row or 0, self.cw_col or 0)
-        for key, val in kwargs.iteritems():
-            if val and isinstance(val, unicode) and val.strip():
+        for key, val in kwargs.items():
+            if val and isinstance(val, text_type) and val.strip():
                kwargs[key] = self._cw._(val)
         kwargs.update({'user': self.user_data['login'],
                        'eid': entity.eid,
@@ -255,7 +257,7 @@ url: %(url)s
 
 
 def format_value(value):
-    if isinstance(value, unicode):
+    if isinstance(value, text_type):
         return u'"%s"' % value
     return value
 

@@ -18,6 +18,7 @@
 """Functions to add additional annotations on a rql syntax tree to ease later
 code generation.
 """
+from __future__ import print_function
 
 __docformat__ = "restructuredtext en"
 
@@ -33,7 +34,7 @@ def _annotate_select(annotator, rqlst):
     #if server.DEBUG:
     #    print '-------- sql annotate', repr(rqlst)
     getrschema = annotator.schema.rschema
-    for var in rqlst.defined_vars.itervalues():
+    for var in rqlst.defined_vars.values():
         stinfo = var.stinfo
         if stinfo.get('ftirels'):
             has_text_query = True
@@ -144,7 +145,7 @@ def _annotate_select(annotator, rqlst):
                 stinfo['invariant'] = False
     # see unittest_rqlannotation. test_has_text_security_cache_bug
     # XXX probably more to do, but yet that work without more...
-    for col_alias in rqlst.aliases.itervalues():
+    for col_alias in rqlst.aliases.values():
         if col_alias.stinfo.get('ftirels'):
             has_text_query = True
     return has_text_query
@@ -194,7 +195,7 @@ def _select_principal(scope, relations, _sort=lambda x:x):
     # if DISTINCT query, can use variable from a different scope as principal
     # since introduced duplicates will be removed
     if scope.stmt.distinct and diffscope_rels:
-        return iter(_sort(diffscope_rels)).next()
+        return next(iter(_sort(diffscope_rels)))
     # XXX could use a relation from a different scope if it can't generate
     # duplicates, so we should have to check cardinality
     raise CantSelectPrincipal()
@@ -231,7 +232,7 @@ def set_qdata(getrschema, union, noinvariant):
     for select in union.children:
         for subquery in select.with_:
             set_qdata(getrschema, subquery.query, noinvariant)
-        for var in select.defined_vars.itervalues():
+        for var in select.defined_vars.values():
             if var.stinfo['invariant']:
                 if var in noinvariant and not var.stinfo['principal'].r_type == 'has_text':
                     var._q_invariant = False
@@ -317,7 +318,7 @@ class IsAmbData(object):
 
     def compute(self, rqlst):
         # set domains for each variable
-        for varname, var in rqlst.defined_vars.iteritems():
+        for varname, var in rqlst.defined_vars.items():
             if var.stinfo['uidrel'] is not None or \
                    self.eschema(rqlst.solutions[0][varname]).final:
                 ptypes = var.stinfo['possibletypes']
@@ -354,9 +355,9 @@ class IsAmbData(object):
                     continue
 
     def _debug_print(self):
-        print 'varsols', dict((x, sorted(str(v) for v in values))
-                               for x, values in self.varsols.iteritems())
-        print 'ambiguous vars', sorted(self.ambiguousvars)
+        print('varsols', dict((x, sorted(str(v) for v in values))
+                               for x, values in self.varsols.items()))
+        print('ambiguous vars', sorted(self.ambiguousvars))
 
     def set_rel_constraint(self, term, rel, etypes_func):
         if isinstance(term, VariableRef) and self.is_ambiguous(term.variable):

@@ -64,7 +64,7 @@ class Salaried(Person):
 class Societe(EntityType):
     nom  = String(maxsize=64, fulltextindexed=True)
     web = String(maxsize=128)
-    tel  = Int()
+    tel  = Int(unique=True)
     fax  = Int(constraints=[BoundaryConstraint('<=', Attribute('tel'))])
     rncs = String(maxsize=32)
     ad1  = String(maxsize=128)
@@ -110,4 +110,3 @@ class concerne(RelationDefinition):
         'add': ('managers',),
         'delete': ('managers',),
         }
-

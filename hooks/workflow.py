@@ -18,7 +18,7 @@
 """Core hooks: workflow related hooks"""
 
 __docformat__ = "restructuredtext en"
-_ = unicode
+from cubicweb import _
 
 from datetime import datetime
 
@@ -320,7 +320,7 @@ class SetModificationDateOnStateChange(WorkflowHook):
             return
         entity = self._cw.entity_from_eid(self.eidfrom)
         try:
-            entity.cw_set(modification_date=datetime.now())
+            entity.cw_set(modification_date=datetime.utcnow())
         except RepositoryError as ex:
             # usually occurs if entity is coming from a read-only source
             # (eg ldap user)
@@ -355,4 +355,3 @@ class DelCustomWorkflow(SetCustomWorkflow):
         typewf = entity.cw_adapt_to('IWorkflowable').cwetype_workflow()
         if typewf is not None:
             _WorkflowChangedOp(self._cw, eid=self.eidfrom, wfeid=typewf.eid)
-

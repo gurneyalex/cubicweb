@@ -3,23 +3,24 @@ Section: web
 Priority: optional
 Maintainer: Logilab S.A. <contact@logilab.fr>
 Uploaders: Sylvain Thenault <sylvain.thenault@logilab.fr>,
-           Julien Jehannet <julien.jehannet@logilab.fr>,
            Adrien Di Mascio <Adrien.DiMascio@logilab.fr>,
-           Aurélien Campéas <aurelien.campeas@logilab.fr>,
            Nicolas Chauvat <nicolas.chauvat@logilab.fr>
 Build-Depends:
  debhelper (>= 7),
  python (>= 2.6),
+ python-six (>= 1.4.0),
  python-sphinx,
  python-logilab-common,
  python-unittest2 | python (>= 2.7),
  python-logilab-mtconverter,
  python-markdown,
- python-rql,
- python-yams (>= 0.40.0),
+ python-tz,
+ python-rql (>= 0.34.0),
+ python-yams (>= 0.42.0),
+ python-yams (<< 0.43),
  python-lxml,
 Standards-Version: 3.9.1
-Homepage: http://www.cubicweb.org
+Homepage: https://www.cubicweb.org
 X-Python-Version: >= 2.6
 
 Package: cubicweb
@@ -52,11 +53,12 @@ Depends:
  ${python:Depends},
  cubicweb-common (= ${source:Version}),
  cubicweb-ctl (= ${source:Version}),
- python-logilab-database (>= 1.13.0),
+ python-logilab-database (>= 1.15.0),
  cubicweb-postgresql-support
  | cubicweb-mysql-support
  | python-pysqlite2,
- python-passlib
+ python-passlib,
+ python-tz,
 Recommends:
  cubicweb-documentation (= ${source:Version}),
 Suggests:
@@ -107,7 +109,7 @@ Depends:
  ${python:Depends},
  cubicweb-web (= ${source:Version}),
  cubicweb-ctl (= ${source:Version}),
- python-twisted-web
+ python-twisted-web (<< 16.0.0),
 Recommends:
  cubicweb-documentation (= ${source:Version})
 Description: twisted-based web interface for the CubicWeb framework
@@ -155,11 +157,12 @@ Depends:
  ${python:Depends},
  graphviz,
  gettext,
+ python-six (>= 1.4.0),
  python-logilab-mtconverter (>= 0.8.0),
  python-logilab-common (>= 0.63.1),
  python-markdown,
- python-yams (>= 0.40.0),
- python-rql (>= 0.31.2),
+ python-yams (>= 0.42.0),
+ python-rql (>= 0.34.0),
  python-lxml
 Recommends:
  python-simpletal (>= 4.0),

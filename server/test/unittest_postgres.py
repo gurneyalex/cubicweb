@@ -19,8 +19,11 @@
 from datetime import datetime
 from threading import Thread
 
+from six.moves import range
+
 from logilab.common.testlib import SkipTest
 
+import logilab.database as lgdb
 from cubicweb import ValidationError
 from cubicweb.devtools import PostgresApptestConfiguration, startpgcluster, stoppgcluster
 from cubicweb.devtools.testlib import CubicWebTC
@@ -49,13 +52,21 @@ class PostgresTimeoutConfiguration(PostgresApptestConfiguration):
 class PostgresFTITC(CubicWebTC):
     configcls = PostgresTimeoutConfiguration
 
+    @classmethod
+    def setUpClass(cls):
+        cls.orig_connect_hooks = lgdb.SQL_CONNECT_HOOKS['postgres'][:]
+
+    @classmethod
+    def tearDownClass(cls):
+        lgdb.SQL_CONNECT_HOOKS['postgres'] = cls.orig_connect_hooks
+
     def test_eid_range(self):
         # concurrent allocation of eid ranges
         source = self.session.repo.sources_by_uri['system']
         range1 = []
         range2 = []
         def allocate_eid_ranges(session, target):
-            for x in xrange(1, 10):
+            for x in range(1, 10):
                 eid = source.create_eid(session, count=x)
                 target.extend(range(eid-x, eid))
 
@@ -116,20 +127,22 @@ class PostgresFTITC(CubicWebTC):
                                              'WHERE X has_text "cubicweb"').rows,
                                   [[c1.eid,], [c3.eid,], [c2.eid,]])
 
-
     def test_tz_datetime(self):
         with self.admin_access.repo_cnx() as cnx:
-            cnx.execute("INSERT Personne X: X nom 'bob', X tzdatenaiss %(date)s",
-                        {'date': datetime(1977, 6, 7, 2, 0, tzinfo=FixedOffset(1))})
+            bob = cnx.create_entity('Personne', nom=u'bob',
+                                   tzdatenaiss=datetime(1977, 6, 7, 2, 0, tzinfo=FixedOffset(1)))
             datenaiss = cnx.execute("Any XD WHERE X nom 'bob', X tzdatenaiss XD")[0][0]
-            self.assertEqual(datenaiss.tzinfo, None)
+            self.assertIsNotNone(datenaiss.tzinfo)
             self.assertEqual(datenaiss.utctimetuple()[:5], (1977, 6, 7, 1, 0))
             cnx.commit()
-            cnx.execute("INSERT Personne X: X nom 'boby', X tzdatenaiss %(date)s",
-                        {'date': datetime(1977, 6, 7, 2, 0)})
+            cnx.create_entity('Personne', nom=u'boby',
+                              tzdatenaiss=datetime(1977, 6, 7, 2, 0))
             datenaiss = cnx.execute("Any XD WHERE X nom 'boby', X tzdatenaiss XD")[0][0]
-            self.assertEqual(datenaiss.tzinfo, None)
+            self.assertIsNotNone(datenaiss.tzinfo)
             self.assertEqual(datenaiss.utctimetuple()[:5], (1977, 6, 7, 2, 0))
+            rset = cnx.execute("Any X WHERE X tzdatenaiss %(d)s",
+                               {'d': datetime(1977, 6, 7, 2, 0, tzinfo=FixedOffset(1))})
+            self.assertEqual(rset.rows, [[bob.eid]])
 
     def test_constraint_validationerror(self):
         with self.admin_access.repo_cnx() as cnx:
