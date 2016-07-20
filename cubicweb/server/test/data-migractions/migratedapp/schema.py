@@ -87,7 +87,7 @@ class Note(Para):
     mydate = Date(default='TODAY')
     oldstyledefaultdate = Date(default='2013/01/01')
     newstyledefaultdate = Date(default=dt.date(2013, 1, 1))
-    shortpara = String(maxsize=64, default='hop')
+    shortpara = String(maxsize=11, default='hop', vocabulary=['hop', 'hop hop', 'hop hop hop'])
     ecrit_par = SubjectRelation('Personne', constraints=[RQLConstraint('S concerne A, O concerne A')])
     attachment = SubjectRelation('File')
 
@@ -119,7 +119,7 @@ class Personne(EntityType):
     nom    = String(fulltextindexed=True, required=True, maxsize=64)
     prenom = String(fulltextindexed=True, maxsize=64)
     civility   = String(maxsize=1, default='M', fulltextindexed=True)
-    promo  = String(vocabulary=('bon','pasbon'))
+    promo  = String(vocabulary=('bon','pasbon', 'pasbondutout'))
     titre  = String(fulltextindexed=True, maxsize=128)
     adel   = String(maxsize=128)
     ass    = String(maxsize=128)

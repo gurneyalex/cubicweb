@@ -39,9 +39,9 @@ SET_DEFAULT = False
 def sql_create_index(self, table, column, unique=False):
     idx = self._index_name(table, column, unique)
     if unique:
-        return 'ALTER TABLE %s ADD CONSTRAINT %s UNIQUE(%s);' % (table, idx, column)
+        return 'ALTER TABLE %s ADD CONSTRAINT %s UNIQUE(%s)' % (table, idx, column)
     else:
-        return 'CREATE INDEX %s ON %s(%s);' % (idx, table, column)
+        return 'CREATE INDEX %s ON %s(%s)' % (idx, table, column)
 
 
 @monkeypatch(database._GenericAdvFuncHelper)
@@ -53,104 +53,71 @@ def _index_name(self, table, column, unique=False):
 
 
 def build_index_name(table, columns, prefix='idx_'):
+    """Return a predictable-but-size-constrained name for an index on `table(*columns)`, using an
+    md5 hash.
+    """
     return '%s%s' % (prefix, md5((table +
                                   ',' +
                                   ','.join(sorted(columns))).encode('ascii')).hexdigest())
 
 
 def rschema_has_table(rschema, skip_relations):
-    """Return True if the given schema should have a table in the database"""
+    """Return True if the given schema should have a table in the database."""
     return not (rschema.final or rschema.inlined or rschema.rule or rschema.type in skip_relations)
 
 
 def schema2sql(dbhelper, schema, skip_entities=(), skip_relations=(), prefix=''):
-    """write to the output stream a SQL schema to store the objects
-    corresponding to the given schema
+    """Yield SQL statements to create a database schema for the given Yams schema.
+
+    `prefix` may be a string that will be prepended to all table / column names (usually, 'cw_').
     """
-    output = []
-    w = output.append
     for etype in sorted(schema.entities()):
         eschema = schema.eschema(etype)
         if eschema.final or eschema.type in skip_entities:
             continue
-        w(eschema2sql(dbhelper, eschema, skip_relations, prefix=prefix))
+        for sql in eschema2sql(dbhelper, eschema, skip_relations, prefix):
+            yield sql
     for rtype in sorted(schema.relations()):
         rschema = schema.rschema(rtype)
         if rschema_has_table(rschema, skip_relations):
-            w(rschema2sql(rschema))
-    return '\n'.join(output)
+            for sql in rschema2sql(rschema):
+                yield sql
 
 
-def dropschema2sql(dbhelper, schema, skip_entities=(), skip_relations=(), prefix=''):
-    """write to the output stream a SQL schema to store the objects
-    corresponding to the given schema
+def unique_index_name(eschema, attrs):
+    """Return a predictable-but-size-constrained name for a multi-columns unique index on
+    given attributes of the entity schema (actually, the later may be a schema or a string).
     """
+    # keep giving eschema instead of table name for bw compat
+    table = text_type(eschema)
+    # unique_index_name is used as name of CWUniqueConstraint, hence it should be unicode
+    return text_type(build_index_name(table, attrs, 'unique_'))
+
+
+def iter_unique_index_names(eschema):
+    """Yield (attrs, index name) where attrs is a list of entity type's attribute names that should
+    be unique together, and index name the unique index name.
+    """
+    for attrs in eschema._unique_together or ():
+        yield attrs, unique_index_name(eschema, attrs)
+
+
+def eschema2sql(dbhelper, eschema, skip_relations=(), prefix=''):
+    """Yield SQL statements to initialize database from an entity schema."""
+    table = prefix + eschema.type
     output = []
     w = output.append
-    for etype in sorted(schema.entities()):
-        eschema = schema.eschema(etype)
-        if eschema.final or eschema.type in skip_entities:
-            continue
-        stmts = dropeschema2sql(dbhelper, eschema, skip_relations, prefix=prefix)
-        for stmt in stmts:
-            w(stmt)
-    for rtype in sorted(schema.relations()):
-        rschema = schema.rschema(rtype)
-        if rschema_has_table(rschema, skip_relations):
-            w(droprschema2sql(rschema))
-    return '\n'.join(output)
-
-
-def eschema_attrs(eschema, skip_relations):
+    w('CREATE TABLE %s(' % (table))
     attrs = [attrdef for attrdef in eschema.attribute_definitions()
              if not attrdef[0].type in skip_relations]
     attrs += [(rschema, None)
               for rschema in eschema.subject_relations()
               if not rschema.final and rschema.inlined]
-    return attrs
-
-
-def unique_index_name(eschema, columns):
-    # keep giving eschema instead of table name for bw compat
-    table = text_type(eschema)
-    # unique_index_name is used as name of CWUniqueConstraint, hence it should be unicode
-    return text_type(build_index_name(table, columns, 'unique_'))
-
-
-def iter_unique_index_names(eschema):
-    for columns in eschema._unique_together or ():
-        yield columns, unique_index_name(eschema, columns)
-
-
-def dropeschema2sql(dbhelper, eschema, skip_relations=(), prefix=''):
-    """return sql to drop an entity type's table"""
-    # not necessary to drop indexes, that's implictly done when
-    # dropping the table, but we need to drop SQLServer views used to
-    # create multicol unique indices
-    statements = []
-    tablename = prefix + eschema.type
-    if eschema._unique_together is not None:
-        for columns, index_name in iter_unique_index_names(eschema):
-            cols = ['%s%s' % (prefix, col) for col in columns]
-            sqls = dbhelper.sqls_drop_multicol_unique_index(tablename, cols, index_name)
-            statements += sqls
-    statements += ['DROP TABLE %s;' % (tablename)]
-    return statements
-
-
-def eschema2sql(dbhelper, eschema, skip_relations=(), prefix=''):
-    """write an entity schema as SQL statements to stdout"""
-    output = []
-    w = output.append
-    table = prefix + eschema.type
-    w('CREATE TABLE %s(' % (table))
-    attrs = eschema_attrs(eschema, skip_relations)
     # XXX handle objectinline physical mode
     for i in range(len(attrs)):
         rschema, attrschema = attrs[i]
         if attrschema is not None:
-            sqltype = aschema2sql(dbhelper, eschema, rschema, attrschema,
-                                  indent=' ')
+            sqltype = aschema2sql(dbhelper, eschema, rschema, attrschema)
         else:  # inline relation
             sqltype = 'integer REFERENCES entities (eid)'
         if i == len(attrs) - 1:
@@ -160,32 +127,32 @@ def eschema2sql(dbhelper, eschema, skip_relations=(), prefix=''):
     for rschema, aschema in attrs:
         if aschema is None:  # inline relation
             continue
-        attr = rschema.type
         rdef = rschema.rdef(eschema.type, aschema.type)
         for constraint in rdef.constraints:
-            cstrname, check = check_constraint(eschema, aschema, attr, constraint, dbhelper,
-                                               prefix=prefix)
+            cstrname, check = check_constraint(rdef, constraint, dbhelper, prefix=prefix)
             if cstrname is not None:
                 w(', CONSTRAINT %s CHECK(%s)' % (cstrname, check))
-    w(');')
+    w(')')
+    yield '\n'.join(output)
     # create indexes
     for i in range(len(attrs)):
         rschema, attrschema = attrs[i]
         if attrschema is None or eschema.rdef(rschema).indexed:
-            w(dbhelper.sql_create_index(table, prefix + rschema.type))
+            yield dbhelper.sql_create_index(table, prefix + rschema.type)
         if attrschema and any(isinstance(cstr, UniqueConstraint)
                               for cstr in eschema.rdef(rschema).constraints):
-            w(dbhelper.sql_create_index(table, prefix + rschema.type, unique=True))
-    for columns, index_name in iter_unique_index_names(eschema):
-        cols = ['%s%s' % (prefix, col) for col in columns]
-        sqls = dbhelper.sqls_create_multicol_unique_index(table, cols, index_name)
+            yield dbhelper.sql_create_index(table, prefix + rschema.type, unique=True)
+    for attrs, index_name in iter_unique_index_names(eschema):
+        columns = ['%s%s' % (prefix, attr) for attr in attrs]
+        sqls = dbhelper.sqls_create_multicol_unique_index(table, columns, index_name)
         for sql in sqls:
-            w(sql)
-    w('')
-    return '\n'.join(output)
+            yield sql.rstrip(';')  # remove trailing ';' for consistency
 
 
-def as_sql(value, dbhelper, prefix):
+def constraint_value_as_sql(value, dbhelper, prefix):
+    """Return the SQL value from a Yams constraint's value, handling special cases where it's a
+    `Attribute`, `TODAY` or `NOW` instance instead of a literal value.
+    """
     if isinstance(value, Attribute):
         return prefix + value.attr
     elif isinstance(value, TODAY):
@@ -197,20 +164,22 @@ def as_sql(value, dbhelper, prefix):
         return value
 
 
-def check_constraint(eschema, aschema, attr, constraint, dbhelper, prefix=''):
-    # XXX should find a better name
-    cstrname = 'cstr' + md5((eschema.type + attr + constraint.type() +
-                             (constraint.serialize() or '')).encode('ascii')).hexdigest()
+def check_constraint(rdef, constraint, dbhelper, prefix=''):
+    """Return (constraint name, constraint SQL definition) for the given relation definition's
+    constraint. Maybe (None, None) if the constraint is not handled in the backend.
+    """
+    attr = rdef.rtype.type
+    cstrname = constraint.name_for(rdef)
     if constraint.type() == 'BoundaryConstraint':
-        value = as_sql(constraint.boundary, dbhelper, prefix)
+        value = constraint_value_as_sql(constraint.boundary, dbhelper, prefix)
         return cstrname, '%s%s %s %s' % (prefix, attr, constraint.operator, value)
     elif constraint.type() == 'IntervalBoundConstraint':
         condition = []
         if constraint.minvalue is not None:
-            value = as_sql(constraint.minvalue, dbhelper, prefix)
+            value = constraint_value_as_sql(constraint.minvalue, dbhelper, prefix)
             condition.append('%s%s >= %s' % (prefix, attr, value))
         if constraint.maxvalue is not None:
-            value = as_sql(constraint.maxvalue, dbhelper, prefix)
+            value = constraint_value_as_sql(constraint.maxvalue, dbhelper, prefix)
             condition.append('%s%s <= %s' % (prefix, attr, value))
         return cstrname, ' AND '.join(condition)
     elif constraint.type() == 'StaticVocabularyConstraint':
@@ -224,8 +193,8 @@ def check_constraint(eschema, aschema, attr, constraint, dbhelper, prefix=''):
     return None, None
 
 
-def aschema2sql(dbhelper, eschema, rschema, aschema, creating=True, indent=''):
-    """write an attribute schema as SQL statements to stdout"""
+def aschema2sql(dbhelper, eschema, rschema, aschema, creating=True):
+    """Return string containing a SQL table's column definition from attribute schema."""
     attr = rschema.type
     rdef = rschema.rdef(eschema.type, aschema.type)
     sqltype = type_from_rdef(dbhelper, rdef)
@@ -253,7 +222,7 @@ def aschema2sql(dbhelper, eschema, rschema, aschema, creating=True, indent=''):
 
 
 def type_from_rdef(dbhelper, rdef):
-    """return a sql type string corresponding to the relation definition"""
+    """Return a string containing SQL type name for the given relation definition."""
     constraints = list(rdef.constraints)
     sqltype = None
     if rdef.object.type == 'String':
@@ -269,6 +238,8 @@ def type_from_rdef(dbhelper, rdef):
 
 
 def sql_type(dbhelper, rdef):
+    """Return a string containing SQL type to use to store values of the given relation definition.
+    """
     sqltype = dbhelper.TYPE_MAPPING[rdef.object]
     if callable(sqltype):
         sqltype = sqltype(rdef)
@@ -283,56 +254,54 @@ CREATE TABLE %(table)s (
 );
 
 CREATE INDEX %(from_idx)s ON %(table)s(eid_from);
-CREATE INDEX %(to_idx)s ON %(table)s(eid_to);"""
+CREATE INDEX %(to_idx)s ON %(table)s(eid_to)"""
 
 
 def rschema2sql(rschema):
+    """Yield SQL statements to create database table and indexes for a Yams relation schema."""
     assert not rschema.rule
     table = '%s_relation' % rschema.type
-    return _SQL_SCHEMA % {'table': table,
+    sqls = _SQL_SCHEMA % {'table': table,
                           'pkey_idx': build_index_name(table, ['eid_from', 'eid_to'], 'key_'),
                           'from_idx': build_index_name(table, ['eid_from'], 'idx_'),
                           'to_idx': build_index_name(table, ['eid_to'], 'idx_')}
-
-
-def droprschema2sql(rschema):
-    """return sql to drop a relation type's table"""
-    # not necessary to drop indexes, that's implictly done when dropping
-    # the table
-    return 'DROP TABLE %s_relation;' % rschema.type
+    for sql in sqls.split(';'):
+        yield sql.strip()
 
 
 def grant_schema(schema, user, set_owner=True, skip_entities=(), prefix=''):
-    """write to the output stream a SQL schema to store the objects
-    corresponding to the given schema
+    """Yield SQL statements to give all access (and ownership if `set_owner` is True) on the
+    database tables for the given Yams schema to `user`.
+
+    `prefix` may be a string that will be prepended to all table / column names (usually, 'cw_').
     """
-    output = []
-    w = output.append
     for etype in sorted(schema.entities()):
         eschema = schema.eschema(etype)
         if eschema.final or etype in skip_entities:
             continue
-        w(grant_eschema(eschema, user, set_owner, prefix=prefix))
+        for sql in grant_eschema(eschema, user, set_owner, prefix=prefix):
+            yield sql
     for rtype in sorted(schema.relations()):
         rschema = schema.rschema(rtype)
         if rschema_has_table(rschema, skip_relations=()):  # XXX skip_relations should be specified
-            w(grant_rschema(rschema, user, set_owner))
-    return '\n'.join(output)
+            for sql in grant_rschema(rschema, user, set_owner):
+                yield sql
 
 
 def grant_eschema(eschema, user, set_owner=True, prefix=''):
-    output = []
-    w = output.append
+    """Yield SQL statements to give all access (and ownership if `set_owner` is True) on the
+    database tables for the given Yams entity schema to `user`.
+    """
     etype = eschema.type
     if set_owner:
-        w('ALTER TABLE %s%s OWNER TO %s;' % (prefix, etype, user))
-    w('GRANT ALL ON %s%s TO %s;' % (prefix, etype, user))
-    return '\n'.join(output)
+        yield 'ALTER TABLE %s%s OWNER TO %s' % (prefix, etype, user)
+    yield 'GRANT ALL ON %s%s TO %s' % (prefix, etype, user)
 
 
 def grant_rschema(rschema, user, set_owner=True):
-    output = []
+    """Yield SQL statements to give all access (and ownership if `set_owner` is True) on the
+    database tables for the given Yams relation schema to `user`.
+    """
     if set_owner:
-        output.append('ALTER TABLE %s_relation OWNER TO %s;' % (rschema.type, user))
-    output.append('GRANT ALL ON %s_relation TO %s;' % (rschema.type, user))
-    return '\n'.join(output)
+        yield 'ALTER TABLE %s_relation OWNER TO %s' % (rschema.type, user)
+    yield 'GRANT ALL ON %s_relation TO %s' % (rschema.type, user)
