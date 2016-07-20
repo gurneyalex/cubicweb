@@ -22,6 +22,7 @@ import os.path as osp
 from datetime import date
 from contextlib import contextmanager
 import tempfile
+from hashlib import md5
 
 from logilab.common.testlib import unittest_main, Tags, tag, with_tempdir
 from logilab.common import tempattr
@@ -113,6 +114,14 @@ class MigrationTC(CubicWebTC):
         assert result, 'no table %s' % tablename
         return dict((x[0], (x[1], x[2])) for x in result)
 
+    def table_constraints(self, mh, tablename):
+        result = mh.sqlexec(
+            "SELECT DISTINCT constraint_name FROM information_schema.constraint_column_usage "
+            "WHERE LOWER(table_name) = '%(table)s' AND constraint_name LIKE 'cstr%%'"
+            % {'table': tablename.lower()})
+        assert result, 'no table %s' % tablename
+        return set(x[0] for x in result)
+
 
 class MigrationCommandsTC(MigrationTC):
 
@@ -183,11 +192,14 @@ class MigrationCommandsTC(MigrationTC):
             self.assertEqual(self.schema['shortpara'].objects(), ('String', ))
             # test created column is actually a varchar(64)
             fields = self.table_schema(mh, '%sNote' % SQL_PREFIX)
-            self.assertEqual(fields['%sshortpara' % SQL_PREFIX], ('character varying', 64))
+            self.assertEqual(fields['%sshortpara' % SQL_PREFIX], ('character varying', 11))
             # test default value set on existing entities
             self.assertEqual(cnx.execute('Note X').get_entity(0, 0).shortpara, 'hop')
             # test default value set for next entities
-            self.assertEqual(cnx.create_entity('Note', shortpara=u'hophop').shortpara, u'hophop')
+            self.assertEqual(cnx.create_entity('Note', shortpara=u'hop hop').shortpara, u'hop hop')
+            # serialized constraint added
+            constraints = self.table_constraints(mh, 'cw_Personne')
+            self.assertEqual(len(constraints), 1, constraints)
 
     def test_add_attribute_unique(self):
         with self.mh() as (cnx, mh):
@@ -584,6 +596,13 @@ class MigrationCommandsTC(MigrationTC):
             self.assertEqual(len(rset), 1)
             relations = [r.name for r in rset.get_entity(0, 0).relations]
             self.assertCountEqual(relations, ('nom', 'prenom', 'datenaiss'))
+
+            # serialized constraint changed
+            constraints = self.table_constraints(mh, 'cw_Personne')
+            self.assertEqual(len(constraints), 1, constraints)
+            rdef = migrschema['promo'].rdefs['Personne', 'String']
+            cstr = rdef.constraint_by_type('StaticVocabularyConstraint')
+            self.assertIn(cstr.name_for(rdef), constraints)
 
     def _erqlexpr_rset(self, cnx, action, ertype):
         rql = 'RQLExpression X WHERE ET is CWEType, ET %s_permission X, ET name %%(name)s' % action
