@@ -1,0 +1,25 @@
+# pylint: disable=W0622
+"""%(distname)s application packaging information"""
+
+
+modname = 'cubicweb_%(cubename)s'
+distname = '%(distname)s'
+
+numversion = (0, 1, 0)
+version = '.'.join(str(num) for num in numversion)
+
+license = '%(license)s'
+author = '%(author)s'
+author_email = '%(author-email)s'
+description = '%(shortdesc)s'
+web = 'http://www.cubicweb.org/project/%%s' %% distname
+
+__depends__ = %(dependencies)s
+__recommends__ = {}
+
+classifiers = [
+    'Environment :: Web Environment',
+    'Framework :: CubicWeb',
+    'Programming Language :: Python',
+    'Programming Language :: JavaScript',
+]

@@ -1,0 +1,25 @@
+^build$
+^dist$
+\.egg-info$
+^.tox$
+^.cache$
+\.pyc$
+\.pyo$
+\.bak$
+\.old$
+\~$
+\#.*?\#$
+\.swp$
+^doc/book/en/apidoc$
+\.old$
+syntax: regexp
+.*/data.*/database/.*
+.*/data/ldapdb/.*
+.*/data/uicache/
+.*/data/libpython/cubicweb_.*/i18n/.*\.po
+^doc/html/
+^doc/doctrees/
+^doc/book/en/devweb/js_api/
+^doc/_build
+^doc/js_api/
+test-results.xml
