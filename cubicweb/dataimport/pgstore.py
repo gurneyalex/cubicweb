@@ -1,4 +1,4 @@
-# copyright 2003-2015 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2016 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -16,6 +16,7 @@
 # You should have received a copy of the GNU Lesser General Public License along
 # with CubicWeb.  If not, see <http://www.gnu.org/licenses/>.
 """Postgres specific store"""
+
 from __future__ import print_function
 
 import warnings
@@ -24,10 +25,8 @@ from io import StringIO
 from time import asctime
 from datetime import date, datetime, time
 from collections import defaultdict
-from base64 import b64encode
 
-from six import (string_types, integer_types, text_type, binary_type,
-                 add_metaclass)
+from six import string_types, integer_types, text_type, add_metaclass
 from six.moves import cPickle as pickle, range
 
 from logilab.common.deprecation import class_deprecated
@@ -404,9 +403,6 @@ class SQLGenSourceWrapper(object):
         self._sql_entities[sql].append(attrs)
 
     def _handle_insert_entity_sql(self, cnx, sql, attrs):
-        # We have to overwrite the source given in parameters
-        # as here, we directly use the system source
-        attrs['asource'] = self.system_source.uri
         self._sql_eids[sql].append(attrs)
 
     def _handle_is_relation_sql(self, cnx, sql, attrs):
@@ -421,14 +417,10 @@ class SQLGenSourceWrapper(object):
     # add_info is _copypasted_ from the one in NativeSQLSource. We want it
     # there because it will use the _handlers of the SQLGenSourceWrapper, which
     # are not like the ones in the native source.
-    def add_info(self, cnx, entity, source, extid):
+    def add_info(self, cnx, entity, source):
         """add type and source info for an eid into the system table"""
-        # begin by inserting eid/type/source/extid into the entities table
-        if extid is not None:
-            assert isinstance(extid, binary_type)
-            extid = b64encode(extid).decode('ascii')
-        attrs = {'type': entity.cw_etype, 'eid': entity.eid, 'extid': extid,
-                 'asource': source.uri}
+        # begin by inserting eid/type/source into the entities table
+        attrs = {'type': entity.cw_etype, 'eid': entity.eid}
         self._handle_insert_entity_sql(cnx, self.sqlgen.insert('entities', attrs), attrs)
         # insert core relations: is, is_instance_of and cw_source
         self._handle_is_relation_sql(cnx, 'INSERT INTO is_relation(eid_from,eid_to) VALUES (%s,%s)',

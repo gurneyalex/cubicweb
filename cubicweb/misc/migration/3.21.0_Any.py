@@ -127,27 +127,7 @@ add_foreign_keys()
 cu = session.cnxset.cu
 helper = repo.system_source.dbhelper
 
-helper.drop_index(cu, 'entities', 'extid', False)
-# don't use create_index because it doesn't work for columns that may be NULL
-# on sqlserver
-for query in helper.sqls_create_multicol_unique_index('entities', ['extid']):
-    cu.execute(query)
-
-if 'moved_entities' not in helper.list_tables(cu):
-    sql('''
-    CREATE TABLE moved_entities (
-      eid INTEGER PRIMARY KEY NOT NULL,
-      extid VARCHAR(256) UNIQUE
-    )
-    ''')
-
-moved_entities = sql('SELECT -eid, extid FROM entities WHERE eid < 0',
-                     ask_confirm=False)
-if moved_entities:
-    cu.executemany('INSERT INTO moved_entities (eid, extid) VALUES (%s, %s)',
-                   moved_entities)
-    sql('DELETE FROM entities WHERE eid < 0')
-
+sql('DELETE FROM entities WHERE eid < 0')
 commit()
 
 sync_schema_props_perms('CWEType')
@@ -162,8 +142,7 @@ for cwconstraint in rql('Any C WHERE R constrained_by C').entities():
     cstr = rdef.constraint_by_eid(cwconstraint.eid)
     if cstr.type() not in ('BoundaryConstraint', 'IntervalBoundConstraint', 'StaticVocabularyConstraint'):
         continue
-    cstrname, check = check_constraint(rdef.subject, rdef.object, rdef.rtype.type,
-            cstr, helper, prefix='cw_')
+    cstrname, check = check_constraint(rdef, cstr, helper, prefix='cw_')
     args = {'e': rdef.subject.type, 'c': cstrname, 'v': check}
     if repo.system_source.dbdriver == 'postgres':
         sql('ALTER TABLE cw_%(e)s DROP CONSTRAINT IF EXISTS %(c)s' % args, ask_confirm=False)

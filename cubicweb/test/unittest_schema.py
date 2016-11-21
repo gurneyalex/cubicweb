@@ -28,13 +28,13 @@ from yams.buildobjs import (RelationDefinition, EntityType, RelationType,
                             Int, String, ComputedRelation)
 from yams.reader import fill_schema
 
+from cubicweb import devtools
 from cubicweb.schema import (
     CubicWebSchema, CubicWebSchemaLoader,
     RQLConstraint, RQLUniqueConstraint, RQLVocabularyConstraint,
     ERQLExpression, RRQLExpression,
     normalize_expression, order_eschemas, guess_rrqlexpr_mainvars,
     build_schema_from_namespace)
-from cubicweb.devtools import TestServerConfiguration as TestConfiguration
 from cubicweb.devtools.testlib import CubicWebTC
 
 DATADIR = join(dirname(__file__), 'data')
@@ -150,7 +150,7 @@ class CubicWebSchemaTC(TestCase):
 
 
 loader = CubicWebSchemaLoader()
-config = TestConfiguration('data', __file__)
+config = devtools.TestServerConfiguration('data', __file__)
 config.bootstrap_cubes()
 
 
@@ -174,8 +174,8 @@ class SchemaReaderClassTest(TestCase):
             'CWCache', 'CWComputedRType', 'CWConstraint',
             'CWConstraintType', 'CWDataImport', 'CWEType',
             'CWAttribute', 'CWGroup', 'EmailAddress',
-            'CWRelation', 'CWPermission', 'CWProperty', 'CWRType',
-            'CWSource', 'CWSourceHostConfig', 'CWSourceSchemaConfig',
+            'CWRelation', 'CWPermission', 'CWProperty', 'CWRType', 'CWSession',
+            'CWSource', 'CWSourceHostConfig',
             'CWUniqueTogetherConstraint', 'CWUser',
             'ExternalUri', 'FakeFile', 'Float', 'Int', 'Interval', 'Note',
             'Password', 'Personne', 'Produit',
@@ -196,7 +196,7 @@ class SchemaReaderClassTest(TestCase):
             'constrained_by', 'constraint_of',
             'content', 'content_format', 'contrat_exclusif',
             'created_by', 'creation_date', 'cstrtype', 'custom_workflow',
-            'cwuri', 'cw_for_source', 'cw_import_of', 'cw_host_config_of', 'cw_schema', 'cw_source',
+            'cwuri', 'cwsessiondata', 'cw_import_of', 'cw_host_config_of', 'cw_source',
 
             'data', 'data_encoding', 'data_format', 'data_name', 'default_workflow', 'defaultval',
             'delete_permission', 'description', 'description_format', 'destination_state',
@@ -218,7 +218,7 @@ class SchemaReaderClassTest(TestCase):
 
             'name', 'nom',
 
-            'options', 'ordernum', 'owned_by',
+            'ordernum', 'owned_by',
 
             'parser', 'path', 'pkey', 'prefered_form', 'prenom', 'primary_email',
 
@@ -285,7 +285,7 @@ class SchemaReaderClassTest(TestCase):
 
     def test_relation_perm_overriding(self):
         loader = CubicWebSchemaLoader()
-        config = TestConfiguration('data_schemareader', __file__)
+        config = devtools.TestServerConfiguration('data_schemareader', __file__)
         config.bootstrap_cubes()
         schema = loader.load(config)
         rdef = next(iter(schema['in_group'].rdefs.values()))
@@ -491,7 +491,6 @@ class CompositeSchemaTC(CubicWebTC):
                         ('update_permission', 'CWAttribute', 'RQLExpression', 'subject')],
         'CWEType': [('add_permission', 'CWEType', 'RQLExpression', 'subject'),
                     ('constraint_of', 'CWUniqueTogetherConstraint', 'CWEType', 'object'),
-                    ('cw_schema', 'CWSourceSchemaConfig', 'CWEType', 'object'),
                     ('delete_permission', 'CWEType', 'RQLExpression', 'subject'),
                     ('from_entity', 'CWAttribute', 'CWEType', 'object'),
                     ('from_entity', 'CWRelation', 'CWEType', 'object'),
@@ -499,17 +498,14 @@ class CompositeSchemaTC(CubicWebTC):
                     ('to_entity', 'CWAttribute', 'CWEType', 'object'),
                     ('to_entity', 'CWRelation', 'CWEType', 'object'),
                     ('update_permission', 'CWEType', 'RQLExpression', 'subject')],
-        'CWRType': [('cw_schema', 'CWSourceSchemaConfig', 'CWRType', 'object'),
-                    ('relation_type', 'CWAttribute', 'CWRType', 'object'),
+        'CWRType': [('relation_type', 'CWAttribute', 'CWRType', 'object'),
                     ('relation_type', 'CWRelation', 'CWRType', 'object')],
         'CWRelation': [('add_permission', 'CWRelation', 'RQLExpression', 'subject'),
                        ('constrained_by', 'CWRelation', 'CWConstraint', 'subject'),
-                       ('cw_schema', 'CWSourceSchemaConfig', 'CWRelation', 'object'),
                        ('delete_permission', 'CWRelation', 'RQLExpression', 'subject'),
                        ('read_permission', 'CWRelation', 'RQLExpression', 'subject')],
         'CWComputedRType': [('read_permission', 'CWComputedRType', 'RQLExpression', 'subject')],
-        'CWSource': [('cw_for_source', 'CWSourceSchemaConfig', 'CWSource', 'object'),
-                     ('cw_host_config_of', 'CWSourceHostConfig', 'CWSource', 'object'),
+        'CWSource': [('cw_host_config_of', 'CWSourceHostConfig', 'CWSource', 'object'),
                      ('cw_import_of', 'CWDataImport', 'CWSource', 'object'),
                      ('cw_source', 'Ami', 'CWSource', 'object'),
                      ('cw_source', 'BaseTransition', 'CWSource', 'object'),
@@ -526,9 +522,9 @@ class CompositeSchemaTC(CubicWebTC):
                      ('cw_source', 'CWProperty', 'CWSource', 'object'),
                      ('cw_source', 'CWRType', 'CWSource', 'object'),
                      ('cw_source', 'CWRelation', 'CWSource', 'object'),
+                     ('cw_source', 'CWSession', 'CWSource', 'object'),
                      ('cw_source', 'CWSource', 'CWSource', 'object'),
                      ('cw_source', 'CWSourceHostConfig', 'CWSource', 'object'),
-                     ('cw_source', 'CWSourceSchemaConfig', 'CWSource', 'object'),
                      ('cw_source', 'CWUniqueTogetherConstraint', 'CWSource', 'object'),
                      ('cw_source', 'CWUser', 'CWSource', 'object'),
                      ('cw_source', 'Card', 'CWSource', 'object'),

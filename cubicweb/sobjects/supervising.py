@@ -1,4 +1,4 @@
-# copyright 2003-2012 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2016 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -16,9 +16,6 @@
 # You should have received a copy of the GNU Lesser General Public License along
 # with CubicWeb.  If not, see <http://www.gnu.org/licenses/>.
 """some hooks and views to handle supervising of any data changes"""
-
-__docformat__ = "restructuredtext en"
-from cubicweb import _
 
 from cubicweb import UnknownEid
 from cubicweb.predicates import none_rset
@@ -147,7 +144,7 @@ class SupervisionEmailView(Component):
         cnx = self._cw
         def describe(eid):
             try:
-                return cnx._(cnx.entity_metas(eid)['type']).lower()
+                return cnx._(cnx.entity_type(eid)).lower()
             except UnknownEid:
                 # may occurs when an entity has been deleted from an external
                 # source and we're cleaning its relation

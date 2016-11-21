@@ -1,18 +1,19 @@
 """misc. unittests for utility functions
 """
 
-from logilab.common.testlib import TestCase, unittest_main
-
+import unittest
 from functools import partial
 
-from cubicweb.devtools.fake import FakeConfig
+from six import text_type
+
+from cubicweb.devtools.fake import FakeConfig, FakeCWRegistryStore
 
 from cubicweb.web.request import (CubicWebRequestBase, _parse_accept_header,
                                   _mimetype_sort_key, _mimetype_parser, _charset_sort_key)
 
 
 
-class AcceptParserTC(TestCase):
+class AcceptParserTC(unittest.TestCase):
 
     def test_parse_accept(self):
         parse_accept_header = partial(_parse_accept_header,
@@ -67,9 +68,11 @@ class AcceptParserTC(TestCase):
                           ('utf-8', 'utf-8', 0.7),
                           ('*', '*', 0.7)])
 
+
+class WebRequestTC(unittest.TestCase):
+
     def test_base_url(self):
-        dummy_vreg = type('DummyVreg', (object,), {})()
-        dummy_vreg.config = FakeConfig()
+        dummy_vreg = FakeCWRegistryStore(FakeConfig(), initlog=False)
         dummy_vreg.config['base-url'] = 'http://babar.com/'
         dummy_vreg.config['https-url'] = 'https://toto.com/'
 
@@ -83,7 +86,39 @@ class AcceptParserTC(TestCase):
         self.assertEqual('http://babar.com/', req.base_url(False))
         self.assertEqual('https://toto.com/', req.base_url(True))
 
+    def test_negotiated_language(self):
+        vreg = FakeCWRegistryStore(FakeConfig(), initlog=False)
+        vreg.config.translations = {'fr': (None, None), 'en': (None, None)}
+        headers = {
+            'Accept-Language': 'fr,fr-fr;q=0.8,en-us;q=0.5,en;q=0.3',
+        }
+        req = CubicWebRequestBase(vreg, https=False, headers=headers)
+        self.assertEqual(req.negotiated_language(), 'fr')
+
+    def test_build_url_language_from_url(self):
+        vreg = FakeCWRegistryStore(FakeConfig(), initlog=False)
+        vreg.config['base-url'] = 'http://testing.fr/cubicweb/'
+        vreg.config['language-mode'] = 'url-prefix'
+        vreg.config.translations['fr'] = text_type, text_type
+        req = CubicWebRequestBase(vreg, https=False)
+        # Override from_controller to avoid getting into relative_path method,
+        # which is not implemented in CubicWebRequestBase.
+        req.from_controller = lambda : 'not view'
+        self.assertEqual(req.lang, 'en')  # site's default language
+        self.assertEqual(req.build_url(), 'http://testing.fr/cubicweb/en/view')
+        self.assertEqual(req.build_url('foo'), 'http://testing.fr/cubicweb/en/foo')
+        req.set_language('fr')
+        self.assertEqual(req.lang, 'fr')
+        self.assertEqual(req.build_url(), 'http://testing.fr/cubicweb/fr/view')
+        self.assertEqual(req.build_url('foo'), 'http://testing.fr/cubicweb/fr/foo')
+        # no language prefix in URL
+        vreg.config['language-mode'] = ''
+        self.assertEqual(req.build_url(), 'http://testing.fr/cubicweb/view')
+        self.assertEqual(req.build_url('foo'), 'http://testing.fr/cubicweb/foo')
+        req.set_language('fr')
+        self.assertEqual(req.build_url(), 'http://testing.fr/cubicweb/view')
+        self.assertEqual(req.build_url('foo'), 'http://testing.fr/cubicweb/foo')
 
 
 if __name__ == '__main__':
-    unittest_main()
+    unittest.main()

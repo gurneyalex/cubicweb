@@ -1,4 +1,4 @@
-# copyright 2003-2015 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2016 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -16,9 +16,8 @@
 # You should have received a copy of the GNU Lesser General Public License along
 # with CubicWeb.  If not, see <http://www.gnu.org/licenses/>.
 """SQL utilities functions and classes."""
-from __future__ import print_function
 
-__docformat__ = "restructuredtext en"
+from __future__ import print_function
 
 import sys
 import re
@@ -115,69 +114,45 @@ def sqlexec(sqlstmts, cursor_or_execute, withpb=True,
 def sqlgrants(schema, driver, user,
               text_index=True, set_owner=True,
               skip_relations=(), skip_entities=()):
-    """return sql to give all access privileges to the given user on the system
-    schema
+    """Return a list of SQL statements to give all access privileges to the given user on the
+    database.
     """
     from cubicweb.server.schema2sql import grant_schema
     from cubicweb.server.sources import native
-    output = []
-    w = output.append
-    w(native.grant_schema(user, set_owner))
-    w('')
+    stmts = list(native.grant_schema(user, set_owner))
     if text_index:
         dbhelper = db.get_db_helper(driver)
-        w(dbhelper.sql_grant_user_on_fti(user))
-        w('')
-    w(grant_schema(schema, user, set_owner, skip_entities=skip_entities, prefix=SQL_PREFIX))
-    return '\n'.join(output)
+        # XXX should return a list of sql statements rather than ';' joined statements
+        stmts += dbhelper.sql_grant_user_on_fti(user).split(';')
+    stmts += grant_schema(schema, user, set_owner, skip_entities=skip_entities, prefix=SQL_PREFIX)
+    return stmts
 
 
 def sqlschema(schema, driver, text_index=True,
               user=None, set_owner=False,
               skip_relations=PURE_VIRTUAL_RTYPES, skip_entities=()):
-    """return the system sql schema, according to the given parameters"""
+    """Return the database SQL schema as a list of SQL statements, according to the given parameters.
+    """
     from cubicweb.server.schema2sql import schema2sql
     from cubicweb.server.sources import native
     if set_owner:
         assert user, 'user is argument required when set_owner is true'
-    output = []
-    w = output.append
-    w(native.sql_schema(driver))
-    w('')
+    stmts = list(native.sql_schema(driver))
     dbhelper = db.get_db_helper(driver)
     if text_index:
-        w(dbhelper.sql_init_fti().replace(';', ';;'))
-        w('')
-    w(schema2sql(dbhelper, schema, prefix=SQL_PREFIX,
-                 skip_entities=skip_entities,
-                 skip_relations=skip_relations).replace(';', ';;'))
+        stmts += dbhelper.sql_init_fti().split(';')  # XXX
+    stmts += schema2sql(dbhelper, schema, prefix=SQL_PREFIX,
+                        skip_entities=skip_entities,
+                        skip_relations=skip_relations)
     if dbhelper.users_support and user:
-        w('')
-        w(sqlgrants(schema, driver, user, text_index, set_owner,
-                    skip_relations, skip_entities).replace(';', ';;'))
-    return '\n'.join(output)
-
-
-def sqldropschema(schema, driver, text_index=True,
-                  skip_relations=PURE_VIRTUAL_RTYPES, skip_entities=()):
-    """return the sql to drop the schema, according to the given parameters"""
-    from cubicweb.server.schema2sql import dropschema2sql
-    from cubicweb.server.sources import native
-    output = []
-    w = output.append
-    if text_index:
-        dbhelper = db.get_db_helper(driver)
-        w(dbhelper.sql_drop_fti())
-        w('')
-    w(dropschema2sql(dbhelper, schema, prefix=SQL_PREFIX,
-                     skip_entities=skip_entities,
-                     skip_relations=skip_relations))
-    w('')
-    w(native.sql_drop_schema(driver))
-    return '\n'.join(output)
+        stmts += sqlgrants(schema, driver, user, text_index, set_owner,
+                           skip_relations, skip_entities)
+    return stmts
 
 
 _SQL_DROP_ALL_USER_TABLES_FILTER_FUNCTION = re.compile('^(?!(sql|pg)_)').match
+
+
 def sql_drop_all_user_tables(driver_or_helper, sqlcursor):
     """Return ths sql to drop all tables found in the database system."""
     if not getattr(driver_or_helper, 'list_tables', None):
@@ -185,14 +160,16 @@ def sql_drop_all_user_tables(driver_or_helper, sqlcursor):
     else:
         dbhelper = driver_or_helper
 
-    cmds = [dbhelper.sql_drop_sequence('entities_id_seq')]
+    stmts = [dbhelper.sql_drop_sequence('entities_id_seq')]
     # for mssql, we need to drop views before tables
     if hasattr(dbhelper, 'list_views'):
-        cmds += ['DROP VIEW %s;' % name
-                 for name in filter(_SQL_DROP_ALL_USER_TABLES_FILTER_FUNCTION, dbhelper.list_views(sqlcursor))]
-    cmds += ['DROP TABLE %s;' % name
-             for name in filter(_SQL_DROP_ALL_USER_TABLES_FILTER_FUNCTION, dbhelper.list_tables(sqlcursor))]
-    return '\n'.join(cmds)
+        stmts += ['DROP VIEW %s;' % name
+                  for name in filter(_SQL_DROP_ALL_USER_TABLES_FILTER_FUNCTION,
+                                     dbhelper.list_views(sqlcursor))]
+    stmts += ['DROP TABLE %s;' % name
+              for name in filter(_SQL_DROP_ALL_USER_TABLES_FILTER_FUNCTION,
+                                 dbhelper.list_tables(sqlcursor))]
+    return stmts
 
 
 class ConnectionWrapper(object):
@@ -225,7 +202,7 @@ class ConnectionWrapper(object):
 
     def close(self, i_know_what_i_do=False):
         """close all connections in the set"""
-        if i_know_what_i_do is not True: # unexpected closing safety belt
+        if i_know_what_i_do is not True:  # unexpected closing safety belt
             raise RuntimeError('connections set shouldn\'t be closed')
         try:
             self.cu.close()
@@ -242,7 +219,7 @@ class ConnectionWrapper(object):
 
     def cnxset_freed(self):
         """connections set is being freed from a session"""
-        pass # no nothing by default
+        pass  # no nothing by default
 
     def reconnect(self):
         """reopen a connection for this source or all sources if none specified
@@ -293,6 +270,7 @@ class SqliteConnectionWrapper(ConnectionWrapper):
             self._cnx = self._source.get_connection()
             self._cu = self._cnx.cursor()
         return self._cnx
+
     @cnx.setter
     def cnx(self, value):
         self._cnx = value
@@ -303,6 +281,7 @@ class SqliteConnectionWrapper(ConnectionWrapper):
             self._cnx = self._source.get_connection()
             self._cu = self._cnx.cursor()
         return self._cu
+
     @cu.setter
     def cu(self, value):
         self._cu = value
@@ -460,7 +439,7 @@ class SQLAdapterMixIn(object):
                     # than add_entity (native) as this behavior
                     # may also be used for update.
                     value = converters[atype](value)
-                elif atype == 'Password': # XXX could be done using a TYPE_CONVERTERS callback
+                elif atype == 'Password':  # XXX could be done using a TYPE_CONVERTERS callback
                     # if value is a Binary instance, this mean we got it
                     # from a query result and so it is already encrypted
                     if isinstance(value, Binary):
@@ -470,13 +449,14 @@ class SQLAdapterMixIn(object):
                     value = self._binary(value)
                 elif isinstance(value, Binary):
                     value = self._binary(value.getvalue())
-            attrs[SQL_PREFIX+str(attr)] = value
-        attrs[SQL_PREFIX+'eid'] = entity.eid
+            attrs[SQL_PREFIX + str(attr)] = value
+        attrs[SQL_PREFIX + 'eid'] = entity.eid
         return attrs
 
     # these are overridden by set_log_methods below
     # only defining here to prevent pylint from complaining
-    info = warning = error = critical = exception = debug = lambda msg,*a,**kw: None
+    info = warning = error = critical = exception = debug = lambda msg, *a, **kw: None
+
 
 set_log_methods(SQLAdapterMixIn, getLogger('cubicweb.sqladapter'))
 
@@ -536,9 +516,11 @@ def _init_sqlite_connection(cnx):
     class group_concat(object):
         def __init__(self):
             self.values = set()
+
         def step(self, value):
             if value is not None:
                 self.values.add(value)
+
         def finalize(self):
             return ', '.join(text_type(v) for v in self.values)
 
@@ -562,11 +544,12 @@ def _init_sqlite_connection(cnx):
     cnx.create_function("TEXT_LIMIT_SIZE", 2, limit_size2)
 
     from logilab.common.date import strptime
+
     def weekday(ustr):
         try:
             dt = strptime(ustr, '%Y-%m-%d %H:%M:%S')
         except:
-            dt =  strptime(ustr, '%Y-%m-%d')
+            dt = strptime(ustr, '%Y-%m-%d')
         # expect sunday to be 1, saturday 7 while weekday method return 0 for
         # monday
         return (dt.weekday() + 1) % 7
@@ -576,6 +559,7 @@ def _init_sqlite_connection(cnx):
 
     import yams.constraints
     yams.constraints.patch_sqlite_decimal()
+
 
 sqlite_hooks = SQL_CONNECT_HOOKS.setdefault('sqlite', [])
 sqlite_hooks.append(_init_sqlite_connection)
@@ -587,6 +571,7 @@ def _init_postgres_connection(cnx):
     # commit is needed, else setting are lost if the connection is first
     # rolled back
     cnx.commit()
+
 
 postgres_hooks = SQL_CONNECT_HOOKS.setdefault('postgres', [])
 postgres_hooks.append(_init_postgres_connection)

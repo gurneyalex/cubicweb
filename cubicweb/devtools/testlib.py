@@ -15,7 +15,8 @@
 #
 # You should have received a copy of the GNU Lesser General Public License along
 # with CubicWeb.  If not, see <http://www.gnu.org/licenses/>.
-"""this module contains base classes and utilities for cubicweb tests"""
+"""Base classes and utilities for cubicweb tests"""
+
 from __future__ import print_function
 
 import sys
@@ -26,8 +27,9 @@ from math import log
 from contextlib import contextmanager
 from inspect import isgeneratorfunction
 from itertools import chain
+from warnings import warn
 
-from six import text_type, string_types
+from six import text_type, string_types, reraise
 from six.moves import range
 from six.moves.urllib.parse import urlparse, parse_qs, unquote as urlunquote
 
@@ -42,7 +44,7 @@ from logilab.common.shellutils import getlogin
 
 from cubicweb import (ValidationError, NoSelectableObject, AuthenticationError,
                       BadConnectionId)
-from cubicweb import cwconfig, devtools, web, server, repoapi
+from cubicweb import cwconfig, devtools, web, server
 from cubicweb.utils import json
 from cubicweb.sobjects import notification
 from cubicweb.web import Redirect, application, eid_param
@@ -50,14 +52,21 @@ from cubicweb.server.hook import SendMailOp
 from cubicweb.server.session import Session
 from cubicweb.devtools import SYSTEM_ENTITIES, SYSTEM_RELATIONS, VIEW_VALIDATORS
 from cubicweb.devtools import fake, htmlparser, DEFAULT_EMPTY_DB_ID
+from cubicweb.devtools.fill import insert_entity_queries, make_relations_queries
 
 
 if sys.version_info[:2] < (3, 4):
     from unittest2 import TestCase
     if not hasattr(TestCase, 'subTest'):
         raise ImportError('no subTest support in available unittest2')
+    try:
+        from backports.tempfile import TemporaryDirectory  # noqa
+    except ImportError:
+        # backports.tempfile not available
+        TemporaryDirectory = None
 else:
     from unittest import TestCase
+    from tempfile import TemporaryDirectory  # noqa
 
 # in python 2.7, DeprecationWarning are not shown anymore by default
 warnings.filterwarnings('default', category=DeprecationWarning)
@@ -198,6 +207,7 @@ class MockSMTP:
 
     def sendmail(self, fromaddr, recipients, msg):
         MAILBOX.append(Email(fromaddr, recipients, msg))
+
 
 cwconfig.SMTP = MockSMTP
 
@@ -717,8 +727,13 @@ class CubicWebTC(BaseTestCase):
             ctrl = self.vreg['controllers'].select('ajax', req)
             yield ctrl.publish(), req
 
-    def app_handle_request(self, req, path='view'):
-        return self.app.core_handle(req, path)
+    def app_handle_request(self, req, path=None):
+        if path is not None:
+            warn('[3.24] path argument got removed from app_handle_request parameters, '
+                 'give it to the request constructor', DeprecationWarning)
+            if req.relative_path(False) != path:
+                req._url = path
+        return self.app.core_handle(req)
 
     @deprecated("[3.15] app_handle_request is the new and better way"
                 " (beware of small semantic changes)")
@@ -827,7 +842,7 @@ class CubicWebTC(BaseTestCase):
             if data is not None:
                 req.form.update(data)
             with real_error_handling(self.app):
-                result = self.app_handle_request(req, req.relative_path(False))
+                result = self.app_handle_request(req)
             return result, req
 
     @staticmethod
@@ -838,7 +853,9 @@ class CubicWebTC(BaseTestCase):
             path = location
             params = {}
         else:
-            cleanup = lambda p: (p[0], urlunquote(p[1]))
+            def cleanup(p):
+                return (p[0], urlunquote(p[1]))
+
             params = dict(cleanup(p.split('=', 1)) for p in params.split('&') if p)
         if path.startswith(req.base_url()):  # may be relative
             path = path[len(req.base_url()):]
@@ -859,7 +876,9 @@ class CubicWebTC(BaseTestCase):
         """call the publish method of the application publisher, expecting to
         get a Redirect exception
         """
-        self.app_handle_request(req, path)
+        if req.relative_path(False) != path:
+            req._url = path
+        self.app_handle_request(req)
         self.assertTrue(300 <= req.status_out < 400, req.status_out)
         location = req.get_response_header('location')
         return self._parse_location(req, location)
@@ -890,8 +909,9 @@ class CubicWebTC(BaseTestCase):
 
     def assertAuthSuccess(self, req, origsession, nbsessions=1):
         session = self.app.get_session(req)
-        cnx = repoapi.Connection(session)
-        req.set_cnx(cnx)
+        cnx = session.new_cnx()
+        with cnx:
+            req.set_cnx(cnx)
         self.assertEqual(len(self.open_sessions), nbsessions, self.open_sessions)
         self.assertEqual(session.login, origsession.login)
         self.assertEqual(session.anonymous_session, False)
@@ -942,10 +962,8 @@ class CubicWebTC(BaseTestCase):
                   encapsulation the generated HTML
         """
         if req is None:
-            if rset is None:
-                req = self.request()
-            else:
-                req = rset.req
+            assert rset is not None, 'you must supply at least one of rset or req'
+            req = rset.req
         req.form['vid'] = vid
         viewsreg = self.vreg['views']
         view = viewsreg.select(vid, req, rset=rset, **kwargs)
@@ -953,8 +971,11 @@ class CubicWebTC(BaseTestCase):
             viewfunc = view.render
         else:
             kwargs['view'] = view
-            viewfunc = lambda **k: viewsreg.main_template(req, template,
-                                                          rset=rset, **kwargs)
+
+            def viewfunc(**k):
+                return viewsreg.main_template(req, template,
+                                              rset=rset, **kwargs)
+
         return self._test_view(viewfunc, view, template, kwargs)
 
     def _test_view(self, viewfunc, view, template='main-template', kwargs={}):
@@ -976,9 +997,7 @@ class CubicWebTC(BaseTestCase):
                 msg = '[%s in %s] %s' % (klass, view.__regid__, exc)
             except Exception:
                 msg = '[%s in %s] undisplayable exception' % (klass, view.__regid__)
-            exc = AssertionError(msg)
-            exc.__traceback__ = tcbk
-            raise exc
+            reraise(AssertionError, AssertionError(msg), sys.exc_info()[-1])
         return self._check_html(output, view, template)
 
     def get_validator(self, view=None, content_type=None, output=None):
@@ -1092,10 +1111,7 @@ class CubicWebTC(BaseTestCase):
 
 # auto-populating test classes and utilities ###################################
 
-from cubicweb.devtools.fill import insert_entity_queries, make_relations_queries
-
 # XXX cleanup unprotected_entities & all mess
-
 
 def how_many_dict(schema, cnx, how_many, skip):
     """given a schema, compute how many entities by type we need to be able to

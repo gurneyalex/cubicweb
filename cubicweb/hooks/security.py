@@ -1,4 +1,4 @@
-# copyright 2003-2014 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2016 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -19,9 +19,6 @@
 the connected user
 """
 
-__docformat__ = "restructuredtext en"
-from warnings import warn
-
 from logilab.common.registry import objectify_predicate
 
 from yams import buildobjs
@@ -30,13 +27,9 @@ from cubicweb import Unauthorized
 from cubicweb.server import BEFORE_ADD_RELATIONS, ON_COMMIT_ADD_RELATIONS, hook
 
 
-
 def check_entity_attributes(cnx, entity, action, editedattrs=None):
     eid = entity.eid
     eschema = entity.e_schema
-    if action == 'delete':
-        eschema.check_perm(session, action, eid=eid)
-        return
     # ._cw_skip_security_attributes is there to bypass security for attributes
     # set by hooks by modifying the entity's dictionary
     if editedattrs is None:
@@ -89,8 +82,8 @@ class CheckRelationPermissionOp(hook.DataOperationMixIn, hook.LateOperation):
     def precommit_event(self):
         cnx = self.cnx
         for action, rschema, eidfrom, eidto in self.get_data():
-            rdef = rschema.rdef(cnx.entity_metas(eidfrom)['type'],
-                                cnx.entity_metas(eidto)['type'])
+            rdef = rschema.rdef(cnx.entity_type(eidfrom),
+                                cnx.entity_type(eidto))
             rdef.check_perm(cnx, action, fromeid=eidfrom, toeid=eidto)
 
 
@@ -165,8 +158,8 @@ class BeforeAddRelationSecurityHook(SecurityHook):
             if rschema.inlined and skip_inlined_relation_security(
                     self._cw, rschema, self.eidfrom):
                 return
-            rdef = rschema.rdef(self._cw.entity_metas(self.eidfrom)['type'],
-                                self._cw.entity_metas(self.eidto)['type'])
+            rdef = rschema.rdef(self._cw.entity_type(self.eidfrom),
+                                self._cw.entity_type(self.eidto))
             rdef.check_perm(self._cw, 'add', fromeid=self.eidfrom, toeid=self.eidto)
 
 
@@ -187,8 +180,8 @@ class AfterAddRelationSecurityHook(SecurityHook):
                 CheckRelationPermissionOp.get_instance(self._cw).add_data(
                     ('add', rschema, self.eidfrom, self.eidto) )
             else:
-                rdef = rschema.rdef(self._cw.entity_metas(self.eidfrom)['type'],
-                                    self._cw.entity_metas(self.eidto)['type'])
+                rdef = rschema.rdef(self._cw.entity_type(self.eidfrom),
+                                    self._cw.entity_type(self.eidto))
                 rdef.check_perm(self._cw, 'add', fromeid=self.eidfrom, toeid=self.eidto)
 
 
@@ -204,6 +197,6 @@ class BeforeDeleteRelationSecurityHook(SecurityHook):
         if rschema.inlined and skip_inlined_relation_security(
                 self._cw, rschema, self.eidfrom):
             return
-        rdef = rschema.rdef(self._cw.entity_metas(self.eidfrom)['type'],
-                            self._cw.entity_metas(self.eidto)['type'])
+        rdef = rschema.rdef(self._cw.entity_type(self.eidfrom),
+                            self._cw.entity_type(self.eidto))
         rdef.check_perm(self._cw, 'delete', fromeid=self.eidfrom, toeid=self.eidto)

@@ -17,7 +17,7 @@
 # with CubicWeb.  If not, see <http://www.gnu.org/licenses/>.
 """The edit controller, automatically handling entity form submitting"""
 
-__docformat__ = "restructuredtext en"
+
 
 from warnings import warn
 from collections import defaultdict
@@ -202,15 +202,17 @@ class EditController(basecontrollers.ViewController):
         except (RequestError, NothingToEdit) as ex:
             if '__linkto' in req.form and 'eid' in req.form:
                 self.execute_linkto()
-            elif not ('__delete' in req.form or '__insert' in req.form):
+            elif '__delete' not in req.form:
                 raise ValidationError(None, {None: text_type(ex)})
         # all pending inlined relations to newly created entities have been
         # treated now (pop to ensure there are no attempt to add new ones)
         pending_inlined = req.data.pop('pending_inlined')
         assert not pending_inlined, pending_inlined
         # handle all other remaining relations now
-        for form_, field in req.data.pop('pending_others'):
+        while req.data['pending_others']:
+            form_, field = req.data['pending_others'].pop()
             self.handle_formfield(form_, field)
+        del req.data['pending_others']
         # then execute rql to set all relations
         for querydef in self.relations_rql:
             self._cw.execute(*querydef)

@@ -1,4 +1,4 @@
-# copyright 2003-2012 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2016 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -20,14 +20,11 @@ from logilab.common.testlib import unittest_main, TestCase
 
 from os.path import join
 
-from cubicweb import CW_SOFTWARE_ROOT as BASE
-from cubicweb.appobject import AppObject
+from cubicweb import CW_SOFTWARE_ROOT as BASE, devtools
 from cubicweb.cwvreg import CWRegistryStore, UnknownProperty
-from cubicweb.devtools import TestServerConfiguration
 from cubicweb.devtools.testlib import CubicWebTC
 from cubicweb.view import EntityAdapter
 
-from cubes.card.entities import Card
 
 class YesSchema:
     def __contains__(self, something):
@@ -35,10 +32,11 @@ class YesSchema:
 
 WEBVIEWSDIR = join(BASE, 'web', 'views')
 
+
 class VRegistryTC(TestCase):
 
     def setUp(self):
-        config = TestServerConfiguration('data', __file__)
+        config = devtools.TestServerConfiguration('data', __file__)
         self.vreg = CWRegistryStore(config)
         config.bootstrap_cubes()
         self.vreg.schema = config.load_schema()

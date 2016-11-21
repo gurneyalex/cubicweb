@@ -1,5 +1,5 @@
 # -*- coding: iso-8859-1 -*-
-# copyright 2003-2014 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2016 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -18,13 +18,14 @@
 # with CubicWeb.  If not, see <http://www.gnu.org/licenses/>.
 """unit tests for modules cubicweb.server.rqlannotation"""
 
-from cubicweb.devtools import TestServerConfiguration, get_test_db_handler
+from cubicweb import devtools
 from cubicweb.devtools.repotest import BaseQuerierTC
+
 
 class SQLGenAnnotatorTC(BaseQuerierTC):
 
     def setUp(self):
-        handler = get_test_db_handler(TestServerConfiguration('data', __file__))
+        handler = devtools.get_test_db_handler(devtools.TestServerConfiguration('data', __file__))
         handler.build_db_cache()
         repo, _cnx = handler.get_repo_and_cnx()
         self.__class__.repo = repo
@@ -181,7 +182,7 @@ class SQLGenAnnotatorTC(BaseQuerierTC):
     def test_greater_eid_typed(self):
         with self.session.new_cnx() as cnx:
             rqlst = self._prepare(cnx, 'Any X WHERE X eid > 5, X is Note')
-            self.assertEqual(rqlst.defined_vars['X']._q_invariant, True)
+            self.assertEqual(rqlst.defined_vars['X']._q_invariant, False)
 
     def test_max_eid(self):
         with self.session.new_cnx() as cnx:

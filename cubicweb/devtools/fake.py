@@ -18,8 +18,6 @@
 """Fake objects to ease testing of cubicweb without a fully working environment
 """
 
-__docformat__ = "restructuredtext en"
-
 from contextlib import contextmanager
 
 from six import string_types
@@ -57,15 +55,25 @@ class FakeConfig(dict, BaseApptestConfiguration):
         return {'system': {'db-driver': 'sqlite'}}
 
 
+class FakeCWRegistryStore(CWRegistryStore):
+
+    def property_value(self, key):
+        if key == 'ui.language':
+            return 'en'
+        assert False
+
+
 class FakeRequest(ConnectionCubicWebRequestBase):
     """test implementation of an cubicweb request object"""
 
     def __init__(self, *args, **kwargs):
         if not (args or 'vreg' in kwargs):
-            kwargs['vreg'] = CWRegistryStore(FakeConfig(), initlog=False)
+            kwargs['vreg'] = FakeCWRegistryStore(FakeConfig(), initlog=False)
         kwargs['https'] = False
         self._http_method = kwargs.pop('method', 'GET')
-        self._url = kwargs.pop('url', None) or 'view?rql=Blop&vid=blop'
+        self._url = kwargs.pop('url', None)
+        if self._url is None:
+            self._url = 'view?rql=Blop&vid=blop'
         super(FakeRequest, self).__init__(*args, **kwargs)
         self._session_data = {}
 
@@ -134,7 +142,7 @@ class FakeSession(RequestSessionBase):
         if vreg is None:
             vreg = getattr(self.repo, 'vreg', None)
         if vreg is None:
-            vreg = CWRegistryStore(FakeConfig(), initlog=False)
+            vreg = FakeCWRegistryStore(FakeConfig(), initlog=False)
         self.vreg = vreg
         self.cnxset = FakeConnectionsSet()
         self.user = user or FakeUser()
@@ -167,33 +175,20 @@ class FakeSession(RequestSessionBase):
     def running_hooks_ops(self):
         yield
 
+
 class FakeRepo(object):
     querier = None
+
     def __init__(self, schema, vreg=None, config=None):
-        self.extids = {}
         self.eids = {}
         self._count = 0
         self.schema = schema
         self.config = config or FakeConfig()
-        self.vreg = vreg or CWRegistryStore(self.config, initlog=False)
+        self.vreg = vreg or FakeCWRegistryStore(self.config, initlog=False)
         self.vreg.schema = schema
 
     def internal_session(self):
         return FakeSession(self)
-
-    def extid2eid(self, source, extid, etype, cnx, insert=True):
-        try:
-            return self.extids[extid]
-        except KeyError:
-            if not insert:
-                return None
-            self._count += 1
-            eid = self._count
-            entity = source.before_entity_insertion(cnx, extid, etype, eid)
-            self.extids[extid] = eid
-            self.eids[eid] = extid
-            source.after_entity_insertion(cnx, extid, entity)
-            return eid
 
 
 class FakeSource(object):

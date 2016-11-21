@@ -27,7 +27,7 @@ import glob
 
 modname = distname = "cubicweb"
 
-numversion = (3, 23, 2)
+numversion = (3, 24, 1)
 version = '.'.join(str(num) for num in numversion)
 
 description = "a repository of entities / relations for knowledge management"
@@ -42,37 +42,6 @@ classifiers = [
     'Programming Language :: Python',
     'Programming Language :: JavaScript',
 ]
-
-__depends__ = {
-    'six': '>= 1.4.0',
-    'logilab-common': '>= 1.2.2',
-    'logilab-mtconverter': '>= 0.8.0',
-    'rql': '>= 0.34.0',
-    'yams': '>= 0.44.0',
-    #gettext                    # for xgettext, msgcat, etc...
-    # web dependencies
-    'lxml': '',
-    # XXX graphviz
-    # server dependencies
-    'logilab-database': '>= 1.15.0',
-    'passlib': '',
-    'pytz': '',
-    'Markdown': '',
-    'unittest2': '>= 0.7.0',
-    }
-
-__recommends__ = {
-    'docutils': '>= 0.6',
-    'Pillow': '',               # for captcha
-    'pycrypto': '',             # for crypto extensions
-    'fyzz': '>= 0.1.0',         # for sparql
-    'vobject': '>= 0.6.0',      # for ical view
-    'rdflib': None,             #
-    'pyzmq': None,
-    'Twisted': '< 16.0.0',
-    #'Products.FCKeditor':'',
-    #'SimpleTAL':'>= 4.1.6',
-}
 
 scripts = [s for s in glob.glob(join('bin', 'cubicweb-*'))
            if not s.endswith('.bat')]
@@ -108,8 +77,6 @@ try:
     # data files that shall be copied outside the main package directory
     data_files = [
         # server data
-        [join('share', 'cubicweb', 'schemas'),
-         glob.glob(join(modname, 'schemas', '*.sql'))],
         [join('share', 'cubicweb', 'migration'),
          [join(_server_migration_dir, filename)
           for filename in listdir(_server_migration_dir)]],

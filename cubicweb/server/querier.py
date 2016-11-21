@@ -1,4 +1,4 @@
-# copyright 2003-2014 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2016 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -19,8 +19,6 @@
 security checking and data aggregation.
 """
 from __future__ import print_function
-
-__docformat__ = "restructuredtext en"
 
 from itertools import repeat
 
@@ -68,7 +66,7 @@ def term_etype(cnx, term, solution, args):
     try:
         return solution[term.name]
     except AttributeError:
-        return cnx.entity_metas(term.eval(args))['type']
+        return cnx.entity_type(term.eval(args))
 
 def check_relations_read_access(cnx, select, args):
     """Raise :exc:`Unauthorized` if the given user doesn't have credentials to
@@ -682,7 +680,7 @@ def manual_build_descr(cnx, rqlst, args, result):
 
 def _build_descr(cnx, result, basedescription, todetermine):
     description = []
-    entity_metas = cnx.entity_metas
+    entity_type = cnx.entity_type
     todel = []
     for i, row in enumerate(result):
         row_descr = basedescription[:]
@@ -696,7 +694,7 @@ def _build_descr(cnx, result, basedescription, todetermine):
                 row_descr[index] = etype_from_pyobj(value)
             else:
                 try:
-                    row_descr[index] = entity_metas(value)['type']
+                    row_descr[index] = entity_type(value)
                 except UnknownEid:
                     cnx.error('wrong eid %s in repository, you should '
                              'db-check the database' % value)

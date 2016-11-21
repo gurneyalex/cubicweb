@@ -1,4 +1,4 @@
-# copyright 2003-2014 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2016 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -19,6 +19,7 @@
 
 Those tests expect to have slapd, python-ldap3 and ldapscripts packages installed.
 """
+
 from __future__ import print_function
 
 import os
@@ -284,27 +285,18 @@ class LDAPFeedUserTC(LDAPFeedTestBase):
             self.assertEqual(len(rset), 1)
             e = rset.get_entity(0, 0)
             self.assertEqual(e.eid, eid)
-            self.assertEqual(e.cw_metainformation(), {'source': {'type': u'native',
-                                                                 'uri': u'system',
-                                                                 'use-cwuri-as-url': False},
-                                                      'type': 'CWUser',
-                                                      'extid': None})
             self.assertEqual(e.cw_source[0].name, 'system')
             self.assertTrue(e.creation_date)
             self.assertTrue(e.modification_date)
-            source.pull_data(cnx)
+            source.pull_data(cnx, raise_on_error=True)
             rset = cnx.execute('CWUser X WHERE X login %(login)s', {'login': 'syt'})
             self.assertEqual(len(rset), 1)
             self.assertTrue(self.repo.system_source.authenticate(cnx, 'syt', password='syt'))
             # make sure the pull from ldap have not "reverted" user as a ldap-feed user
-            self.assertEqual(e.cw_metainformation(), {'source': {'type': u'native',
-                                                                 'uri': u'system',
-                                                                 'use-cwuri-as-url': False},
-                                                      'type': 'CWUser',
-                                                      'extid': None})
             # and that the password stored in the system source is not empty or so
             user = cnx.execute('CWUser U WHERE U login "syt"').get_entity(0, 0)
             user.cw_clear_all_caches()
+            self.assertEqual(user.cw_source[0].name, 'system')
             cu = cnx.system_sql("SELECT cw_upassword FROM cw_cwuser WHERE cw_login='syt';")
             pwd = cu.fetchall()[0][0]
             self.assertIsNotNone(pwd)

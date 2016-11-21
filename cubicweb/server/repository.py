@@ -25,14 +25,14 @@ repository mainly:
   point to a cubicweb instance.
 * handles session management
 """
-from __future__ import print_function
 
-__docformat__ = "restructuredtext en"
+from __future__ import print_function
 
 from warnings import warn
 from itertools import chain
 from time import time, localtime, strftime
 from contextlib import contextmanager
+from logging import getLogger
 
 from six.moves import range, queue
 
@@ -46,6 +46,7 @@ from cubicweb import (CW_MIGRATION_MAP, QueryError,
                       UnknownEid, AuthenticationError, ExecutionError,
                       BadConnectionId, ValidationError, Unauthorized,
                       UniqueTogetherError, onevent, ViolatedConstraint)
+from cubicweb import set_log_methods
 from cubicweb import cwvreg, schema, server
 from cubicweb.server import ShuttingDown, utils, hook, querier, sources
 from cubicweb.server.session import Session, InternalManager
@@ -156,6 +157,7 @@ class Repository(object):
 
     def __init__(self, config, tasks_manager=None, vreg=None):
         self.config = config
+        self.sources_by_eid = {}
         if vreg is None:
             vreg = cwvreg.CWRegistryStore(config)
         self.vreg = vreg
@@ -180,10 +182,8 @@ class Repository(object):
         self.sources_by_uri = {'system': self.system_source}
         # querier helper, need to be created after sources initialization
         self.querier = querier.QuerierHelper(self, self.schema)
-        # cache eid -> (type, extid, actual source)
-        self._type_source_cache = {}
-        # cache extid -> eid
-        self._extid_cache = {}
+        # cache eid -> type
+        self._type_cache = {}
         # open some connection sets
         if config.init_cnxset_pool:
             self.init_cnxset_pool()
@@ -234,7 +234,12 @@ class Repository(object):
                 # set eids on entities schema
                 with self.internal_cnx() as cnx:
                     for etype, eid in cnx.execute('Any XN,X WHERE X is CWEType, X name XN'):
-                        self.schema.eschema(etype).eid = eid
+                        try:
+                            self.schema.eschema(etype).eid = eid
+                        except KeyError:
+                            # etype in the database doesn't exist in the fs schema, this may occur
+                            # during dev and we shouldn't crash
+                            self.warning('No %s entity type in the file system schema', etype)
         else:
             # normal start: load the instance schema from the database
             self.info('loading schema from the repository')
@@ -260,7 +265,6 @@ class Repository(object):
     # internals ###############################################################
 
     def init_sources_from_database(self):
-        self.sources_by_eid = {}
         if self.config.quick_start or 'CWSource' not in self.schema:  # 3.10 migration
             self.system_source.init_creating()
             return
@@ -449,10 +453,10 @@ class Repository(object):
         # iter on sources_by_uri then check enabled source since sources doesn't
         # contain copy based sources
         for source in self.sources_by_uri.values():
-            if self.config.source_enabled(source) and source.support_entity('CWUser'):
+            if self.config.source_enabled(source):
                 try:
                     return source.authenticate(cnx, login, **authinfo)
-                except AuthenticationError:
+                except (NotImplementedError, AuthenticationError):
                     continue
         else:
             raise AuthenticationError('authentication failed with all sources')
@@ -475,13 +479,7 @@ class Repository(object):
         st.add_eid_restriction(st.get_variable('X'), 'x', 'Substitute')
         rset = cnx.execute(st.as_string(), {'x': eid})
         assert len(rset) == 1, rset
-        cwuser = rset.get_entity(0, 0)
-        # pylint: disable=W0104
-        # prefetch / cache cwuser's groups and properties. This is especially
-        # useful for internal sessions to avoid security insertions
-        cwuser.groups
-        cwuser.properties
-        return cwuser
+        return rset.get_entity(0, 0)
 
     # public (dbapi) interface ################################################
 
@@ -713,41 +711,33 @@ class Repository(object):
         return session
 
     # data sources handling ###################################################
-    # * correspondance between eid and (type, source)
+    # * correspondance between eid and type
     # * correspondance between eid and local id (i.e. specific to a given source)
 
-    def type_and_source_from_eid(self, eid, cnx):
-        """return a tuple `(type, extid, actual source uri)` for the entity of
-        the given `eid`
-        """
-        try:
-            eid = int(eid)
-        except ValueError:
-            raise UnknownEid(eid)
-        try:
-            return self._type_source_cache[eid]
-        except KeyError:
-            etype, extid, auri = self.system_source.eid_type_source(cnx, eid)
-            self._type_source_cache[eid] = (etype, extid, auri)
-            return etype, extid, auri
-
     def clear_caches(self, eids):
-        etcache = self._type_source_cache
-        extidcache = self._extid_cache
+        etcache = self._type_cache
         rqlcache = self.querier._rql_cache
         for eid in eids:
             try:
-                etype, extid, auri = etcache.pop(int(eid))  # may be a string in some cases
+                etype = etcache.pop(int(eid))  # may be a string in some cases
                 rqlcache.pop(('%s X WHERE X eid %s' % (etype, eid),), None)
-                extidcache.pop(extid, None)
             except KeyError:
                 etype = None
             rqlcache.pop(('Any X WHERE X eid %s' % eid,), None)
             self.system_source.clear_eid_cache(eid, etype)
 
     def type_from_eid(self, eid, cnx):
-        """return the type of the entity with id <eid>"""
-        return self.type_and_source_from_eid(eid, cnx)[0]
+        """Return the type of the entity with id `eid`"""
+        try:
+            eid = int(eid)
+        except ValueError:
+            raise UnknownEid(eid)
+        try:
+            return self._type_cache[eid]
+        except KeyError:
+            etype = self.system_source.eid_type(cnx, eid)
+            self._type_cache[eid] = etype
+            return etype
 
     def querier_cache_key(self, cnx, rql, args, eidkeys):
         cachekey = [rql]
@@ -764,80 +754,13 @@ class Repository(object):
             args[key] = int(args[key])
         return tuple(cachekey)
 
-    @deprecated('[3.22] use the new store API')
-    def extid2eid(self, source, extid, etype, cnx, insert=True,
-                  sourceparams=None):
-        """Return eid from a local id. If the eid is a negative integer, that
-        means the entity is known but has been copied back to the system source
-        hence should be ignored.
-
-        If no record is found, ie the entity is not known yet:
-
-        1. an eid is attributed
-
-        2. the source's :meth:`before_entity_insertion` method is called to
-           build the entity instance
-
-        3. unless source's :attr:`should_call_hooks` tell otherwise,
-          'before_add_entity' hooks are called
-
-        4. record is added into the system source
-
-        5. the source's :meth:`after_entity_insertion` method is called to
-           complete building of the entity instance
-
-        6. unless source's :attr:`should_call_hooks` tell otherwise,
-          'before_add_entity' hooks are called
-        """
-        try:
-            return self._extid_cache[extid]
-        except KeyError:
-            pass
-        eid = self.system_source.extid2eid(cnx, extid)
-        if eid is not None:
-            self._extid_cache[extid] = eid
-            self._type_source_cache[eid] = (etype, extid, source.uri)
-            return eid
-        if not insert:
-            return
-        # no link between extid and eid, create one
-        # write query, ensure connection's mode is 'write' so connections
-        # won't be released until commit/rollback
-        try:
-            eid = self.system_source.create_eid(cnx)
-            self._extid_cache[extid] = eid
-            self._type_source_cache[eid] = (etype, extid, source.uri)
-            entity = source.before_entity_insertion(
-                cnx, extid, etype, eid, sourceparams)
-            if source.should_call_hooks:
-                # get back a copy of operation for later restore if
-                # necessary, see below
-                pending_operations = cnx.pending_operations[:]
-                self.hm.call_hooks('before_add_entity', cnx, entity=entity)
-            self.add_info(cnx, entity, source, extid)
-            source.after_entity_insertion(cnx, extid, entity, sourceparams)
-            if source.should_call_hooks:
-                self.hm.call_hooks('after_add_entity', cnx, entity=entity)
-            return eid
-        except Exception:
-            # XXX do some cleanup manually so that the transaction has a
-            # chance to be commited, with simply this entity discarded
-            self._extid_cache.pop(extid, None)
-            self._type_source_cache.pop(eid, None)
-            if 'entity' in locals():
-                hook.CleanupDeletedEidsCacheOp.get_instance(cnx).add_data(entity.eid)
-                self.system_source.delete_info_multi(cnx, [entity])
-                if source.should_call_hooks:
-                    cnx.pending_operations = pending_operations
-            raise
-
-    def add_info(self, cnx, entity, source, extid=None):
+    def add_info(self, cnx, entity, source):
         """add type and source info for an eid into the system table,
         and index the entity with the full text index
         """
-        # begin by inserting eid/type/source/extid into the entities table
+        # begin by inserting eid/type/source into the entities table
         hook.CleanupNewEidsCacheOp.get_instance(cnx).add_data(entity.eid)
-        self.system_source.add_info(cnx, entity, source, extid)
+        self.system_source.add_info(cnx, entity, source)
 
     def _delete_cascade_multi(self, cnx, entities):
         """same as _delete_cascade but accepts a list of entities with
@@ -878,17 +801,9 @@ class Repository(object):
                                        entities, rql)
 
     def init_entity_caches(self, cnx, entity, source):
-        """add entity to connection entities cache and repo's extid cache.
-        Return entity's ext id if the source isn't the system source.
-        """
+        """Add entity to connection entities cache and repo's cache."""
         cnx.set_entity_cache(entity)
-        if source.uri == 'system':
-            extid = None
-        else:
-            extid = source.get_extid(entity)
-            self._extid_cache[str(extid)] = entity.eid
-        self._type_source_cache[entity.eid] = (entity.cw_etype, extid, source.uri)
-        return extid
+        self._type_cache[entity.eid] = entity.cw_etype
 
     def glob_add_entity(self, cnx, edited):
         """add an entity to the repository
@@ -904,7 +819,7 @@ class Repository(object):
         # allocate an eid to the entity before calling hooks
         entity.eid = self.system_source.create_eid(cnx)
         # set caches asap
-        extid = self.init_entity_caches(cnx, entity, source)
+        self.init_entity_caches(cnx, entity, source)
         if server.DEBUG & server.DBG_REPO:
             print('ADD entity', self, entity.cw_etype, entity.eid, edited)
         prefill_entity_caches(entity)
@@ -913,7 +828,7 @@ class Repository(object):
         edited.set_defaults()
         if cnx.is_hook_category_activated('integrity'):
             edited.check(creation=True)
-        self.add_info(cnx, entity, source, extid)
+        self.add_info(cnx, entity, source)
         try:
             source.add_entity(cnx, entity)
         except (UniqueTogetherError, ViolatedConstraint) as exc:
@@ -1022,7 +937,6 @@ class Repository(object):
         # in setdefault, this should not be changed without profiling.
         for eid in eids:
             etype = self.type_from_eid(eid, cnx)
-            # XXX should cache entity's cw_metainformation
             entity = cnx.entity_from_eid(eid, etype)
             try:
                 data_by_etype[etype].append(entity)
@@ -1121,6 +1035,4 @@ class Repository(object):
     info = warning = error = critical = exception = debug = lambda msg, *a, **kw: None
 
 
-from logging import getLogger
-from cubicweb import set_log_methods
 set_log_methods(Repository, getLogger('cubicweb.repository'))

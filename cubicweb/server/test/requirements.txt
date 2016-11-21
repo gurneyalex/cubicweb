@@ -1,8 +1,0 @@
-psycopg2
-ldap3
-cubicweb-basket
-cubicweb-card
-cubicweb-comment
-cubicweb-file
-cubicweb-localperms
-cubicweb-tag

@@ -1,4 +1,4 @@
-# copyright 2003-2012 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2016 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -19,30 +19,47 @@
 from __future__ import print_function
 
 import sys
-import os
-from datetime import date
-from logilab.common.testlib import TestCase, unittest_main, mock_object
+import unittest
+
+from logilab import database as db
+from logilab.common.testlib import mock_object
+from logilab.common.decorators import monkeypatch
 
 from rql import BadRQLQuery
 from rql.utils import register_function, FunctionDescr
 
-from cubicweb.devtools import TestServerConfiguration
+from cubicweb import devtools
 from cubicweb.devtools.repotest import RQLGeneratorTC
-from cubicweb.server.sources.rql2sql import remove_unused_solutions
+from cubicweb.server.sources.rql2sql import SQLGenerator, remove_unused_solutions
+
+
+def setUpModule():
+    """Monkey-patch the SQL generator to ensure solutions order is predictable."""
+    global orig_solutions_sql
+    orig_solutions_sql = SQLGenerator._solutions_sql
+
+    @monkeypatch
+    def _solutions_sql(self, select, solutions, distinct, needalias):
+        return orig_solutions_sql(self, select, sorted(solutions), distinct, needalias)
+
+
+def tearDownModule():
+    """Remove monkey-patch done in setUpModule"""
+    SQLGenerator._solutions_sql = orig_solutions_sql
 
 
 # add a dumb registered procedure
 class stockproc(FunctionDescr):
     supported_backends = ('postgres', 'sqlite', 'mysql')
+
 try:
     register_function(stockproc)
-except AssertionError as ex:
-    pass # already registered
+except AssertionError:
+    pass  # already registered
 
 
-from logilab import database as db
 def monkey_patch_import_driver_module(driver, drivers, quiet=True):
-    if not driver in drivers:
+    if driver not in drivers:
         raise db.UnknownDriver(driver)
     for modname in drivers[driver]:
         try:
@@ -61,7 +78,7 @@ def monkey_patch_import_driver_module(driver, drivers, quiet=True):
 
 def setUpModule():
     global config, schema
-    config = TestServerConfiguration('data', __file__)
+    config = devtools.TestServerConfiguration('data', __file__)
     config.bootstrap_cubes()
     schema = config.load_schema()
     schema['in_state'].inlined = True
@@ -495,9 +512,18 @@ FROM entities AS _X
 WHERE _X.eid>12'''),
 
     ('Any X WHERE X eid > 12, X is Note',
-     """SELECT _X.eid
-FROM entities AS _X
-WHERE _X.type='Note' AND _X.eid>12"""),
+     """SELECT _X.cw_eid
+FROM cw_Note AS _X
+WHERE _X.cw_eid>12"""),
+
+    ('Any X WHERE X eid > 12, X is IN (Bookmark, Card)',
+     """SELECT _X.cw_eid
+FROM cw_Bookmark AS _X
+WHERE _X.cw_eid>12
+UNION ALL
+SELECT _X.cw_eid
+FROM cw_Card AS _X
+WHERE _X.cw_eid>12"""),
 
     ('Any X, T WHERE X eid > 12, X title T, X is IN (Bookmark, Card)',
      """SELECT _X.cw_eid, _X.cw_title
@@ -567,13 +593,13 @@ WHERE _X.cw_eid IN(999998, 999999) AND NOT (EXISTS(SELECT 1 FROM cw_source_relat
 
     # Test for https://www.cubicweb.org/ticket/5503548
     ('''Any X
-        WHERE X is CWSourceSchemaConfig,
+        WHERE X is Card,
         EXISTS(X created_by U, U login L),
-        X cw_schema X_CW_SCHEMA,
+        X multisource_inlined_rel X_CW_SCHEMA,
         X owned_by X_OWNED_BY?
     ''', '''SELECT _X.cw_eid
-FROM cw_CWSourceSchemaConfig AS _X LEFT OUTER JOIN owned_by_relation AS rel_owned_by1 ON (rel_owned_by1.eid_from=_X.cw_eid)
-WHERE EXISTS(SELECT 1 FROM created_by_relation AS rel_created_by0, cw_CWUser AS _U WHERE rel_created_by0.eid_from=_X.cw_eid AND rel_created_by0.eid_to=_U.cw_eid) AND _X.cw_cw_schema IS NOT NULL
+FROM cw_Card AS _X LEFT OUTER JOIN owned_by_relation AS rel_owned_by1 ON (rel_owned_by1.eid_from=_X.cw_eid)
+WHERE EXISTS(SELECT 1 FROM created_by_relation AS rel_created_by0, cw_CWUser AS _U WHERE rel_created_by0.eid_from=_X.cw_eid AND rel_created_by0.eid_to=_U.cw_eid) AND _X.cw_multisource_inlined_rel IS NOT NULL
 '''),
 
     ('Any X WHERE EXISTS(X in_state S, S name "state name"), X is in (Affaire, Note)',
@@ -801,13 +827,13 @@ HAS_TEXT_LG_INDEXER = [
 FROM appears AS appears0
 WHERE appears0.word_id IN (SELECT word_id FROM word WHERE word in ('toto', 'tata'))"""),
             ('Personne X WHERE X has_text "toto tata"',
-             """SELECT DISTINCT _X.eid
-FROM appears AS appears0, entities AS _X
-WHERE appears0.word_id IN (SELECT word_id FROM word WHERE word in ('toto', 'tata')) AND appears0.uid=_X.eid AND _X.type='Personne'"""),
+             """SELECT DISTINCT _X.cw_eid
+FROM appears AS appears0, cw_Personne AS _X
+WHERE appears0.word_id IN (SELECT word_id FROM word WHERE word in ('toto', 'tata')) AND appears0.uid=_X.cw_eid"""),
             ('Personne X WHERE X has_text %(text)s',
-             """SELECT DISTINCT _X.eid
-FROM appears AS appears0, entities AS _X
-WHERE appears0.word_id IN (SELECT word_id FROM word WHERE word in ('hip', 'hop', 'momo')) AND appears0.uid=_X.eid AND _X.type='Personne'
+             """SELECT DISTINCT _X.cw_eid
+FROM appears AS appears0, cw_Personne AS _X
+WHERE appears0.word_id IN (SELECT word_id FROM word WHERE word in ('hip', 'hop', 'momo')) AND appears0.uid=_X.cw_eid
 """),
             ('Any X WHERE X has_text "toto tata", X name "tutu", X is IN (Basket,Folder)',
              """SELECT DISTINCT _X.cw_eid
@@ -1512,17 +1538,39 @@ GROUP BY _T.cw_eid) AS _T1 LEFT OUTER JOIN (SELECT _T.cw_eid AS C0, SUM(_T.cw_du
 FROM cw_Affaire AS _T LEFT OUTER JOIN tags_relation AS rel_tags0 ON (rel_tags0.eid_to=_T.cw_eid) LEFT OUTER JOIN cw_Tag AS _TAG ON (rel_tags0.eid_from=_TAG.cw_eid AND _TAG.cw_name=t)
 GROUP BY _T.cw_eid) AS _T0 ON (_T1.C0=_T0.C0)'''),
 
+            ('''Any TT1,STD,STDD WHERE TT2 identity TT1?
+ WITH TT1,STDD BEING (Any T,SUM(TD) GROUPBY T WHERE T is Affaire, T duration TD, TAG? tags T, TAG name "t"),
+      TT2,STD BEING (Any T,SUM(TD) GROUPBY T WHERE T is Affaire, T duration TD)''',
+             '''SELECT _T0.C0, _T1.C1, _T0.C1
+FROM (SELECT _T.cw_eid AS C0, SUM(_T.cw_duration) AS C1
+FROM cw_Affaire AS _T
+GROUP BY _T.cw_eid) AS _T1 LEFT OUTER JOIN (SELECT _T.cw_eid AS C0, SUM(_T.cw_duration) AS C1
+FROM cw_Affaire AS _T LEFT OUTER JOIN tags_relation AS rel_tags0 ON (rel_tags0.eid_to=_T.cw_eid) LEFT OUTER JOIN cw_Tag AS _TAG ON (rel_tags0.eid_from=_TAG.cw_eid AND _TAG.cw_name=t)
+GROUP BY _T.cw_eid) AS _T0 ON (_T1.C0=_T0.C0)'''),
+
+            (''' Any X WHERE X eid >= 1200 WITH X BEING ((Any X WHERE X is CWUser) UNION (Any X WHERE X is CWGroup))''',
+             '''SELECT _T0.C0
+FROM ((SELECT _X.cw_eid AS C0
+FROM cw_CWUser AS _X)
+UNION ALL
+(SELECT _X.cw_eid AS C0
+FROM cw_CWGroup AS _X)) AS _T0
+WHERE _T0.C0>=1200'''),
+
         ]:
             with self.subTest(rql=rql):
                 self._check(rql, sql)
 
     def test_subquery_error(self):
-        rql = ('Any N WHERE X name N WITH X BEING '
-               '((Any X WHERE X is State)'
-               ' UNION '
-               ' (Any X WHERE X is Transition))')
-        rqlst = self._prepare(rql)
-        self.assertRaises(BadRQLQuery, self.o.generate, rqlst)
+        for rql in (
+                'Any N WHERE X name N WITH X BEING '
+                '((Any X WHERE X is State) UNION (Any X WHERE X is Transition))',
+
+                'Any X WHERE X modification_date >= TODAY WITH X BEING '
+                '((Any X WHERE X is CWUser) UNION (Any X WHERE X is CWGroup))''',
+        ):
+            rqlst = self._prepare(rql)
+            self.assertRaises(BadRQLQuery, self.o.generate, rqlst)
 
     def test_inline(self):
         for rql, sql in INLINE:
@@ -1537,14 +1585,19 @@ FROM appears AS appears0
 WHERE appears0.words @@ to_tsquery('default', 'toto&tata')"""),
 
             ('Personne X WHERE X has_text "toto tata"',
-             """SELECT _X.eid
-FROM appears AS appears0, entities AS _X
-WHERE appears0.words @@ to_tsquery('default', 'toto&tata') AND appears0.uid=_X.eid AND _X.type='Personne'"""),
+             """SELECT _X.cw_eid
+FROM appears AS appears0, cw_Personne AS _X
+WHERE appears0.words @@ to_tsquery('default', 'toto&tata') AND appears0.uid=_X.cw_eid"""),
 
             ('Personne X WHERE X has_text %(text)s',
-             """SELECT _X.eid
-FROM appears AS appears0, entities AS _X
-WHERE appears0.words @@ to_tsquery('default', 'hip&hop&momo') AND appears0.uid=_X.eid AND _X.type='Personne'"""),
+             """SELECT _X.cw_eid
+FROM appears AS appears0, cw_Personne AS _X
+WHERE appears0.words @@ to_tsquery('default', 'hip&hop&momo') AND appears0.uid=_X.cw_eid"""),
+
+            ('Any X WHERE X has_text "toto tata", X is IN (Basket,Folder)',
+             """SELECT appears0.uid
+FROM appears AS appears0
+WHERE appears0.words @@ to_tsquery('default', 'toto&tata') AND appears0.uid IN (SELECT cw_eid FROM cw_Basket UNION SELECT cw_eid FROM cw_Folder)"""),
 
             ('Any X WHERE X has_text "toto tata", X name "tutu", X is IN (Basket,Folder)',
              """SELECT _X.cw_eid
@@ -1556,9 +1609,9 @@ FROM appears AS appears0, cw_Folder AS _X
 WHERE appears0.words @@ to_tsquery('default', 'toto&tata') AND appears0.uid=_X.cw_eid AND _X.cw_name=tutu"""),
 
             ('Personne X where X has_text %(text)s, X travaille S, S has_text %(text)s',
-             """SELECT _X.eid
-FROM appears AS appears0, appears AS appears2, entities AS _X, travaille_relation AS rel_travaille1
-WHERE appears0.words @@ to_tsquery('default', 'hip&hop&momo') AND appears0.uid=_X.eid AND _X.type='Personne' AND _X.eid=rel_travaille1.eid_from AND appears2.uid=rel_travaille1.eid_to AND appears2.words @@ to_tsquery('default', 'hip&hop&momo')"""),
+             """SELECT _X.cw_eid
+FROM appears AS appears0, appears AS appears2, cw_Personne AS _X, travaille_relation AS rel_travaille1
+WHERE appears0.words @@ to_tsquery('default', 'hip&hop&momo') AND appears0.uid=_X.cw_eid AND _X.cw_eid=rel_travaille1.eid_from AND appears2.uid=rel_travaille1.eid_to AND appears2.words @@ to_tsquery('default', 'hip&hop&momo')"""),
 
             ('Any X ORDERBY FTIRANK(X) DESC WHERE X has_text "toto tata"',
              """SELECT appears0.uid
@@ -1567,15 +1620,15 @@ WHERE appears0.words @@ to_tsquery('default', 'toto&tata')
 ORDER BY ts_rank(appears0.words, to_tsquery('default', 'toto&tata'))*appears0.weight DESC"""),
 
             ('Personne X ORDERBY FTIRANK(X) WHERE X has_text "toto tata"',
-             """SELECT _X.eid
-FROM appears AS appears0, entities AS _X
-WHERE appears0.words @@ to_tsquery('default', 'toto&tata') AND appears0.uid=_X.eid AND _X.type='Personne'
+             """SELECT _X.cw_eid
+FROM appears AS appears0, cw_Personne AS _X
+WHERE appears0.words @@ to_tsquery('default', 'toto&tata') AND appears0.uid=_X.cw_eid
 ORDER BY ts_rank(appears0.words, to_tsquery('default', 'toto&tata'))*appears0.weight"""),
 
             ('Personne X ORDERBY FTIRANK(X) WHERE X has_text %(text)s',
-             """SELECT _X.eid
-FROM appears AS appears0, entities AS _X
-WHERE appears0.words @@ to_tsquery('default', 'hip&hop&momo') AND appears0.uid=_X.eid AND _X.type='Personne'
+             """SELECT _X.cw_eid
+FROM appears AS appears0, cw_Personne AS _X
+WHERE appears0.words @@ to_tsquery('default', 'hip&hop&momo') AND appears0.uid=_X.cw_eid
 ORDER BY ts_rank(appears0.words, to_tsquery('default', 'hip&hop&momo'))*appears0.weight"""),
 
             ('Any X ORDERBY FTIRANK(X) WHERE X has_text "toto tata", X name "tutu", X is IN (Basket,Folder)',
@@ -1589,9 +1642,9 @@ WHERE appears0.words @@ to_tsquery('default', 'toto&tata') AND appears0.uid=_X.c
 ORDER BY 2) AS T1"""),
 
             ('Personne X ORDERBY FTIRANK(X),FTIRANK(S) WHERE X has_text %(text)s, X travaille S, S has_text %(text)s',
-             """SELECT _X.eid
-FROM appears AS appears0, appears AS appears2, entities AS _X, travaille_relation AS rel_travaille1
-WHERE appears0.words @@ to_tsquery('default', 'hip&hop&momo') AND appears0.uid=_X.eid AND _X.type='Personne' AND _X.eid=rel_travaille1.eid_from AND appears2.uid=rel_travaille1.eid_to AND appears2.words @@ to_tsquery('default', 'hip&hop&momo')
+             """SELECT _X.cw_eid
+FROM appears AS appears0, appears AS appears2, cw_Personne AS _X, travaille_relation AS rel_travaille1
+WHERE appears0.words @@ to_tsquery('default', 'hip&hop&momo') AND appears0.uid=_X.cw_eid AND _X.cw_eid=rel_travaille1.eid_from AND appears2.uid=rel_travaille1.eid_to AND appears2.words @@ to_tsquery('default', 'hip&hop&momo')
 ORDER BY ts_rank(appears0.words, to_tsquery('default', 'hip&hop&momo'))*appears0.weight,ts_rank(appears2.words, to_tsquery('default', 'hip&hop&momo'))*appears2.weight"""),
 
 
@@ -2007,9 +2060,9 @@ FROM appears AS appears0
 WHERE appears0.word_id IN (SELECT word_id FROM word WHERE word in ('hip', 'hop', 'momo'))"""),
 
             ('Personne X WHERE X has_text "toto tata"',
-             """SELECT DISTINCT _X.eid
-FROM appears AS appears0, entities AS _X
-WHERE appears0.word_id IN (SELECT word_id FROM word WHERE word in ('toto', 'tata')) AND appears0.uid=_X.eid AND _X.type='Personne'"""),
+             """SELECT DISTINCT _X.cw_eid
+FROM appears AS appears0, cw_Personne AS _X
+WHERE appears0.word_id IN (SELECT word_id FROM word WHERE word in ('toto', 'tata')) AND appears0.uid=_X.cw_eid"""),
 
             ('Any X WHERE X has_text "toto tata", X name "tutu", X is IN (Basket,Folder)',
              """SELECT DISTINCT _X.cw_eid
@@ -2136,13 +2189,13 @@ WHERE NOT (EXISTS(SELECT 1 FROM created_by_relation AS rel_created_by0 WHERE rel
 FROM appears AS appears0
 WHERE MATCH (appears0.words) AGAINST ('toto tata' IN BOOLEAN MODE)"""),
             ('Personne X WHERE X has_text "toto tata"',
-             """SELECT _X.eid
-FROM appears AS appears0, entities AS _X
-WHERE MATCH (appears0.words) AGAINST ('toto tata' IN BOOLEAN MODE) AND appears0.uid=_X.eid AND _X.type='Personne'"""),
+             """SELECT _X.cw_eid
+FROM appears AS appears0, cw_Personne AS _X
+WHERE MATCH (appears0.words) AGAINST ('toto tata' IN BOOLEAN MODE) AND appears0.uid=_X.cw_eid"""),
             ('Personne X WHERE X has_text %(text)s',
-             """SELECT _X.eid
-FROM appears AS appears0, entities AS _X
-WHERE MATCH (appears0.words) AGAINST ('hip hop momo' IN BOOLEAN MODE) AND appears0.uid=_X.eid AND _X.type='Personne'"""),
+             """SELECT _X.cw_eid
+FROM appears AS appears0, cw_Personne AS _X
+WHERE MATCH (appears0.words) AGAINST ('hip hop momo' IN BOOLEAN MODE) AND appears0.uid=_X.cw_eid"""),
             ('Any X WHERE X has_text "toto tata", X name "tutu", X is IN (Basket,Folder)',
              """SELECT _X.cw_eid
 FROM appears AS appears0, cw_Basket AS _X
@@ -2214,7 +2267,7 @@ WHERE NOT (DATE(_P.cw_datenaiss)=CURRENT_DATE)'''),
             with self.subTest(rql=rql):
                 self._check(rql, sql)
 
-class removeUnsusedSolutionsTC(TestCase):
+class removeUnsusedSolutionsTC(unittest.TestCase):
     def test_invariant_not_varying(self):
         rqlst = mock_object(defined_vars={})
         rqlst.defined_vars['A'] = mock_object(scope=rqlst, stinfo={}, _q_invariant=True)
@@ -2237,4 +2290,4 @@ class removeUnsusedSolutionsTC(TestCase):
 
 
 if __name__ == '__main__':
-    unittest_main()
+    unittest.main()

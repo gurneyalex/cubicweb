@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# copyright 2003-2014 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2016 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -31,7 +31,8 @@ from cubicweb.mttransforms import HAS_TAL
 from cubicweb.entity import can_use_rest_path
 from cubicweb.entities import fetch_config
 from cubicweb.uilib import soup2xhtml
-from cubicweb.schema import  RRQLExpression
+from cubicweb.schema import RRQLExpression
+
 
 class EntityTC(CubicWebTC):
 
@@ -831,18 +832,15 @@ du :eid:`1:*ReST*`'''
             note.cw_set(ecrit_par=person.eid)
             self.assertEqual(len(person.reverse_ecrit_par), 2)
 
-    def test_metainformation_and_external_absolute_url(self):
-        with self.admin_access.web_request() as req:
-            note = req.create_entity('Note', type=u'z')
+    def test_metainformation(self):
+        with self.admin_access.client_cnx() as cnx:
+            note = cnx.create_entity('Note', type=u'z')
+            cnx.commit()
+            note.cw_clear_all_caches()
             metainf = note.cw_metainformation()
-            self.assertEqual(metainf, {'source': {'type': 'native', 'uri': 'system',
-                                                  'use-cwuri-as-url': False},
-                                       'type': u'Note', 'extid': None})
-            self.assertEqual(note.absolute_url(), 'http://testing.fr/cubicweb/note/%s' % note.eid)
-            metainf['source'] = metainf['source'].copy()
-            metainf['source']['base-url']  = 'http://cubicweb2.com/'
-            metainf['extid']  = 1234
-            self.assertEqual(note.absolute_url(), 'http://cubicweb2.com/note/1234')
+            self.assertEqual(metainf, {'type': u'Note',
+                                       'extid': None,
+                                       'source': {'uri': 'system'}})
 
     def test_absolute_url_empty_field(self):
         with self.admin_access.web_request() as req:

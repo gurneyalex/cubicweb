@@ -1,4 +1,4 @@
-# copyright 2010-2015 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2010-2016 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -21,7 +21,6 @@ framework itself.
 from cubicweb import _
 
 from itertools import chain
-from hashlib import md5
 
 from logilab.mtconverter import TransformError
 from logilab.common.decorators import cached
@@ -362,7 +361,6 @@ class ISerializableAdapter(view.EntityAdapter):
         entity.complete()
         data = {
             'cw_etype': entity.cw_etype,
-            'cw_source': entity.cw_metainformation()['source']['uri'],
             'eid': entity.eid,
         }
         for rschema, __ in entity.e_schema.attribute_definitions():
@@ -413,9 +411,7 @@ class IUserFriendlyCheckConstraint(IUserFriendlyError):
         for rschema, attrschema in eschema.attribute_definitions():
             rdef = rschema.rdef(eschema, attrschema)
             for constraint in rdef.constraints:
-                if cstrname == 'cstr' + md5(
-                        (eschema.type + rschema.type + constraint.type() +
-                         (constraint.serialize() or '')).encode('ascii')).hexdigest():
+                if cstrname == constraint.name_for(rdef):
                     break
             else:
                 continue

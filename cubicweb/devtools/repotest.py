@@ -1,4 +1,4 @@
-# copyright 2003-2014 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2016 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -21,8 +21,6 @@ This module contains functions to initialize a new repository.
 """
 from __future__ import print_function
 
-__docformat__ = "restructuredtext en"
-
 from pprint import pprint
 
 from logilab.common.decorators import cachedproperty
@@ -30,12 +28,15 @@ from logilab.common.testlib import SkipTest
 
 from cubicweb.devtools.testlib import RepoAccess
 
+
 def tuplify(mylist):
     return [tuple(item) for item in mylist]
+
 
 def snippet_key(a):
     # a[0] may be a dict or a key/value tuple
     return (sorted(dict(a[0]).items()), [e.expression for e in a[1]])
+
 
 def check_plan(self, rql, expected, kwargs=None):
     with self.session.new_cnx() as cnx:
@@ -43,13 +44,14 @@ def check_plan(self, rql, expected, kwargs=None):
         self.planner.build_plan(plan)
         try:
             self.assertEqual(len(plan.steps), len(expected),
-                              'expected %s steps, got %s' % (len(expected), len(plan.steps)))
+                             'expected %s steps, got %s' % (len(expected), len(plan.steps)))
             # step order is important
             for i, step in enumerate(plan.steps):
                 compare_steps(self, step.test_repr(), expected[i])
         except AssertionError:
             pprint([step.test_repr() for step in plan.steps])
             raise
+
 
 def compare_steps(self, step, expected):
     try:
@@ -200,7 +202,7 @@ class BaseQuerierTC(TestCase):
         self._access = RepoAccess(self.repo, 'admin', FakeRequest)
         self.ueid = self.session.user.eid
         assert self.ueid != -1
-        self.repo._type_source_cache = {} # clear cache
+        self.repo._type_cache = {} # clear cache
         self.maxeid = self.get_max_eid()
         do_monkey_patch()
         self._dumb_sessions = []
@@ -252,10 +254,10 @@ class BaseQuerierTC(TestCase):
         """lightweight session using the current user with hi-jacked groups"""
         # use self.session.user.eid to get correct owned_by relation, unless explicit eid
         with self.session.new_cnx() as cnx:
-            u = self.repo._build_user(cnx, self.session.user.eid)
-            u._groups = set(groups)
-            s = Session(u, self.repo)
-            return s
+            user_eid = self.session.user.eid
+            session = Session(self.repo._build_user(cnx, user_eid), self.repo)
+            session.data['%s-groups' % user_eid] = set(groups)
+            return session
 
     def qexecute(self, rql, args=None, build_descr=True):
         with self.session.new_cnx() as cnx:

@@ -19,6 +19,7 @@
 from logilab.common.testlib import TestCase, unittest_main
 from cubicweb import ObjectNotFound
 from cubicweb.req import RequestSessionBase, FindEntityError
+from cubicweb.devtools import ApptestConfiguration
 from cubicweb.devtools.testlib import CubicWebTC
 from cubicweb import Unauthorized
 
@@ -148,6 +149,7 @@ class RequestCWTC(CubicWebTC):
 
             with self.assertRaises(NotImplementedError):
                 req.find('CWUser', in_group=[1, 2])
+
 
 if __name__ == '__main__':
     unittest_main()

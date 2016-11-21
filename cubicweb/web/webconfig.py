@@ -17,7 +17,7 @@
 # with CubicWeb.  If not, see <http://www.gnu.org/licenses/>.
 """web ui configuration for cubicweb instances"""
 
-__docformat__ = "restructuredtext en"
+
 from cubicweb import _
 
 import os
@@ -178,11 +178,13 @@ if you want to allow everything',
           'group': 'web', 'level': 2,
           }),
 
-        ('language-negociation',
-         {'type' : 'yn',
-          'default': True,
-          'help': 'use Accept-Language http header to try to set user '\
-          'interface\'s language according to browser defined preferences',
+        ('language-mode',
+         {'type' : 'choice',
+          'choices': ('http-negotiation', 'url-prefix', ''),
+          'default': 'http-negotiation',
+          'help': ('source for interface\'s language detection. '
+                   'If set to "http-negotiation" the Accept-Language HTTP header will be used,'
+                   ' if set to "url-prefix", the URL will be inspected for a short language prefix.'),
           'group': 'web', 'level': 2,
           }),
 

@@ -1,4 +1,4 @@
-# copyright 2010-2012 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2010-2016 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -26,6 +26,7 @@ from logilab.common.decorators import clear_cache
 from cubicweb import validation_error
 from cubicweb.predicates import is_instance
 from cubicweb.server import SOURCE_TYPES, hook
+
 
 class SourceHook(hook.Hook):
     __abstract__ = True
@@ -91,12 +92,6 @@ class SourceConfigUpdatedOp(hook.DataOperationMixIn, hook.Operation):
 class SourceRenamedOp(hook.LateOperation):
     oldname = newname = None # make pylint happy
 
-    def precommit_event(self):
-        source = self.cnx.repo.sources_by_uri[self.oldname]
-        sql = 'UPDATE entities SET asource=%(newname)s WHERE asource=%(oldname)s'
-        self.cnx.system_sql(sql, {'oldname': self.oldname,
-                                      'newname': self.newname})
-
     def postcommit_event(self):
         repo = self.cnx.repo
         # XXX race condition
@@ -104,7 +99,6 @@ class SourceRenamedOp(hook.LateOperation):
         source.uri = self.newname
         source.public_config['uri'] = self.newname
         repo.sources_by_uri[self.newname] = source
-        repo._type_source_cache.clear()
         clear_cache(repo, 'source_defs')
 
 
@@ -141,68 +135,3 @@ class SourceHostConfigUpdatedHook(SourceHook):
             except IndexError:
                 # XXX no source linked to the host config yet
                 pass
-
-
-# source mapping synchronization ###############################################
-#
-# Expect cw_for_source/cw_schema are immutable relations (i.e. can't change from
-# a source or schema to another).
-
-class SourceMappingImmutableHook(SourceHook):
-    """check cw_for_source and cw_schema are immutable relations
-
-    XXX empty delete perms would be enough?
-    """
-    __regid__ = 'cw.sources.mapping.immutable'
-    __select__ = SourceHook.__select__ & hook.match_rtype('cw_for_source', 'cw_schema')
-    events = ('before_add_relation',)
-    def __call__(self):
-        if not self._cw.added_in_transaction(self.eidfrom):
-            msg = _("You can't change this relation")
-            raise validation_error(self.eidfrom, {self.rtype: msg})
-
-
-class SourceMappingChangedOp(hook.DataOperationMixIn, hook.Operation):
-    def check_or_update(self, checkonly):
-        cnx = self.cnx
-        # take care, can't call get_data() twice
-        try:
-            data = self.__data
-        except AttributeError:
-            data = self.__data = self.get_data()
-        for schemacfg, source in data:
-            if source is None:
-                source = schemacfg.cwsource.repo_source
-            if cnx.added_in_transaction(schemacfg.eid):
-                if not cnx.deleted_in_transaction(schemacfg.eid):
-                    source.add_schema_config(schemacfg, checkonly=checkonly)
-            elif cnx.deleted_in_transaction(schemacfg.eid):
-                source.del_schema_config(schemacfg, checkonly=checkonly)
-            else:
-                source.update_schema_config(schemacfg, checkonly=checkonly)
-
-    def precommit_event(self):
-        self.check_or_update(True)
-
-    def postcommit_event(self):
-        self.check_or_update(False)
-
-
-class SourceMappingChangedHook(SourceHook):
-    __regid__ = 'cw.sources.schemaconfig'
-    __select__ = SourceHook.__select__ & is_instance('CWSourceSchemaConfig')
-    events = ('after_add_entity', 'after_update_entity')
-    def __call__(self):
-        if self.event == 'after_add_entity' or (
-            self.event == 'after_update_entity' and 'options' in self.entity.cw_edited):
-            SourceMappingChangedOp.get_instance(self._cw).add_data(
-                (self.entity, None) )
-
-class SourceMappingDeleteHook(SourceHook):
-    __regid__ = 'cw.sources.delschemaconfig'
-    __select__ = SourceHook.__select__ & hook.match_rtype('cw_for_source')
-    events = ('before_delete_relation',)
-    def __call__(self):
-        SourceMappingChangedOp.get_instance(self._cw).add_data(
-            (self._cw.entity_from_eid(self.eidfrom),
-             self._cw.entity_from_eid(self.eidto).repo_source) )

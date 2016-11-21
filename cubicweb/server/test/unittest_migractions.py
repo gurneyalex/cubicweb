@@ -23,7 +23,7 @@ from datetime import date
 from contextlib import contextmanager
 import tempfile
 
-from logilab.common.testlib import unittest_main, Tags, tag, with_tempdir
+from logilab.common.testlib import unittest_main, Tags, tag
 from logilab.common import tempattr
 
 from yams.constraints import UniqueConstraint
@@ -31,7 +31,7 @@ from yams.constraints import UniqueConstraint
 from cubicweb import (ConfigurationError, ValidationError,
                       ExecutionError, Binary)
 from cubicweb.devtools import startpgcluster, stoppgcluster
-from cubicweb.devtools.testlib import CubicWebTC
+from cubicweb.devtools.testlib import CubicWebTC, TemporaryDirectory
 from cubicweb.server.sqlutils import SQL_PREFIX
 from cubicweb.server.migractions import ServerMigrationHelper
 from cubicweb.server.sources import storages
@@ -350,7 +350,7 @@ class MigrationCommandsTC(MigrationTC):
     def test_rename_entity_type(self):
         with self.mh() as (cnx, mh):
             entity = mh.create_entity('Old', name=u'old')
-            self.repo.type_and_source_from_eid(entity.eid, entity._cw)
+            self.repo.type_from_eid(entity.eid, entity._cw)
             mh.cmd_rename_entity_type('Old', 'New')
             dbh = self.repo.system_source.dbhelper
             indices = set(dbh.list_indices(cnx.cnxset.cu, 'cw_New'))
@@ -596,6 +596,13 @@ class MigrationCommandsTC(MigrationTC):
             relations = [r.name for r in rset.get_entity(0, 0).relations]
             self.assertCountEqual(relations, ('nom', 'prenom', 'datenaiss'))
 
+            # serialized constraint changed
+            constraints = self.table_constraints(mh, 'cw_Personne')
+            self.assertEqual(len(constraints), 1, constraints)
+            rdef = migrschema['promo'].rdefs['Personne', 'String']
+            cstr = rdef.constraint_by_type('StaticVocabularyConstraint')
+            self.assertIn(cstr.name_for(rdef), constraints)
+
     def _erqlexpr_rset(self, cnx, action, ertype):
         rql = 'RQLExpression X WHERE ET is CWEType, ET %s_permission X, ET name %%(name)s' % action
         return cnx.execute(rql, {'name': ertype})
@@ -790,28 +797,28 @@ class MigrationCommandsTC(MigrationTC):
             mh.drop_relation_definition('Note', 'ecrit_par', 'CWUser')
             self.assertFalse(mh.sqlexec('SELECT * FROM cw_Note WHERE cw_ecrit_par IS NOT NULL'))
 
-    @with_tempdir
     def test_storage_changed(self):
         with self.mh() as (cnx, mh):
             john = mh.cmd_create_entity('Personne', nom=u'john',
                                         photo=Binary(b'something'))
             bill = mh.cmd_create_entity('Personne', nom=u'bill')
             mh.commit()
-            bfs_storage = storages.BytesFileSystemStorage(tempfile.tempdir)
-            storages.set_attribute_storage(self.repo, 'Personne', 'photo', bfs_storage)
-            mh.cmd_storage_changed('Personne', 'photo')
-            bob = mh.cmd_create_entity('Personne', nom=u'bob')
-            bffss_dir_content = os.listdir(tempfile.tempdir)
-            self.assertEqual(len(bffss_dir_content), 1)
-            john.cw_clear_all_caches()
-            self.assertEqual(john.photo.getvalue(),
-                             osp.join(tempfile.tempdir,
-                                      bffss_dir_content[0]).encode('utf8'))
-            bob.cw_clear_all_caches()
-            self.assertIsNone(bob.photo)
-            bill.cw_clear_all_caches()
-            self.assertIsNone(bill.photo)
-            storages.unset_attribute_storage(self.repo, 'Personne', 'photo')
+            with TemporaryDirectory() as tempdir:
+                bfs_storage = storages.BytesFileSystemStorage(tempdir)
+                storages.set_attribute_storage(self.repo, 'Personne', 'photo', bfs_storage)
+                mh.cmd_storage_changed('Personne', 'photo')
+                bob = mh.cmd_create_entity('Personne', nom=u'bob')
+                bffss_dir_content = os.listdir(tempdir)
+                self.assertEqual(len(bffss_dir_content), 1)
+                john.cw_clear_all_caches()
+                self.assertEqual(john.photo.getvalue(),
+                                 osp.join(tempdir,
+                                          bffss_dir_content[0]).encode('utf8'))
+                bob.cw_clear_all_caches()
+                self.assertIsNone(bob.photo)
+                bill.cw_clear_all_caches()
+                self.assertIsNone(bill.photo)
+                storages.unset_attribute_storage(self.repo, 'Personne', 'photo')
 
 
 class MigrationCommandsComputedTC(MigrationTC):

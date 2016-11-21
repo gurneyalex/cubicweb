@@ -27,16 +27,8 @@ import sys
 import shutil
 from os.path import dirname, exists, isdir, join
 
-try:
-    if os.environ.get('NO_SETUPTOOLS'):
-        raise ImportError() # do as there is no setuptools
-    from setuptools import setup
-    from setuptools.command import install_lib
-    USE_SETUPTOOLS = True
-except ImportError:
-    from distutils.core import setup
-    from distutils.command import install_lib
-    USE_SETUPTOOLS = False
+from setuptools import setup
+from setuptools.command import develop, install_lib
 from distutils.command import install_data
 
 here = dirname(__file__)
@@ -58,21 +50,11 @@ with io.open('README', encoding='utf-8') as f:
     long_description = f.read()
 
 # import optional features
-if USE_SETUPTOOLS:
-    requires = {}
-    for entry in ("__depends__",): # "__recommends__"):
-        requires.update(__pkginfo__.get(entry, {}))
-    install_requires = [("%s %s" % (d, v and v or "")).strip()
-                       for d, v in requires.items()]
-else:
-    install_requires = []
-
-distname = __pkginfo__.get('distname', modname)
-scripts = __pkginfo__.get('scripts', ())
-include_dirs = __pkginfo__.get('include_dirs', ())
-data_files = __pkginfo__.get('data_files', None)
-ext_modules = __pkginfo__.get('ext_modules', None)
-package_data = __pkginfo__.get('package_data', {})
+distname = __pkginfo__['distname']
+scripts = __pkginfo__['scripts']
+include_dirs = __pkginfo__['include_dirs']
+data_files = __pkginfo__['data_files']
+package_data = __pkginfo__['package_data']
 
 BASE_BLACKLIST = ('CVS', 'dist', 'build', '__buildlog')
 IGNORED_EXTENSIONS = ('.pyc', '.pyo', '.elc')
@@ -178,58 +160,110 @@ class MyInstallData(install_data.install_data):
         ini.write('# Cubicweb cubes directory\n')
         ini.close()
 
+
+class CWDevelop(develop.develop):
+    """Custom "develop" command warning about (legacy) cubes directory not
+    installed.
+    """
+
+    def run(self):
+        cubespath = join(sys.prefix, 'share', 'cubicweb', 'cubes')
+        self.warn('develop command does not install (legacy) cubes directory (%s)'
+                  % cubespath)
+        return develop.develop.run(self)
+
+
 # re-enable copying data files in sys.prefix
-if USE_SETUPTOOLS:
-    # overwrite MyInstallData to use sys.prefix instead of the egg directory
-    MyInstallMoreData = MyInstallData
-    class MyInstallData(MyInstallMoreData): # pylint: disable=E0102
-        """A class that manages data files installation"""
-        def run(self):
-            _old_install_dir = self.install_dir
-            if self.install_dir.endswith('egg'):
-                self.install_dir = sys.prefix
-            MyInstallMoreData.run(self)
-            self.install_dir = _old_install_dir
-    try:
-        import setuptools.command.easy_install # only if easy_install available
-        # monkey patch: Crack SandboxViolation verification
-        from setuptools.sandbox import DirectorySandbox as DS
-        old_ok = DS._ok
-        def _ok(self, path):
-            """Return True if ``path`` can be written during installation."""
-            out = old_ok(self, path) # here for side effect from setuptools
-            realpath = os.path.normcase(os.path.realpath(path))
-            allowed_path = os.path.normcase(sys.prefix)
-            if realpath.startswith(allowed_path):
-                out = True
-            return out
-        DS._ok = _ok
-    except ImportError:
-        pass
+# overwrite MyInstallData to use sys.prefix instead of the egg directory
+MyInstallMoreData = MyInstallData
+class MyInstallData(MyInstallMoreData): # pylint: disable=E0102
+    """A class that manages data files installation"""
+    def run(self):
+        _old_install_dir = self.install_dir
+        if self.install_dir.endswith('egg'):
+            self.install_dir = sys.prefix
+        MyInstallMoreData.run(self)
+        self.install_dir = _old_install_dir
+try:
+    import setuptools.command.easy_install # only if easy_install available
+    # monkey patch: Crack SandboxViolation verification
+    from setuptools.sandbox import DirectorySandbox as DS
+    old_ok = DS._ok
+    def _ok(self, path):
+        """Return True if ``path`` can be written during installation."""
+        out = old_ok(self, path) # here for side effect from setuptools
+        realpath = os.path.normcase(os.path.realpath(path))
+        allowed_path = os.path.normcase(sys.prefix)
+        if realpath.startswith(allowed_path):
+            out = True
+        return out
+    DS._ok = _ok
+except ImportError:
+    pass
 
-def install(**kwargs):
-    """setup entry point"""
-    if USE_SETUPTOOLS:
-        if '--force-manifest' in sys.argv:
-            sys.argv.remove('--force-manifest')
-    # install-layout option was introduced in 2.5.3-1~exp1
-    elif sys.version_info < (2, 5, 4) and '--install-layout=deb' in sys.argv:
-        sys.argv.remove('--install-layout=deb')
-    packages = [modname] + get_packages(join(here, modname), modname)
-    if USE_SETUPTOOLS:
-        kwargs['install_requires'] = install_requires
-        kwargs['zip_safe'] = False
-    kwargs['packages'] = packages
-    kwargs['package_data'] = package_data
-    return setup(name=distname, version=version, license=license, url=web,
-                 description=description, long_description=long_description,
-                 author=author, author_email=author_email,
-                 scripts=ensure_scripts(scripts), data_files=data_files,
-                 ext_modules=ext_modules,
-                 cmdclass={'install_lib': MyInstallLib,
-                           'install_data': MyInstallData},
-                 **kwargs
-                 )
 
-if __name__ == '__main__' :
-    install()
+setup(
+    name=distname,
+    version=version,
+    license=license,
+    url=web,
+    description=description,
+    long_description=long_description,
+    author=author,
+    author_email=author_email,
+    packages=[modname] + get_packages(join(here, modname), modname),
+    package_data=package_data,
+    scripts=ensure_scripts(scripts),
+    data_files=data_files,
+    install_requires=[
+        'six >= 1.4.0',
+        'logilab-common >= 1.2.2',
+        'logilab-mtconverter >= 0.8.0',
+        'rql >= 0.34.0',
+        'yams >= 0.44.0',
+        'lxml',
+        'logilab-database >= 1.15.0',
+        'passlib',
+        'pytz',
+        'Markdown',
+        'unittest2 >= 0.7.0',
+    ],
+    extras_require={
+        'captcha': [
+            'Pillow',
+        ],
+        'crypto': [
+            'pycrypto',
+        ],
+        'etwist': [
+            'Twisted < 16.0.0',
+        ],
+        'ext': [
+            'docutils >= 0.6',
+        ],
+        'ical': [
+            'vobject >= 0.6.0',
+        ],
+        'pyramid': [
+            'pyramid >= 1.5.0',
+            'waitress >= 0.8.9',
+            'wsgicors >= 0.3',
+            'pyramid_multiauth',
+        ],
+        'rdf': [
+            'rdflib',
+        ],
+        'sparql': [
+            'fyzz >= 0.1.0',
+        ],
+        'zmq': [
+            'pyzmq',
+        ],
+    },
+    cmdclass={
+        'install_lib': MyInstallLib,
+        'install_data': MyInstallData,
+        'develop': CWDevelop,
+    },
+    zip_safe=False,
+)

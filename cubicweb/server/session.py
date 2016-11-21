@@ -16,9 +16,8 @@
 # You should have received a copy of the GNU Lesser General Public License along
 # with CubicWeb.  If not, see <http://www.gnu.org/licenses/>.
 """Repository users' and internal' sessions."""
-from __future__ import print_function
 
-__docformat__ = "restructuredtext en"
+from __future__ import print_function
 
 import functools
 import sys
@@ -169,6 +168,7 @@ class _security_enabled(object):
         if self.oldwrite is not None:
             self.cnx.write_security = self.oldwrite
 
+
 HOOKS_ALLOW_ALL = object()
 HOOKS_DENY_ALL = object()
 DEFAULT_SECURITY = object()  # evaluated to true by design
@@ -305,7 +305,6 @@ class Connection(RequestSessionBase):
         # other session utility
         if session.user.login == '__internal_manager__':
             self.user = session.user
-            self.set_language(self.user.prefered_language())
         else:
             self._set_user(session.user)
 
@@ -382,9 +381,11 @@ class Connection(RequestSessionBase):
     # life cycle handling ####################################################
 
     def __enter__(self):
-        assert self._open is None  # first opening
+        assert not self._open
         self._open = True
         self.cnxset = self.repo._get_cnxset()
+        if self.lang is None:
+            self.set_language(self.user.prefered_language())
         return self
 
     def __exit__(self, exctype=None, excvalue=None, tb=None):
@@ -607,7 +608,7 @@ class Connection(RequestSessionBase):
             rset.rows.append([targeteid])
             if not isinstance(rset.description, list):  # else description not set
                 rset.description = list(rset.description)
-            rset.description.append([self.entity_metas(targeteid)['type']])
+            rset.description.append([self.entity_type(targeteid)])
             targetentity = self.entity_from_eid(targeteid)
             if targetentity.cw_rset is None:
                 targetentity.cw_rset = rset
@@ -780,22 +781,16 @@ class Connection(RequestSessionBase):
     def source_defs(self):
         return self.repo.source_defs()
 
-    @deprecated('[3.19] use .entity_metas(eid) instead')
     @_open_only
-    def describe(self, eid, asdict=False):
-        """return a tuple (type, sourceuri, extid) for the entity with id <eid>"""
-        etype, extid, source = self.repo.type_and_source_from_eid(eid, self)
-        metas = {'type': etype, 'source': source, 'extid': extid}
-        if asdict:
-            metas['asource'] = metas['source']  # XXX pre 3.19 client compat
-            return metas
-        return etype, source, extid
+    def entity_type(self, eid):
+        """Return entity type for the entity with id `eid`."""
+        return self.repo.type_from_eid(eid, self)
 
+    @deprecated('[3.24] use entity_type(eid) instead')
     @_open_only
     def entity_metas(self, eid):
-        """return a tuple (type, sourceuri, extid) for the entity with id <eid>"""
-        etype, extid, source = self.repo.type_and_source_from_eid(eid, self)
-        return {'type': etype, 'source': source, 'extid': extid}
+        """Return a dictionary {type}) for the entity with id `eid`."""
+        return {'type': self.repo.type_from_eid(eid, self)}
 
     # core method #############################################################
 
@@ -953,10 +948,8 @@ class Connection(RequestSessionBase):
 
     @_open_only
     def rtype_eids_rdef(self, rtype, eidfrom, eidto):
-        # use type_and_source_from_eid instead of type_from_eid for optimization
-        # (avoid two extra methods call)
-        subjtype = self.repo.type_and_source_from_eid(eidfrom, self)[0]
-        objtype = self.repo.type_and_source_from_eid(eidto, self)[0]
+        subjtype = self.repo.type_from_eid(eidfrom, self)
+        objtype = self.repo.type_from_eid(eidto, self)
         return self.vreg.schema.rschema(rtype).rdefs[(subjtype, objtype)]
 
 

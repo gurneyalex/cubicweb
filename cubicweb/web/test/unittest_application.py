@@ -216,6 +216,90 @@ class ApplicationTC(CubicWebTC):
                              {'login-subject': 'required field'})
             self.assertEqual(forminfo['values'], req.form)
 
+    def test_handle_request_with_lang_fromurl(self):
+        """No language negociation, get language from URL."""
+        self.config.global_set_option('language-mode', 'url-prefix')
+        req, origsession = self.init_authentication('http')
+        self.assertEqual(req.url(), 'http://testing.fr/cubicweb/login')
+        self.assertEqual(req.lang, 'en')
+        self.app.handle_request(req)
+        newreq = self.requestcls(req.vreg, url='fr/toto')
+        self.assertEqual(newreq.lang, 'en')
+        self.assertEqual(newreq.url(), 'http://testing.fr/cubicweb/fr/toto')
+        self.app.handle_request(newreq)
+        self.assertEqual(newreq.lang, 'fr')
+        self.assertEqual(newreq.url(), 'http://testing.fr/cubicweb/fr/toto')
+        # unknown language
+        newreq = self.requestcls(req.vreg, url='unknown-lang/cwuser')
+        result = self.app.handle_request(newreq)
+        self.assertEqual(newreq.lang, 'en')
+        self.assertEqual(newreq.url(), 'http://testing.fr/cubicweb/unknown-lang/cwuser')
+        self.assertIn('this resource does not exist',
+                      result.decode('ascii', errors='ignore'))
+        # no prefix
+        newreq = self.requestcls(req.vreg, url='cwuser')
+        result = self.app.handle_request(newreq)
+        self.assertEqual(newreq.lang, 'en')
+        self.assertEqual(newreq.url(), 'http://testing.fr/cubicweb/cwuser')
+        self.assertNotIn('this resource does not exist',
+                         result.decode('ascii', errors='ignore'))
+
+    def test_handle_request_with_lang_negotiated(self):
+        """Language negociated, normal case."""
+        self.config.global_set_option('language-mode', 'http-negotiation')
+        orig_translations = self.config.translations.copy()
+        self.config.translations = {
+            'fr': (text_type, lambda x, y: text_type(y)),
+            'en': (text_type, lambda x, y: text_type(y))}
+        try:
+            headers = {'Accept-Language': 'fr'}
+            with self.admin_access.web_request(headers=headers) as req:
+                self.app.handle_request(req)
+            self.assertEqual(req.lang, 'fr')
+        finally:
+            self.config.translations = orig_translations
+
+    def test_handle_request_with_lang_negotiated_prefix_in_url(self):
+        """Language negociated, unexpected language prefix in URL."""
+        self.config.global_set_option('language-mode', 'http-negotiation')
+        with self.admin_access.web_request(url='fr/toto') as req:
+            result = self.app.handle_request(req)
+        self.assertIn('this resource does not exist',  # NotFound.
+                      result.decode('ascii', errors='ignore'))
+
+    def test_handle_request_no_lang_negotiation_fixed_language(self):
+        """No language negociation, "ui.language" fixed."""
+        self.config.global_set_option('language-mode', '')
+        vreg = self.app.vreg
+        self.assertEqual(vreg.property_value('ui.language'), 'en')
+        props = []
+        try:
+            with self.admin_access.cnx() as cnx:
+                props.append(cnx.create_entity('CWProperty', value=u'de',
+                                               pkey=u'ui.language').eid)
+                cnx.commit()
+            self.assertEqual(vreg.property_value('ui.language'), 'de')
+            headers = {'Accept-Language': 'fr'}  # should not have any effect.
+            with self.admin_access.web_request(headers=headers) as req:
+                self.app.handle_request(req)
+            # user has no "ui.language" property, getting site's default.
+            self.assertEqual(req.lang, 'de')
+            # XXX The following should work, but nasty handling of session and
+            # request user make it fail...
+            # with self.admin_access.cnx() as cnx:
+            #     props.append(cnx.create_entity('CWProperty', value=u'es',
+            #                                    pkey=u'ui.language',
+            #                                    for_user=cnx.user).eid)
+            #     cnx.commit()
+            # with self.admin_access.web_request(headers=headers) as req:
+            #     result = self.app.handle_request(req)
+            # self.assertEqual(req.lang, 'es')
+        finally:
+            with self.admin_access.cnx() as cnx:
+                for peid in props:
+                    cnx.entity_from_eid(peid).cw_delete()
+                cnx.commit()
+
     def test_validation_error_dont_loose_subentity_data_repo(self):
         """test creation of two linked entities
 
@@ -510,15 +594,15 @@ class ApplicationTC(CubicWebTC):
 
         with self.temporary_appobjects(ErrorAjaxView):
             with real_error_handling(self.app) as app:
-                with self.admin_access.web_request(vid='test.ajax.error') as req:
+                with self.admin_access.web_request(vid='test.ajax.error', url='') as req:
                     req.ajax_request = True
-                    app.handle_request(req, '')
+                    app.handle_request(req)
         self.assertEqual(http_client.INTERNAL_SERVER_ERROR,
                          req.status_out)
 
     def _test_cleaned(self, kwargs, injected, cleaned):
         with self.admin_access.web_request(**kwargs) as req:
-            page = self.app_handle_request(req, 'view')
+            page = self.app_handle_request(req)
             self.assertNotIn(injected.encode('ascii'), page)
             self.assertIn(cleaned.encode('ascii'), page)
 
@@ -556,20 +640,21 @@ class ApplicationTC(CubicWebTC):
     def test_http_auth_no_anon(self):
         req, origsession = self.init_authentication('http')
         self.assertAuthFailure(req)
-        self.app.handle_request(req, 'login')
+        self.app.handle_request(req)
         self.assertEqual(401, req.status_out)
         clear_cache(req, 'get_authorization')
         authstr = base64.encodestring(('%s:%s' % (self.admlogin, self.admpassword)).encode('ascii'))
         req.set_request_header('Authorization', 'basic %s' % authstr.decode('ascii'))
         self.assertAuthSuccess(req, origsession)
-        self.assertRaises(LogOut, self.app_handle_request, req, 'logout')
+        req._url = 'logout'
+        self.assertRaises(LogOut, self.app_handle_request, req)
         self.assertEqual(len(self.open_sessions), 0)
 
     def test_cookie_auth_no_anon(self):
         req, origsession = self.init_authentication('cookie')
         self.assertAuthFailure(req)
         try:
-            form = self.app.handle_request(req, 'login')
+            form = self.app.handle_request(req)
         except Redirect:
             self.fail('anonymous user should get login form')
         clear_cache(req, 'get_authorization')
@@ -579,7 +664,8 @@ class ApplicationTC(CubicWebTC):
         req.form['__login'] = self.admlogin
         req.form['__password'] = self.admpassword
         self.assertAuthSuccess(req, origsession)
-        self.assertRaises(LogOut, self.app_handle_request, req, 'logout')
+        req._url = 'logout'
+        self.assertRaises(LogOut, self.app_handle_request, req)
         self.assertEqual(len(self.open_sessions), 0)
 
     def test_login_by_email(self):
@@ -594,7 +680,8 @@ class ApplicationTC(CubicWebTC):
         req.form['__login'] = address
         req.form['__password'] = self.admpassword
         self.assertAuthSuccess(req, origsession)
-        self.assertRaises(LogOut, self.app_handle_request, req, 'logout')
+        req._url = 'logout'
+        self.assertRaises(LogOut, self.app_handle_request, req)
         self.assertEqual(len(self.open_sessions), 0)
 
     def _reset_cookie(self, req):
@@ -610,7 +697,9 @@ class ApplicationTC(CubicWebTC):
     def _test_auth_anon(self, req):
         asession = self.app.get_session(req)
         # important otherwise _reset_cookie will not use the right session
-        req.set_cnx(repoapi.Connection(asession))
+        cnx = asession.new_cnx()
+        with cnx:
+            req.set_cnx(cnx)
         self.assertEqual(len(self.open_sessions), 1)
         self.assertEqual(asession.login, 'anon')
         self.assertTrue(asession.anonymous_session)
@@ -619,8 +708,10 @@ class ApplicationTC(CubicWebTC):
     def _test_anon_auth_fail(self, req):
         self.assertEqual(1, len(self.open_sessions))
         session = self.app.get_session(req)
-        # important otherwise _reset_cookie will not use the right session
-        req.set_cnx(repoapi.Connection(session))
+        cnx = session.new_cnx()
+        with cnx:
+            # important otherwise _reset_cookie will not use the right session
+            req.set_cnx(cnx)
         self.assertEqual(req.message, 'authentication failure')
         self.assertEqual(req.session.anonymous_session, True)
         self.assertEqual(1, len(self.open_sessions))
@@ -635,7 +726,8 @@ class ApplicationTC(CubicWebTC):
         authstr = base64.encodestring(('%s:%s' % (self.admlogin, self.admpassword)).encode('ascii'))
         req.set_request_header('Authorization', 'basic %s' % authstr.decode('ascii'))
         self.assertAuthSuccess(req, origsession)
-        self.assertRaises(LogOut, self.app_handle_request, req, 'logout')
+        req._url = 'logout'
+        self.assertRaises(LogOut, self.app_handle_request, req)
         self.assertEqual(len(self.open_sessions), 0)
 
     def test_cookie_auth_anon_allowed(self):
@@ -647,7 +739,8 @@ class ApplicationTC(CubicWebTC):
         req.form['__login'] = self.admlogin
         req.form['__password'] = self.admpassword
         self.assertAuthSuccess(req, origsession)
-        self.assertRaises(LogOut, self.app_handle_request, req, 'logout')
+        req._url = 'logout'
+        self.assertRaises(LogOut, self.app_handle_request, req)
         self.assertEqual(0, len(self.open_sessions))
 
     def test_anonymized_request(self):
@@ -667,6 +760,18 @@ class ApplicationTC(CubicWebTC):
             # expect a rset with None in [0][0]
             req.form['rql'] = 'rql:Any OV1, X WHERE X custom_workflow OV1?'
             self.app_handle_request(req)
+
+    def test_handle_deprecation(self):
+        """Test deprecation warning for *_handle methods."""
+        with self.admin_access.web_request(url='foo') as req:
+            with self.assertWarns(DeprecationWarning) as cm:
+                self.app.core_handle(req, 'foo')
+            self.assertIn('path argument got removed from "core_handle"',
+                          str(cm.warning))
+            with self.assertWarns(DeprecationWarning) as cm:
+                self.app.main_handle_request('foo', req)
+            self.assertIn('entry point arguments are now (req, path)',
+                          str(cm.warning))
 
 
 if __name__ == '__main__':
