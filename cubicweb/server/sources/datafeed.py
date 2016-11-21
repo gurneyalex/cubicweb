@@ -24,7 +24,6 @@ from os.path import exists
 from datetime import datetime, timedelta
 from functools import partial
 
-from six import text_type
 from six.moves.urllib.parse import urlparse
 from six.moves.urllib.request import Request, build_opener, HTTPCookieProcessor
 from six.moves.urllib.error import HTTPError
@@ -35,8 +34,7 @@ from lxml import etree
 
 from logilab.common.deprecation import deprecated
 
-from cubicweb import RegistryNotFound, ObjectNotFound, ValidationError, UnknownEid, SourceException
-from cubicweb.server.repository import preprocess_inlined_relations
+from cubicweb import ObjectNotFound, ValidationError, SourceException
 from cubicweb.server.sources import AbstractSource
 from cubicweb.appobject import AppObject
 
@@ -75,7 +73,8 @@ class DataFeedSource(AbstractSource):
          {'type' : 'yn',
           'default': False,
           'help': ('Should already imported entities not found anymore on the '
-                   'external source be deleted?'),
+                   'external source be deleted? Handling of this parameter '
+                   "will depend on source's parser."),
           'group': 'datafeed-source', 'level': 2,
           }),
         ('logs-lifetime',
@@ -131,7 +130,6 @@ class DataFeedSource(AbstractSource):
     def init(self, activated, source_entity):
         super(DataFeedSource, self).init(activated, source_entity)
         self.parser_id = source_entity.parser
-        self.load_mapping(source_entity._cw)
 
     def _get_parser(self, cnx, **kwargs):
         if self.parser_id is None:
@@ -139,27 +137,6 @@ class DataFeedSource(AbstractSource):
             raise ObjectNotFound()
         return self.repo.vreg['parsers'].select(
             self.parser_id, cnx, source=self, **kwargs)
-
-    def load_mapping(self, cnx):
-        self.mapping = {}
-        self.mapping_idx = {}
-        try:
-            parser = self._get_parser(cnx)
-        except (RegistryNotFound, ObjectNotFound):
-            return # no parser yet, don't go further
-        self._load_mapping(cnx, parser=parser)
-
-    def add_schema_config(self, schemacfg, checkonly=False, parser=None):
-        """added CWSourceSchemaConfig, modify mapping accordingly"""
-        if parser is None:
-            parser = self._get_parser(schemacfg._cw)
-        parser.add_schema_config(schemacfg, checkonly)
-
-    def del_schema_config(self, schemacfg, checkonly=False, parser=None):
-        """deleted CWSourceSchemaConfig, modify mapping accordingly"""
-        if parser is None:
-            parser = self._get_parser(schemacfg._cw)
-        parser.del_schema_config(schemacfg, checkonly)
 
     def fresh(self):
         if self.latest_retrieval is None:
@@ -232,19 +209,18 @@ class DataFeedSource(AbstractSource):
 
     def _pull_data(self, cnx, force=False, raise_on_error=False, import_log_eid=None):
         importlog = self.init_import_log(cnx, import_log_eid)
-        source_uris = self.source_uris(cnx)
         try:
-            parser = self._get_parser(cnx, import_log=importlog,
-                                      source_uris=source_uris,
-                                      moved_uris=self.moved_uris(cnx))
+            parser = self._get_parser(cnx, import_log=importlog)
         except ObjectNotFound:
-            return {}
-        if parser.process_urls(self.urls, raise_on_error):
-            self.warning("some error occurred, don't attempt to delete entities")
+            msg = 'failed to load parser for %s'
+            importlog.record_error(msg % ('source "%s"' % self.uri))
+            self.error(msg, self)
+            stats = {}
         else:
-            parser.handle_deletion(self.config, cnx, source_uris)
+            if parser.process_urls(self.urls, raise_on_error):
+                self.warning("some error occurred, don't attempt to delete entities")
+            stats = parser.stats
         self.update_latest_retrieval(cnx)
-        stats = parser.stats
         if stats.get('created'):
             importlog.record_info('added %s entities' % len(stats['created']))
         if stats.get('updated'):
@@ -252,51 +228,6 @@ class DataFeedSource(AbstractSource):
         importlog.write_log(cnx, end_timestamp=self.latest_retrieval)
         cnx.commit()
         return stats
-
-    @deprecated('[3.21] use the new store API')
-    def before_entity_insertion(self, cnx, lid, etype, eid, sourceparams):
-        """called by the repository when an eid has been attributed for an
-        entity stored here but the entity has not been inserted in the system
-        table yet.
-
-        This method must return the an Entity instance representation of this
-        entity.
-        """
-        entity = super(DataFeedSource, self).before_entity_insertion(
-            cnx, lid, etype, eid, sourceparams)
-        entity.cw_edited['cwuri'] = lid.decode('utf-8')
-        entity.cw_edited.set_defaults()
-        sourceparams['parser'].before_entity_copy(entity, sourceparams)
-        return entity
-
-    @deprecated('[3.21] use the new store API')
-    def after_entity_insertion(self, cnx, lid, entity, sourceparams):
-        """called by the repository after an entity stored here has been
-        inserted in the system table.
-        """
-        relations = preprocess_inlined_relations(cnx, entity)
-        if cnx.is_hook_category_activated('integrity'):
-            entity.cw_edited.check(creation=True)
-        self.repo.system_source.add_entity(cnx, entity)
-        entity.cw_edited.saved = entity._cw_is_saved = True
-        sourceparams['parser'].after_entity_copy(entity, sourceparams)
-        # call hooks for inlined relations
-        call_hooks = self.repo.hm.call_hooks
-        if self.should_call_hooks:
-            for attr, value in relations:
-                call_hooks('before_add_relation', cnx,
-                           eidfrom=entity.eid, rtype=attr, eidto=value)
-                call_hooks('after_add_relation', cnx,
-                           eidfrom=entity.eid, rtype=attr, eidto=value)
-
-    def source_uris(self, cnx):
-        sql = 'SELECT extid, eid, type FROM entities WHERE asource=%(source)s'
-        return dict((self.decode_extid(uri), (eid, type))
-                    for uri, eid, type in cnx.system_sql(sql, {'source': self.uri}).fetchall())
-
-    def moved_uris(self, cnx):
-        sql = 'SELECT extid FROM moved_entities'
-        return set(self.decode_extid(uri) for uri, in cnx.system_sql(sql).fetchall())
 
     def init_import_log(self, cnx, import_log_eid=None, **kwargs):
         if import_log_eid is None:
@@ -314,16 +245,10 @@ class DataFeedSource(AbstractSource):
 class DataFeedParser(AppObject):
     __registry__ = 'parsers'
 
-    def __init__(self, cnx, source, import_log=None, source_uris=None, moved_uris=None):
+    def __init__(self, cnx, source, import_log=None):
         super(DataFeedParser, self).__init__(cnx)
         self.source = source
         self.import_log = import_log
-        if source_uris is None:
-            source_uris = {}
-        self.source_uris = source_uris
-        if moved_uris is None:
-            moved_uris = ()
-        self.moved_uris = moved_uris
         self.stats = {'created': set(), 'updated': set(), 'checked': set()}
 
     def normalize_url(self, url):
@@ -383,62 +308,6 @@ class DataFeedParser(AppObject):
         # url is probably plain content
         return URLLibResponseAdapter(BytesIO(url.encode('ascii')), url)
 
-    def add_schema_config(self, schemacfg, checkonly=False):
-        """added CWSourceSchemaConfig, modify mapping accordingly"""
-        msg = schemacfg._cw._("this parser doesn't use a mapping")
-        raise ValidationError(schemacfg.eid, {None: msg})
-
-    def del_schema_config(self, schemacfg, checkonly=False):
-        """deleted CWSourceSchemaConfig, modify mapping accordingly"""
-        msg = schemacfg._cw._("this parser doesn't use a mapping")
-        raise ValidationError(schemacfg.eid, {None: msg})
-
-    @deprecated('[3.21] use the new store API')
-    def extid2entity(self, uri, etype, **sourceparams):
-        """Return an entity for the given uri. May return None if it should be
-        skipped.
-
-        If a `raise_on_error` keyword parameter is passed, a ValidationError
-        exception may be raised.
-        """
-        raise_on_error = sourceparams.pop('raise_on_error', False)
-        cnx = self._cw
-        # if cwsource is specified and repository has a source with the same
-        # name, call extid2eid on that source so entity will be properly seen as
-        # coming from this source
-        source_uri = sourceparams.pop('cwsource', None)
-        if source_uri is not None and source_uri != 'system':
-            source = cnx.repo.sources_by_uri.get(source_uri, self.source)
-        else:
-            source = self.source
-        sourceparams['parser'] = self
-        if isinstance(uri, text_type):
-            uri = uri.encode('utf-8')
-        try:
-            eid = cnx.repo.extid2eid(source, uri, etype, cnx,
-                                     sourceparams=sourceparams)
-        except ValidationError as ex:
-            if raise_on_error:
-                raise
-            self.source.critical('error while creating %s: %s', etype, ex)
-            self.import_log.record_error('error while creating %s: %s'
-                                         % (etype, ex))
-            return None
-        if eid < 0:
-            # entity has been moved away from its original source
-            #
-            # Don't give etype to entity_from_eid so we get UnknownEid if the
-            # entity has been removed
-            try:
-                entity = cnx.entity_from_eid(-eid)
-            except UnknownEid:
-                return None
-            self.notify_updated(entity)  # avoid later update from the source's data
-            return entity
-        if self.source_uris is not None:
-            self.source_uris.pop(str(uri), None)
-        return cnx.entity_from_eid(eid, etype)
-
     def process_urls(self, urls, raise_on_error=False):
         error = False
         for url in urls:
@@ -466,14 +335,6 @@ class DataFeedParser(AppObject):
         """main callback: process the url"""
         raise NotImplementedError
 
-    @deprecated('[3.21] use the new store API')
-    def before_entity_copy(self, entity, sourceparams):
-        raise NotImplementedError
-
-    @deprecated('[3.21] use the new store API')
-    def after_entity_copy(self, entity, sourceparams):
-        self.stats['created'].add(entity.eid)
-
     def created_during_pull(self, entity):
         return entity.eid in self.stats['created']
 
@@ -492,18 +353,6 @@ class DataFeedParser(AppObject):
         stuff in sub-classes.
         """
         return True
-
-    def handle_deletion(self, config, cnx, source_uris):
-        if config['delete-entities'] and source_uris:
-            byetype = {}
-            for extid, (eid, etype) in source_uris.items():
-                if self.is_deleted(extid, etype, eid):
-                    byetype.setdefault(etype, []).append(str(eid))
-            for etype, eids in byetype.items():
-                self.warning('delete %s %s entities', len(eids), etype)
-                cnx.execute('DELETE %s X WHERE X eid IN (%s)'
-                            % (etype, ','.join(eids)))
-            cnx.commit()
 
     def update_if_necessary(self, entity, attrs):
         entity.complete(tuple(attrs))

@@ -1,4 +1,4 @@
-# copyright 2003-2014 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2016 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -250,9 +250,6 @@ Hooks and operations classes
 """
 from __future__ import print_function
 
-__docformat__ = "restructuredtext en"
-
-from warnings import warn
 from logging import getLogger
 from itertools import chain
 
@@ -267,6 +264,7 @@ from cubicweb.cwvreg import CWRegistry, CWRegistryStore
 from cubicweb.predicates import ExpectedValuePredicate, is_instance
 from cubicweb.appobject import AppObject
 
+
 ENTITIES_HOOKS = set(('before_add_entity',    'after_add_entity',
                       'before_update_entity', 'after_update_entity',
                       'before_delete_entity', 'after_delete_entity'))
@@ -276,7 +274,9 @@ SYSTEM_HOOKS = set(('server_backup', 'server_restore',
                     'server_startup', 'server_maintenance',
                     'server_shutdown', 'before_server_shutdown',
                     'session_open', 'session_close'))
+
 ALL_HOOKS = ENTITIES_HOOKS | RELATIONS_HOOKS | SYSTEM_HOOKS
+
 
 def _iter_kwargs(entities, eids_from_to, kwargs):
     if not entities and not eids_from_to:
@@ -463,10 +463,10 @@ class match_rtype(ExpectedValuePredicate):
         if kwargs.get('rtype') not in self.expected:
             return 0
         if self.frometypes is not None and \
-               req.entity_metas(kwargs['eidfrom'])['type'] not in self.frometypes:
+               req.entity_type(kwargs['eidfrom']) not in self.frometypes:
             return 0
         if self.toetypes is not None and \
-               req.entity_metas(kwargs['eidto'])['type'] not in self.toetypes:
+               req.entity_type(kwargs['eidto']) not in self.toetypes:
             return 0
         return 1
 
@@ -607,7 +607,7 @@ class PropagateRelationHook(Hook):
     def __call__(self):
         assert self.main_rtype
         for eid in (self.eidfrom, self.eidto):
-            etype = self._cw.entity_metas(eid)['type']
+            etype = self._cw.entity_type(eid)
             if self.main_rtype not in self._cw.vreg.schema.eschema(etype).subjrels:
                 return
         if self.rtype in self.subject_relations:
@@ -643,7 +643,7 @@ class PropagateRelationAddHook(Hook):
     skip_object_relations = ()
 
     def __call__(self):
-        eschema = self._cw.vreg.schema.eschema(self._cw.entity_metas(self.eidfrom)['type'])
+        eschema = self._cw.vreg.schema.eschema(self._cw.entity_type(self.eidfrom))
         execute = self._cw.execute
         for rel in self.subject_relations:
             if rel in eschema.subjrels and not rel in self.skip_subject_relations:
@@ -667,7 +667,7 @@ class PropagateRelationDelHook(PropagateRelationAddHook):
     events = ('after_delete_relation',)
 
     def __call__(self):
-        eschema = self._cw.vreg.schema.eschema(self._cw.entity_metas(self.eidfrom)['type'])
+        eschema = self._cw.vreg.schema.eschema(self._cw.entity_type(self.eidfrom))
         execute = self._cw.execute
         for rel in self.subject_relations:
             if rel in eschema.subjrels and not rel in self.skip_subject_relations:

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# copyright 2003-2015 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2016 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -248,7 +248,6 @@ class ISerializableTC(CubicWebTC):
             serializer = entity.cw_adapt_to('ISerializable')
             expected = {
                 'cw_etype': u'CWGroup',
-                'cw_source': 'system',
                 'eid': entity.eid,
                 'cwuri': u'http://testing.fr/cubicweb/%s' % entity.eid,
                 'creation_date': entity.creation_date,

@@ -50,7 +50,6 @@ class RQLObjectStoreTC(CubicWebTC):
             self.assertEqual(user.created_by[0].eid, cnx.user.eid)
             self.assertEqual(user.owned_by[0].eid, cnx.user.eid)
             self.assertEqual(user.cw_source[0].name, self.source_name)
-            self.assertEqual(cnx.describe(user.eid), ('CWUser', self.source_name, self.user_extid))
             groups = cnx.execute('CWGroup X WHERE U in_group X, U login "lgn"')
             self.assertEqual(group_eid, groups.one().eid)
             # Check data update
@@ -107,8 +106,7 @@ class MetaGeneratorTC(CubicWebTC):
             md = DT.datetime.now(pytz.utc) - DT.timedelta(days=1)
             entity, rels = metagen.base_etype_dicts('CWUser')
             entity.cw_edited.update(dict(modification_date=md))
-            with cnx.ensure_cnx_set:
-                metagen.init_entity(entity)
+            metagen.init_entity(entity)
             self.assertEqual(entity.cw_edited['modification_date'], md)
 
 
@@ -140,8 +138,7 @@ class MetadataGeneratorTC(CubicWebTC):
             md = DT.datetime.now(pytz.utc) - DT.timedelta(days=1)
             attrs = metagen.base_etype_attrs('CWUser')
             attrs.update(dict(modification_date=md))
-            with cnx.ensure_cnx_set:
-                metagen.init_entity_attrs('CWUser', 1, attrs)
+            metagen.init_entity_attrs('CWUser', 1, attrs)
             self.assertEqual(attrs['modification_date'], md)
 
 

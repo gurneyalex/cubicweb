@@ -17,8 +17,6 @@
 # with CubicWeb.  If not, see <http://www.gnu.org/licenses/>.
 """Base class for request/session"""
 
-__docformat__ = "restructuredtext en"
-
 from warnings import warn
 from datetime import time, datetime, timedelta
 
@@ -76,6 +74,7 @@ class RequestSessionBase(object):
         # should be emptied on commit/rollback of the server session / web
         # connection
         self.user = None
+        self.lang = None
         self.local_perm_cache = {}
         self._ = text_type
 
@@ -86,14 +85,10 @@ class RequestSessionBase(object):
         connection too.
         """
         rset = self.eid_rset(orig_user.eid, 'CWUser')
-        user_cls = self.vreg['etypes'].etype_class('CWUser')
-        user = user_cls(self, rset, row=0, groups=orig_user.groups,
-                        properties=orig_user.properties)
-        user.cw_attr_cache['login'] = orig_user.login # cache login
+        user = self.vreg['etypes'].etype_class('CWUser')(self, rset, row=0)
+        user.cw_attr_cache['login'] = orig_user.login  # cache login
         self.user = user
         self.set_entity_cache(user)
-        self.set_language(user.prefered_language())
-
 
     def set_language(self, lang):
         """install i18n configuration for `lang` translation.
@@ -101,7 +96,15 @@ class RequestSessionBase(object):
         Raises :exc:`KeyError` if translation doesn't exist.
         """
         self.lang = lang
-        gettext, pgettext = self.vreg.config.translations[lang]
+        try:
+            gettext, pgettext = self.vreg.config.translations[lang]
+        except KeyError:
+            assert self.vreg.config.mode == 'test'
+            gettext = text_type
+
+            def pgettext(x, y):
+                return text_type(y)
+
         # use _cw.__ to translate a message without registering it to the catalog
         self._ = self.__ = gettext
         self.pgettext = pgettext
@@ -138,7 +141,7 @@ class RequestSessionBase(object):
         """
         eid = int(eid)
         if etype is None:
-            etype = self.entity_metas(eid)['type']
+            etype = self.entity_type(eid)
         rset = ResultSet([(eid,)], 'Any X WHERE X eid %(x)s', {'x': eid},
                          [(etype,)])
         rset.req = self
@@ -294,14 +297,19 @@ class RequestSessionBase(object):
         if base_url is None:
             secure = kwargs.pop('__secure__', None)
             base_url = self.base_url(secure=secure)
+        path = self.build_url_path(method, kwargs)
+        if not kwargs:
+            return u'%s%s' % (base_url, path)
+        return u'%s%s?%s' % (base_url, path, self.build_url_params(**kwargs))
+
+    def build_url_path(self, method, kwargs):
+        """return the "path" part of an URL"""
         if '_restpath' in kwargs:
             assert method == 'view', repr(method)
             path = kwargs.pop('_restpath')
         else:
             path = method
-        if not kwargs:
-            return u'%s%s' % (base_url, path)
-        return u'%s%s?%s' % (base_url, path, self.build_url_params(**kwargs))
+        return path
 
     def build_url_params(self, **kwargs):
         """return encoded params to incorporate them in a URL"""
@@ -504,9 +512,3 @@ class RequestSessionBase(object):
         """
         url = self._base_url(secure=secure)
         return url if url is None else url.rstrip('/') + '/'
-
-    # abstract methods to override according to the web front-end #############
-
-    def describe(self, eid, asdict=False):
-        """return a tuple (type, sourceuri, extid) for the entity with id <eid>"""
-        raise NotImplementedError

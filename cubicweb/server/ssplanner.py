@@ -1,4 +1,4 @@
-# copyright 2003-2013 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2016 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -16,8 +16,6 @@
 # You should have received a copy of the GNU Lesser General Public License along
 # with CubicWeb.  If not, see <http://www.gnu.org/licenses/>.
 """plan execution of rql queries on a single source"""
-
-__docformat__ = "restructuredtext en"
 
 from six import text_type
 
@@ -92,7 +90,7 @@ def _extract_eid_consts(plan, rqlst):
                 # to be selected)
                 if checkread and eid not in neweids:
                     with cnx.security_enabled(read=False):
-                        eschema(cnx.entity_metas(eid)['type']).check_perm(
+                        eschema(cnx.entity_type(eid)).check_perm(
                             cnx, 'read', eid=eid)
                 eidconsts[lhs.variable] = eid
     return eidconsts

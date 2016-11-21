@@ -1,4 +1,4 @@
-# copyright 2003-2012 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2016 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -17,17 +17,15 @@
 # with CubicWeb.  If not, see <http://www.gnu.org/licenses/>.
 """core CubicWeb schema, but not necessary at bootstrap time"""
 
-__docformat__ = "restructuredtext en"
-from cubicweb import _
 
 from yams.buildobjs import (EntityType, RelationType, RelationDefinition,
-                            SubjectRelation,
-                            String, TZDatetime, Datetime, Password, Interval,
-                            Boolean, UniqueConstraint)
+                            SubjectRelation, String, Bytes, TZDatetime, Password)
+
+from cubicweb import _
 from cubicweb.schema import (
     RQLConstraint, WorkflowableEntityType, ERQLExpression, RRQLExpression,
-    PUB_SYSTEM_ENTITY_PERMS, PUB_SYSTEM_REL_PERMS, PUB_SYSTEM_ATTR_PERMS,
-    RO_ATTR_PERMS)
+    PUB_SYSTEM_REL_PERMS, PUB_SYSTEM_ATTR_PERMS, RO_ATTR_PERMS)
+
 
 class CWUser(WorkflowableEntityType):
     """define a CubicWeb user"""
@@ -321,6 +319,7 @@ class CWDataImport(EntityType):
                     default='in progress',
                     vocabulary=[_('in progress'), _('success'), _('failed')])
 
+
 class cw_import_of(RelationDefinition):
     __permissions__ = RELATION_MANAGERS_PERMISSIONS
     subject = 'CWDataImport'
@@ -328,33 +327,6 @@ class cw_import_of(RelationDefinition):
     cardinality = '1*'
     composite = 'object'
 
-
-class CWSourceSchemaConfig(EntityType):
-    __permissions__ = ENTITY_MANAGERS_PERMISSIONS
-    cw_for_source = SubjectRelation(
-        'CWSource', inlined=True, cardinality='1*', composite='object',
-        __permissions__=RELATION_MANAGERS_PERMISSIONS)
-    options = String(description=_('allowed options depends on the source type'))
-
-
-class rtype_cw_schema(RelationDefinition):
-    __permissions__ = RELATION_MANAGERS_PERMISSIONS
-    name = 'cw_schema'
-    subject = 'CWSourceSchemaConfig'
-    object = ('CWEType', 'CWRType')
-    inlined = True
-    cardinality = '1*'
-    composite = 'object'
-    constraints = [RQLConstraint('NOT O final TRUE')]
-
-class rdef_cw_schema(RelationDefinition):
-    __permissions__ = RELATION_MANAGERS_PERMISSIONS
-    name = 'cw_schema'
-    subject = 'CWSourceSchemaConfig'
-    object = 'CWRelation'
-    inlined = True
-    cardinality = '1*'
-    composite = 'object'
 
 # "abtract" relation types, no definition in cubicweb itself ###################
 
@@ -381,3 +353,17 @@ class see_also(RelationType):
         'add':    ('managers', RRQLExpression('U has_update_permission S'),),
         'delete': ('managers', RRQLExpression('U has_update_permission S'),),
         }
+
+
+class CWSession(EntityType):
+    """Persistent session.
+
+    Used by cubicweb.pyramid to store the session data.
+    """
+    __permissions__ = {
+        'read':   ('managers',),
+        'add':    (),
+        'update': (),
+        'delete': (),
+    }
+    cwsessiondata = Bytes()

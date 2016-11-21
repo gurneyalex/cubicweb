@@ -1,0 +1,30 @@
+### Requirements for tests in various cubicweb/**/test directories. ###
+
+## shared by several test folders
+cubicweb-card
+docutils
+Twisted < 16.0.0
+webtest
+
+## cubicweb/test
+Pygments
+mock
+#fyzz XXX pip install fails
+cubicweb-file
+cubicweb-localperms
+cubicweb-tag
+
+## cubicweb/devtools/test
+flake8
+
+## cubicweb/hooks/test
+psycopg2
+
+## cubicweb/pyramid/test
+pyramid >= 1.5.0
+waitress >= 0.8.9
+wsgicors >= 0.3
+pyramid_multiauth
+
+## cubicweb/sobject/test
+cubicweb-comment

@@ -18,7 +18,7 @@
 """some utilities for cubicweb command line tools"""
 from __future__ import print_function
 
-__docformat__ = "restructuredtext en"
+
 
 # XXX move most of this in logilab.common (shellutils ?)
 
@@ -131,6 +131,9 @@ def copy_skeleton(skeldir, targetdir, context,
     targetdir = normpath(targetdir)
     for dirpath, dirnames, filenames in walk(skeldir):
         tdirpath = dirpath.replace(skeldir, targetdir)
+        if 'cubicweb_CUBENAME' in tdirpath:
+            tdirpath = tdirpath.replace('cubicweb_CUBENAME',
+                                        'cubicweb_' + context['cubename'])
         create_dir(tdirpath)
         for fname in filenames:
             if any(fnmatch(fname, pat) for pat in exclude):
@@ -152,6 +155,7 @@ def copy_skeleton(skeldir, targetdir, context,
                 show_diffs(tfpath, fpath, askconfirm)
             else:
                 shutil.copyfile(fpath, tfpath)
+                shutil.copymode(fpath, tfpath)
 
 def fill_templated_file(fpath, tfpath, context):
     with io.open(fpath, encoding='ascii') as fobj:
@@ -166,6 +170,15 @@ def restrict_perms_to_user(filepath, log=None):
     else:
         print('-> set permissions to 0600 for %s' % filepath)
     chmod(filepath, 0o600)
+
+
+def option_value_from_env(option, default=None):
+    """Return the value of configuration `option` from cannonical environment
+    variable.
+    """
+    envvar = ('CW_' + '_'.join(option.split('-'))).upper()
+    return os.environ.get(envvar, default)
+
 
 def read_config(config_file, raise_if_unreadable=False):
     """read some simple configuration from `config_file` and return it as a
@@ -191,7 +204,7 @@ def read_config(config_file, raise_if_unreadable=False):
                 sys.stderr.write('ignoring malformed line\n%r\n' % line)
                 continue
             option = option.strip().replace(' ', '_')
-            value = value.strip()
+            value = option_value_from_env(option, value.strip())
             current[option] = value or None
     except IOError as ex:
         if raise_if_unreadable:

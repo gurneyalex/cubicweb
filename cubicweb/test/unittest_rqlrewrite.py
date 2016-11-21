@@ -1,4 +1,4 @@
-# copyright 2003-2014 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2016 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -24,14 +24,14 @@ from yams import BadSchemaDefinition
 from yams.buildobjs import RelationDefinition
 from rql import parse, nodes, RQLHelper
 
-from cubicweb import Unauthorized, rqlrewrite
+from cubicweb import Unauthorized, rqlrewrite, devtools
 from cubicweb.schema import RRQLExpression, ERQLExpression
-from cubicweb.devtools import repotest, TestServerConfiguration, BaseApptestConfiguration
+from cubicweb.devtools import repotest
 
 
 def setUpModule(*args):
     global rqlhelper, schema
-    config = TestServerConfiguration('data-rewrite', __file__)
+    config = devtools.TestServerConfiguration('data-rewrite', __file__)
     config.bootstrap_cubes()
     schema = config.load_schema()
     schema.add_relation_def(RelationDefinition(subject='Card', name='in_state',

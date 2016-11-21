@@ -179,17 +179,21 @@ Here are all environment variables that may be used to configure *CubicWeb*:
 """
 from __future__ import print_function
 
-__docformat__ = "restructuredtext en"
 
-import sys
-import os
-import stat
+
+import importlib
 import logging
 import logging.config
-from smtplib import SMTP
-from threading import Lock
+import os
 from os.path import (exists, join, expanduser, abspath, normpath,
                      basename, isdir, dirname, splitext)
+import pkgutil
+import pkg_resources
+import re
+from smtplib import SMTP
+import stat
+import sys
+from threading import Lock
 from warnings import warn, filterwarnings
 
 from six import text_type
@@ -202,7 +206,7 @@ from logilab.common.configuration import (Configuration, Method,
 
 from cubicweb import (CW_SOFTWARE_ROOT, CW_MIGRATION_MAP,
                       ConfigurationError, Binary, _)
-from cubicweb.toolsutils import create_dir
+from cubicweb.toolsutils import create_dir, option_value_from_env
 
 CONFIGURATIONS = []
 
@@ -261,6 +265,13 @@ def _find_prefix(start_path=None):
         old_prefix = prefix
         prefix = dirname(prefix)
     return prefix
+
+
+def _cube_pkgname(cube):
+    if not cube.startswith('cubicweb_'):
+        return 'cubicweb_' + cube
+    return cube
+
 
 # persistent options definition
 PERSISTENT_OPTIONS = (
@@ -405,6 +416,12 @@ this option is set to yes",
           'group': 'email', 'level': 3,
           }),
         )
+
+    def __getitem__(self, key):
+        """Get configuration option, by first looking at environmnent."""
+        file_value = super(CubicWebNoAppConfiguration, self).__getitem__(key)
+        return option_value_from_env(key, file_value)
+
     # static and class methods used to get instance independant resources ##
     @staticmethod
     def cubicweb_version():
@@ -444,8 +461,21 @@ this option is set to yes",
 
     @classmethod
     def available_cubes(cls):
-        import re
         cubes = set()
+        for entry_point in pkg_resources.iter_entry_points(
+                group='cubicweb.cubes', name=None):
+            try:
+                module = entry_point.load()
+            except ImportError:
+                continue
+            else:
+                modname = module.__name__
+                if not modname.startswith('cubicweb_'):
+                    cls.warning('entry point %s does not appear to be a cube',
+                                entry_point)
+                    continue
+                cubes.add(modname)
+        # Legacy cubes.
         for directory in cls.cubes_search_path():
             if not exists(directory):
                 cls.error('unexistant directory in cubes search path: %s'
@@ -456,10 +486,24 @@ this option is set to yes",
                     continue
                 if not re.match('[_A-Za-z][_A-Za-z0-9]*$', cube):
                     continue # skip invalid python package name
+                if cube == 'pyramid':
+                    cls._warn_pyramid_cube()
+                    continue
                 cubedir = join(directory, cube)
                 if isdir(cubedir) and exists(join(cubedir, '__init__.py')):
                     cubes.add(cube)
-        return sorted(cubes)
+
+        def sortkey(cube):
+            """Preserve sorting with "cubicweb_" prefix."""
+            prefix = 'cubicweb_'
+            if cube.startswith(prefix):
+                # add a suffix to have a deterministic sorting between
+                # 'cubicweb_<cube>' and '<cube>' (useful in tests with "hash
+                # randomization" turned on).
+                return cube[len(prefix):] + '~'
+            return cube
+
+        return sorted(cubes, key=sortkey)
 
     @classmethod
     def cubes_search_path(cls):
@@ -483,12 +527,19 @@ this option is set to yes",
         """return the cube directory for the given cube id, raise
         `ConfigurationError` if it doesn't exist
         """
+        pkgname = _cube_pkgname(cube)
+        loader = pkgutil.find_loader(pkgname)
+        if loader:
+            return dirname(loader.get_filename())
+        # Legacy cubes.
         for directory in cls.cubes_search_path():
             cubedir = join(directory, cube)
             if exists(cubedir):
                 return cubedir
-        raise ConfigurationError('no cube %r in %s' % (
-            cube, cls.cubes_search_path()))
+        msg = 'no module %(pkg)s in search path nor cube %(cube)r in %(path)s'
+        raise ConfigurationError(msg % {'cube': cube,
+                                        'pkg': _cube_pkgname(cube),
+                                        'path': cls.cubes_search_path()})
 
     @classmethod
     def cube_migration_scripts_dir(cls, cube):
@@ -498,14 +549,18 @@ this option is set to yes",
     @classmethod
     def cube_pkginfo(cls, cube):
         """return the information module for the given cube"""
-        cube = CW_MIGRATION_MAP.get(cube, cube)
+        pkgname = _cube_pkgname(cube)
         try:
-            parent = __import__('cubes.%s.__pkginfo__' % cube)
-            return getattr(parent, cube).__pkginfo__
-        except Exception as ex:
-            raise ConfigurationError(
-                'unable to find packaging information for cube %s (%s: %s)'
-                % (cube, ex.__class__.__name__, ex))
+            return importlib.import_module('%s.__pkginfo__' % pkgname)
+        except ImportError:
+            cube = CW_MIGRATION_MAP.get(cube, cube)
+            try:
+                parent = __import__('cubes.%s.__pkginfo__' % cube)
+                return getattr(parent, cube).__pkginfo__
+            except Exception as ex:
+                raise ConfigurationError(
+                    'unable to find packaging information for cube %s (%s: %s)'
+                    % (cube, ex.__class__.__name__, ex))
 
     @classmethod
     def cube_version(cls, cube):
@@ -605,6 +660,8 @@ this option is set to yes",
     @classmethod
     def cls_adjust_sys_path(cls):
         """update python path if necessary"""
+        from cubicweb import _CubesImporter
+        _CubesImporter.install()
         cubes_parent_dir = normpath(join(cls.CUBES_DIR, '..'))
         if not cubes_parent_dir in sys.path:
             sys.path.insert(0, cubes_parent_dir)
@@ -627,24 +684,29 @@ this option is set to yes",
     def load_cwctl_plugins(cls):
         cls.cls_adjust_sys_path()
         for ctlmod in ('web.webctl',  'etwist.twctl', 'server.serverctl',
-                       'devtools.devctl'):
+                       'devtools.devctl', 'pyramid.pyramidctl'):
             try:
                 __import__('cubicweb.%s' % ctlmod)
             except ImportError:
                 continue
             cls.info('loaded cubicweb-ctl plugin %s', ctlmod)
         for cube in cls.available_cubes():
-            pluginfile = join(cls.cube_dir(cube), 'ccplugin.py')
-            initfile = join(cls.cube_dir(cube), '__init__.py')
+            cubedir = cls.cube_dir(cube)
+            pluginfile = join(cubedir, 'ccplugin.py')
+            initfile = join(cubedir, '__init__.py')
+            if cube.startswith('cubicweb_'):
+                pkgname = cube
+            else:
+                pkgname = 'cubes.%s' % cube
             if exists(pluginfile):
                 try:
-                    __import__('cubes.%s.ccplugin' % cube)
+                    __import__(pkgname + '.ccplugin')
                     cls.info('loaded cubicweb-ctl plugin from %s', cube)
                 except Exception:
                     cls.exception('while loading plugin %s', pluginfile)
             elif exists(initfile):
                 try:
-                    __import__('cubes.%s' % cube)
+                    __import__(pkgname)
                 except Exception:
                     cls.exception('while loading cube %s', cube)
             else:
@@ -781,7 +843,13 @@ this option is set to yes",
     def _load_site_cubicweb(self, cube):
         """Load site_cubicweb.py from `cube` (or apphome if cube is None)."""
         if cube is not None:
-            modname = 'cubes.%s.site_cubicweb' % cube
+            try:
+                modname = 'cubicweb_%s' % cube
+                __import__(modname)
+            except ImportError:
+                modname = 'cubes.%s' % cube
+                __import__(modname)
+            modname = modname + '.site_cubicweb'
             __import__(modname)
             return sys.modules[modname]
         else:
@@ -821,11 +889,24 @@ this option is set to yes",
 
     _cubes = None
 
+    @classmethod
+    def _warn_pyramid_cube(cls):
+        cls.warning("cubicweb-pyramid got integrated into CubicWeb; "
+                    "remove it from your project's dependencies")
+
     def init_cubes(self, cubes):
+        cubes = list(cubes)
+        if 'pyramid' in cubes:
+            self._warn_pyramid_cube()
+            cubes.remove('pyramid')
         self._cubes = self.reorder_cubes(cubes)
         # load cubes'__init__.py file first
         for cube in cubes:
-            __import__('cubes.%s' % cube)
+            try:
+                importlib.import_module(_cube_pkgname(cube))
+            except ImportError:
+                # Legacy cube.
+                __import__('cubes.%s' % cube)
         self.load_site_cubicweb()
 
     def cubes(self):

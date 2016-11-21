@@ -1,4 +1,4 @@
-# copyright 2011-2015 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2011-2016 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -31,17 +31,17 @@ from cubicweb.server.sources import datafeed
 from cubicweb.dataimport import stores, importer
 
 
-class UserMetaGenerator(stores.MetaGenerator):
+class UserMetaGenerator(stores.MetadataGenerator):
     """Specific metadata generator, used to see newly created user into their initial state.
     """
     @cached
-    def base_etype_dicts(self, entity):
-        entity, rels = super(UserMetaGenerator, self).base_etype_dicts(entity)
-        if entity.cw_etype == 'CWUser':
+    def base_etype_rels(self, etype):
+        rels = super(UserMetaGenerator, self).base_etype_rels(etype)
+        if etype == 'CWUser':
             wf_state = self._cnx.execute('Any S WHERE ET default_workflow WF, ET name %(etype)s, '
-                                         'WF initial_state S', {'etype': entity.cw_etype}).one()
+                                         'WF initial_state S', {'etype': etype}).one()
             rels['in_state'] = wf_state.eid
-        return entity, rels
+        return rels
 
 
 class DataFeedLDAPAdapter(datafeed.DataFeedParser):
@@ -86,10 +86,18 @@ class DataFeedLDAPAdapter(datafeed.DataFeedParser):
                                                         attrs))
         return {}
 
-    def process(self, url, raise_on_error=False):
-        """IDataFeedParser main entry point"""
-        self.debug('processing ldapfeed source %s %s', self.source, self.searchfilterstr)
+    def process_urls(self, *args, **kwargs):
+        """IDataFeedParser main entry point."""
+        self._source_uris = {}
         self._group_members = {}
+        error = super(DataFeedLDAPAdapter, self).process_urls(*args, **kwargs)
+        if not error:
+            self.handle_deletion()
+        return error
+
+    def process(self, url, raise_on_error=False):
+        """Called once by process_urls (several URL are not expected with this parser)."""
+        self.debug('processing ldapfeed source %s %s', self.source, self.searchfilterstr)
         eeimporter = self.build_importer(raise_on_error)
         for name in self.source.user_default_groups:
             geid = self._get_group(name)
@@ -120,8 +128,15 @@ class DataFeedLDAPAdapter(datafeed.DataFeedParser):
     def build_importer(self, raise_on_error):
         """Instantiate and configure an importer"""
         etypes = ('CWUser', 'EmailAddress', 'CWGroup')
-        extid2eid = dict((self.source.decode_extid(x), y) for x, y in
-                self._cw.system_sql('select extid, eid from entities where asource = %(s)s', {'s': self.source.uri}))
+        extid2eid = {}
+        for etype in etypes:
+            rset = self._cw.execute('Any XURI, X WHERE X cwuri XURI, X is {0},'
+                                    ' X cw_source S, S name %(source)s'.format(etype),
+                                    {'source': self.source.uri})
+            for extid, eid in rset:
+                extid = extid.encode('ascii')
+                extid2eid[extid] = eid
+                self._source_uris[extid] = (eid, etype)
         existing_relations = {}
         for rtype in ('in_group', 'use_email', 'owned_by'):
             rql = 'Any S,O WHERE S {} O, S cw_source SO, SO eid %(s)s'.format(rtype)
@@ -150,6 +165,7 @@ class DataFeedLDAPAdapter(datafeed.DataFeedParser):
                 # userPassword)
                 pwd = crypt_password(generate_password())
                 attrs['upassword'] = set([pwd])
+            self._source_uris.pop(userdict['dn'], None)
             extuser = importer.ExtEntity('CWUser', userdict['dn'].encode('ascii'), attrs)
             extuser.values['owned_by'] = set([extuser.extid])
             for extemail in self._process_email(extuser, userdict):
@@ -162,6 +178,7 @@ class DataFeedLDAPAdapter(datafeed.DataFeedParser):
         # generate groups
         for groupdict in self.group_source_entities_by_extid.values():
             attrs = self.ldap2cwattrs(groupdict, 'CWGroup')
+            self._source_uris.pop(groupdict['dn'], None)
             extgroup = importer.ExtEntity('CWGroup', groupdict['dn'].encode('ascii'), attrs)
             yield extgroup
             # record group membership for later insertion
@@ -180,28 +197,20 @@ class DataFeedLDAPAdapter(datafeed.DataFeedParser):
             rset = self._cw.execute('EmailAddress X WHERE X address %(addr)s',
                                     {'addr': emailaddr})
             emailextid = (userdict['dn'] + '@@' + emailaddr).encode('ascii')
+            self._source_uris.pop(emailextid, None)
             if not rset:
                 # not found, create it. first forge an external id
                 extuser.values.setdefault('use_email', []).append(emailextid)
                 yield importer.ExtEntity('EmailAddress', emailextid, dict(address=[emailaddr]))
-            elif self.source_uris:
-                # pop from source_uris anyway, else email may be removed by the
-                # source once import is finished
-                self.source_uris.pop(emailextid, None)
             # XXX else check use_email relation?
 
-    def handle_deletion(self, config, cnx, myuris):
-        if config['delete-entities']:
-            super(DataFeedLDAPAdapter, self).handle_deletion(config, cnx, myuris)
-            return
-        if myuris:
-            for extid, (eid, etype) in myuris.items():
-                if etype != 'CWUser' or not self.is_deleted(extid, etype, eid):
-                    continue
-                self.info('deactivate user %s', eid)
-                wf = cnx.entity_from_eid(eid).cw_adapt_to('IWorkflowable')
-                wf.fire_transition_if_possible('deactivate')
-        cnx.commit()
+    def handle_deletion(self):
+        for extid, (eid, etype) in self._source_uris.items():
+            if etype != 'CWUser' or not self.is_deleted(extid, etype, eid):
+                continue
+            self.info('deactivate user %s', eid)
+            wf = self._cw.entity_from_eid(eid).cw_adapt_to('IWorkflowable')
+            wf.fire_transition_if_possible('deactivate')
 
     def ensure_activated(self, entity):
         if entity.cw_etype == 'CWUser':

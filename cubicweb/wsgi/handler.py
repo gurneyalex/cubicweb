@@ -17,7 +17,7 @@
 # with CubicWeb.  If not, see <http://www.gnu.org/licenses/>.
 """WSGI request handler for cubicweb"""
 
-__docformat__ = "restructuredtext en"
+
 
 from itertools import chain, repeat
 
@@ -108,8 +108,7 @@ class CubicWebWSGIApplication(object):
         """this function performs the actual rendering
         """
         try:
-            path = req.path
-            result = self.appli.handle_request(req, path)
+            result = self.appli.handle_request(req)
         except DirectResponse as ex:
             return ex.response
         return WSGIResponse(req.status_out, req, result)

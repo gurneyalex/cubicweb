@@ -1,1 +1,0 @@
-missing-dep-for-interpreter make => make | build-essential | dpkg-dev (usr/*/cubicweb/skeleton/debian/rules)

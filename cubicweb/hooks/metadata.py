@@ -1,4 +1,4 @@
-# copyright 2003-2013 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2016 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -17,16 +17,12 @@
 # with CubicWeb.  If not, see <http://www.gnu.org/licenses/>.
 """Core hooks: set generic metadata"""
 
-__docformat__ = "restructuredtext en"
-
 from datetime import datetime
-from base64 import b64encode
 
 from pytz import utc
 
 from cubicweb.predicates import is_instance
 from cubicweb.server import hook
-from cubicweb.server.edition import EditedEntity
 
 
 class MetaDataHook(hook.Hook):
@@ -151,69 +147,3 @@ class UpdateFTIHook(MetaDataHook):
         elif ftcontainer == 'object':
             cnx.repo.system_source.index_entity(
                 cnx, cnx.entity_from_eid(self.eidto))
-
-
-
-# entity source handling #######################################################
-
-class ChangeEntitySourceUpdateCaches(hook.Operation):
-    oldsource = newsource = entity = None # make pylint happy
-
-    def postcommit_event(self):
-        self.oldsource.reset_caches()
-        repo = self.cnx.repo
-        entity = self.entity
-        extid = entity.cw_metainformation()['extid']
-        repo._type_source_cache[entity.eid] = (
-            entity.cw_etype, None, self.newsource.uri)
-        repo._extid_cache[extid] = -entity.eid
-
-
-class ChangeEntitySourceDeleteHook(MetaDataHook):
-    """support for moving an entity from an external source by watching 'Any
-    cw_source CWSource' relation
-    """
-
-    __regid__ = 'cw.metadata.source-change'
-    __select__ = MetaDataHook.__select__ & hook.match_rtype('cw_source')
-    events = ('before_delete_relation',)
-
-    def __call__(self):
-        if (self._cw.deleted_in_transaction(self.eidfrom)
-            or self._cw.deleted_in_transaction(self.eidto)):
-            return
-        schange = self._cw.transaction_data.setdefault('cw_source_change', {})
-        schange[self.eidfrom] = self.eidto
-
-
-class ChangeEntitySourceAddHook(MetaDataHook):
-    __regid__ = 'cw.metadata.source-change'
-    __select__ = MetaDataHook.__select__ & hook.match_rtype('cw_source')
-    events = ('before_add_relation',)
-
-    def __call__(self):
-        schange = self._cw.transaction_data.get('cw_source_change')
-        if schange is not None and self.eidfrom in schange:
-            newsource = self._cw.entity_from_eid(self.eidto)
-            if newsource.name != 'system':
-                raise Exception('changing source to something else than the '
-                                'system source is unsupported')
-            syssource = newsource.repo_source
-            oldsource = self._cw.entity_from_eid(schange[self.eidfrom])
-            entity = self._cw.entity_from_eid(self.eidfrom)
-            # we don't want the moved entity to be reimported later.  To
-            # distinguish this state, move the record from the 'entities' table
-            # to 'moved_entities'.  External source will then have consider
-            # case where `extid2eid` returns a negative eid as 'this entity was
-            # known but has been moved, ignore it'.
-            extid = self._cw.entity_metas(entity.eid)['extid']
-            assert extid is not None
-            attrs = {'eid': entity.eid, 'extid': b64encode(extid).decode('ascii')}
-            self._cw.system_sql(syssource.sqlgen.insert('moved_entities', attrs), attrs)
-            attrs = {'type': entity.cw_etype, 'eid': entity.eid, 'extid': None,
-                     'asource': 'system'}
-            self._cw.system_sql(syssource.sqlgen.update('entities', attrs, ['eid']), attrs)
-            # register an operation to update repository/sources caches
-            ChangeEntitySourceUpdateCaches(self._cw, entity=entity,
-                                           oldsource=oldsource.repo_source,
-                                           newsource=syssource)

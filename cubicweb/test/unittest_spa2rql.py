@@ -1,4 +1,4 @@
-# copyright 2003-2010 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2016 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -17,8 +17,7 @@
 # with CubicWeb.  If not, see <http://www.gnu.org/licenses/>.
 import unittest
 
-from logilab.common.testlib import TestCase, unittest_main
-from cubicweb.devtools import TestServerConfiguration
+from cubicweb import devtools
 from cubicweb.xy import xy
 
 SKIPCAUSE = None
@@ -33,15 +32,19 @@ xy.add_equivalence('Project name', 'doap:Project doap:name')
 xy.add_equivalence('Project name', 'doap:Project dc:title')
 
 
-config = TestServerConfiguration('data', __file__)
-config.bootstrap_cubes()
-schema = config.load_schema()
-
-
 @unittest.skipIf(SKIPCAUSE, SKIPCAUSE)
-class XYTC(TestCase):
+class XYTC(unittest.TestCase):
+
+    schema = None
+
+    @classmethod
+    def setUpClass(cls):
+        config = devtools.TestServerConfiguration('data', __file__)
+        config.bootstrap_cubes()
+        cls.schema = config.load_schema()
+
     def setUp(self):
-        self.tr = Sparql2rqlTranslator(schema)
+        self.tr = Sparql2rqlTranslator(self.schema)
 
     def _test(self, sparql, rql, args={}):
         qi = self.tr.translate(sparql)
@@ -221,4 +224,4 @@ class XYTC(TestCase):
 # }
 
 if __name__ == '__main__':
-    unittest_main()
+    unittest.main()

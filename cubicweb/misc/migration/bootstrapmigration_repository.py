@@ -1,4 +1,4 @@
-# copyright 2003-2013 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2016 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -15,10 +15,11 @@
 #
 # You should have received a copy of the GNU Lesser General Public License along
 # with CubicWeb.  If not, see <http://www.gnu.org/licenses/>.
-"""allways executed before all others in server migration
+"""Always executed before all others in server migration
 
 it should only include low level schema changes
 """
+
 from __future__ import print_function
 
 from six import text_type
@@ -52,27 +53,6 @@ def replace_eid_sequence_with_eid_numrange(session):
     cursor.execute(dbh.sql_create_numrange('entities_id_seq'))
     cursor.execute(dbh.sql_restart_numrange('entities_id_seq', initial_value=lasteid))
     session.commit()
-
-if applcubicwebversion <= (3, 13, 0) and cubicwebversion >= (3, 13, 1):
-    sql('ALTER TABLE entities ADD asource VARCHAR(64)')
-    sql('UPDATE entities SET asource=cw_name  '
-        'FROM cw_CWSource, cw_source_relation '
-        'WHERE entities.eid=cw_source_relation.eid_from AND cw_source_relation.eid_to=cw_CWSource.cw_eid')
-    commit()
-
-if applcubicwebversion <= (3, 14, 4) and cubicwebversion >= (3, 14, 4):
-    from cubicweb.server import schema2sql as y2sql
-    dbhelper = repo.system_source.dbhelper
-    rdefdef = schema['CWSource'].rdef('name')
-    attrtype = y2sql.type_from_constraints(dbhelper, rdefdef.object, rdefdef.constraints).split()[0]
-    cursor = session.cnxset.cu
-    sql('UPDATE entities SET asource = source WHERE asource is NULL')
-    dbhelper.change_col_type(cursor, 'entities', 'asource', attrtype, False)
-    dbhelper.change_col_type(cursor, 'entities', 'source', attrtype, False)
-
-    # we now have a functional asource column, start using the normal eid_type_source method
-    if repo.system_source.eid_type_source == repo.system_source.eid_type_source_pre_131:
-        del repo.system_source.eid_type_source
 
 if applcubicwebversion < (3, 19, 0) and cubicwebversion >= (3, 19, 0):
     try: 
@@ -339,21 +319,6 @@ if not ('CWUniqueTogetherConstraint', 'CWRType') in schema['relations'].rdefs:
     drop_relation_definition('CWUniqueTogetherConstraint', 'relations', 'CWAttribute')
     drop_relation_definition('CWUniqueTogetherConstraint', 'relations', 'CWRelation')
 
-
-if applcubicwebversion < (3, 4, 0) and cubicwebversion >= (3, 4, 0):
-
-    with hooks_control(session, session.HOOKS_ALLOW_ALL, 'integrity'):
-        session.set_shared_data('do-not-insert-cwuri', True)
-        add_relation_type('cwuri')
-        base_url = session.base_url()
-        for eid, in rql('Any X', ask_confirm=False):
-            type, source, extid = session.describe(eid)
-            if source == 'system':
-                rql('SET X cwuri %(u)s WHERE X eid %(x)s',
-                    {'x': eid, 'u': u'%s%s' % (base_url, eid)})
-        isession.commit()
-        session.set_shared_data('do-not-insert-cwuri', False)
-
 if applcubicwebversion < (3, 5, 0) and cubicwebversion >= (3, 5, 0):
     # check that migration is not doomed
     rset = rql('Any X,Y WHERE X transition_of E, Y transition_of E, '
@@ -413,15 +378,6 @@ if applcubicwebversion < (3, 5, 0) and cubicwebversion >= (3, 5, 0):
     drop_relation_definition('CWEType', 'initial_state', 'State')
 
     sync_schema_props_perms()
-
-if applcubicwebversion < (3, 2, 2) and cubicwebversion >= (3, 2, 1):
-    from base64 import b64encode
-    for eid, extid in sql('SELECT eid, extid FROM entities '
-                          'WHERE extid is NOT NULL',
-                          ask_confirm=False):
-        sql('UPDATE entities SET extid=%(extid)s WHERE eid=%(eid)s',
-            {'extid': b64encode(extid), 'eid': eid}, ask_confirm=False)
-    commit()
 
 if applcubicwebversion < (3, 2, 0) and cubicwebversion >= (3, 2, 0):
     add_cube('card', update_database=False)

@@ -22,8 +22,6 @@
 """
 from __future__ import print_function
 
-__docformat__ = "restructuredtext en"
-
 import sys
 from datetime import datetime
 
@@ -188,23 +186,19 @@ def check_entities(schema, cnx, eids, fix=1):
             notify_fixed(fix)
     # source in entities, but no relation cw_source
     # XXX this (get_versions) requires a second connection to the db when we already have one open
-    applcwversion = cnx.repo.get_versions().get('cubicweb')
-    if applcwversion >= (3, 13, 1): # entities.asource appeared in 3.13.1
-        cursor = cnx.system_sql('SELECT e.eid FROM entities as e, cw_CWSource as s '
-                                    'WHERE s.cw_name=e.asource AND '
-                                    'NOT EXISTS(SELECT 1 FROM cw_source_relation as cs '
-                                    '  WHERE cs.eid_from=e.eid AND cs.eid_to=s.cw_eid) '
-                                    'ORDER BY e.eid')
-        msg = ('  Entity with eid %s refers to source in entities table, '
-               'but is missing relation cw_source (autofix will create the relation)\n')
-        for row in cursor.fetchall():
-            sys.stderr.write(msg % row[0])
-        if fix:
-            cnx.system_sql('INSERT INTO cw_source_relation (eid_from, eid_to) '
-                               'SELECT e.eid, s.cw_eid FROM entities as e, cw_CWSource as s '
-                               'WHERE s.cw_name=e.asource AND NOT EXISTS(SELECT 1 FROM cw_source_relation as cs '
-                               '  WHERE cs.eid_from=e.eid AND cs.eid_to=s.cw_eid)')
-            notify_fixed(True)
+    cursor = cnx.system_sql('SELECT e.eid FROM entities as e, cw_CWSource as s '
+                            'WHERE NOT EXISTS(SELECT 1 FROM cw_source_relation as cs '
+                            '  WHERE cs.eid_from=e.eid) '
+                            'ORDER BY e.eid')
+    msg = ('  Entity with eid %s is missing relation cw_source (autofix will create the relation)\n')
+    for row in cursor.fetchall():
+        sys.stderr.write(msg % row[0])
+    if fix:
+        cnx.system_sql('INSERT INTO cw_source_relation (eid_from, eid_to) '
+                       'SELECT e.eid, s.cw_eid FROM entities as e, cw_CWSource as s '
+                       "WHERE s.cw_name='system' AND NOT EXISTS(SELECT 1 FROM cw_source_relation as cs "
+                       '  WHERE cs.eid_from=e.eid)')
+        notify_fixed(True)
     # inconsistencies for 'is'
     msg = '  %s #%s is missing relation "is" (autofix will create the relation)\n'
     cursor = cnx.system_sql('SELECT e.type, e.eid FROM entities as e, cw_CWEType as s '
@@ -337,7 +331,6 @@ def check_mandatory_relations(schema, cnx, eids, fix=1):
                 for entity in cnx.execute(rql).entities():
                     sys.stderr.write(msg % (entity.cw_etype, entity.eid, role, rschema))
                     if fix:
-                        #if entity.cw_describe()['source']['uri'] == 'system': XXX
                         entity.cw_delete() # XXX this is BRUTAL!
                     notify_fixed(fix)
 
@@ -420,8 +413,6 @@ def check(repo, cnx, checks, reindex, fix, withpb=True):
 
 SYSTEM_INDICES = {
     # see cw/server/sources/native.py
-    'entities_type_idx': ('entities', 'type'),
-    'entities_extid_idx': ('entities', 'extid'),
     'transactions_tx_time_idx': ('transactions', 'tx_time'),
     'transactions_tx_user_idx': ('transactions', 'tx_user'),
     'tx_entity_actions_txa_action_idx': ('tx_entity_actions', 'txa_action'),
@@ -447,8 +438,7 @@ def check_indexes(cnx):
     schema = cnx.repo.schema
     schema_indices = SYSTEM_INDICES.copy()
     if source.dbdriver == 'postgres':
-        schema_indices.update({'appears_words_idx': ('appears', 'words'),
-                               'moved_entities_extid_key': ('moved_entities', 'extid')})
+        schema_indices.update({'appears_words_idx': ('appears', 'words')})
         index_filter = lambda idx: not (idx.startswith('pg_') or idx.endswith('_pkey'))
     else:
         schema_indices.update({'appears_uid': ('appears', 'uid'),

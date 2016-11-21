@@ -1,4 +1,4 @@
-# copyright 2003-2014 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2016 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -17,19 +17,21 @@
 # with CubicWeb.  If not, see <http://www.gnu.org/licenses/>.
 """unit tests for schema rql (de)serialization"""
 
+from logilab.database import get_db_helper
+
+from yams import register_base_type, unregister_base_type
+
 from cubicweb import Binary
 from cubicweb.schema import CubicWebSchemaLoader
-from cubicweb.devtools import TestServerConfiguration
+from cubicweb import devtools
 from cubicweb.devtools.testlib import BaseTestCase as TestCase, CubicWebTC
-
 from cubicweb.server.schemaserial import (updateeschema2rql, updaterschema2rql, rschema2rql,
                                           eschema2rql, rdef2rql, specialize2rql,
                                           _erperms2rql as erperms2rql)
 
-from logilab.database import get_db_helper
-from yams import register_base_type, unregister_base_type
 
 schema = config = None
+
 def setUpModule(*args):
     register_base_type('BabarTestType', ('jungle_speed',))
     helper = get_db_helper('sqlite')
@@ -38,7 +40,7 @@ def setUpModule(*args):
 
     global schema, config
     loader = CubicWebSchemaLoader()
-    config = TestServerConfiguration('data-schemaserial', __file__)
+    config = devtools.TestServerConfiguration('data-schemaserial', __file__)
     config.bootstrap_cubes()
     schema = loader.load(config)
 
@@ -58,6 +60,7 @@ cstrtypemap = {'RQLConstraint': 'RQLConstraint_eid',
                'FormatConstraint': 'FormatConstraint_eid',
                }
 
+
 class Schema2RQLTC(TestCase):
 
     def test_eschema2rql1(self):
@@ -71,8 +74,8 @@ class Schema2RQLTC(TestCase):
 
     def test_eschema2rql2(self):
         self.assertListEqual([
-                ('INSERT CWEType X: X description %(description)s,X final %(final)s,X name %(name)s',
-                 {'description': u'', 'final': True, 'name': u'String'})],
+            ('INSERT CWEType X: X description %(description)s,X final %(final)s,X name %(name)s',
+             {'description': u'', 'final': True, 'name': u'String'})],
                              list(eschema2rql(schema.eschema('String'))))
 
     def test_eschema2rql_specialization(self):
@@ -87,7 +90,7 @@ class Schema2RQLTC(TestCase):
         expected = [('INSERT CWEType X: X description %(description)s,X final %(final)s,'
                      'X name %(name)s',
                      {'description': u'',
-                     'name': u'BabarTestType', 'final': True},)]
+                      'name': u'BabarTestType', 'final': True},)]
         got = list(eschema2rql(schema.eschema('BabarTestType')))
         self.assertListEqual(expected, got)
 
@@ -99,7 +102,7 @@ class Schema2RQLTC(TestCase):
              {'description': u'link a relation definition to its relation type',
               'symmetric': False,
               'name': u'relation_type',
-              'final' : False,
+              'final': False,
               'fulltext_container': None,
               'inlined': True}),
 
@@ -124,7 +127,8 @@ class Schema2RQLTC(TestCase):
               'ordernum': 1, 'cardinality': u'1*'}),
             ('INSERT CWConstraint X: X value %(value)s, X cstrtype CT, EDEF constrained_by X '
              'WHERE CT eid %(ct)s, EDEF eid %(x)s',
-             {'x': None, 'ct': u'RQLConstraint_eid', 'value': u'{"expression": "O final FALSE", "mainvars": ["O"], "msg": null}'}),
+             {'x': None, 'ct': u'RQLConstraint_eid',
+              'value': u'{"expression": "O final FALSE", "mainvars": ["O"], "msg": null}'}),
         ],
                              list(rschema2rql(schema.rschema('relation_type'), cstrtypemap)))
 
@@ -184,13 +188,13 @@ class Schema2RQLTC(TestCase):
             ('INSERT CWRelation X: X cardinality %(cardinality)s,X composite %(composite)s,'
              'X description %(description)s,X ordernum %(ordernum)s,X relation_type ER,'
              'X from_entity SE,X to_entity OE WHERE SE eid %(se)s,ER eid %(rt)s,OE eid %(oe)s',
-            {'cardinality': u'**',
-             'composite': None,
-             'description': u'groups allowed to add entities/relations of this type',
-             'oe': None,
-             'ordernum': 9999,
-             'rt': None,
-             'se': None}),
+             {'cardinality': u'**',
+              'composite': None,
+              'description': u'groups allowed to add entities/relations of this type',
+              'oe': None,
+              'ordernum': 9999,
+              'rt': None,
+              'se': None}),
             ('INSERT CWRelation X: X cardinality %(cardinality)s,X composite %(composite)s,'
              'X description %(description)s,X ordernum %(ordernum)s,X relation_type ER,'
              'X from_entity SE,X to_entity OE WHERE SE eid %(se)s,ER eid %(rt)s,OE eid %(oe)s',
@@ -387,10 +391,10 @@ class Schema2RQLTC(TestCase):
 class Perms2RQLTC(TestCase):
     GROUP_MAPPING = {
         'managers': 0,
-        'users':  1,
+        'users': 1,
         'guests': 2,
         'owners': 3,
-        }
+    }
 
     def test_eperms2rql1(self):
         self.assertListEqual([('SET X read_permission Y WHERE Y eid %(g)s, X eid %(x)s', {'g': 0}),
@@ -422,9 +426,6 @@ class Perms2RQLTC(TestCase):
                               for rql, kwargs in erperms2rql(schema.rschema('name').rdef('CWEType', 'String'),
                                                              self.GROUP_MAPPING)])
 
-    #def test_perms2rql(self):
-    #    self.assertListEqual(perms2rql(schema, self.GROUP_MAPPING),
-    #                         ['INSERT CWEType X: X name 'Societe', X final FALSE'])
 
 class ComputedAttributeAndRelationTC(CubicWebTC):
     appid = 'data-cwep002'
@@ -441,6 +442,7 @@ class ComputedAttributeAndRelationTC(CubicWebTC):
         self.assertEqual([('Company', 'Int')], list(schema['total_salary'].rdefs))
         self.assertEqual('Any SUM(SA) GROUPBY X WHERE P works_for X, P salary SA',
                          schema['total_salary'].rdefs['Company', 'Int'].formula)
+
 
 if __name__ == '__main__':
     from unittest import main

@@ -1,4 +1,4 @@
-# copyright 2003-2014 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2016 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -19,7 +19,6 @@
 validity
 """
 
-__docformat__ = "restructuredtext en"
 from cubicweb import _
 
 from threading import Lock
@@ -87,7 +86,7 @@ class _CheckRequiredRelationOperation(hook.DataOperationMixIn,
             if rtype in pendingrtypes:
                 continue
             if not cnx.execute(self.base_rql % rtype, {'x': eid}):
-                etype = cnx.entity_metas(eid)['type']
+                etype = cnx.entity_type(eid)
                 msg = _('at least one relation %(rtype)s is required on '
                         '%(etype)s (%(eid)s)')
                 raise validation_error(eid, {(rtype, self.role): msg},

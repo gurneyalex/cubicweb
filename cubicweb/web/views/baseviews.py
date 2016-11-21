@@ -75,15 +75,11 @@ views use those text views as a basis.
 .. autoclass:: OutOfContextView
 """
 
-__docformat__ = "restructuredtext en"
 from cubicweb import _
 
-from datetime import timedelta
 from warnings import warn
 
 from six.moves import range
-
-from rql import nodes
 
 from logilab.mtconverter import TransformError, xml_escape
 from logilab.common.registry import yes
@@ -463,10 +459,13 @@ class MetaDataView(EntityView):
             else:
                 self.w(u' <span>%s</span> ' % _('created_by'))
             self.w(u'<span class="value">%s</span>' % entity.creator.name())
-        meta = entity.cw_metainformation()
-        if meta['source']['uri'] != 'system':
+        source = entity.cw_source[0]
+        if source.name != 'system':
             self.w(u' (<span>%s</span>' % _('cw_source'))
-            self.w(u' <span class="value">%s</span>)' % meta['source']['uri'])
+            self.w(u' <span class="value">%s</span>)' % source.view('oneline'))
+            source_def = self._cw.source_defs()[source.name]
+            if source_def.get('use-cwuri-as-url'):
+                self.w(u' <a href="%s">%s</span>' % (entity.cwuri, self._cw._('view original')))
         self.w(u'</div>')
 
 

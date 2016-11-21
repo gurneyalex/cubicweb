@@ -1,4 +1,4 @@
-# copyright 2003-2014 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2016 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -17,18 +17,16 @@
 # with CubicWeb.  If not, see <http://www.gnu.org/licenses/>.
 """abstract class for http request"""
 
-__docformat__ = "restructuredtext en"
-
 import time
 import random
 import base64
-from hashlib import sha1 # pylint: disable=E0611
+from hashlib import sha1  # pylint: disable=E0611
 from calendar import timegm
 from datetime import date, datetime
 from warnings import warn
 from io import BytesIO
 
-from six import PY2, binary_type, text_type, string_types
+from six import PY2, text_type, string_types
 from six.moves import http_client
 from six.moves.urllib.parse import urlsplit, quote as urlquote
 from six.moves.http_cookies import SimpleCookie
@@ -37,19 +35,19 @@ from rql.utils import rqlvar_maker
 
 from logilab.common.decorators import cached
 from logilab.common.deprecation import deprecated
-from logilab.mtconverter import xml_escape
 
 from cubicweb import AuthenticationError
 from cubicweb.req import RequestSessionBase
 from cubicweb.uilib import remove_html_tags, js
 from cubicweb.utils import HTMLHead, make_uid
-from cubicweb.view import TRANSITIONAL_DOCTYPE_NOEXT
 from cubicweb.web import (INTERNAL_FIELD_VALUE, LOGGER, NothingToEdit,
                           RequestError, StatusResponse)
 from cubicweb.web.httpcache import get_validators
-from cubicweb.web.http_headers import Headers, Cookie, parseDateTime
+from cubicweb.web.http_headers import Headers, Cookie
+
 
 _MARKER = object()
+
 
 def build_cb_uid(seed):
     sha = sha1(('%s%s%s' % (time.time(), seed, random.random())).encode('ascii'))
@@ -148,10 +146,9 @@ class _CubicWebRequestBase(RequestSessionBase):
         #: Header used for the final response
         self.headers_out = Headers()
         #: HTTP status use by the final response
-        self.status_out  = 200
-        # set up language based on request headers or site default (we don't
-        # have a user yet, and might not get one)
-        self.set_user_language(None)
+        self.status_out = 200
+        # set up language based on site default (we don't have a user yet, and might not get one)
+        self.set_language(vreg.property_value('ui.language'))
         #: dictionary that may be used to store request data that has to be
         #: shared among various components used to publish the request (views,
         #: controller, application...)
@@ -663,6 +660,13 @@ class _CubicWebRequestBase(RequestSessionBase):
             args = (method,)
         return super(_CubicWebRequestBase, self).build_url(*args, **kwargs)
 
+    def build_url_path(self, *args):
+        path = super(_CubicWebRequestBase, self).build_url_path(*args)
+        lang_prefix = ''
+        if self.lang is not None and self.vreg.config.get('language-mode') == 'url-prefix':
+            lang_prefix = '%s/' % self.lang
+        return lang_prefix + path
+
     def url(self, includeparams=True):
         """return currently accessed url"""
         return self.base_url() + self.relative_path(includeparams)
@@ -917,25 +921,12 @@ class _CubicWebRequestBase(RequestSessionBase):
     def html_content_type(self):
         return 'text/html'
 
-    def set_user_language(self, user):
-        vreg = self.vreg
-        if user is not None:
-            try:
-                # 1. user-specified language
-                lang = vreg.typed_value('ui.language', user.properties['ui.language'])
-                self.set_language(lang)
-                return
-            except KeyError:
-                pass
-        if vreg.config.get('language-negociation', False):
-            # 2. http accept-language
-            self.headers_out.addHeader('Vary', 'Accept-Language')
-            for lang in self.header_accept_language():
-                if lang in self.translations:
-                    self.set_language(lang)
-                    return
-        # 3. site's default language
-        self.set_default_language(vreg)
+    def negotiated_language(self):
+        self.headers_out.addHeader('Vary', 'Accept-Language')
+        for lang in self.header_accept_language():
+            if lang in self.translations:
+                return lang
+        return None
 
 
 def _cnx_func(name):
@@ -989,30 +980,20 @@ class ConnectionCubicWebRequestBase(_CubicWebRequestBase):
         self.cnx = cnx
         self.session = cnx.session
         self._set_user(cnx.user)
-        self.set_user_language(cnx.user)
+        # set language according to the one defined on the connection which consider user's
+        # preference
+        self.set_language(cnx.lang)
 
     def execute(self, *args, **kwargs):
         rset = self.cnx.execute(*args, **kwargs)
         rset.req = self
         return rset
 
-    def set_default_language(self, vreg):
-        try:
-            lang = vreg.property_value('ui.language')
-        except Exception: # property may not be registered
-            lang = 'en'
-        try:
-            self.set_language(lang)
-        except KeyError:
-            # this occurs usually during test execution
-            self._ = self.__ = text_type
-            self.pgettext = lambda x, y: text_type(y)
-
-    entity_metas = _cnx_func('entity_metas')
+    entity_metas = _cnx_func('entity_metas')  # XXX deprecated
+    entity_type = _cnx_func('entity_type')
     source_defs = _cnx_func('source_defs')
     get_shared_data = _cnx_func('get_shared_data')
     set_shared_data = _cnx_func('set_shared_data')
-    describe = _cnx_func('describe') # deprecated XXX
 
     # security #################################################################
 

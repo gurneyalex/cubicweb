@@ -17,16 +17,17 @@
 # with CubicWeb.  If not, see <http://www.gnu.org/licenses/>.
 """CubicWeb web client application object"""
 
-__docformat__ = "restructuredtext en"
+
 
 import contextlib
+from functools import wraps
 import json
 import sys
 from time import clock, time
 from contextlib import contextmanager
 from warnings import warn
 
-from six import text_type, binary_type
+from six import PY2, text_type, binary_type
 from six.moves import http_client
 
 from rql import BadRQLQuery
@@ -47,13 +48,40 @@ from cubicweb.web.request import CubicWebRequestBase
 SESSION_MANAGER = None
 
 
+def _deprecated_path_arg(func):
+    @wraps(func)
+    def wrapper(self, req, *args, **kwargs):
+        if args or 'path' in kwargs:
+            func_name = func.func_name if PY2 else func.__name__
+            warn('[3.24] path argument got removed from "%s" parameters' % func_name,
+                 DeprecationWarning)
+            path = args[0] if args else kwargs['path']
+            assert path == req.relative_path(False), \
+                'mismatching path, {0} vs {1}'.format(path, req.relative_path(False))
+        return func(self, req)
+    return wrapper
+
+
+def _deprecated_req_path_swapped(func):
+    @wraps(func)
+    def wrapper(self, req, *args, **kwargs):
+        if not isinstance(req, CubicWebRequestBase):
+            warn('[3.15] Application entry point arguments are now (req, path) '
+                 'not (path, req)', DeprecationWarning, 2)
+            path = req
+            req = args[0] if args else kwargs.pop('req')
+            args = (path, ) + args[1:]
+        return func(self, req, *args, **kwargs)
+    return wrapper
+
+
 @contextmanager
 def anonymized_request(req):
     orig_cnx = req.cnx
     anon_cnx = anonymous_cnx(orig_cnx.session.repo)
-    req.set_cnx(anon_cnx)
     try:
         with anon_cnx:
+            req.set_cnx(anon_cnx)
             yield req
     finally:
         req.set_cnx(orig_cnx)
@@ -198,7 +226,8 @@ class CubicWebPublisher(object):
 
     # publish methods #########################################################
 
-    def log_handle_request(self, req, path):
+    @_deprecated_path_arg
+    def log_handle_request(self, req):
         """wrapper around _publish to log all queries executed for a given
         accessed path
         """
@@ -224,7 +253,7 @@ class CubicWebPublisher(object):
 
         req.set_cnx = wrap_set_cnx(req.set_cnx)
         try:
-            return self.main_handle_request(req, path)
+            return self.main_handle_request(req)
         finally:
             cnx = req.cnx
             if cnx:
@@ -240,20 +269,17 @@ class CubicWebPublisher(object):
                     except Exception:
                         self.exception('error while logging queries')
 
-    def main_handle_request(self, req, path):
-        """Process an http request
+    @_deprecated_req_path_swapped
+    @_deprecated_path_arg
+    def main_handle_request(self, req):
+        """Process an HTTP request `req`
 
-        Arguments are:
-        - a Request object
-        - path of the request object
+        :type req: `web.Request`
+        :param req: the request object
 
         It returns the content of the http response. HTTP header and status are
         set on the Request object.
         """
-        if not isinstance(req, CubicWebRequestBase):
-            warn('[3.15] Application entry point arguments are now (req, path) '
-                 'not (path, req)', DeprecationWarning, 2)
-            req, path = path, req
         if req.authmode == 'http':
             # activate realm-based auth
             realm = self.vreg.config['realm']
@@ -262,9 +288,10 @@ class CubicWebPublisher(object):
         try:
             try:
                 session = self.get_session(req)
-                from  cubicweb import repoapi
-                cnx = repoapi.Connection(session)
-                req.set_cnx(cnx)
+                cnx = session.new_cnx()
+                with cnx:  # may need an open connection to access to e.g. properties
+                    req.set_cnx(cnx)
+                cnx._open = None  # XXX needed to reuse it a few line later :'(
             except AuthenticationError:
                 # Keep the dummy session set at initialisation.  such session will work to some
                 # extend but raise an AuthenticationError on any database access.
@@ -279,7 +306,7 @@ class CubicWebPublisher(object):
             try:
                 # Try to generate the actual request content
                 with cnx:
-                    content = self.core_handle(req, path)
+                    content = self.core_handle(req)
             # Handle user log-out
             except LogOut as ex:
                 # When authentification is handled by cookie the code that
@@ -328,14 +355,12 @@ class CubicWebPublisher(object):
         assert isinstance(content, binary_type)
         return content
 
-    def core_handle(self, req, path):
-        """method called by the main publisher to process <path>
+    @_deprecated_path_arg
+    def core_handle(self, req):
+        """method called by the main publisher to process <req> relative path
 
         should return a string containing the resulting page or raise a
         `NotFound` exception
-
-        :type path: str
-        :param path: the path part of the url to publish
 
         :type req: `web.Request`
         :param req: the request object
@@ -343,9 +368,10 @@ class CubicWebPublisher(object):
         :rtype: str
         :return: the result of the pusblished url
         """
+        path = req.relative_path(False)
         # don't log form values they may contains sensitive information
-        self.debug('publish "%s" (%s, form params: %s)',
-                   path, req.session.sessionid, list(req.form))
+        self.debug('publish "%s" (%s, form params: %s)', path,
+                   req.session.sessionid, list(req.form))
         # remove user callbacks on a new request (except for json controllers
         # to avoid callbacks being unregistered before they could be called)
         tstart = clock()
@@ -422,7 +448,7 @@ class CubicWebPublisher(object):
                 except Exception:
                     pass  # ignore rollback error at this point
         self.add_undo_link_to_msg(req)
-        self.debug('query %s executed in %s sec', req.relative_path(), clock() - tstart)
+        self.debug('query %s executed in %s sec', path, clock() - tstart)
         return result
 
     # Error handlers

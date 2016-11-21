@@ -1,5 +1,5 @@
 # -*- coding: iso-8859-1 -*-
-# copyright 2003-2014 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2016 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -29,7 +29,7 @@ from yams import register_base_type, unregister_base_type
 
 from logilab.database import get_db_helper
 
-from cubicweb import (BadConnectionId, ValidationError,
+from cubicweb import (ValidationError,
                       UnknownEid, AuthenticationError, Unauthorized, QueryError)
 from cubicweb.predicates import is_instance
 from cubicweb.schema import RQLConstraint
@@ -197,8 +197,6 @@ class RepositoryTC(CubicWebTC):
         repo = self.repo
         session = repo.new_session(self.admlogin, password=self.admpassword)
         with session.new_cnx() as cnx:
-            self.assertEqual(repo.type_and_source_from_eid(2, cnx),
-                             ('CWGroup', None, 'system'))
             self.assertEqual(repo.type_from_eid(2, cnx), 'CWGroup')
         session.close()
 
@@ -444,7 +442,7 @@ class DataHelpersTC(CubicWebTC):
             self.repo.add_info(cnx, entity, self.repo.system_source)
             cu = cnx.system_sql('SELECT * FROM entities WHERE eid = -1')
             data = cu.fetchall()
-            self.assertEqual(tuplify(data), [(-1, 'Personne', 'system', None)])
+            self.assertEqual(tuplify(data), [(-1, 'Personne')])
             self.repo._delete_cascade_multi(cnx, [entity])
             self.repo.system_source.delete_info_multi(cnx, [entity])
             cu = cnx.system_sql('SELECT * FROM entities WHERE eid = -1')

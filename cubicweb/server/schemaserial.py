@@ -1,4 +1,4 @@
-# copyright 2003-2013 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2016 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -16,11 +16,9 @@
 # You should have received a copy of the GNU Lesser General Public License along
 # with CubicWeb.  If not, see <http://www.gnu.org/licenses/>.
 """functions for schema / permissions (de)serialization using RQL"""
+
 from __future__ import print_function
 
-__docformat__ = "restructuredtext en"
-
-import os
 import json
 import sys
 import sqlite3
@@ -47,7 +45,7 @@ def group_mapping(cnx, interactive=True):
     """
     res = {}
     for eid, name in cnx.execute('Any G, N WHERE G is CWGroup, G name N',
-                                    build_descr=False):
+                                 build_descr=False):
         res[name] = eid
     if not interactive:
         return res
@@ -93,9 +91,8 @@ def deserialize_schema(schema, cnx):
     dbhelper = repo.system_source.dbhelper
 
     # Computed Rtype
-    with cnx.ensure_cnx_set:
-        tables = set(t.lower() for t in dbhelper.list_tables(cnx.cnxset.cu))
-        has_computed_relations = 'cw_cwcomputedrtype' in tables
+    tables = set(t.lower() for t in dbhelper.list_tables(cnx.cnxset.cu))
+    has_computed_relations = 'cw_cwcomputedrtype' in tables
     # computed attribute
     try:
         cnx.system_sql("SELECT cw_formula FROM cw_CWAttribute")
@@ -150,8 +147,8 @@ def deserialize_schema(schema, cnx):
                     {'x': etype, 'n': netype})
             cnx.commit(False)
             tocleanup = [eid]
-            tocleanup += (eid for eid, cached in repo._type_source_cache.items()
-                          if etype == cached[0])
+            tocleanup += (eid for eid, cached in repo._type_cache.items()
+                          if etype == cached)
             repo.clear_caches(tocleanup)
             cnx.commit(False)
             if needcopy:

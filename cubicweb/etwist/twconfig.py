@@ -21,7 +21,7 @@
   web server integrating a repository server in the same process (only available
   if the repository part of the software is installed
 """
-__docformat__ = "restructuredtext en"
+
 
 from os.path import join
 
@@ -44,7 +44,7 @@ class WebConfigurationBase(WebConfiguration):
           }),
         ('interface',
          {'type' : 'string',
-          'default': "",
+          'default': '0.0.0.0',
           'help': 'http server address on which to listen (default to everywhere)',
           'group': 'web', 'level': 1,
           }),

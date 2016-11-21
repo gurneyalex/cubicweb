@@ -1,4 +1,4 @@
-# copyright 2003-2014 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2016 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -16,8 +16,6 @@
 # You should have received a copy of the GNU Lesser General Public License along
 # with CubicWeb.  If not, see <http://www.gnu.org/licenses/>.
 """Base class for entity objects manipulated in clients"""
-
-__docformat__ = "restructuredtext en"
 
 from warnings import warn
 
@@ -46,6 +44,7 @@ from cubicweb.uilib import soup2xhtml
 from cubicweb.mttransforms import ENGINE
 
 _marker = object()
+
 
 def greater_card(rschema, subjtypes, objtypes, index):
     for subjtype in subjtypes:
@@ -152,7 +151,7 @@ class Entity(AppObject):
     the class and instances has access to their issuing cursor.
 
     A property is set for each attribute and relation on each entity's type
-    class. Becare that among attributes, 'eid' is *NEITHER* stored in the
+    class. Becare that among attributes, 'eid' is *NEVER* stored in the
     dict containment (which acts as a cache for other attributes dynamically
     fetched)
 
@@ -623,11 +622,13 @@ class Entity(AppObject):
         """
         return self.has_eid() and self._cw_is_saved
 
+    @deprecated('[3.24] cw_metainformation is deprecated')
     @cached
     def cw_metainformation(self):
-        metas = self._cw.entity_metas(self.eid)
-        metas['source'] = self._cw.source_defs()[metas['source']]
-        return metas
+        source = self.cw_source[0].name
+        return {'type': self.cw_etype,
+                'extid': self.cwuri if source != 'system' else None,
+                'source': {'uri': source}}
 
     def cw_check_perm(self, action):
         self.e_schema.check_perm(self._cw, action, eid=self.eid)
@@ -655,26 +656,16 @@ class Entity(AppObject):
             method = args[0]
         else:
             method = None
-        # in linksearch mode, we don't want external urls else selecting
-        # the object for use in the relation is tricky
-        # XXX search_state is web specific
-        use_ext_id = False
-        if 'base_url' not in kwargs and \
-               getattr(self._cw, 'search_state', ('normal',))[0] == 'normal':
-            sourcemeta = self.cw_metainformation()['source']
-            if sourcemeta.get('use-cwuri-as-url'):
-                return self.cwuri # XXX consider kwargs?
-            if sourcemeta.get('base-url'):
-                kwargs['base_url'] = sourcemeta['base-url']
-                use_ext_id = True
         if method in (None, 'view'):
-            kwargs['_restpath'] = self.rest_path(use_ext_id)
+            kwargs['_restpath'] = self.rest_path()
         else:
             kwargs['rql'] = 'Any X WHERE X eid %s' % self.eid
         return self._cw.build_url(method, **kwargs)
 
-    def rest_path(self, use_ext_eid=False): # XXX cw_rest_path
+    def rest_path(self, *args, **kwargs): # XXX cw_rest_path
         """returns a REST-like (relative) path for this entity"""
+        if args or kwargs:
+            warn("[3.24] rest_path doesn't take parameters anymore", DeprecationWarning)
         mainattr, needcheck = self.cw_rest_attr_info()
         etype = str(self.e_schema)
         path = etype.lower()
@@ -696,10 +687,7 @@ class Entity(AppObject):
                     mainattr = 'eid'
                     path = None
         if mainattr == 'eid':
-            if use_ext_eid:
-                value = self.cw_metainformation()['extid']
-            else:
-                value = self.eid
+            value = self.eid
         if path is None:
             # fallback url: <base-url>/<eid> url is used as cw entities uri,
             # prefer it to <base-url>/<etype>/eid/<eid>
@@ -774,7 +762,7 @@ class Entity(AppObject):
         for rtype in self.skip_copy_for:
             skip_copy_for['subject'].add(rtype)
             warn('[3.14] skip_copy_for on entity classes (%s) is deprecated, '
-                 'use cw_skip_for instead with list of couples (rtype, role)' % self.cw_etype,
+                 'use cw_skip_copy_for instead with list of couples (rtype, role)' % self.cw_etype,
                  DeprecationWarning)
         for rtype, role in self.cw_skip_copy_for:
             assert role in ('subject', 'object'), role
@@ -889,9 +877,7 @@ class Entity(AppObject):
             selected.append((attr, var))
         # +1 since this doesn't include the main variable
         lastattr = len(selected) + 1
-        # don't fetch extra relation if attributes specified or of the entity is
-        # coming from an external source (may lead to error)
-        if attributes is None and self.cw_metainformation()['source']['uri'] == 'system':
+        if attributes is None:
             # fetch additional relations (restricted to 0..1 relations)
             for rschema, role in self._cw_to_complete_relations():
                 rtype = rschema.type

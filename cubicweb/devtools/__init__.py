@@ -16,9 +16,8 @@
 # You should have received a copy of the GNU Lesser General Public License along
 # with CubicWeb.  If not, see <http://www.gnu.org/licenses/>.
 """Test tools for cubicweb"""
-from __future__ import print_function
 
-__docformat__ = "restructuredtext en"
+from __future__ import print_function
 
 import os
 import sys
@@ -126,8 +125,7 @@ def turn_repo_on(repo):
     if repo._needs_refresh:
         for cnxset in repo.cnxsets:
             cnxset.reconnect()
-        repo._type_source_cache = {}
-        repo._extid_cache = {}
+        repo._type_cache = {}
         repo.querier._rql_cache = {}
         repo.system_source.reset_caches()
         repo._needs_refresh = False
