@@ -1,4 +1,4 @@
-# copyright 2003-2014 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2016 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -20,15 +20,13 @@ provide a pluggable commands system.
 """
 from __future__ import print_function
 
-
-
 # *ctl module should limit the number of import to be imported as quickly as
 # possible (for cubicweb-ctl reactivity, necessary for instance for usable bash
 # completion). So import locally in command helpers.
 import sys
 from warnings import warn, filterwarnings
 from os import remove, listdir, system, pathsep
-from os.path import exists, join, isfile, isdir, dirname, abspath
+from os.path import exists, join, isdir, dirname, abspath
 
 try:
     from os import kill, getpgid
@@ -43,7 +41,7 @@ from six.moves.urllib.parse import urlparse
 from logilab.common.clcommands import CommandLine
 from logilab.common.shellutils import ASK
 from logilab.common.configuration import merge_options
-from logilab.common.deprecation import deprecated
+from logilab.common.decorators import clear_cache
 
 from cubicweb import ConfigurationError, ExecutionError, BadCommandUsage
 from cubicweb.cwconfig import CubicWebConfiguration as cwcfg, CWDEV, CONFIGURATIONS
@@ -54,6 +52,7 @@ from cubicweb.__pkginfo__ import version
 CWCTL = CommandLine('cubicweb-ctl', 'The CubicWeb swiss-knife.',
                     version=version, check_duplicated_command=False)
 
+
 def wait_process_end(pid, maxtry=10, waittime=1):
     """wait for a process to actually die"""
     import signal
@@ -62,18 +61,20 @@ def wait_process_end(pid, maxtry=10, waittime=1):
     while nbtry < maxtry:
         try:
             kill(pid, signal.SIGUSR1)
-        except (OSError, AttributeError): # XXX win32
+        except (OSError, AttributeError):  # XXX win32
             break
         nbtry += 1
         sleep(waittime)
     else:
         raise ExecutionError('can\'t kill process %s' % pid)
 
+
 def list_instances(regdir):
     if isdir(regdir):
         return sorted(idir for idir in listdir(regdir) if isdir(join(regdir, idir)))
     else:
         return []
+
 
 def detect_available_modes(templdir):
     modes = []
@@ -102,13 +103,6 @@ class InstanceCommand(Command):
          ),
         )
     actionverb = None
-
-    @deprecated('[3.22] startorder is not used any more')
-    def ordered_instances(self):
-        """return list of known instances
-        """
-        regdir = cwcfg.instances_dir()
-        return list_instances(regdir)
 
     def run(self, args):
         """run the <command>_method on each argument (a list of instance
@@ -756,6 +750,7 @@ given, appropriate sources for migration will be automatically selected \
             with mih.cnx:
                 with mih.cnx.security_enabled(False, False):
                     mih.migrate(vcconf, reversed(toupgrade), self.config)
+            clear_cache(config, 'instance_md5_version')
         else:
             print('-> no data migration needed for instance %s.' % appid)
         # rewrite main configuration file

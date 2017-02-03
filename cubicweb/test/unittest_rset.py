@@ -1,5 +1,5 @@
 # coding: utf-8
-# copyright 2003-2014 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2016 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -44,12 +44,12 @@ class AttrDescIteratorTC(TestCase):
     def test_relations_description(self):
         """tests relations_description() function"""
         queries = {
-            'Any U,L,M where U is CWUser, U login L, U mail M' : [(1, 'login', 'subject'), (2, 'mail', 'subject')],
-            'Any U,L,M where U is CWUser, L is Foo, U mail M' : [(2, 'mail', 'subject')],
-            'Any C,P where C is Company, C employs P' : [(1, 'employs', 'subject')],
-            'Any C,P where C is Company, P employed_by P' : [],
-            'Any C where C is Company, C employs P' : [],
-            }
+            'Any U,L,M where U is CWUser, U login L, U mail M': [(1, 'login', 'subject'), (2, 'mail', 'subject')],
+            'Any U,L,M where U is CWUser, L is Foo, U mail M': [(2, 'mail', 'subject')],
+            'Any C,P where C is Company, C employs P': [(1, 'employs', 'subject')],
+            'Any C,P where C is Company, P employed_by P': [],
+            'Any C where C is Company, C employs P': [],
+        }
         for rql, relations in queries.items():
             result = list(attr_desc_iterator(parse(rql).children[0], 0, 0))
             self.assertEqual((rql, result), (rql, relations))
@@ -57,9 +57,10 @@ class AttrDescIteratorTC(TestCase):
     def test_relations_description_indexed(self):
         """tests relations_description() function"""
         queries = {
-            'Any C,U,P,L,M where C is Company, C employs P, U is CWUser, U login L, U mail M' :
-            {0: [(2,'employs', 'subject')], 1: [(3,'login', 'subject'), (4,'mail', 'subject')]},
-            }
+            'Any C,U,P,L,M where C is Company, C employs P, U is CWUser, U login L, U mail M':
+            {0: [(2, 'employs', 'subject')],
+             1: [(3, 'login', 'subject'), (4, 'mail', 'subject')]},
+        }
         for rql, results in queries.items():
             for idx, relations in results.items():
                 result = list(attr_desc_iterator(parse(rql).children[0], idx, idx))
@@ -118,17 +119,6 @@ class ResultSetTC(CubicWebTC):
             #                  '%stask/title/go' % baseurl)
             # empty _restpath should not crash
             self.compare_urls(req.build_url('view', _restpath=''), baseurl)
-            self.assertNotIn('https', req.build_url('view', vid='foo', rql='yo',
-                                                      __secure__=True))
-            try:
-                self.config.global_set_option('https-url', 'https://testing.fr/')
-                self.assertTrue('https', req.build_url('view', vid='foo', rql='yo',
-                                                         __secure__=True))
-                self.compare_urls(req.build_url('view', vid='foo', rql='yo',
-                                                __secure__=True),
-                                  '%sview?vid=foo&rql=yo' % req.base_url(secure=True))
-            finally:
-                self.config.global_set_option('https-url', None)
 
 
     def test_build(self):
@@ -155,8 +145,6 @@ class ResultSetTC(CubicWebTC):
 
     def test_limit_2(self):
         with self.admin_access.web_request() as req:
-            # drop user from cache for the sake of this test
-            req.drop_entity_cache(req.user.eid)
             rs = req.execute('Any E,U WHERE E is CWEType, E created_by U')
             # get entity on row 9. This will fill its created_by relation cache,
             # with cwuser on row 9 as well
@@ -284,7 +272,7 @@ class ResultSetTC(CubicWebTC):
     def test_get_entity_simple(self):
         with self.admin_access.web_request() as req:
             req.create_entity('CWUser', login=u'adim', upassword='adim',
-                                         surname=u'di mascio', firstname=u'adrien')
+                              surname=u'di mascio', firstname=u'adrien')
             req.drop_entity_cache()
             e = req.execute('Any X,T WHERE X login "adim", X surname T').get_entity(0, 0)
             self.assertEqual(e.cw_attr_cache['surname'], 'di mascio')
@@ -574,6 +562,13 @@ class ResultSetTC(CubicWebTC):
                               'UNION '
                               '(Any X,N WHERE X is CWGroup, X name N)'
                               ')')
+
+    def test_possible_actions_cache(self):
+        with self.admin_access.web_request() as req:
+            rset = req.execute('Any D, COUNT(U) GROUPBY D WHERE U is CWUser, U creation_date D')
+            rset.possible_actions(argument='Value')
+            self.assertRaises(AssertionError, rset.possible_actions, argument='OtherValue')
+            self.assertRaises(AssertionError, rset.possible_actions, other_argument='Value')
 
     def test_count_users_by_date(self):
         with self.admin_access.web_request() as req:

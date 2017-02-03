@@ -1,4 +1,4 @@
-# copyright 2003-2014 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2016 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -19,25 +19,25 @@
 from logilab.common.testlib import TestCase, unittest_main
 from cubicweb import ObjectNotFound
 from cubicweb.req import RequestSessionBase, FindEntityError
-from cubicweb.devtools import ApptestConfiguration
 from cubicweb.devtools.testlib import CubicWebTC
 from cubicweb import Unauthorized
+
 
 class RequestTC(TestCase):
     def test_rebuild_url(self):
         rebuild_url = RequestSessionBase(None).rebuild_url
         self.assertEqual(rebuild_url('http://logilab.fr?__message=pouet', __message='hop'),
-                          'http://logilab.fr?__message=hop')
+                         'http://logilab.fr?__message=hop')
         self.assertEqual(rebuild_url('http://logilab.fr', __message='hop'),
-                          'http://logilab.fr?__message=hop')
+                         'http://logilab.fr?__message=hop')
         self.assertEqual(rebuild_url('http://logilab.fr?vid=index', __message='hop'),
-                          'http://logilab.fr?__message=hop&vid=index')
+                         'http://logilab.fr?__message=hop&vid=index')
 
     def test_build_url(self):
         req = RequestSessionBase(None)
-        req.from_controller = lambda : 'view'
+        req.from_controller = lambda: 'view'
         req.relative_path = lambda includeparams=True: None
-        req.base_url = lambda secure=None: 'http://testing.fr/cubicweb/'
+        req.base_url = lambda: 'http://testing.fr/cubicweb/'
         self.assertEqual(req.build_url(), u'http://testing.fr/cubicweb/view')
         self.assertEqual(req.build_url(None), u'http://testing.fr/cubicweb/view')
         self.assertEqual(req.build_url('one'), u'http://testing.fr/cubicweb/one')
@@ -49,8 +49,10 @@ class RequestTC(TestCase):
         req = RequestSessionBase(None)
         self.assertEqual(req.ensure_ro_rql('Any X WHERE X is CWUser'), None)
         self.assertEqual(req.ensure_ro_rql('  Any X WHERE X is CWUser  '), None)
-        self.assertRaises(Unauthorized, req.ensure_ro_rql, 'SET X login "toto" WHERE X is CWUser')
-        self.assertRaises(Unauthorized, req.ensure_ro_rql, '   SET X login "toto" WHERE X is CWUser   ')
+        self.assertRaises(Unauthorized, req.ensure_ro_rql,
+                          'SET X login "toto" WHERE X is CWUser')
+        self.assertRaises(Unauthorized, req.ensure_ro_rql,
+                          '   SET X login "toto" WHERE X is CWUser   ')
 
 
 class RequestCWTC(CubicWebTC):
@@ -59,11 +61,15 @@ class RequestCWTC(CubicWebTC):
         base_url = self.config['base-url']
         with self.admin_access.repo_cnx() as session:
             self.assertEqual(session.base_url(), base_url)
-            assert 'https-url' not in self.config
-            self.assertEqual(session.base_url(secure=True), base_url)
-            secure_base_url = base_url.replace('http', 'https')
-            self.config.global_set_option('https-url', secure_base_url)
-            self.assertEqual(session.base_url(secure=True), secure_base_url)
+
+    def test_secure_deprecated(self):
+        with self.admin_access.cnx() as cnx:
+            with self.assertWarns(DeprecationWarning):
+                cnx.base_url(secure=True)
+            with self.assertRaises(TypeError):
+                cnx.base_url(thing=42)
+            with self.assertWarns(DeprecationWarning):
+                cnx.build_url('ah', __secure__='whatever')
 
     def test_view_catch_ex(self):
         with self.admin_access.web_request() as req:
