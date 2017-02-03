@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# copyright 2003-2012 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2016 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -177,16 +177,15 @@ Here are all environment variables that may be used to configure *CubicWeb*:
 
    Directory where pid files will be written
 """
+
 from __future__ import print_function
-
-
 
 import importlib
 import logging
 import logging.config
 import os
-from os.path import (exists, join, expanduser, abspath, normpath, realpath,
-                     basename, isdir, dirname, splitext)
+from os.path import (exists, join, expanduser, abspath, normpath,
+                     basename, isdir, dirname, splitext, realpath)
 import pkgutil
 import pkg_resources
 import re
@@ -194,7 +193,7 @@ from smtplib import SMTP
 import stat
 import sys
 from threading import Lock
-from warnings import warn, filterwarnings
+from warnings import filterwarnings
 
 from six import text_type
 
@@ -221,12 +220,14 @@ def configuration_cls(name):
     except IndexError:
         raise ConfigurationError('no such config %r (check it exists with "cubicweb-ctl list")' % name)
 
+
 def possible_configurations(directory):
     """return a list of installed configurations in a directory
     according to \*-ctl files
     """
     return [name for name in ('repository', 'all-in-one')
             if exists(join(directory, '%s.conf' % name))]
+
 
 def guess_configuration(directory):
     """try to guess the configuration to use for a directory. If multiple
@@ -237,6 +238,7 @@ def guess_configuration(directory):
         raise ConfigurationError('unable to guess configuration from %r %s'
                                  % (directory, modes))
     return modes[0]
+
 
 def _find_prefix(start_path=None):
     """Return the prefix path of CubicWeb installation.
@@ -272,6 +274,40 @@ def _cube_pkgname(cube):
     if not cube.startswith('cubicweb_'):
         return 'cubicweb_' + cube
     return cube
+
+
+def _expand_modname(modname):
+    """expand modules names `modname` if exists by walking non package submodules
+    and yield (submodname, filepath) including `modname` itself
+
+    If the file ends with .pyc or .pyo (python bytecode) also check that the
+    corresponding source .py file exists before yielding.
+    """
+    try:
+        loader = pkgutil.find_loader(modname)
+    except ImportError:
+        return
+    if not loader:
+        return
+
+    def check_source_file(filepath):
+        if filepath[-4:] in ('.pyc', '.pyo'):
+            if not exists(filepath[:-1]):
+                return False
+        return True
+
+    filepath = loader.get_filename()
+    if not check_source_file(filepath):
+        return
+    yield modname, filepath
+    if loader.is_package(modname):
+        path = dirname(filepath)
+        for subloader, subname, ispkg in pkgutil.walk_packages([path]):
+            # ignore subpackages (historical behavior)
+            if not ispkg:
+                filepath = subloader.find_module(subname).get_filename()
+                if check_source_file(filepath):
+                    yield modname + '.' + subname, filepath
 
 
 # persistent options definition
@@ -667,14 +703,8 @@ this option is set to yes",
         """update python path if necessary"""
         from cubicweb import _CubesImporter
         _CubesImporter.install()
-        cubes_parent_dir = normpath(join(cls.CUBES_DIR, '..'))
-        if not cubes_parent_dir in sys.path:
-            sys.path.insert(0, cubes_parent_dir)
-        try:
-            import cubes
-            cubes.__path__ = cls.cubes_search_path()
-        except ImportError:
-            return # cubes dir doesn't exists
+        import cubes
+        cubes.__path__ = cls.cubes_search_path()
 
     @classmethod
     def load_available_configs(cls):
@@ -692,7 +722,9 @@ this option is set to yes",
                        'devtools.devctl', 'pyramid.pyramidctl'):
             try:
                 __import__('cubicweb.%s' % ctlmod)
-            except ImportError:
+            except ImportError as exc:
+                cls.warning('failed to load cubicweb-ctl plugin %s (%s)',
+                            ctlmod, exc)
                 continue
             cls.info('loaded cubicweb-ctl plugin %s', ctlmod)
         for cube in cls.available_cubes():
@@ -778,56 +810,25 @@ this option is set to yes",
         # configure simpleTal logger
         logging.getLogger('simpleTAL').setLevel(logging.ERROR)
 
-    def appobjects_path(self):
-        """return a list of files or directories where the registry will look
-        for application objects. By default return nothing in NoApp config.
+    def schema_modnames(self):
+        modnames = []
+        for name in ('bootstrap', 'base', 'workflow', 'Bookmark'):
+            modnames.append(('cubicweb', 'cubicweb.schemas.' + name))
+        for cube in reversed(self.cubes()):
+            for modname, filepath in _expand_modname('cubes.{0}.schema'.format(cube)):
+                modnames.append((cube, modname))
+        if self.apphome:
+            apphome = realpath(self.apphome)
+            for modname, filepath in _expand_modname('schema'):
+                if realpath(filepath).startswith(apphome):
+                    modnames.append(('data', modname))
+        return modnames
+
+    def appobjects_modnames(self):
+        """return a list of modules where the registry will look for
+        application objects. By default return nothing in NoApp config.
         """
         return []
-
-    def build_appobjects_path(self, templpath, evobjpath=None, tvobjpath=None):
-        """given a list of directories, return a list of sub files and
-        directories that should be loaded by the instance objects registry.
-
-        :param evobjpath:
-          optional list of sub-directories (or files without the .py ext) of
-          the cubicweb library that should be tested and added to the output list
-          if they exists. If not give, default to `cubicweb_appobject_path` class
-          attribute.
-        :param tvobjpath:
-          optional list of sub-directories (or files without the .py ext) of
-          directories given in `templpath` that should be tested and added to
-          the output list if they exists. If not give, default to
-          `cube_appobject_path` class attribute.
-        """
-        vregpath = self.build_appobjects_cubicweb_path(evobjpath)
-        vregpath += self.build_appobjects_cube_path(templpath, tvobjpath)
-        return vregpath
-
-    def build_appobjects_cubicweb_path(self, evobjpath=None):
-        vregpath = []
-        if evobjpath is None:
-            evobjpath = self.cubicweb_appobject_path
-        # NOTE: for the order, see http://www.cubicweb.org/ticket/2330799
-        #       it is clearly a workaround
-        for subdir in sorted(evobjpath, key=lambda x:x != 'entities'):
-            path = join(CW_SOFTWARE_ROOT, subdir)
-            if exists(path):
-                vregpath.append(path)
-        return vregpath
-
-    def build_appobjects_cube_path(self, templpath, tvobjpath=None):
-        vregpath = []
-        if tvobjpath is None:
-            tvobjpath = self.cube_appobject_path
-        for directory in templpath:
-            # NOTE: for the order, see http://www.cubicweb.org/ticket/2330799
-            for subdir in sorted(tvobjpath, key=lambda x:x != 'entities'):
-                path = join(directory, subdir)
-                if exists(path):
-                    vregpath.append(path)
-                elif exists(path + '.py'):
-                    vregpath.append(path + '.py')
-        return vregpath
 
     apphome = None
 
@@ -1309,21 +1310,49 @@ the repository',
             try:
                 tr = translation('cubicweb', path, languages=[language])
                 self.translations[language] = (tr.ugettext, tr.upgettext)
-            except (ImportError, AttributeError, IOError):
+            except IOError:
                 if self.mode != 'test':
                     # in test contexts, data/i18n does not exist, hence
                     # logging will only pollute the logs
                     self.exception('localisation support error for language %s',
                                    language)
 
-    def appobjects_path(self):
-        """return a list of files or directories where the registry will look
-        for application objects
-        """
-        templpath = list(reversed(self.cubes_path()))
-        if self.apphome: # may be unset in tests
-            templpath.append(self.apphome)
-        return self.build_appobjects_path(templpath)
+    @staticmethod
+    def _sorted_appobjects(appobjects):
+        appobjects = sorted(appobjects)
+        try:
+            index = appobjects.index('entities')
+        except ValueError:
+            pass
+        else:
+            # put entities first
+            appobjects.insert(0, appobjects.pop(index))
+        return appobjects
+
+    def appobjects_cube_modnames(self, cube):
+        modnames = []
+        cube_submodnames = self._sorted_appobjects(self.cube_appobject_path)
+        for name in cube_submodnames:
+            for modname, filepath in _expand_modname('.'.join(['cubes', cube, name])):
+                modnames.append(modname)
+        return modnames
+
+    def appobjects_modnames(self):
+        modnames = []
+        for name in self._sorted_appobjects(self.cubicweb_appobject_path):
+            for modname, filepath in _expand_modname('cubicweb.' + name):
+                modnames.append(modname)
+        for cube in reversed(self.cubes()):
+            modnames.extend(self.appobjects_cube_modnames(cube))
+        if self.apphome:
+            cube_submodnames = self._sorted_appobjects(self.cube_appobject_path)
+            apphome = realpath(self.apphome)
+            for name in cube_submodnames:
+                for modname, filepath in _expand_modname(name):
+                    # ensure file is in apphome
+                    if realpath(filepath).startswith(apphome):
+                        modnames.append(modname)
+        return modnames
 
     def set_sources_mode(self, sources):
         if not 'all' in sources:

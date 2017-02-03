@@ -126,12 +126,11 @@ class CubicWebPyramidRequest(CubicWebRequestBase):
         self.path = request.upath_info
 
         vreg = request.registry['cubicweb.registry']
-        https = request.scheme == 'https'
 
         post = request.params.mixed()
         headers_in = request.headers
 
-        super(CubicWebPyramidRequest, self).__init__(vreg, https, post,
+        super(CubicWebPyramidRequest, self).__init__(vreg, post,
                                                      headers=headers_in)
 
         self.content = request.body_file_seekable
@@ -156,9 +155,6 @@ class CubicWebPyramidRequest(CubicWebRequestBase):
                 self.set_message(val)
             else:
                 self.form[param] = val
-
-    def is_secure(self):
-        return self._request.scheme == 'https'
 
     def relative_path(self, includeparams=True):
         path = self._request.path_info[1:]
@@ -213,7 +209,7 @@ def render_view(request, vid, **kwargs):
 
     :param request: A pyramid request
     :param vid: A CubicWeb view id
-    :param **kwargs: Keyword arguments to select and instanciate the view
+    :param kwargs: Keyword arguments to select and instanciate the view
     :returns: The rendered view content
     """
     vreg = request.registry['cubicweb.registry']

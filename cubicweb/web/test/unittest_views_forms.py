@@ -1,4 +1,4 @@
-# copyright 2014 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2014-2016 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -20,6 +20,8 @@ from logilab.common import tempattr, attrdict
 
 from cubicweb.devtools.testlib import CubicWebTC
 from cubicweb.web.views.autoform import InlinedFormField
+from cubicweb.web.views.forms import EntityFieldsForm
+
 
 class InlinedFormTC(CubicWebTC):
 
@@ -68,7 +70,21 @@ class InlinedFormTC(CubicWebTC):
                                                   InlinedFormField(view=formview)])
                 self.assertTrue(formview._get_removejs())
 
+    def test_field_by_name_consider_aff(self):
+        class MyField(object):
+            def __init__(self, *args, **kwargs):
+                pass
+
+        EntityFieldsForm.uicfg_aff.tag_attribute(('CWUser', 'firstname'), MyField)
+        try:
+            with self.admin_access.web_request() as req:
+                form = req.vreg['forms'].select('base', req, entity=req.user)
+                self.assertIsInstance(form.field_by_name('firstname', 'subject', req.user.e_schema),
+                                      MyField)
+        finally:
+            EntityFieldsForm.uicfg_aff.del_rtag('CWUser', 'firstname', '*', 'subject')
+
 
 if __name__ == '__main__':
-    from logilab.common.testlib import unittest_main
-    unittest_main()
+    import unittest
+    unittest.main()

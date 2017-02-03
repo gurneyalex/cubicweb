@@ -17,8 +17,12 @@
 # with CubicWeb.  If not, see <http://www.gnu.org/licenses/>.
 """cubicweb.cwconfig unit tests"""
 
+import contextlib
+import compileall
+import functools
 import sys
 import os
+import pkgutil
 from os.path import dirname, join, abspath
 from pkg_resources import EntryPoint, Distribution
 import unittest
@@ -31,7 +35,8 @@ from logilab.common.changelog import Version
 
 from cubicweb.devtools import ApptestConfiguration
 from cubicweb.devtools.testlib import BaseTestCase, TemporaryDirectory
-from cubicweb.cwconfig import _find_prefix
+from cubicweb.cwconfig import (
+    CubicWebConfiguration, _find_prefix, _expand_modname)
 
 
 def unabsolutize(path):
@@ -42,6 +47,50 @@ def unabsolutize(path):
         if part.startswith('cubicweb') or part == 'legacy_cubes':
             return os.sep.join(parts[i+1:])
     raise Exception('duh? %s' % path)
+
+
+def templibdir(func):
+    """create a temporary directory and insert it in sys.path"""
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        with TemporaryDirectory() as libdir:
+            sys.path.insert(0, libdir)
+            try:
+                args = args + (libdir,)
+                return func(*args, **kwargs)
+            finally:
+                sys.path.remove(libdir)
+    return wrapper
+
+
+def create_filepath(filepath):
+    filedir = dirname(filepath)
+    if not os.path.exists(filedir):
+        os.makedirs(filedir)
+    with open(filepath, 'a'):
+        pass
+
+
+@contextlib.contextmanager
+def temp_config(appid, instance_dir, cubes_dir, cubes):
+    """context manager that create a config object with specified appid,
+    instance_dir, cubes_dir and cubes"""
+    cls = CubicWebConfiguration
+    old = (cls._INSTANCES_DIR, cls.CUBES_DIR, cls.CUBES_PATH,
+           sys.path[:], sys.meta_path[:])
+    old_modules = set(sys.modules)
+    try:
+        cls._INSTANCES_DIR, cls.CUBES_DIR, cls.CUBES_PATH = (
+            instance_dir, cubes_dir, [])
+        config = cls(appid)
+        config._cubes = cubes
+        config.adjust_sys_path()
+        yield config
+    finally:
+        (cls._INSTANCES_DIR, cls.CUBES_DIR, cls.CUBES_PATH,
+         sys.path[:], sys.meta_path[:]) = old
+        for module in set(sys.modules) - old_modules:
+            del sys.modules[module]
 
 
 class CubicWebConfigurationTC(BaseTestCase):
@@ -129,17 +178,6 @@ class CubicWebConfigurationTC(BaseTestCase):
         self.assertEqual(self.config.expand_cubes(('email', 'comment')),
                           ['email', 'comment', 'file'])
 
-    def test_appobjects_path(self):
-        path = [unabsolutize(p) for p in self.config.appobjects_path()]
-        self.assertEqual(path[0], 'entities')
-        self.assertCountEqual(path[1:4], ['web/views', 'sobjects', 'hooks'])
-        self.assertEqual(path[4], 'file/entities')
-        self.assertCountEqual(path[5:7],
-                              ['file/views.py', 'file/hooks'])
-        self.assertEqual(path[7], 'email/entities.py')
-        self.assertCountEqual(path[8:10],
-                              ['email/views', 'email/hooks.py'])
-        self.assertEqual(path[10:], ['test/data/entities.py', 'test/data/views.py'])
 
     def test_init_cubes_ignore_pyramid_cube(self):
         warning_msg = 'cubicweb-pyramid got integrated into CubicWeb'
@@ -203,7 +241,8 @@ class CubicWebConfigurationWithLegacyCubesTC(CubicWebConfigurationTC):
         from cubes import mycube
         self.assertEqual(mycube.__path__, [join(self.custom_cubes_dir, 'mycube')])
         # file cube should be overriden by the one found in data/cubes
-        if sys.modules.pop('cubes.file', None) and PY3:
+        sys.modules.pop('cubes.file')
+        if hasattr(cubes, 'file'):
             del cubes.file
         from cubes import file
         self.assertEqual(file.__path__, [join(self.custom_cubes_dir, 'file')])
@@ -329,6 +368,151 @@ class FindPrefixTC(unittest.TestCase):
         finally:
             if venv:
                 os.environ['VIRTUAL_ENV'] = venv
+
+
+class ModnamesTC(unittest.TestCase):
+
+    @templibdir
+    def test_expand_modnames(self, libdir):
+        tempdir = join(libdir, 'lib')
+        filepaths = [
+            join(tempdir, '__init__.py'),
+            join(tempdir, 'a.py'),
+            join(tempdir, 'b.py'),
+            join(tempdir, 'c.py'),
+            join(tempdir, 'b', '__init__.py'),
+            join(tempdir, 'b', 'a.py'),
+            join(tempdir, 'b', 'c.py'),
+            join(tempdir, 'b', 'd', '__init__.py'),
+            join(tempdir, 'e', 'e.py'),
+        ]
+        for filepath in filepaths:
+            create_filepath(filepath)
+        # not importable
+        self.assertEqual(list(_expand_modname('isnotimportable')), [])
+        # not a python package
+        self.assertEqual(list(_expand_modname('lib.e')), [])
+        self.assertEqual(list(_expand_modname('lib.a')), [
+            ('lib.a', join(tempdir, 'a.py')),
+        ])
+        # lib.b.d (subpackage) not to be imported
+        self.assertEqual(list(_expand_modname('lib.b')), [
+            ('lib.b', join(tempdir, 'b', '__init__.py')),
+            ('lib.b.a', join(tempdir, 'b', 'a.py')),
+            ('lib.b.c', join(tempdir, 'b', 'c.py')),
+        ])
+        self.assertEqual(list(_expand_modname('lib')), [
+            ('lib', join(tempdir, '__init__.py')),
+            ('lib.a', join(tempdir, 'a.py')),
+            ('lib.c', join(tempdir, 'c.py')),
+        ])
+        for source in (
+            join(tempdir, 'c.py'),
+            join(tempdir, 'b', 'c.py'),
+        ):
+            if not PY3:
+                # ensure pyc file exists.
+                # Doesn't required for PY3 since it create __pycache__
+                # directory and will not import if source file doesn't
+                # exists.
+                compileall.compile_file(source, force=True)
+                self.assertTrue(os.path.exists(source + 'c'))
+            # remove source file
+            os.remove(source)
+        self.assertEqual(list(_expand_modname('lib.c')), [])
+        self.assertEqual(list(_expand_modname('lib.b')), [
+            ('lib.b', join(tempdir, 'b', '__init__.py')),
+            ('lib.b.a', join(tempdir, 'b', 'a.py')),
+        ])
+        self.assertEqual(list(_expand_modname('lib')), [
+            ('lib', join(tempdir, '__init__.py')),
+            ('lib.a', join(tempdir, 'a.py')),
+        ])
+
+    @templibdir
+    def test_schema_modnames(self, libdir):
+        for filepath in (
+            join(libdir, 'schema.py'),
+            join(libdir, 'cubicweb_foo', '__init__.py'),
+            join(libdir, 'cubicweb_foo', 'schema', '__init__.py'),
+            join(libdir, 'cubicweb_foo', 'schema', 'a.py'),
+            join(libdir, 'cubicweb_foo', 'schema', 'b.py'),
+            join(libdir, 'cubes', '__init__.py'),
+            join(libdir, 'cubes', 'bar', '__init__.py'),
+            join(libdir, 'cubes', 'bar', 'schema.py'),
+            join(libdir, '_instance_dir', 'data1', 'schema.py'),
+            join(libdir, '_instance_dir', 'data2', 'noschema.py'),
+        ):
+            create_filepath(filepath)
+        expected = [
+            ('cubicweb', 'cubicweb.schemas.bootstrap'),
+            ('cubicweb', 'cubicweb.schemas.base'),
+            ('cubicweb', 'cubicweb.schemas.workflow'),
+            ('cubicweb', 'cubicweb.schemas.Bookmark'),
+            ('bar', 'cubes.bar.schema'),
+            ('foo', 'cubes.foo.schema'),
+            ('foo', 'cubes.foo.schema.a'),
+            ('foo', 'cubes.foo.schema.b'),
+        ]
+        # app has schema file
+        instance_dir, cubes_dir = (
+            join(libdir, '_instance_dir'), join(libdir, 'cubes'))
+        with temp_config('data1', instance_dir, cubes_dir,
+                         ('foo', 'bar')) as config:
+            self.assertEqual(pkgutil.find_loader('schema').get_filename(),
+                             join(libdir, '_instance_dir',
+                                  'data1', 'schema.py'))
+            self.assertEqual(config.schema_modnames(),
+                             expected + [('data', 'schema')])
+        # app doesn't have schema file
+        with temp_config('data2', instance_dir, cubes_dir,
+                         ('foo', 'bar')) as config:
+            self.assertEqual(pkgutil.find_loader('schema').get_filename(),
+                             join(libdir, 'schema.py'))
+            self.assertEqual(config.schema_modnames(), expected)
+
+    @templibdir
+    def test_appobjects_modnames(self, libdir):
+        for filepath in (
+            join(libdir, 'entities.py'),
+            join(libdir, 'cubicweb_foo', '__init__.py'),
+            join(libdir, 'cubicweb_foo', 'entities', '__init__.py'),
+            join(libdir, 'cubicweb_foo', 'entities', 'a.py'),
+            join(libdir, 'cubicweb_foo', 'hooks.py'),
+            join(libdir, 'cubes', '__init__.py'),
+            join(libdir, 'cubes', 'bar', '__init__.py'),
+            join(libdir, 'cubes', 'bar', 'hooks.py'),
+            join(libdir, '_instance_dir', 'data1', 'entities.py'),
+            join(libdir, '_instance_dir', 'data2', 'hooks.py'),
+        ):
+            create_filepath(filepath)
+        instance_dir, cubes_dir = (
+            join(libdir, '_instance_dir'), join(libdir, 'cubes'))
+        expected = [
+            'cubicweb.entities',
+            'cubicweb.entities.adapters',
+            'cubicweb.entities.authobjs',
+            'cubicweb.entities.lib',
+            'cubicweb.entities.schemaobjs',
+            'cubicweb.entities.sources',
+            'cubicweb.entities.wfobjs',
+            'cubes.bar.hooks',
+            'cubes.foo.entities',
+            'cubes.foo.entities.a',
+            'cubes.foo.hooks',
+        ]
+        # data1 has entities
+        with temp_config('data1', instance_dir, cubes_dir,
+                         ('foo', 'bar')) as config:
+            config.cube_appobject_path = set(['entities', 'hooks'])
+            self.assertEqual(config.appobjects_modnames(),
+                             expected + ['entities'])
+        # data2 has hooks
+        with temp_config('data2', instance_dir, cubes_dir,
+                         ('foo', 'bar')) as config:
+            config.cube_appobject_path = set(['entities', 'hooks'])
+            self.assertEqual(config.appobjects_modnames(),
+                             expected + ['hooks'])
 
 
 if __name__ == '__main__':

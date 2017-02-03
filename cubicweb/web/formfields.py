@@ -1,4 +1,4 @@
-# copyright 2003-2013 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2016 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -110,6 +110,7 @@ def vocab_sort(vocab):
             partresult.append((label, value))
     result += sorted(partresult)
     return result
+
 
 _MARKER = nullobject()
 
@@ -361,7 +362,6 @@ class Field(object):
             if callable(self.value):
                 return self.value(form, self)
             return self.value
-        formattr = '%s_%s_default' % (self.role, self.name)
         if self.eidparam and self.role is not None:
             if form._cw.vreg.schema.rschema(self.name).final:
                 return form.edited_entity.e_schema.default(self.name)
@@ -1237,8 +1237,19 @@ def guess_field(eschema, rschema, role='subject', req=None, **kwargs):
         kwargs.setdefault('label', (eschema.type, rschema.type))
     kwargs.setdefault('help', rdef.description)
     if rschema.final:
-        fieldclass = FIELDS[targetschema]
-        if fieldclass is StringField:
+        fieldclass = kwargs.pop('fieldclass', FIELDS[targetschema])
+        if issubclass(fieldclass, FileField):
+            if req:
+                aff_kwargs = req.vreg['uicfg'].select('autoform_field_kwargs', req)
+            else:
+                aff_kwargs = _AFF_KWARGS
+            for metadata in KNOWN_METAATTRIBUTES:
+                metaschema = eschema.has_metadata(rschema, metadata)
+                if metaschema is not None:
+                    metakwargs = aff_kwargs.etype_get(eschema, metaschema, 'subject')
+                    kwargs['%s_field' % metadata] = guess_field(eschema, metaschema,
+                                                                req=req, **metakwargs)
+        elif issubclass(fieldclass, StringField):
             if eschema.has_metadata(rschema, 'format'):
                 # use RichTextField instead of StringField if the attribute has
                 # a "format" metadata. But getting information from constraints
@@ -1255,18 +1266,6 @@ def guess_field(eschema, rschema, role='subject', req=None, **kwargs):
             for cstr in rdef.constraints:
                 if isinstance(cstr, SizeConstraint) and cstr.max is not None:
                     kwargs['max_length'] = cstr.max
-            return StringField(**kwargs)
-        if fieldclass is FileField:
-            if req:
-                aff_kwargs = req.vreg['uicfg'].select('autoform_field_kwargs', req)
-            else:
-                aff_kwargs = _AFF_KWARGS
-            for metadata in KNOWN_METAATTRIBUTES:
-                metaschema = eschema.has_metadata(rschema, metadata)
-                if metaschema is not None:
-                    metakwargs = aff_kwargs.etype_get(eschema, metaschema, 'subject')
-                    kwargs['%s_field' % metadata] = guess_field(eschema, metaschema,
-                                                                req=req, **metakwargs)
         return fieldclass(**kwargs)
     return RelationField.fromcardinality(card, **kwargs)
 
