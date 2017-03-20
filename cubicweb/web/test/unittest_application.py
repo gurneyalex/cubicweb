@@ -24,7 +24,7 @@ from six.moves import http_client
 from six.moves.http_cookies import SimpleCookie
 
 from logilab.common.testlib import TestCase, unittest_main
-from logilab.common.decorators import clear_cache, classproperty
+from logilab.common.decorators import clear_cache
 
 from cubicweb import view
 from cubicweb.devtools.testlib import CubicWebTC, real_error_handling
@@ -32,7 +32,6 @@ from cubicweb.devtools.fake import FakeRequest
 from cubicweb.web import LogOut, Redirect, INTERNAL_FIELD_VALUE
 from cubicweb.web.views.basecontrollers import ViewController
 from cubicweb.web.application import anonymized_request
-from cubicweb import repoapi
 
 
 class FakeMapping:
@@ -219,7 +218,7 @@ class ApplicationTC(CubicWebTC):
     def test_handle_request_with_lang_fromurl(self):
         """No language negociation, get language from URL."""
         self.config.global_set_option('language-mode', 'url-prefix')
-        req, origsession = self.init_authentication('http')
+        req = self.init_authentication('http')
         self.assertEqual(req.url(), 'http://testing.fr/cubicweb/login')
         self.assertEqual(req.lang, 'en')
         self.app.handle_request(req)
@@ -503,7 +502,7 @@ class ApplicationTC(CubicWebTC):
             self.assertTrue(cnx.find('Directory', eid=subd.eid))
             self.assertTrue(cnx.find('Filesystem', eid=fs.eid))
             self.assertEqual(cnx.find('Directory', eid=subd.eid).one().parent,
-                             [topd,])
+                             (topd,))
 
     def test_subject_mixed_composite_subentity_removal_2(self):
         """Editcontroller: detaching several subentities respects each rdef's
@@ -542,7 +541,7 @@ class ApplicationTC(CubicWebTC):
             self.assertTrue(cnx.find('Directory', eid=subd.eid))
             self.assertTrue(cnx.find('Filesystem', eid=fs.eid))
             self.assertEqual(cnx.find('Directory', eid=subd.eid).one().parent,
-                             [topd,])
+                             (topd,))
 
     def test_object_mixed_composite_subentity_removal_2(self):
         """Editcontroller: detaching several subentities respects each rdef's
@@ -574,13 +573,13 @@ class ApplicationTC(CubicWebTC):
             perm_eid = text_type(perm.eid)
             req.form = {
                 'eid': [dir_eid, perm_eid],
-                '__maineid' : dir_eid,
+                '__maineid': dir_eid,
                 '__type:%s' % dir_eid: 'Directory',
                 '__type:%s' % perm_eid: 'DirectoryPermission',
                 '_cw_entity_fields:%s' % dir_eid: '',
                 '_cw_entity_fields:%s' % perm_eid: 'has_permission-object',
                 'has_permission-object:%s' % perm_eid: '',
-                }
+            }
             path, _params = self.expect_redirect_handle_request(req, 'edit')
             self.assertTrue(req.find('Directory', eid=mydir.eid))
             self.assertFalse(req.find('DirectoryPermission', eid=perm.eid))
@@ -638,20 +637,20 @@ class ApplicationTC(CubicWebTC):
     # authentication tests ####################################################
 
     def test_http_auth_no_anon(self):
-        req, origsession = self.init_authentication('http')
+        req = self.init_authentication('http')
         self.assertAuthFailure(req)
         self.app.handle_request(req)
         self.assertEqual(401, req.status_out)
         clear_cache(req, 'get_authorization')
         authstr = base64.encodestring(('%s:%s' % (self.admlogin, self.admpassword)).encode('ascii'))
         req.set_request_header('Authorization', 'basic %s' % authstr.decode('ascii'))
-        self.assertAuthSuccess(req, origsession)
+        self.assertAuthSuccess(req)
         req._url = 'logout'
         self.assertRaises(LogOut, self.app_handle_request, req)
         self.assertEqual(len(self.open_sessions), 0)
 
     def test_cookie_auth_no_anon(self):
-        req, origsession = self.init_authentication('cookie')
+        req = self.init_authentication('cookie')
         self.assertAuthFailure(req)
         try:
             form = self.app.handle_request(req)
@@ -663,7 +662,7 @@ class ApplicationTC(CubicWebTC):
         self.assertFalse(req.cnx)  # Mock cnx are False
         req.form['__login'] = self.admlogin
         req.form['__password'] = self.admpassword
-        self.assertAuthSuccess(req, origsession)
+        self.assertAuthSuccess(req)
         req._url = 'logout'
         self.assertRaises(LogOut, self.app_handle_request, req)
         self.assertEqual(len(self.open_sessions), 0)
@@ -675,11 +674,11 @@ class ApplicationTC(CubicWebTC):
             cnx.execute('INSERT EmailAddress X: X address %(address)s, U primary_email X '
                         'WHERE U login %(login)s', {'address': address, 'login': login})
             cnx.commit()
-        req, origsession = self.init_authentication('cookie')
+        req = self.init_authentication('cookie')
         self.set_option('allow-email-login', True)
         req.form['__login'] = address
         req.form['__password'] = self.admpassword
-        self.assertAuthSuccess(req, origsession)
+        self.assertAuthSuccess(req)
         req._url = 'logout'
         self.assertRaises(LogOut, self.app_handle_request, req)
         self.assertEqual(len(self.open_sessions), 0)
@@ -701,7 +700,7 @@ class ApplicationTC(CubicWebTC):
         with cnx:
             req.set_cnx(cnx)
         self.assertEqual(len(self.open_sessions), 1)
-        self.assertEqual(asession.login, 'anon')
+        self.assertEqual(asession.user.login, 'anon')
         self.assertTrue(asession.anonymous_session)
         self._reset_cookie(req)
 
@@ -718,27 +717,27 @@ class ApplicationTC(CubicWebTC):
         self._reset_cookie(req)
 
     def test_http_auth_anon_allowed(self):
-        req, origsession = self.init_authentication('http', 'anon')
+        req = self.init_authentication('http', 'anon')
         self._test_auth_anon(req)
         authstr = base64.encodestring(b'toto:pouet')
         req.set_request_header('Authorization', 'basic %s' % authstr.decode('ascii'))
         self._test_anon_auth_fail(req)
         authstr = base64.encodestring(('%s:%s' % (self.admlogin, self.admpassword)).encode('ascii'))
         req.set_request_header('Authorization', 'basic %s' % authstr.decode('ascii'))
-        self.assertAuthSuccess(req, origsession)
+        self.assertAuthSuccess(req)
         req._url = 'logout'
         self.assertRaises(LogOut, self.app_handle_request, req)
         self.assertEqual(len(self.open_sessions), 0)
 
     def test_cookie_auth_anon_allowed(self):
-        req, origsession = self.init_authentication('cookie', 'anon')
+        req = self.init_authentication('cookie', 'anon')
         self._test_auth_anon(req)
         req.form['__login'] = 'toto'
         req.form['__password'] = 'pouet'
         self._test_anon_auth_fail(req)
         req.form['__login'] = self.admlogin
         req.form['__password'] = self.admpassword
-        self.assertAuthSuccess(req, origsession)
+        self.assertAuthSuccess(req)
         req._url = 'logout'
         self.assertRaises(LogOut, self.app_handle_request, req)
         self.assertEqual(0, len(self.open_sessions))
@@ -749,10 +748,10 @@ class ApplicationTC(CubicWebTC):
             # admin should see anon + admin
             self.assertEqual(2, len(list(req.find('CWUser'))))
             with anonymized_request(req):
-                self.assertEqual('anon', req.session.login, 'anon')
+                self.assertEqual('anon', req.session.user.login)
                 # anon should only see anon user
                 self.assertEqual(1, len(list(req.find('CWUser'))))
-            self.assertEqual(self.admlogin, req.session.login)
+            self.assertEqual(self.admlogin, req.session.user.login)
             self.assertEqual(2, len(list(req.find('CWUser'))))
 
     def test_non_regr_optional_first_var(self):

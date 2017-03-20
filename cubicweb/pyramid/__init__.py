@@ -1,9 +1,34 @@
+# copyright 2017 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2014-2016 UNLISH S.A.S. (Montpellier, FRANCE), all rights reserved.
+#
+# contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
+#
+# This file is part of CubicWeb.
+#
+# CubicWeb is free software: you can redistribute it and/or modify it under the
+# terms of the GNU Lesser General Public License as published by the Free
+# Software Foundation, either version 2.1 of the License, or (at your option)
+# any later version.
+#
+# CubicWeb is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Lesser General Public License along
+# with CubicWeb.  If not, see <http://www.gnu.org/licenses/>.
+
+"""Pyramid interface to CubicWeb"""
+
+import atexit
 import os
 from warnings import warn
+
 import wsgicors
 
 from cubicweb.cwconfig import CubicWebConfiguration as cwcfg
 from pyramid.config import Configurator
+from pyramid.exceptions import ConfigurationError
 from pyramid.settings import asbool, aslist
 
 try:
@@ -12,11 +37,9 @@ except ImportError:
     from ConfigParser import SafeConfigParser
 
 
-def make_cubicweb_application(cwconfig, settings=None):
-    """
-    Create a pyramid-based CubicWeb instance from a cubicweb configuration.
-
-    It is initialy meant to be used by the 'pyramid' command of cubicweb-ctl.
+def config_from_cwconfig(cwconfig, settings=None):
+    """Return a Pyramid Configurator instance built from a CubicWeb config and
+    Pyramid-specific configuration files (pyramid.ini).
 
     :param cwconfig: A CubicWeb configuration
     :returns: A Pyramid config object
@@ -74,7 +97,7 @@ def wsgi_application_from_cwconfig(
 
     :returns: A fully operationnal WSGI application
     """
-    config = make_cubicweb_application(cwconfig)
+    config = config_from_cwconfig(cwconfig)
     profile = profile or asbool(config.registry.settings.get(
         'cubicweb.profile.enable', False))
     if profile:
@@ -146,10 +169,23 @@ def wsgi_application(instance_name=None, debug=None):
     return wsgi_application_from_cwconfig(cwconfig)
 
 
+def pyramid_app(global_config, **settings):
+    """Return a Pyramid WSGI application bound to a CubicWeb repository."""
+    config = Configurator(settings=settings)
+    config.include('cubicweb.pyramid')
+    return config.make_wsgi_app()
+
+
 def includeme(config):
     """Set-up a CubicWeb instance.
 
     The CubicWeb instance can be set in several ways:
+
+    -   Provide an already loaded CubicWeb repository in the registry:
+
+        .. code-block:: python
+
+            config.registry['cubicweb.repository'] = your_repo_instance
 
     -   Provide an already loaded CubicWeb config instance in the registry:
 
@@ -160,8 +196,24 @@ def includeme(config):
     -   Provide an instance name in the pyramid settings with
         :confval:`cubicweb.instance`.
 
+    A CubicWeb repository is instantiated and attached in
+    'cubicweb.repository' registry key if not already present.
+
+    The CubicWeb instance registry is attached in 'cubicweb.registry' registry
+    key.
     """
     cwconfig = config.registry.get('cubicweb.config')
+    repo = config.registry.get('cubicweb.repository')
+
+    if repo is not None:
+        if cwconfig is None:
+            config.registry['cubicweb.config'] = cwconfig = repo.config
+        elif cwconfig is not repo.config:
+            raise ConfigurationError(
+                'CubicWeb config instance (found in "cubicweb.config" '
+                'registry key) mismatches with that of the repository '
+                '(registry["cubicweb.repository"])'
+            )
 
     if cwconfig is None:
         debugmode = asbool(
@@ -170,15 +222,11 @@ def includeme(config):
             config.registry.settings['cubicweb.instance'], debugmode=debugmode)
         config.registry['cubicweb.config'] = cwconfig
 
-    if cwconfig.debugmode:
-        try:
-            config.include('pyramid_debugtoolbar')
-        except ImportError:
-            warn('pyramid_debugtoolbar package not available, install it to '
-                 'get UI debug features', RuntimeWarning)
-
-    config.registry['cubicweb.repository'] = repo = cwconfig.repository()
+    if repo is None:
+        repo = config.registry['cubicweb.repository'] = cwconfig.repository()
     config.registry['cubicweb.registry'] = repo.vreg
+
+    atexit.register(repo.shutdown)
 
     if asbool(config.registry.settings.get('cubicweb.defaults', True)):
         config.include('cubicweb.pyramid.defaults')
@@ -186,10 +234,14 @@ def includeme(config):
     for name in aslist(config.registry.settings.get('cubicweb.includes', [])):
         config.include(name)
 
-    config.include('cubicweb.pyramid.tools')
-    config.include('cubicweb.pyramid.predicates')
     config.include('cubicweb.pyramid.core')
-    config.include('cubicweb.pyramid.syncsession')
 
     if asbool(config.registry.settings.get('cubicweb.bwcompat', True)):
         config.include('cubicweb.pyramid.bwcompat')
+
+    if cwconfig.debugmode:
+        try:
+            config.include('pyramid_debugtoolbar')
+        except ImportError:
+            warn('pyramid_debugtoolbar package not available, install it to '
+                 'get UI debug features', RuntimeWarning)

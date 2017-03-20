@@ -37,6 +37,7 @@ from cubicweb import AuthenticationError, ExecutionError, ConfigurationError, So
 from cubicweb.toolsutils import Command, CommandHandler, underline_title
 from cubicweb.cwctl import CWCTL, check_options_consistency, ConfigureInstanceCommand
 from cubicweb.server import SOURCE_TYPES
+from cubicweb.server import checkintegrity
 from cubicweb.server.serverconfig import (
     USER_OPTIONS, ServerConfiguration, SourceConfiguration,
     ask_source_config, generate_source_config)
@@ -902,12 +903,8 @@ class CheckRepositoryCommand(Command):
     options = (
         ('checks',
          {'short': 'c', 'type': 'csv', 'metavar': '<check list>',
-          'default': ('entities', 'relations',
-                      'mandatory_relations', 'mandatory_attributes',
-                      'metadata', 'schema', 'text_index'),
-          'help': 'Comma separated list of check to run. By default run all \
-checks, i.e. entities, relations, mandatory_relations, mandatory_attributes, \
-metadata, text_index and schema.'}
+          'default': sorted(checkintegrity._CHECKERS),
+          'help': 'Comma separated list of check to run. By default run all checks.'}
          ),
 
         ('autofix',
@@ -930,13 +927,12 @@ option is set to "y" or "yes" (may be long for large database).'}
     )
 
     def run(self, args):
-        from cubicweb.server.checkintegrity import check
         appid = args[0]
         config = ServerConfiguration.config_for(appid)
         config.repairing = self.config.force
         repo, _cnx = repo_cnx(config)
         with repo.internal_cnx() as cnx:
-            check(repo, cnx,
+            checkintegrity.check(repo, cnx,
                   self.config.checks,
                   self.config.reindex,
                   self.config.autofix)
@@ -953,11 +949,10 @@ class DBIndexSanityCheckCommand(Command):
     min_args = 1
 
     def run(self, args):
-        from cubicweb.server.checkintegrity import check_indexes
         config = ServerConfiguration.config_for(args[0])
         repo, cnx = repo_cnx(config)
         with cnx:
-            status = check_indexes(cnx)
+            status = checkintegrity.check_indexes(cnx)
         sys.exit(status)
 
 
@@ -983,6 +978,45 @@ class RebuildFTICommand(Command):
         with cnx:
             reindex_entities(repo.schema, cnx, etypes=etypes)
             cnx.commit()
+
+
+class RepositorySchedulerCommand(Command):
+    """Start a repository tasks scheduler.
+
+    Initialize a repository and start its tasks scheduler that would run
+    registered "looping tasks".
+
+    This is maintenance command that should be kept running along with a web
+    instance of a CubicWeb WSGI application (e.g. embeded into a Pyramid
+    application).
+
+    <instance>
+      the identifier of the instance
+    """
+    name = 'scheduler'
+    arguments = '<instance>'
+    min_args = max_args = 1
+    options = (
+        ('loglevel',
+         {'short': 'l', 'type': 'choice', 'metavar': '<log level>',
+          'default': 'info', 'choices': ('debug', 'info', 'warning', 'error')},
+         ),
+    )
+
+    def run(self, args):
+        from cubicweb.cwctl import init_cmdline_log_threshold
+        from cubicweb.server.repository import Repository
+        from cubicweb.server.utils import scheduler
+        config = ServerConfiguration.config_for(args[0])
+        # Log to stdout, since the this command runs in the foreground.
+        config.global_set_option('log-file', None)
+        init_cmdline_log_threshold(config, self['loglevel'])
+        repo = Repository(config, scheduler())
+        repo.bootstrap()
+        try:
+            repo.run_scheduler()
+        finally:
+            repo.shutdown()
 
 
 class SynchronizeSourceCommand(Command):
@@ -1095,6 +1129,7 @@ for cmdclass in (CreateInstanceDBCommand, InitInstanceCommand,
                  DBDumpCommand, DBRestoreCommand, DBCopyCommand, DBIndexSanityCheckCommand,
                  AddSourceCommand, CheckRepositoryCommand, RebuildFTICommand,
                  SynchronizeSourceCommand, SchemaDiffCommand,
+                 RepositorySchedulerCommand,
                  ):
     CWCTL.register(cmdclass)
 

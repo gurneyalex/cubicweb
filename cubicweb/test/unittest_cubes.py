@@ -20,36 +20,36 @@
 from contextlib import contextmanager
 import os
 from os import path
-import shutil
 import sys
-import tempfile
-import unittest
 
 from six import PY2
 
 from cubicweb import _CubesImporter
 from cubicweb.cwconfig import CubicWebConfiguration
+from cubicweb.devtools.testlib import TemporaryDirectory, TestCase
 
 
 @contextmanager
 def temp_cube():
-    tempdir = tempfile.mkdtemp()
-    try:
-        libdir = path.join(tempdir, 'libpython')
-        cubedir = path.join(libdir, 'cubicweb_foo')
-        os.makedirs(cubedir)
-        with open(path.join(cubedir, '__init__.py'), 'w') as f:
-            f.write('"""cubicweb_foo application package"""')
-        with open(path.join(cubedir, 'bar.py'), 'w') as f:
-            f.write('baz = 1')
-        sys.path.append(libdir)
-        yield cubedir
-    finally:
-        shutil.rmtree(tempdir)
-        sys.path.remove(libdir)
+    with TemporaryDirectory() as tempdir:
+        try:
+            libdir = path.join(tempdir, 'libpython')
+            cubedir = path.join(libdir, 'cubicweb_foo')
+            os.makedirs(cubedir)
+            check_code = ("import logging\n"
+                          "logging.getLogger('cubicweb_foo')"
+                          ".warn('imported %s', __name__)\n")
+            with open(path.join(cubedir, '__init__.py'), 'w') as f:
+                f.write("'cubicweb_foo application package'\n" + check_code)
+            with open(path.join(cubedir, 'bar.py'), 'w') as f:
+                f.write(check_code + 'baz = 1\n')
+            sys.path.append(libdir)
+            yield cubedir
+        finally:
+            sys.path.remove(libdir)
 
 
-class CubesImporterTC(unittest.TestCase):
+class CubesImporterTC(TestCase):
 
     def setUp(self):
         # During discovery, CubicWebConfiguration.cls_adjust_sys_path may be
@@ -94,6 +94,38 @@ class CubesImporterTC(unittest.TestCase):
             # Import a submodule.
             from cubes.foo import bar
             self.assertEqual(bar.baz, 1)
+
+    def test_reload_cube(self):
+        """reloading cubes twice should return the same module"""
+        CubicWebConfiguration.cls_adjust_sys_path()
+        import cubes
+        if PY2:
+            new = reload(cubes)
+        else:
+            import importlib
+            new = importlib.reload(cubes)
+        self.assertIs(new, cubes)
+
+    def test_no_double_import(self):
+        """Check new and legacy import the same module once"""
+        with temp_cube():
+            CubicWebConfiguration.cls_adjust_sys_path()
+            with self.assertLogs('cubicweb_foo', 'WARNING') as cm:
+                from cubes.foo import bar
+                from cubicweb_foo import bar as bar2
+                self.assertIs(bar, bar2)
+                self.assertIs(sys.modules['cubes.foo'],
+                              sys.modules['cubicweb_foo'])
+            self.assertEqual(cm.output, [
+                'WARNING:cubicweb_foo:imported cubicweb_foo',
+                # module __name__ for subpackage differ along python version
+                # for PY2 it's based on how the module was imported "from
+                # cubes.foo import bar" and for PY3 based on __name__ of parent
+                # module "cubicweb_foo". Not sure if it's an issue, but PY3
+                # behavior looks better.
+                'WARNING:cubicweb_foo:imported ' + (
+                    'cubes.foo.bar' if PY2 else 'cubicweb_foo.bar')
+            ])
 
     def test_import_legacy_cube(self):
         """Check that importing a legacy cube works when sys.path got adjusted.

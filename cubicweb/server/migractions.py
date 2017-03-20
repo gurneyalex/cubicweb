@@ -58,7 +58,7 @@ from cubicweb.schema import (ETYPE_NAME_MAP, META_RTYPES, VIRTUAL_RTYPES,
 from cubicweb.cwvreg import CW_EVENT_MANAGER
 from cubicweb import repoapi
 from cubicweb.migration import MigrationHelper, yes
-from cubicweb.server import hook, schemaserial as ss
+from cubicweb.server import hook, schemaserial as ss, repository
 from cubicweb.server.schema2sql import eschema2sql, rschema2sql, unique_index_name, sql_type
 from cubicweb.server.utils import manager_userpasswd
 from cubicweb.server.sqlutils import sqlexec, SQL_PREFIX
@@ -96,12 +96,9 @@ class ServerMigrationHelper(MigrationHelper):
             assert repo
             self.cnx = cnx
             self.repo = repo
-            self.session = cnx.session
         elif connect:
             self.repo = config.repository()
             self.set_cnx()
-        else:
-            self.session = None
         # no config on shell to a remote instance
         if config is not None and (cnx or connect):
             repo = self.repo
@@ -154,7 +151,6 @@ class ServerMigrationHelper(MigrationHelper):
             except (KeyboardInterrupt, EOFError):
                 print('aborting...')
                 sys.exit(0)
-        self.session = self.repo._get_session(self.cnx.sessionid)
 
     def cube_upgraded(self, cube, version):
         self.cmd_set_property('system.version.%s' % cube.lower(),
@@ -268,8 +264,7 @@ class ServerMigrationHelper(MigrationHelper):
                 written_format = format_file.readline().strip()
                 if written_format in ('portable', 'native'):
                     format = written_format
-        self.config.init_cnxset_pool = False
-        repo = self.repo = self.config.repository()
+        repo = self.repo = repository.Repository(self.config)
         source = repo.system_source
         try:
             source.restore(osp.join(tmpdir, source.uri), self.confirm, drop, format)
@@ -277,9 +272,10 @@ class ServerMigrationHelper(MigrationHelper):
             print('-> error trying to restore %s [%s]' % (source.uri, exc))
             if not self.confirm('Continue anyway?', default='n'):
                 raise SystemExit(1)
-        shutil.rmtree(tmpdir)
+        finally:
+            shutil.rmtree(tmpdir)
         # call hooks
-        repo.init_cnxset_pool()
+        repo.bootstrap()
         repo.hm.call_hooks('server_restore', repo=repo, timestamp=backupfile)
         print('-> database restored.')
 

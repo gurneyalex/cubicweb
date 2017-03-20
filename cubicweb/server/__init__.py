@@ -22,8 +22,6 @@ The server module contains functions to initialize a new repository.
 """
 from __future__ import print_function
 
-
-
 from contextlib import contextmanager
 
 from six import text_type, string_types
@@ -38,12 +36,6 @@ from yams import BASE_GROUPS
 
 from cubicweb.appobject import AppObject
 
-
-class ShuttingDown(BaseException):
-    """raised when trying to access some resources while the repository is
-    shutting down. Inherit from BaseException so that `except Exception` won't
-    catch it.
-    """
 
 # server-side services #########################################################
 
@@ -68,16 +60,16 @@ class Service(AppObject):
 
 # server debugging flags. They may be combined using binary operators.
 
-#:no debug information
+#: no debug information
 DBG_NONE = 0  #: no debug information
 #: rql execution information
-DBG_RQL  = 1
+DBG_RQL = 1
 #: executed sql
-DBG_SQL  = 2
+DBG_SQL = 2
 #: repository events
 DBG_REPO = 4
 #: multi-sources
-DBG_MS   = 8
+DBG_MS = 8
 #: hooks
 DBG_HOOKS = 16
 #: operations
@@ -206,7 +198,7 @@ def create_user(session, login, pwd, *groups):
 
 def init_repository(config, interactive=True, drop=False, vreg=None,
                     init_config=None):
-    """initialise a repository database by creating tables add filling them
+    """Initialise a repository database by creating tables and filling them
     with the minimal set of entities (ie at least the schema, base groups and
     a initial user)
     """
@@ -223,6 +215,7 @@ def init_repository(config, interactive=True, drop=False, vreg=None,
     config.cube_appobject_path = set(('hooks', 'entities'))
     # only enable the system source at initialization time
     repo = Repository(config, vreg=vreg)
+    repo.bootstrap()
     if init_config is not None:
         # further config initialization once it has been bootstrapped
         init_config(config)

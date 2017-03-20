@@ -21,13 +21,13 @@ This module contains functions to initialize a new repository.
 """
 from __future__ import print_function
 
+from contextlib import contextmanager
 from pprint import pprint
 
-from logilab.common.decorators import cachedproperty
 from logilab.common.testlib import SkipTest
 
 from cubicweb.devtools.testlib import RepoAccess
-
+from cubicweb.entities.authobjs import user_session_cache_key
 
 def tuplify(mylist):
     return [tuple(item) for item in mylist]
@@ -39,7 +39,7 @@ def snippet_key(a):
 
 
 def check_plan(self, rql, expected, kwargs=None):
-    with self.session.new_cnx() as cnx:
+    with self.admin_access.cnx() as cnx:
         plan = self._prepare_plan(cnx, rql, kwargs)
         self.planner.build_plan(plan)
         try:
@@ -135,10 +135,9 @@ from logilab.database import get_db_helper
 from rql import RQLHelper
 
 from cubicweb.devtools.testlib import BaseTestCase
-from cubicweb.devtools.fake import FakeRepo, FakeConfig, FakeSession, FakeRequest
+from cubicweb.devtools.fake import FakeRepo, FakeConfig, FakeRequest, FakeConnection
 from cubicweb.server import set_debug, debugged
 from cubicweb.server.querier import QuerierHelper
-from cubicweb.server.session import Session
 from cubicweb.server.sources.rql2sql import SQLGenerator, remove_unused_solutions
 
 class RQLGeneratorTC(BaseTestCase):
@@ -182,7 +181,7 @@ class RQLGeneratorTC(BaseTestCase):
         #print '********* solutions', solutions
         self.rqlhelper.simplify(union)
         #print '********* simplified', union.as_string()
-        plan = self.qhelper.plan_factory(union, {}, FakeSession(self.repo))
+        plan = self.qhelper.plan_factory(union, {}, FakeConnection(self.repo))
         plan.preprocess(union)
         for select in union.children:
             select.solutions.sort(key=lambda x: list(x.items()))
@@ -193,14 +192,10 @@ class RQLGeneratorTC(BaseTestCase):
 class BaseQuerierTC(TestCase):
     repo = None # set this in concrete class
 
-    @cachedproperty
-    def session(self):
-        return self._access._session
-
     def setUp(self):
         self.o = self.repo.querier
-        self._access = RepoAccess(self.repo, 'admin', FakeRequest)
-        self.ueid = self.session.user.eid
+        self.admin_access = RepoAccess(self.repo, 'admin', FakeRequest)
+        self.ueid = self.admin_access._user.eid
         assert self.ueid != -1
         self.repo._type_cache = {} # clear cache
         self.maxeid = self.get_max_eid()
@@ -208,18 +203,18 @@ class BaseQuerierTC(TestCase):
         self._dumb_sessions = []
 
     def get_max_eid(self):
-        with self.session.new_cnx() as cnx:
+        with self.admin_access.cnx() as cnx:
             return cnx.execute('Any MAX(X)')[0][0]
 
     def cleanup(self):
-        with self.session.new_cnx() as cnx:
+        with self.admin_access.cnx() as cnx:
             cnx.execute('DELETE Any X WHERE X eid > %s' % self.maxeid)
             cnx.commit()
 
     def tearDown(self):
         undo_monkey_patch()
         self.cleanup()
-        assert self.session.user.eid != -1
+        assert self.admin_access._user.eid != -1
 
     def set_debug(self, debug):
         set_debug(debug)
@@ -250,17 +245,17 @@ class BaseQuerierTC(TestCase):
         rqlst.solutions = remove_unused_solutions(rqlst, rqlst.solutions, self.repo.schema)[0]
         return rqlst
 
+    @contextmanager
     def user_groups_session(self, *groups):
         """lightweight session using the current user with hi-jacked groups"""
-        # use self.session.user.eid to get correct owned_by relation, unless explicit eid
-        with self.session.new_cnx() as cnx:
-            user_eid = self.session.user.eid
-            session = Session(self.repo._build_user(cnx, user_eid), self.repo)
-            session.data['%s-groups' % user_eid] = set(groups)
-            return session
+        # use cnx.user.eid to get correct owned_by relation, unless explicit eid
+        with self.admin_access.cnx() as cnx:
+            user_eid = cnx.user.eid
+            cnx.user._cw.data[user_session_cache_key(user_eid, 'groups')] = set(groups)
+            yield cnx
 
     def qexecute(self, rql, args=None, build_descr=True):
-        with self.session.new_cnx() as cnx:
+        with self.admin_access.cnx() as cnx:
             try:
                 return self.o.execute(cnx, rql, args, build_descr)
             finally:
@@ -273,7 +268,6 @@ class BasePlannerTC(BaseQuerierTC):
     def setup(self):
         # XXX source_defs
         self.o = self.repo.querier
-        self.session = self.repo._sessions.values()[0]
         self.schema = self.o.schema
         self.system = self.repo.system_source
         do_monkey_patch()
@@ -283,8 +277,8 @@ class BasePlannerTC(BaseQuerierTC):
         undo_monkey_patch()
 
     def _prepare_plan(self, cnx, rql, kwargs=None):
-        rqlst = self.o.parse(rql, annotate=True)
-        self.o.solutions(cnx, rqlst, kwargs)
+        rqlst = self.repo.vreg.rqlhelper.parse(rql, annotate=True)
+        self.repo.vreg.solutions(cnx, rqlst, kwargs)
         if rqlst.TYPE == 'select':
             self.repo.vreg.rqlhelper.annotate(rqlst)
             for select in rqlst.children:

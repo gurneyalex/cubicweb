@@ -278,9 +278,6 @@ class RequestSessionBase(object):
         parameters. Values are automatically URL quoted, and the
         publishing method to use may be specified or will be guessed.
 
-        if ``__secure__`` argument is True, the request will try to build a
-        https url.
-
         raises :exc:`ValueError` if None is found in arguments
         """
         # use *args since we don't want first argument to be "anonymous" to
@@ -295,8 +292,10 @@ class RequestSessionBase(object):
         #     not try to process it and directly call req.build_url()
         base_url = kwargs.pop('base_url', None)
         if base_url is None:
-            secure = kwargs.pop('__secure__', None)
-            base_url = self.base_url(secure=secure)
+            if kwargs.pop('__secure__', None) is not None:
+                warn('[3.25] __secure__ argument is deprecated',
+                     DeprecationWarning, stacklevel=2)
+            base_url = self.base_url()
         path = self.build_url_path(method, kwargs)
         if not kwargs:
             return u'%s%s' % (base_url, path)
@@ -327,9 +326,9 @@ class RequestSessionBase(object):
         necessary encoding / decoding. Also it's designed to quote each
         part of a url path and so the '/' character will be encoded as well.
         """
-        if PY2 and isinstance(value, unicode):
+        if PY2 and isinstance(value, text_type):
             quoted = urlquote(value.encode(self.encoding), safe=safe)
-            return unicode(quoted, self.encoding)
+            return text_type(quoted, self.encoding)
         return urlquote(str(value), safe=safe)
 
     def url_unquote(self, quoted):
@@ -340,12 +339,12 @@ class RequestSessionBase(object):
         """
         if PY3:
             return urlunquote(quoted)
-        if isinstance(quoted, unicode):
+        if isinstance(quoted, text_type):
             quoted = quoted.encode(self.encoding)
         try:
-            return unicode(urlunquote(quoted), self.encoding)
+            return text_type(urlunquote(quoted), self.encoding)
         except UnicodeDecodeError:  # might occurs on manually typed URLs
-            return unicode(urlunquote(quoted), 'iso-8859-1')
+            return text_type(urlunquote(quoted), 'iso-8859-1')
 
     def url_parse_qsl(self, querystring):
         """return a list of (key, val) found in the url quoted query string"""
@@ -353,13 +352,13 @@ class RequestSessionBase(object):
             for key, val in parse_qsl(querystring):
                 yield key, val
             return
-        if isinstance(querystring, unicode):
+        if isinstance(querystring, text_type):
             querystring = querystring.encode(self.encoding)
         for key, val in parse_qsl(querystring):
             try:
-                yield unicode(key, self.encoding), unicode(val, self.encoding)
+                yield text_type(key, self.encoding), text_type(val, self.encoding)
             except UnicodeDecodeError:  # might occurs on manually typed URLs
-                yield unicode(key, 'iso-8859-1'), unicode(val, 'iso-8859-1')
+                yield text_type(key, 'iso-8859-1'), text_type(val, 'iso-8859-1')
 
     def rebuild_url(self, url, **newparams):
         """return the given url with newparams inserted. If any new params
@@ -367,7 +366,7 @@ class RequestSessionBase(object):
 
         newparams may only be mono-valued.
         """
-        if PY2 and isinstance(url, unicode):
+        if PY2 and isinstance(url, text_type):
             url = url.encode(self.encoding)
         schema, netloc, path, query, fragment = urlsplit(url)
         query = parse_qs(query)
@@ -439,7 +438,7 @@ class RequestSessionBase(object):
             as_string = formatters[attrtype]
         except KeyError:
             self.error('given bad attrtype %s', attrtype)
-            return unicode(value)
+            return text_type(value)
         return as_string(value, self, props, displaytime)
 
     def format_date(self, date, date_format=None, time=False):
@@ -502,13 +501,12 @@ class RequestSessionBase(object):
             raise ValueError(self._('can\'t parse %(value)r (expected %(format)s)')
                              % {'value': value, 'format': format})
 
-    def _base_url(self, secure=None):
-        if secure:
-            return self.vreg.config.get('https-url') or self.vreg.config['base-url']
-        return self.vreg.config['base-url']
-
-    def base_url(self, secure=None):
-        """return the root url of the instance
-        """
-        url = self._base_url(secure=secure)
+    def base_url(self, **kwargs):
+        """Return the root url of the instance."""
+        secure = kwargs.pop('secure', None)
+        if secure is not None:
+            warn('[3.25] secure argument is deprecated', DeprecationWarning, stacklevel=2)
+        if kwargs:
+            raise TypeError('base_url got unexpected keyword arguments %s' % ', '.join(kwargs))
+        url = self.vreg.config['base-url']
         return url if url is None else url.rstrip('/') + '/'

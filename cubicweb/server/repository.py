@@ -30,7 +30,6 @@ from __future__ import print_function
 
 from warnings import warn
 from itertools import chain
-from time import time, localtime, strftime
 from contextlib import contextmanager
 from logging import getLogger
 
@@ -42,14 +41,13 @@ from logilab.common.deprecation import deprecated
 from yams import BadSchemaDefinition
 from rql.utils import rqlvar_maker
 
-from cubicweb import (CW_MIGRATION_MAP, QueryError,
+from cubicweb import (CW_MIGRATION_MAP,
                       UnknownEid, AuthenticationError, ExecutionError,
-                      BadConnectionId, ValidationError, Unauthorized,
-                      UniqueTogetherError, onevent, ViolatedConstraint)
+                      UniqueTogetherError, ViolatedConstraint)
 from cubicweb import set_log_methods
 from cubicweb import cwvreg, schema, server
-from cubicweb.server import ShuttingDown, utils, hook, querier, sources
-from cubicweb.server.session import Session, InternalManager
+from cubicweb.server import utils, hook, querier, sources
+from cubicweb.server.session import InternalManager, Connection
 
 
 NO_CACHE_RELATIONS = set([
@@ -150,23 +148,76 @@ class NullEventBus(object):
         pass
 
 
+class _CnxSetPool(object):
+
+    def __init__(self, source, size):
+        self._cnxsets = []
+        if size is not None:
+            self._queue = queue.Queue()
+            for i in range(size):
+                cnxset = source.wrapped_connection()
+                self._cnxsets.append(cnxset)
+                self._queue.put_nowait(cnxset)
+        else:
+            self._queue = None
+            self._source = source
+        super(_CnxSetPool, self).__init__()
+
+    def qsize(self):
+        q = self._queue
+        if q is None:
+            return None
+        return q.qsize()
+
+    def get(self):
+        q = self._queue
+        if q is None:
+            return self._source.wrapped_connection()
+        try:
+            return self._queue.get(True, timeout=5)
+        except queue.Empty:
+            raise Exception('no connections set available after 5 secs, probably either a '
+                            'bug in code (too many uncommited/rolled back '
+                            'connections) or too much load on the server (in '
+                            'which case you can try to set a bigger '
+                            'connections pool size)')
+
+    def release(self, cnxset):
+        q = self._queue
+        if q is None:
+            cnxset.close(True)
+        else:
+            self._queue.put_nowait(cnxset)
+
+    def __iter__(self):
+        for cnxset in self._cnxsets:
+            yield cnxset
+
+    def close(self):
+        q = self._queue
+        if q is not None:
+            while not q.empty():
+                cnxset = q.get_nowait()
+                try:
+                    cnxset.close(True)
+                except Exception:
+                    self.exception('error while closing %s' % cnxset)
+
+
 class Repository(object):
     """a repository provides access to a set of persistent storages for
     entities and relations
     """
 
-    def __init__(self, config, tasks_manager=None, vreg=None):
+    def __init__(self, config, scheduler=None, vreg=None):
         self.config = config
         self.sources_by_eid = {}
         if vreg is None:
             vreg = cwvreg.CWRegistryStore(config)
         self.vreg = vreg
-        self._tasks_manager = tasks_manager
+        self._scheduler = scheduler
 
         self.app_instances_bus = NullEventBus()
-        self.info('starting repository from %s', self.config.apphome)
-        # dictionary of opened sessions
-        self._sessions = {}
 
         # list of functions to be called at regular interval
         # list of running threads
@@ -175,7 +226,7 @@ class Repository(object):
         self.schema = schema.CubicWebSchema(config.appid)
         self.vreg.schema = self.schema  # until actual schema is loaded...
         # shutdown flag
-        self.shutting_down = False
+        self.shutting_down = None
         # sources (additional sources info in the system database)
         self.system_source = self.get_source('native', 'system',
                                              config.system_source_config.copy())
@@ -184,34 +235,23 @@ class Repository(object):
         self.querier = querier.QuerierHelper(self, self.schema)
         # cache eid -> type
         self._type_cache = {}
-        # open some connection sets
-        if config.init_cnxset_pool:
-            self.init_cnxset_pool()
         # the hooks manager
         self.hm = hook.HooksManager(self.vreg)
 
-        # registry hook to fix user class on registry reload
-        @onevent('after-registry-reload', self)
-        def fix_user_classes(self):
-            # After registry reload the 'CWUser' class used for CWEtype
-            # changed.  So any existing user object have a different class than
-            # the new loaded one. We are hot fixing this.
-            usercls = self.vreg['etypes'].etype_class('CWUser')
-            for session in self._sessions.values():
-                if not isinstance(session.user, InternalManager):
-                    session.user.__class__ = usercls
-
-    def init_cnxset_pool(self):
-        """should be called bootstrap_repository, as this is what it does"""
+    def bootstrap(self):
+        self.info('starting repository from %s', self.config.apphome)
+        self.shutting_down = False
         config = self.config
         # copy pool size here since config.init_cube() and config.load_schema()
         # reload configuration from file and could reset a manually set pool
         # size.
-        pool_size = config['connections-pool-size']
-        self._cnxsets_pool = queue.Queue()
+        if config['connections-pooler-enabled']:
+            pool_size, min_pool_size = config['connections-pool-size'], 1
+        else:
+            pool_size = min_pool_size = None
         # 0. init a cnxset that will be used to fetch bootstrap information from
         #    the database
-        self._cnxsets_pool.put_nowait(self.system_source.wrapped_connection())
+        self.cnxsets = _CnxSetPool(self.system_source, min_pool_size)
         # 1. set used cubes
         if config.creating or not config.read_instance_schema:
             config.bootstrap_cubes()
@@ -227,12 +267,12 @@ class Repository(object):
             # the registry
             config.cube_appobject_path = set(('hooks', 'entities'))
             config.cubicweb_appobject_path = set(('hooks', 'entities'))
-            # limit connections pool to 1
-            pool_size = 1
+            # limit connections pool size
+            pool_size = min_pool_size
         if config.quick_start or config.creating or not config.read_instance_schema:
             # load schema from the file system
             if not config.creating:
-                self.info("set fs instance'schema")
+                self.info("set fs instance's schema")
             self.set_schema(config.load_schema(expand_cubes=True))
             if not config.creating:
                 # set eids on entities schema
@@ -259,12 +299,10 @@ class Repository(object):
                 self.vreg.init_properties(self.properties())
         # 4. close initialization connection set and reopen fresh ones for
         #    proper initialization
-        self._get_cnxset().close(True)
-        # list of available cnxsets (can't iterate on a Queue)
-        self.cnxsets = []
-        for i in range(pool_size):
-            self.cnxsets.append(self.system_source.wrapped_connection())
-            self._cnxsets_pool.put_nowait(self.cnxsets[-1])
+        self.cnxsets.close()
+        self.cnxsets = _CnxSetPool(self.system_source, pool_size)
+        # 5. call instance level initialisation hooks
+        self.hm.call_hooks('server_startup', repo=self)
 
     # internals ###############################################################
 
@@ -283,9 +321,6 @@ class Repository(object):
                     self.system_source.init(True, sourceent)
                     continue
                 self.add_source(sourceent)
-
-    def _clear_planning_caches(self):
-        clear_cache(self, 'source_defs')
 
     def add_source(self, sourceent):
         try:
@@ -306,12 +341,12 @@ class Repository(object):
             source.init(True, sourceent)
         else:
             source.init(False, sourceent)
-        self._clear_planning_caches()
+        self._clear_source_defs_caches()
 
     def remove_source(self, uri):
         source = self.sources_by_uri.pop(uri)
         del self.sources_by_eid[source.eid]
-        self._clear_planning_caches()
+        self._clear_source_defs_caches()
 
     def get_source(self, type, uri, source_config, eid=None):
         # set uri and type in source config so it's available through
@@ -348,39 +383,21 @@ class Repository(object):
                 raise Exception('Is the database initialised ? (cause: %s)' % ex)
         return appschema
 
-    def _prepare_startup(self):
-        """Prepare "Repository as a server" for startup.
+    def run_scheduler(self):
+        """Start repository scheduler after preparing the repository for that.
 
         * trigger server startup hook,
-        * register session clean up task.
-        """
-        if not (self.config.creating or self.config.repairing
-                or self.config.quick_start):
-            # call instance level initialisation hooks
-            self.hm.call_hooks('server_startup', repo=self)
-            # register a task to cleanup expired session
-            self.cleanup_session_time = self.config['cleanup-session-time'] or 60 * 60 * 24
-            assert self.cleanup_session_time > 0
-            cleanup_session_interval = min(60 * 60, self.cleanup_session_time / 3)
-            assert self._tasks_manager is not None, \
-                "This Repository is not intended to be used as a server"
-            self._tasks_manager.add_looping_task(cleanup_session_interval,
-                                                 self.clean_sessions)
-
-    def start_looping_tasks(self):
-        """Actual "Repository as a server" startup.
-
-        * trigger server startup hook,
-        * register session clean up task,
-        * start all tasks.
+        * start the scheduler *and block*.
 
         XXX Other startup related stuffs are done elsewhere. In Repository
         XXX __init__ or in external codes (various server managers).
         """
-        self._prepare_startup()
-        assert self._tasks_manager is not None,\
+        assert self._scheduler is not None, \
             "This Repository is not intended to be used as a server"
-        self._tasks_manager.start()
+        self.info(
+            'starting repository scheduler with tasks: %s',
+            ', '.join(e.action.__name__ for e in self._scheduler.queue))
+        self._scheduler.run()
 
     def looping_task(self, interval, func, *args):
         """register a function to be called every `interval` seconds.
@@ -388,26 +405,16 @@ class Repository(object):
         looping tasks can only be registered during repository initialization,
         once done this method will fail.
         """
-        assert self._tasks_manager is not None,\
+        assert self._scheduler is not None, \
             "This Repository is not intended to be used as a server"
-        self._tasks_manager.add_looping_task(interval, func, *args)
+        event = utils.schedule_periodic_task(
+            self._scheduler, interval, func, *args)
+        self.info('scheduled periodic task %s (interval: %.2fs)',
+                  event.action.__name__, interval)
 
     def threaded_task(self, func):
         """start function in a separated thread"""
         utils.RepoThread(func, self._running_threads).start()
-
-    def _get_cnxset(self):
-        try:
-            return self._cnxsets_pool.get(True, timeout=5)
-        except queue.Empty:
-            raise Exception('no connections set available after 5 secs, probably either a '
-                            'bug in code (too many uncommited/rolled back '
-                            'connections) or too much load on the server (in '
-                            'which case you can try to set a bigger '
-                            'connections pool size)')
-
-    def _free_cnxset(self, cnxset):
-        self._cnxsets_pool.put_nowait(cnxset)
 
     def shutdown(self):
         """called on server stop event to properly close opened sessions and
@@ -419,9 +426,8 @@ class Repository(object):
             # then, the system source is still available
             self.hm.call_hooks('before_server_shutdown', repo=self)
         self.shutting_down = True
+        self.info('shutting down repository')
         self.system_source.shutdown()
-        if self._tasks_manager is not None:
-            self._tasks_manager.stop()
         if not (self.config.creating or self.config.repairing
                 or self.config.quick_start):
             self.hm.call_hooks('server_shutdown', repo=self)
@@ -429,15 +435,8 @@ class Repository(object):
             self.info('waiting thread %s...', thread.getName())
             thread.join()
             self.info('thread %s finished', thread.getName())
-        self.close_sessions()
-        while not self._cnxsets_pool.empty():
-            cnxset = self._cnxsets_pool.get_nowait()
-            try:
-                cnxset.close(True)
-            except Exception:
-                self.exception('error while closing %s' % cnxset)
-                continue
-        hits, misses = self.querier.cache_hit, self.querier.cache_miss
+        self.cnxsets.close()
+        hits, misses = self.querier.rql_cache.cache_hit, self.querier.rql_cache.cache_miss
         try:
             self.info('rql st cache hit/miss: %s/%s (%s%% hits)', hits, misses,
                       (hits * 100) / (hits + misses))
@@ -588,6 +587,9 @@ class Repository(object):
             sources[uri] = source.public_config
         return sources
 
+    def _clear_source_defs_caches(self):
+        clear_cache(self, 'source_defs')
+
     def properties(self):
         """Return a result set containing system wide properties.
 
@@ -640,95 +642,39 @@ class Repository(object):
                                query_attrs)
             return rset.rows
 
-    def new_session(self, login, **kwargs):
-        """open a *new* session for a given user
-
-        raise `AuthenticationError` if the authentication failed
-        raise `ConnectionError` if we can't open a connection
-        """
-        # use an internal connection
-        with self.internal_cnx() as cnx:
-            # try to get a user object
-            user = self.authenticate_user(cnx, login, **kwargs)
-        session = Session(user, self)
-        user._cw = user.cw_rset.req = session
-        user.cw_clear_relation_cache()
-        self._sessions[session.sessionid] = session
-        self.info('opened session %s for user %s', session.sessionid, login)
-        with session.new_cnx() as cnx:
-            self.hm.call_hooks('session_open', cnx)
-            # commit connection at this point in case write operation has been
-            # done during `session_open` hooks
-            cnx.commit()
-        return session
-
-    @deprecated('[3.23] use .new_session instead (and get a plain session object)')
-    def connect(self, login, **kwargs):
-        return self.new_session(login, **kwargs).sessionid
-
-    @deprecated('[3.23] use session.close() directly')
-    def close(self, sessionid):
-        self._get_session(sessionid).close()
-
     # session handling ########################################################
-
-    def close_sessions(self):
-        """close every opened sessions"""
-        for session in list(self._sessions.values()):
-            session.close()
-
-    def clean_sessions(self):
-        """close sessions not used since an amount of time specified in the
-        configuration
-        """
-        mintime = time() - self.cleanup_session_time
-        self.debug('cleaning session unused since %s',
-                   strftime('%H:%M:%S', localtime(mintime)))
-        nbclosed = 0
-        for session in list(self._sessions.values()):
-            if session.timestamp < mintime:
-                session.close()
-                nbclosed += 1
-        return nbclosed
 
     @contextmanager
     def internal_cnx(self):
         """Context manager returning a Connection using internal user which have
         every access rights on the repository.
 
-        Beware that unlike the older :meth:`internal_session`, internal
-        connections have all hooks beside security enabled.
+        Internal connections have all hooks beside security enabled.
         """
-        with Session(InternalManager(), self).new_cnx() as cnx:
+        with Connection(self, InternalManager()) as cnx:
             cnx.user._cw = cnx  # XXX remove when "vreg = user._cw.vreg" hack in entity.py is gone
             with cnx.security_enabled(read=False, write=False):
                 yield cnx
-
-    def _get_session(self, sessionid, txid=None, checkshuttingdown=True):
-        """return the session associated with the given session identifier"""
-        if checkshuttingdown and self.shutting_down:
-            raise ShuttingDown('Repository is shutting down')
-        try:
-            session = self._sessions[sessionid]
-        except KeyError:
-            raise BadConnectionId('No such session %s' % sessionid)
-        return session
 
     # data sources handling ###################################################
     # * correspondance between eid and type
     # * correspondance between eid and local id (i.e. specific to a given source)
 
-    def clear_caches(self, eids):
-        etcache = self._type_cache
-        rqlcache = self.querier._rql_cache
-        for eid in eids:
-            try:
-                etype = etcache.pop(int(eid))  # may be a string in some cases
-                rqlcache.pop(('%s X WHERE X eid %s' % (etype, eid),), None)
-            except KeyError:
-                etype = None
-            rqlcache.pop(('Any X WHERE X eid %s' % eid,), None)
-            self.system_source.clear_eid_cache(eid, etype)
+    def clear_caches(self, eids=None):
+        if eids is None:
+            self._type_cache = {}
+            etypes = None
+        else:
+            etypes = []
+            etcache = self._type_cache
+            for eid in eids:
+                try:
+                    etype = etcache.pop(int(eid))  # may be a string in some cases
+                except KeyError:
+                    etype = None
+                etypes.append(etype)
+        self.querier.clear_caches(eids, etypes)
+        self.system_source.clear_caches(eids, etypes)
 
     def type_from_eid(self, eid, cnx):
         """Return the type of the entity with id `eid`"""
@@ -742,21 +688,6 @@ class Repository(object):
             etype = self.system_source.eid_type(cnx, eid)
             self._type_cache[eid] = etype
             return etype
-
-    def querier_cache_key(self, cnx, rql, args, eidkeys):
-        cachekey = [rql]
-        for key in sorted(eidkeys):
-            try:
-                etype = self.type_from_eid(args[key], cnx)
-            except KeyError:
-                raise QueryError('bad cache key %s (no value)' % key)
-            except TypeError:
-                raise QueryError('bad cache key %s (value: %r)' % (
-                    key, args[key]))
-            cachekey.append(etype)
-            # ensure eid is correctly typed in args
-            args[key] = int(args[key])
-        return tuple(cachekey)
 
     def add_info(self, cnx, entity, source):
         """add type and source info for an eid into the system table,
@@ -788,21 +719,7 @@ class Repository(object):
                         rql = 'DELETE X %s Y WHERE X eid IN (%s)' % (rtype, in_eids)
                     else:
                         rql = 'DELETE Y %s X WHERE X eid IN (%s)' % (rtype, in_eids)
-                    try:
-                        cnx.execute(rql, build_descr=False)
-                    except ValidationError:
-                        raise
-                    except Unauthorized:
-                        self.exception(
-                            'Unauthorized exception while cascading delete for entity %s. '
-                            'RQL: %s.\nThis should not happen since security is disabled here.',
-                            entities, rql)
-                        raise
-                    except Exception:
-                        if self.config.mode == 'test':
-                            raise
-                        self.exception('error while cascading delete for entity %s. RQL: %s',
-                                       entities, rql)
+                    cnx.execute(rql, build_descr=False)
 
     def init_entity_caches(self, cnx, entity, source):
         """Add entity to connection entities cache and repo's cache."""

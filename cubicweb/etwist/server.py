@@ -1,4 +1,4 @@
-# copyright 2003-2012 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2016 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -17,14 +17,12 @@
 # with CubicWeb.  If not, see <http://www.gnu.org/licenses/>.
 """twisted server for CubicWeb web instances"""
 
-
 import sys
-import select
 import traceback
 import threading
 from cgi import FieldStorage, parse_header
-
-from six.moves.urllib.parse import urlsplit, urlunsplit
+from functools import partial
+import warnings
 
 from cubicweb.statsd_logger import statsd_timeit
 
@@ -44,6 +42,7 @@ from cubicweb.web.application import CubicWebPublisher
 from cubicweb.etwist.request import CubicWebTwistedRequestAdapter
 from cubicweb.etwist.http import HTTPResponse
 
+
 def start_task(interval, func):
     lc = task.LoopingCall(func)
     # wait until interval has expired to actually start the task, else we have
@@ -59,7 +58,6 @@ class CubicWebRootResource(resource.Resource):
         # checks done before daemonization (eg versions consistency)
         self.appli = CubicWebPublisher(repo, config)
         self.base_url = config['base-url']
-        self.https_url = config['https-url']
         global MAX_POST_LENGTH
         MAX_POST_LENGTH = config['max-post-length']
 
@@ -71,7 +69,10 @@ class CubicWebRootResource(resource.Resource):
             if config.mode != 'test':
                 reactor.addSystemEventTrigger('before', 'shutdown',
                                               self.shutdown_event)
-                self.appli.repo.start_looping_tasks()
+                warnings.warn(
+                    'twisted server does not start repository looping tasks anymore; '
+                    'use the standalone "scheduler" command if needed'
+                )
         self.set_url_rewriter()
         CW_EVENT_MANAGER.bind('after-registry-reload', self.set_url_rewriter)
 
@@ -92,13 +93,20 @@ class CubicWebRootResource(resource.Resource):
         """Indicate which resource to use to process down the URL's path"""
         return self
 
+    def on_request_finished_ko(self, request, reason):
+        # annotate the twisted request so that we're able later to check for
+        # failure without having to dig into request's internal attributes such
+        # as _disconnected
+        request.cw_failed = True
+        self.warning('request finished abnormally: %s', reason)
+
     def render(self, request):
         """Render a page from the root resource"""
+        finish_deferred = request.notifyFinish()
+        finish_deferred.addErrback(partial(self.on_request_finished_ko, request))
         # reload modified files in debug mode
         if self.config.debugmode:
             self.config.uiprops.reload_if_needed()
-            if self.https_url:
-                self.config.https_uiprops.reload_if_needed()
             self.appli.vreg.reload_if_needed()
         if self.config['profile']: # default profiler don't trace threads
             return self.render_request(request)
@@ -123,18 +131,11 @@ class CubicWebRootResource(resource.Resource):
     def _render_request(self, request):
         origpath = request.path
         host = request.host
-        # dual http/https access handling: expect a rewrite rule to prepend
-        # 'https' to the path to detect https access
-        https = False
-        if origpath.split('/', 2)[1] == 'https':
-            origpath = origpath[6:]
-            request.uri = request.uri[6:]
-            https = True
         if self.url_rewriter is not None:
             # XXX should occur before authentication?
             path = self.url_rewriter.rewrite(host, origpath, request)
             request.uri.replace(origpath, path, 1)
-        req = CubicWebTwistedRequestAdapter(request, self.appli.vreg, https)
+        req = CubicWebTwistedRequestAdapter(request, self.appli.vreg)
         try:
             ### Try to generate the actual request content
             content = self.appli.handle_request(req)

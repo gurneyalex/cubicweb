@@ -105,28 +105,21 @@ class _CubicWebRequestBase(RequestSessionBase):
     """
     ajax_request = False # to be set to True by ajax controllers
 
-    def __init__(self, vreg, https=False, form=None, headers=None):
+    def __init__(self, vreg, form=None, headers=None):
         """
         :vreg: Vregistry,
-        :https: boolean, s this a https request
         :form: Forms value
         :headers: dict, request header
         """
         super(_CubicWebRequestBase, self).__init__(vreg)
-        #: (Boolean) Is this an https request.
-        self.https = https
-        #: User interface property (vary with https) (see :ref:`uiprops`)
+        #: User interface property (see :ref:`uiprops`)
         self.uiprops = None
-        #: url for serving datadir (vary with https) (see :ref:`resources`)
+        #: url for serving datadir (see :ref:`resources`)
         self.datadir_url = None
-        if https and vreg.config.https_uiprops is not None:
-            self.uiprops = vreg.config.https_uiprops
-        else:
-            self.uiprops = vreg.config.uiprops
-        if https and vreg.config.https_datadir_url is not None:
-            self.datadir_url = vreg.config.https_datadir_url
-        else:
-            self.datadir_url = vreg.config.datadir_url
+        # some config (i.e. "pyramid") do not have "uiprops" nor "datadir_url"
+        # attributes)
+        self.uiprops = getattr(vreg.config, 'uiprops', None)
+        self.datadir_url = getattr(vreg.config, 'datadir_url', None)
         #: enable UStringIO's write tracing
         self.tracehtml = False
         if vreg.config.debugmode:
@@ -179,22 +172,6 @@ class _CubicWebRequestBase(RequestSessionBase):
         self.ajax_request = value
     json_request = property(_get_json_request, _set_json_request)
 
-    def _base_url(self, secure=None):
-        """return the root url of the instance
-
-        secure = False -> base-url
-        secure = None  -> https-url if req.https
-        secure = True  -> https if it exist
-        """
-        if secure is None:
-            secure = self.https
-        base_url = None
-        if secure:
-            base_url = self.vreg.config.get('https-url')
-        if base_url is None:
-            base_url = super(_CubicWebRequestBase, self)._base_url()
-        return base_url
-
     @property
     def authmode(self):
         """Authentification mode of the instance
@@ -214,13 +191,6 @@ class _CubicWebRequestBase(RequestSessionBase):
           calls sharing our .pageid
         """
         return self.set_varmaker()
-
-    def next_tabindex(self):
-        nextfunc = self.get_page_data('nexttabfunc')
-        if nextfunc is None:
-            nextfunc = Counter(1)
-            self.set_page_data('nexttabfunc', nextfunc)
-        return nextfunc()
 
     def set_varmaker(self):
         varmaker = self.get_page_data('rql_varmaker')
@@ -959,7 +929,7 @@ class ConnectionCubicWebRequestBase(_CubicWebRequestBase):
     cnx = None
     session = None
 
-    def __init__(self, vreg, https=False, form=None, headers={}):
+    def __init__(self, vreg, form=None, headers={}):
         """"""
         self.vreg = vreg
         try:
@@ -967,8 +937,7 @@ class ConnectionCubicWebRequestBase(_CubicWebRequestBase):
             self.translations = vreg.config.translations
         except AttributeError:
             self.translations = {}
-        super(ConnectionCubicWebRequestBase, self).__init__(vreg, https=https,
-                                                       form=form, headers=headers)
+        super(ConnectionCubicWebRequestBase, self).__init__(vreg, form=form, headers=headers)
         self.session = _MockAnonymousSession()
         self.cnx = self.user = _NeedAuthAccessMock()
 
@@ -1016,11 +985,8 @@ class ConnectionCubicWebRequestBase(_CubicWebRequestBase):
     def cached_entities(self):
         return self.transaction_data.get('req_ecache', {}).values()
 
-    def drop_entity_cache(self, eid=None):
-        if eid is None:
-            self.transaction_data.pop('req_ecache', None)
-        else:
-            del self.transaction_data['req_ecache'][eid]
+    def drop_entity_cache(self):
+        self.transaction_data.pop('req_ecache', None)
 
 
 CubicWebRequestBase = ConnectionCubicWebRequestBase

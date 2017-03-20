@@ -131,6 +131,11 @@ the repository rather than the user running the command',
           'of inactivity. Default to 24h.',
           'group': 'main', 'level': 3,
           }),
+        ('connections-pooler-enabled',
+         {'type': 'yn', 'default': True,
+          'help': 'enable the connection pooler',
+          'group': 'main', 'level': 3,
+          }),
         ('connections-pool-size',
          {'type' : 'int',
           'default': 4,
@@ -214,10 +219,6 @@ notified of every changes.',
            'group': 'zmq', 'level': 1,
            }),
         ) + CubicWebConfiguration.options)
-
-    # should we init the connections pool (eg connect to sources). This is
-    # usually necessary...
-    init_cnxset_pool = True
 
     # read the schema from the database
     read_instance_schema = True

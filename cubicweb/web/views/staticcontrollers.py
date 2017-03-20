@@ -1,4 +1,4 @@
-# copyright 2003-2013 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2016 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -39,7 +39,6 @@ from cubicweb.web.controller import Controller
 from cubicweb.web.views.urlrewrite import URLRewriter
 
 
-
 class StaticFileController(Controller):
     """an abtract class to serve static file
 
@@ -49,7 +48,7 @@ class StaticFileController(Controller):
 
     def max_age(self, path):
         """max cache TTL"""
-        return 60*60*24*7
+        return 60 * 60 * 24 * 7
 
     def static_file(self, path):
         """Return full content of a static file.
@@ -81,7 +80,6 @@ class StaticFileController(Controller):
         self._cw.set_header('last-modified', generateDateTime(os.stat(path).st_mtime))
         if self._cw.is_client_cache_valid():
             return ''
-        # XXX elif uri.startswith('/https/'): uri = uri[6:]
         mimetype, encoding = mimetypes.guess_type(path)
         if mimetype is None:
             mimetype = 'application/octet-stream'
@@ -226,11 +224,7 @@ class FCKEditorController(StaticFileController):
     __regid__ = 'fckeditor'
 
     def publish(self, rset=None):
-        config = self._cw.vreg.config
-        if self._cw.https:
-            uiprops = config.https_uiprops
-        else:
-            uiprops = config.uiprops
+        uiprops = self._cw.vreg.config.uiprops
         relpath = self.relpath
         if relpath.startswith('fckeditor/'):
             relpath = relpath[len('fckeditor/'):]
@@ -248,8 +242,10 @@ class StaticDirectoryController(StaticFileController):
         relpath = self.relpath[len(self.__regid__) + 1:]
         return self.static_file(osp.join(staticdir, relpath))
 
+
 STATIC_CONTROLLERS = [DataController, FCKEditorController,
                       StaticDirectoryController]
+
 
 class StaticControlerRewriter(URLRewriter):
     """a quick and dirty rewritter in charge of server static file.
@@ -267,6 +263,5 @@ class StaticControlerRewriter(URLRewriter):
         else:
             self.debug("not a static file uri: %s", uri)
             raise KeyError(uri)
-        relpath = self._cw.relative_path(includeparams=False)
         self._cw.form['static_relative_path'] = self._cw.relative_path(includeparams=True)
         return ctrl.__regid__, None

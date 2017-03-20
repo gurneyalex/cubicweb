@@ -1,4 +1,4 @@
-# copyright 2003-2010 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2016 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -38,14 +38,16 @@ from logging import getLogger, handlers
 from cubicweb import set_log_methods
 from cubicweb.cwconfig import CubicWebConfiguration as cwcfg
 
+
 def _check_env(env):
     env_vars = ('CW_INSTANCES_DIR', 'CW_INSTANCES_DATA_DIR', 'CW_RUNTIME_DIR')
     for var in env_vars:
         if var not in env:
-            raise Exception('The environment variables %s must be set.' % \
+            raise Exception('The environment variables %s must be set.' %
                             ', '.join(env_vars))
     if not env.get('USERNAME'):
         env['USERNAME'] = 'cubicweb'
+
 
 class CWService(object, win32serviceutil.ServiceFramework):
     _svc_name_ = None
@@ -80,8 +82,7 @@ class CWService(object, win32serviceutil.ServiceFramework):
             config.debugmode = False
             logger.info('starting cubicweb instance %s ', self.instance)
             config.info('clear ui caches')
-            for cachedir in ('uicache', 'uicachehttps'):
-                rm(join(config.appdatahome, cachedir, '*'))
+            rm(join(config.appdatahome, 'uicache', '*'))
             root_resource = CubicWebRootResource(config, config.repository())
             website = server.Site(root_resource)
             # serve it via standard HTTP on port set in the configuration

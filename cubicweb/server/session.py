@@ -1,4 +1,4 @@
-# copyright 2003-2016 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2017 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -21,7 +21,6 @@ from __future__ import print_function
 
 import functools
 import sys
-from time import time
 from uuid import uuid4
 from warnings import warn
 from contextlib import contextmanager
@@ -30,13 +29,11 @@ from logging import getLogger
 from six import text_type
 
 from logilab.common.deprecation import deprecated
-from logilab.common.textutils import unormalize
 from logilab.common.registry import objectify_predicate
 
 from cubicweb import QueryError, ProgrammingError, schema, server
 from cubicweb import set_log_methods
 from cubicweb.req import RequestSessionBase
-from cubicweb.utils import make_uid
 from cubicweb.rqlrewrite import RQLRewriter
 from cubicweb.server.edition import EditedEntity
 
@@ -111,27 +108,19 @@ class _hooks_control(object):
         assert mode in (HOOKS_ALLOW_ALL, HOOKS_DENY_ALL)
         self.cnx = cnx
         self.mode = mode
-        self.categories = categories
-        self.oldmode = None
-        self.changes = ()
+        self.categories = set(categories)
+        self.old_mode = None
+        self.old_categories = None
 
     def __enter__(self):
-        self.oldmode = self.cnx.hooks_mode
-        self.cnx.hooks_mode = self.mode
-        if self.mode is HOOKS_DENY_ALL:
-            self.changes = self.cnx.enable_hook_categories(*self.categories)
-        else:
-            self.changes = self.cnx.disable_hook_categories(*self.categories)
+        self.old_mode = self.cnx._hooks_mode
+        self.old_categories = self.cnx._hooks_categories
+        self.cnx._hooks_mode = self.mode
+        self.cnx._hooks_categories = self.categories
 
     def __exit__(self, exctype, exc, traceback):
-        try:
-            if self.categories:
-                if self.mode is HOOKS_DENY_ALL:
-                    self.cnx.disable_hook_categories(*self.categories)
-                else:
-                    self.cnx.enable_hook_categories(*self.categories)
-        finally:
-            self.cnx.hooks_mode = self.oldmode
+        self.cnx._hooks_mode = self.old_mode
+        self.cnx._hooks_categories = self.old_categories
 
 
 @deprecated('[3.17] use <object>.security_enabled instead')
@@ -176,17 +165,12 @@ HOOKS_DENY_ALL = object()
 DEFAULT_SECURITY = object()  # evaluated to true by design
 
 
-class SessionClosedError(RuntimeError):
-    pass
-
-
 def _open_only(func):
     """decorator for Connection method that check it is open"""
     @functools.wraps(func)
     def check_open(cnx, *args, **kwargs):
         if not cnx._open:
-            raise ProgrammingError('Closed Connection: %s'
-                                   % cnx.connectionid)
+            raise ProgrammingError('Closed Connection: %s' % cnx)
         return func(cnx, *args, **kwargs)
     return check_open
 
@@ -240,13 +224,8 @@ class Connection(RequestSessionBase):
 
     Hooks controls:
 
-      :attr:`hooks_mode`, may be either `HOOKS_ALLOW_ALL` or `HOOKS_DENY_ALL`.
-
-      :attr:`enabled_hook_cats`, when :attr:`hooks_mode` is
-      `HOOKS_DENY_ALL`, this set contains hooks categories that are enabled.
-
-      :attr:`disabled_hook_cats`, when :attr:`hooks_mode` is
-      `HOOKS_ALLOW_ALL`, this set contains hooks categories that are disabled.
+    .. automethod:: cubicweb.server.session.Connection.deny_all_hooks_but
+    .. automethod:: cubicweb.server.session.Connection.allow_all_hooks_but
 
     Security level Management:
 
@@ -257,37 +236,34 @@ class Connection(RequestSessionBase):
     is_request = False
     hooks_in_progress = False
 
-    def __init__(self, session):
-        super(Connection, self).__init__(session.repo.vreg)
+    def __init__(self, repo, user):
+        super(Connection, self).__init__(repo.vreg)
         #: connection unique id
         self._open = None
-        self.connectionid = '%s-%s' % (session.sessionid, uuid4().hex)
-        self.session = session
-        self.sessionid = session.sessionid
 
         #: server.Repository object
-        self.repo = session.repo
+        self.repo = repo
         self.vreg = self.repo.vreg
         self._execute = self.repo.querier.execute
 
-        # other session utility
-        self._session_timestamp = session._timestamp
-
         # internal (root) session
-        self.is_internal_session = isinstance(session.user, InternalManager)
+        self.is_internal_session = isinstance(user, InternalManager)
 
         #: dict containing arbitrary data cleared at the end of the transaction
         self.transaction_data = {}
-        self._session_data = session.data
         #: ordered list of operations to be processed on commit/rollback
         self.pending_operations = []
         #: (None, 'precommit', 'postcommit', 'uncommitable')
         self.commit_state = None
 
         # hook control attribute
-        self.hooks_mode = HOOKS_ALLOW_ALL
-        self.disabled_hook_cats = set()
-        self.enabled_hook_cats = set()
+        # `_hooks_mode`, may be either `HOOKS_ALLOW_ALL` or `HOOKS_DENY_ALL`.
+        self._hooks_mode = HOOKS_ALLOW_ALL
+        # `_hooks_categories`, when :attr:`_hooks_mode` is `HOOKS_DENY_ALL`,
+        # this set contains hooks categories that are enabled ;
+        # when :attr:`_hooks_mode` is `HOOKS_ALLOW_ALL`, it contains hooks
+        # categories that are disabled.
+        self._hooks_categories = set()
         self.pruned_hooks_cache = {}
 
         # security control attributes
@@ -295,7 +271,7 @@ class Connection(RequestSessionBase):
         self.write_security = DEFAULT_SECURITY
 
         # undo control
-        config = session.repo.config
+        config = repo.config
         if config.creating or config.repairing or self.is_internal_session:
             self.undo_actions = False
         else:
@@ -305,20 +281,20 @@ class Connection(RequestSessionBase):
         self._rewriter = RQLRewriter(self)
 
         # other session utility
-        if session.user.login == '__internal_manager__':
-            self.user = session.user
+        if user.login == '__internal_manager__':
+            self.user = user
         else:
-            self._set_user(session.user)
+            self._set_user(user)
 
     @_open_only
     def get_schema(self):
         """Return the schema currently used by the repository."""
-        return self.session.repo.source_defs()
+        return self.repo.source_defs()
 
     @_open_only
     def get_option_value(self, option):
         """Return the value for `option` in the configuration."""
-        return self.session.repo.get_option_value(option)
+        return self.repo.get_option_value(option)
 
     # transaction api
 
@@ -385,7 +361,7 @@ class Connection(RequestSessionBase):
     def __enter__(self):
         assert not self._open
         self._open = True
-        self.cnxset = self.repo._get_cnxset()
+        self.cnxset = self.repo.cnxsets.get()
         if self.lang is None:
             self.set_language(self.user.prefered_language())
         return self
@@ -395,7 +371,7 @@ class Connection(RequestSessionBase):
         self.rollback()
         self._open = False
         self.cnxset.cnxset_freed()
-        self.repo._free_cnxset(self.cnxset)
+        self.repo.cnxsets.release(self.cnxset)
         self.cnxset = None
 
     @contextmanager
@@ -414,8 +390,9 @@ class Connection(RequestSessionBase):
     # shared data handling ###################################################
 
     @property
+    @deprecated('[3.25] use transaction_data or req.session.data', stacklevel=3)
     def data(self):
-        return self._session_data
+        return self.transaction_data
 
     @property
     def rql_rewriter(self):
@@ -428,7 +405,7 @@ class Connection(RequestSessionBase):
         if txdata:
             data = self.transaction_data
         else:
-            data = self._session_data
+            data = self.data
         if pop:
             return data.pop(key, default)
         else:
@@ -441,7 +418,7 @@ class Connection(RequestSessionBase):
         if txdata:
             self.transaction_data[key] = value
         else:
-            self._session_data[key] = value
+            self.data[key] = value
 
     def clear(self):
         """reset internal data"""
@@ -472,10 +449,6 @@ class Connection(RequestSessionBase):
     def ensure_cnx_set(self):
         yield
 
-    @property
-    def anonymous_connection(self):
-        return self.session.anonymous_session
-
     # Entity cache management #################################################
     #
     # The connection entity cache as held in cnx.transaction_data is removed at the
@@ -491,7 +464,7 @@ class Connection(RequestSessionBase):
         # XXX not using _open_only because before at creation time. _set_user
         # call this function to cache the Connection user.
         if entity.cw_etype != 'CWUser' and not self._open:
-            raise ProgrammingError('Closed Connection: %s' % self.connectionid)
+            raise ProgrammingError('Closed Connection: %s' % self)
         ecache = self.transaction_data.setdefault('ecache', {})
         ecache.setdefault(entity.eid, entity)
 
@@ -506,14 +479,11 @@ class Connection(RequestSessionBase):
         return self.transaction_data.get('ecache', {}).values()
 
     @_open_only
-    def drop_entity_cache(self, eid=None):
-        """drop entity from the cache
-
-        If eid is None, the whole cache is dropped"""
-        if eid is None:
-            self.transaction_data.pop('ecache', None)
-        else:
-            del self.transaction_data['ecache'][eid]
+    def drop_entity_cache(self):
+        """Drop the whole entity cache."""
+        for entity in self.cached_entities():
+            entity.cw_clear_all_caches()
+        self.transaction_data.pop('ecache', None)
 
     # relations handling #######################################################
 
@@ -679,60 +649,26 @@ class Connection(RequestSessionBase):
 
     @_open_only
     def allow_all_hooks_but(self, *categories):
+        """Context manager to enable all hooks but those in the given
+        categories.
+        """
         return _hooks_control(self, HOOKS_ALLOW_ALL, *categories)
 
     @_open_only
     def deny_all_hooks_but(self, *categories):
+        """Context manager to disable all hooks but those in the given
+        categories.
+        """
         return _hooks_control(self, HOOKS_DENY_ALL, *categories)
-
-    @_open_only
-    def disable_hook_categories(self, *categories):
-        """disable the given hook categories:
-
-        - on HOOKS_DENY_ALL mode, ensure those categories are not enabled
-        - on HOOKS_ALLOW_ALL mode, ensure those categories are disabled
-        """
-        changes = set()
-        self.pruned_hooks_cache.clear()
-        categories = set(categories)
-        if self.hooks_mode is HOOKS_DENY_ALL:
-            enabledcats = self.enabled_hook_cats
-            changes = enabledcats & categories
-            enabledcats -= changes  # changes is small hence faster
-        else:
-            disabledcats = self.disabled_hook_cats
-            changes = categories - disabledcats
-            disabledcats |= changes  # changes is small hence faster
-        return tuple(changes)
-
-    @_open_only
-    def enable_hook_categories(self, *categories):
-        """enable the given hook categories:
-
-        - on HOOKS_DENY_ALL mode, ensure those categories are enabled
-        - on HOOKS_ALLOW_ALL mode, ensure those categories are not disabled
-        """
-        changes = set()
-        self.pruned_hooks_cache.clear()
-        categories = set(categories)
-        if self.hooks_mode is HOOKS_DENY_ALL:
-            enabledcats = self.enabled_hook_cats
-            changes = categories - enabledcats
-            enabledcats |= changes  # changes is small hence faster
-        else:
-            disabledcats = self.disabled_hook_cats
-            changes = disabledcats & categories
-            disabledcats -= changes  # changes is small hence faster
-        return tuple(changes)
 
     @_open_only
     def is_hook_category_activated(self, category):
         """return a boolean telling if the given category is currently activated
         or not
         """
-        if self.hooks_mode is HOOKS_DENY_ALL:
-            return category in self.enabled_hook_cats
-        return category not in self.disabled_hook_cats
+        if self._hooks_mode is HOOKS_DENY_ALL:
+            return category in self._hooks_categories
+        return category not in self._hooks_categories
 
     @_open_only
     def is_hook_activated(self, hook):
@@ -802,10 +738,8 @@ class Connection(RequestSessionBase):
 
         See :meth:`cubicweb.dbapi.Cursor.execute` documentation.
         """
-        self._session_timestamp.touch()
         rset = self._execute(self, rql, kwargs, build_descr)
         rset.req = self
-        self._session_timestamp.touch()
         return rset
 
     @_open_only
@@ -830,9 +764,8 @@ class Connection(RequestSessionBase):
                         self.critical('rollback error', exc_info=sys.exc_info())
                         continue
                 cnxset.rollback()
-                self.debug('rollback for transaction %s done', self.connectionid)
+                self.debug('rollback for transaction %s done', self)
         finally:
-            self._session_timestamp.touch()
             self.clear()
 
     @_open_only
@@ -877,7 +810,7 @@ class Connection(RequestSessionBase):
                                 print(operation)
                             operation.handle_event('precommit_event')
                     self.pending_operations[:] = processed
-                    self.debug('precommit transaction %s done', self.connectionid)
+                    self.debug('precommit transaction %s done', self)
                 except BaseException:
                     # if error on [pre]commit:
                     #
@@ -921,10 +854,9 @@ class Connection(RequestSessionBase):
                         except BaseException:
                             self.critical('error while postcommit',
                                           exc_info=sys.exc_info())
-                self.debug('postcommit transaction %s done', self.connectionid)
+                self.debug('postcommit transaction %s done', self)
                 return self.transaction_uuid(set=False)
         finally:
-            self._session_timestamp.touch()
             self.clear()
 
     # resource accessors ######################################################
@@ -953,129 +885,6 @@ class Connection(RequestSessionBase):
         subjtype = self.repo.type_from_eid(eidfrom, self)
         objtype = self.repo.type_from_eid(eidto, self)
         return self.vreg.schema.rschema(rtype).rdefs[(subjtype, objtype)]
-
-
-def cnx_attr(attr_name, writable=False):
-    """return a property to forward attribute access to connection.
-
-    This is to be used by session"""
-    args = {}
-
-    @deprecated('[3.19] use a Connection object instead')
-    def attr_from_cnx(session):
-        return getattr(session._cnx, attr_name)
-
-    args['fget'] = attr_from_cnx
-    if writable:
-        @deprecated('[3.19] use a Connection object instead')
-        def write_attr(session, value):
-            return setattr(session._cnx, attr_name, value)
-        args['fset'] = write_attr
-    return property(**args)
-
-
-class Timestamp(object):
-
-    def __init__(self):
-        self.value = time()
-
-    def touch(self):
-        self.value = time()
-
-    def __float__(self):
-        return float(self.value)
-
-
-class Session(object):
-    """Repository user session
-
-    This ties all together:
-     * session id,
-     * user,
-     * other session data.
-    """
-
-    def __init__(self, user, repo, _id=None):
-        self.sessionid = _id or make_uid(unormalize(user.login))
-        self.user = user  # XXX repoapi: deprecated and store only a login.
-        self.repo = repo
-        self._timestamp = Timestamp()
-        self.data = {}
-        self.closed = False
-
-    def close(self):
-        if self.closed:
-            self.warning('closing already closed session %s', self.sessionid)
-            return
-        with self.new_cnx() as cnx:
-            self.repo.hm.call_hooks('session_close', cnx)
-            cnx.commit()
-            del self.repo._sessions[self.sessionid]
-        self.closed = True
-        self.info('closed session %s for user %s', self.sessionid, self.user.login)
-
-    def __unicode__(self):
-        return '<session %s (%s 0x%x)>' % (
-            unicode(self.user.login), self.sessionid, id(self))
-
-    @property
-    def timestamp(self):
-        return float(self._timestamp)
-
-    @property
-    @deprecated('[3.19] session.id is deprecated, use session.sessionid')
-    def id(self):
-        return self.sessionid
-
-    @property
-    def login(self):
-        return self.user.login
-
-    def new_cnx(self):
-        """Return a new Connection object linked to the session
-
-        The returned Connection will *not* be managed by the Session.
-        """
-        return Connection(self)
-
-    @deprecated('[3.19] use a Connection object instead')
-    def get_option_value(self, option, foreid=None):
-        if foreid is not None:
-            warn('[3.19] foreid argument is deprecated', DeprecationWarning,
-                 stacklevel=2)
-        return self.repo.get_option_value(option)
-
-    def _touch(self):
-        """update latest session usage timestamp and reset mode to read"""
-        self._timestamp.touch()
-
-    local_perm_cache = cnx_attr('local_perm_cache')
-
-    @local_perm_cache.setter
-    def local_perm_cache(self, value):
-        # base class assign an empty dict:-(
-        assert value == {}
-        pass
-
-    # deprecated ###############################################################
-
-    @property
-    def anonymous_session(self):
-        # XXX for now, anonymous_user only exists in webconfig (and testconfig).
-        # It will only be present inside all-in-one instance.
-        # there is plan to move it down to global config.
-        if not hasattr(self.repo.config, 'anonymous_user'):
-            # not a web or test config, no anonymous user
-            return False
-        return self.user.login == self.repo.config.anonymous_user()[0]
-
-    @deprecated('[3.13] use getattr(session.rtype_eids_rdef(rtype, eidfrom, eidto), prop)')
-    def schema_rproperty(self, rtype, eidfrom, eidto, rprop):
-        return getattr(self.rtype_eids_rdef(rtype, eidfrom, eidto), rprop)
-
-    # these are overridden by set_log_methods below
-    # only defining here to prevent pylint from complaining
-    info = warning = error = critical = exception = debug = lambda msg, *a, **kw: None
 
 
 class InternalManager(object):
@@ -1125,5 +934,4 @@ class InternalManager(object):
         return None
 
 
-set_log_methods(Session, getLogger('cubicweb.session'))
 set_log_methods(Connection, getLogger('cubicweb.session'))

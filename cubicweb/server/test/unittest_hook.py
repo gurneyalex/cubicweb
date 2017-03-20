@@ -112,7 +112,7 @@ class HooksRegistryTC(unittest.TestCase):
     def test_call_hook(self):
         self.o.register(AddAnyHook)
         dis = set()
-        cw = fake.FakeSession()
+        cw = fake.FakeConnection()
         cw.is_hook_activated = lambda cls: cls.category not in dis
         self.assertRaises(HookCalled,
                           self.o.call_hooks, 'before_add_entity', cw)
@@ -133,14 +133,6 @@ class SystemHooksTC(CubicWebTC):
         # don't actually call repository.shutdown !
         self.repo.hm.call_hooks('server_shutdown', repo=self.repo)
         self.assertEqual(hooks.CALLED_EVENTS['server_shutdown'], True)
-
-    def test_session_open_close(self):
-        import hooks # cubicweb/server/test/data/hooks.py
-        anonaccess = self.new_access('anon')
-        with anonaccess.repo_cnx() as cnx:
-            self.assertEqual(hooks.CALLED_EVENTS['session_open'], 'anon')
-        anonaccess.close()
-        self.assertEqual(hooks.CALLED_EVENTS['session_close'], 'anon')
 
 
 if __name__ == '__main__':

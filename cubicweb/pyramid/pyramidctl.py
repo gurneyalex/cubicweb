@@ -1,9 +1,30 @@
+# copyright 2017 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2014-2016 UNLISH S.A.S. (Montpellier, FRANCE), all rights reserved.
+#
+# contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
+#
+# This file is part of CubicWeb.
+#
+# CubicWeb is free software: you can redistribute it and/or modify it under the
+# terms of the GNU Lesser General Public License as published by the Free
+# Software Foundation, either version 2.1 of the License, or (at your option)
+# any later version.
+#
+# CubicWeb is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Lesser General Public License along
+# with CubicWeb.  If not, see <http://www.gnu.org/licenses/>.
+
 """
 Provides a 'pyramid' command as a replacement to the 'start' command.
 
 The reloading strategy is heavily inspired by (and partially copied from)
 the pyramid script 'pserve'.
 """
+
 from __future__ import print_function
 
 import atexit
@@ -14,12 +35,14 @@ import sys
 import time
 import threading
 import subprocess
+import warnings
 
-from cubicweb import BadCommandUsage, ExecutionError
+from cubicweb import ExecutionError
 from cubicweb.cwconfig import CubicWebConfiguration as cwcfg
 from cubicweb.cwctl import CWCTL, InstanceCommand, init_cmdline_log_threshold
 from cubicweb.pyramid import wsgi_application_from_cwconfig
-from cubicweb.server import set_debug
+from cubicweb.server import serverctl, set_debug
+from cubicweb.web.webctl import WebCreateHandler
 
 import waitress
 
@@ -27,6 +50,17 @@ MAXFD = 1024
 
 DBG_FLAGS = ('RQL', 'SQL', 'REPO', 'HOOKS', 'OPS', 'SEC', 'MORE')
 LOG_LEVELS = ('debug', 'info', 'warning', 'error')
+
+
+class PyramidCreateHandler(serverctl.RepositoryCreateHandler,
+                           WebCreateHandler):
+    cfgname = 'pyramid'
+
+    def bootstrap(self, cubes, automatic=False, inputlevel=0):
+        serverctl.RepositoryCreateHandler.bootstrap(self, cubes, automatic, inputlevel)
+        # Call WebCreateHandler.bootstrap to prompt about get anonymous-user.
+        WebCreateHandler.bootstrap(self, cubes, automatic, inputlevel)
+        self.config.write_development_ini(cubes)
 
 
 class PyramidStartHandler(InstanceCommand):
@@ -98,15 +132,6 @@ class PyramidStartHandler(InstanceCommand):
 
     def info(self, msg):
         print('INFO - %s' % msg)
-
-    def ordered_instances(self):
-        instances = super(PyramidStartHandler, self).ordered_instances()
-        if (self['debug-mode'] or self['debug'] or self['reload']) \
-                and len(instances) > 1:
-            raise BadCommandUsage(
-                '--debug-mode, --debug and --reload can be used on a single '
-                'instance only')
-        return instances
 
     def quote_first_command_arg(self, arg):
         """
@@ -326,8 +351,11 @@ class PyramidStartHandler(InstanceCommand):
         host = cwconfig['interface']
         port = cwconfig['port'] or 8080
         repo = app.application.registry['cubicweb.repository']
+        warnings.warn(
+            'the "pyramid" command does not start repository "looping tasks" '
+            'anymore; use the standalone "scheduler" command if needed'
+        )
         try:
-            repo.start_looping_tasks()
             waitress.serve(app, host=host, port=port)
         finally:
             repo.shutdown()

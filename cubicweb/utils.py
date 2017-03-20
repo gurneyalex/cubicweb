@@ -19,8 +19,6 @@
 
 from __future__ import division
 
-
-
 import base64
 import decimal
 import datetime
@@ -37,7 +35,6 @@ from threading import Lock
 from logging import getLogger
 
 from six import text_type
-from six.moves.urllib.parse import urlparse
 
 from logilab.mtconverter import xml_escape
 from logilab.common.deprecation import deprecated
@@ -51,18 +48,19 @@ _MARKER = object()
 # initialize random seed from current time
 random.seed()
 
+
 def admincnx(appid):
+    from cubicweb import repoapi
     from cubicweb.cwconfig import CubicWebConfiguration
     from cubicweb.server.repository import Repository
-    from cubicweb.server.utils import TasksManager
     config = CubicWebConfiguration.config_for(appid)
 
     login = config.default_admin_config['login']
     password = config.default_admin_config['password']
 
-    repo = Repository(config, TasksManager())
-    session = repo.new_session(login, password=password)
-    return session.new_cnx()
+    repo = Repository(config)
+    repo.bootstrap()
+    return repoapi.connect(repo, login, password=password)
 
 
 def make_uid(key=None):
@@ -583,21 +581,6 @@ def js_href(javascript_code):
     'javascript: alert("%251337%");'
     """
     return 'javascript: ' + PERCENT_IN_URLQUOTE_RE.sub(r'%25', javascript_code)
-
-
-def parse_repo_uri(uri):
-    """ transform a command line uri into a (protocol, hostport, appid), e.g:
-    <myapp>                      -> 'inmemory', None, '<myapp>'
-    inmemory://<myapp>           -> 'inmemory', None, '<myapp>'
-    """
-    parseduri = urlparse(uri)
-    scheme = parseduri.scheme
-    if scheme == '':
-        return ('inmemory', None, parseduri.path)
-    if scheme == 'inmemory':
-        return (scheme, None, parseduri.netloc)
-    raise NotImplementedError('URI protocol not implemented for `%s`' % uri)
-
 
 
 logger = getLogger('cubicweb.utils')
