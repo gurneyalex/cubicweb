@@ -66,9 +66,9 @@ class RQLInputForm(component.Component):
             self._cw.add_onload('$("#rql").autocomplete({source: "%s"});'
                                 % (req.build_url('json', fname='rql_suggest')))
         self.w(u'''<div id="rqlinput" class="%s"><form action="%s"><fieldset>
-<input type="text" id="rql" name="rql" value="%s"  title="%s" tabindex="%s" accesskey="q" class="searchField" />
+<input type="text" id="rql" name="rql" value="%s"  title="%s" accesskey="q" class="searchField" />
 ''' % (not self.cw_propval('visible') and 'hidden' or '',
-       req.build_url('view'), xml_escape(rql), req._('full text or RQL query'), req.next_tabindex()))
+       req.build_url('view'), xml_escape(rql), req._('full text or RQL query')))
         if req.search_state[0] != 'normal':
             self.w(u'<input type="hidden" name="__mode" value="%s"/>'
                    % ':'.join(req.search_state[1]))
@@ -169,7 +169,8 @@ class AuthenticatedUserStatus(AnonUserStatusLink):
     def render(self, w):
         # display useractions and siteactions
         self._cw.add_css('cubicweb.pictograms.css')
-        actions = self._cw.vreg['actions'].possible_actions(self._cw, rset=self.cw_rset)
+        actions = self._cw.vreg['actions'].possible_actions(self._cw, rset=self.cw_rset,
+                                                            view=self.cw_extra_kwargs['view'])
         box = MenuWidget('', 'userActionsBox', _class='', islist=False)
         menu = PopupBoxMenu(self._cw.user.login, isitem=False, link_class='icon-user')
         box.append(menu)

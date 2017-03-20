@@ -1,3 +1,23 @@
+# copyright 2017 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2014-2016 UNLISH S.A.S. (Montpellier, FRANCE), all rights reserved.
+#
+# contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
+#
+# This file is part of CubicWeb.
+#
+# CubicWeb is free software: you can redistribute it and/or modify it under the
+# terms of the GNU Lesser General Public License as published by the Free
+# Software Foundation, either version 2.1 of the License, or (at your option)
+# any later version.
+#
+# CubicWeb is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Lesser General Public License along
+# with CubicWeb.  If not, see <http://www.gnu.org/licenses/>.
+
 """Various tools.
 
 .. warning::
@@ -6,11 +26,7 @@
     with caution, as the API may change without notice.
 """
 
-#: A short-term cache for user clones.
-#: used by cached_build_user to speed-up repetitive calls to build_user
-#: The expiration is handled in a dumb and brutal way: the whole cache is
-#: cleared every 5 minutes.
-_user_cache = {}
+from repoze.lru import lru_cache
 
 
 def clone_user(repo, user):
@@ -39,34 +55,13 @@ def cnx_attach_entity(cnx, entity):
         entity.cw_rset.req = cnx
 
 
+@lru_cache(10)
 def cached_build_user(repo, eid):
     """Cached version of
     :meth:`cubicweb.server.repository.Repository._build_user`
     """
-    if eid in _user_cache:
-        user, lang = _user_cache[eid]
-        entity = clone_user(repo, user)
-        return entity, lang
-
     with repo.internal_cnx() as cnx:
         user = repo._build_user(cnx, eid)
         lang = user.prefered_language()
         user.cw_clear_relation_cache()
-        _user_cache[eid] = (clone_user(repo, user), lang)
-        return user, lang
-
-
-def clear_cache():
-    """Clear the user cache"""
-    _user_cache.clear()
-
-
-def includeme(config):
-    """Start the cache maintenance loop task.
-
-    Automatically included by :func:`cubicweb.pyramid.make_cubicweb_application`.
-    """
-    repo = config.registry['cubicweb.repository']
-    interval = int(config.registry.settings.get(
-        'cubicweb.usercache.expiration_time', 60 * 5))
-    repo.looping_task(interval, clear_cache)
+        return clone_user(repo, user), lang

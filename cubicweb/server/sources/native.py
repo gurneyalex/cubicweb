@@ -30,7 +30,7 @@ import logging
 import sys
 
 from six import PY2, text_type, string_types
-from six.moves import range, cPickle as pickle
+from six.moves import range, cPickle as pickle, zip
 
 from logilab.common.decorators import cached, clear_cache
 from logilab.common.configuration import Method
@@ -361,15 +361,17 @@ class NativeSQLSource(SQLAdapterMixIn, AbstractSource):
         authentifier.source = self
         authentifier.set_schema(self.schema)
 
-    def reset_caches(self):
-        """method called during test to reset potential source caches"""
-        self._cache = QueryCache(self.repo.config['rql-cache-size'])
-
-    def clear_eid_cache(self, eid, etype):
-        """clear potential caches for the given eid"""
-        self._cache.pop('Any X WHERE X eid %s, X is %s' % (eid, etype), None)
-        self._cache.pop('Any X WHERE X eid %s' % eid, None)
-        self._cache.pop('Any %s' % eid, None)
+    def clear_caches(self, eids, etypes):
+        """Clear potential source caches."""
+        if eids is None:
+            self._cache = QueryCache(self.repo.config['rql-cache-size'])
+        else:
+            cache = self._cache
+            for eid, etype in zip(eids, etypes):
+                cache.pop('Any X WHERE X eid %s' % eid, None)
+                cache.pop('Any %s' % eid, None)
+                if etype is not None:
+                    cache.pop('Any X WHERE X eid %s, X is %s' % (eid, etype), None)
 
     @statsd_timeit
     def sqlexec(self, cnx, sql, args=None):
@@ -380,7 +382,7 @@ class NativeSQLSource(SQLAdapterMixIn, AbstractSource):
         # check full text index availibility
         if self.do_fti:
             if cnxset is None:
-                _cnxset = self.repo._get_cnxset()
+                _cnxset = self.repo.cnxsets.get()
             else:
                 _cnxset = cnxset
             if not self.dbhelper.has_fti_table(_cnxset.cu):
@@ -389,7 +391,7 @@ class NativeSQLSource(SQLAdapterMixIn, AbstractSource):
                 self.do_fti = False
             if cnxset is None:
                 _cnxset.cnxset_freed()
-                self.repo._free_cnxset(_cnxset)
+                self.repo.cnxsets.release(_cnxset)
 
     def backup(self, backupfile, confirm, format='native'):
         """method called to create a backup of the source's data"""
@@ -417,19 +419,13 @@ class NativeSQLSource(SQLAdapterMixIn, AbstractSource):
 
     def restore(self, backupfile, confirm, drop, format='native'):
         """method called to restore a backup of source's data"""
-        if self.repo.config.init_cnxset_pool:
-            self.close_source_connections()
-        try:
-            if format == 'portable':
-                helper = DatabaseIndependentBackupRestore(self)
-                helper.restore(backupfile)
-            elif format == 'native':
-                self.restore_from_file(backupfile, confirm, drop=drop)
-            else:
-                raise ValueError('Unknown format %r' % format)
-        finally:
-            if self.repo.config.init_cnxset_pool:
-                self.open_source_connections()
+        if format == 'portable':
+            helper = DatabaseIndependentBackupRestore(self)
+            helper.restore(backupfile)
+        elif format == 'native':
+            self.restore_from_file(backupfile, confirm, drop=drop)
+        else:
+            raise ValueError('Unknown format %r' % format)
 
     def init(self, activated, source_entity):
         super(NativeSQLSource, self).init(activated, source_entity)

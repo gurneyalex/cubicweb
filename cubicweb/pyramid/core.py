@@ -1,3 +1,25 @@
+# copyright 2017 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2014-2016 UNLISH S.A.S. (Montpellier, FRANCE), all rights reserved.
+#
+# contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
+#
+# This file is part of CubicWeb.
+#
+# CubicWeb is free software: you can redistribute it and/or modify it under the
+# terms of the GNU Lesser General Public License as published by the Free
+# Software Foundation, either version 2.1 of the License, or (at your option)
+# any later version.
+#
+# CubicWeb is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Lesser General Public License along
+# with CubicWeb.  If not, see <http://www.gnu.org/licenses/>.
+
+"""Binding of CubicWeb connection to Pyramid request."""
+
 import itertools
 
 from contextlib import contextmanager
@@ -30,12 +52,12 @@ class Connection(cwsession.Connection):
     """
 
     def __init__(self, session, *args, **kw):
-        super(Connection, self).__init__(session, *args, **kw)
-        self._session = session
+        super(Connection, self).__init__(session._repo, session._user, *args, **kw)
+        self.session = session
         self.lang = session._cached_lang
 
     def _get_session_data(self):
-        return self._session.data
+        return self.session.data
 
     def _set_session_data(self, data):
         pass
@@ -43,15 +65,26 @@ class Connection(cwsession.Connection):
     _session_data = property(_get_session_data, _set_session_data)
 
 
-class Session(cwsession.Session):
+class Session(object):
     """ A Session that access the session data through a property.
 
     Along with :class:`Connection`, it avoid any load of the pyramid session
     data until it is actually accessed.
     """
     def __init__(self, pyramid_request, user, repo):
-        super(Session, self).__init__(user, repo)
         self._pyramid_request = pyramid_request
+        self._user = user
+        self._repo = repo
+
+    @property
+    def anonymous_session(self):
+        # XXX for now, anonymous_user only exists in webconfig (and testconfig).
+        # It will only be present inside all-in-one instance.
+        # there is plan to move it down to global config.
+        if not hasattr(self._repo.config, 'anonymous_user'):
+            # not a web or test config, no anonymous user
+            return False
+        return self._user.login == self._repo.config.anonymous_user()[0]
 
     def get_data(self):
         if not getattr(self, '_protect_data_access', False):
@@ -126,12 +159,11 @@ class CubicWebPyramidRequest(CubicWebRequestBase):
         self.path = request.upath_info
 
         vreg = request.registry['cubicweb.registry']
-        https = request.scheme == 'https'
 
         post = request.params.mixed()
         headers_in = request.headers
 
-        super(CubicWebPyramidRequest, self).__init__(vreg, https, post,
+        super(CubicWebPyramidRequest, self).__init__(vreg, post,
                                                      headers=headers_in)
 
         self.content = request.body_file_seekable
@@ -156,9 +188,6 @@ class CubicWebPyramidRequest(CubicWebRequestBase):
                 self.set_message(val)
             else:
                 self.form[param] = val
-
-    def is_secure(self):
-        return self._request.scheme == 'https'
 
     def relative_path(self, includeparams=True):
         path = self._request.path_info[1:]
@@ -213,7 +242,7 @@ def render_view(request, vid, **kwargs):
 
     :param request: A pyramid request
     :param vid: A CubicWeb view id
-    :param **kwargs: Keyword arguments to select and instanciate the view
+    :param kwargs: Keyword arguments to select and instanciate the view
     :returns: The rendered view content
     """
     vreg = request.registry['cubicweb.registry']
@@ -277,12 +306,6 @@ def repo_connect(request, repo, eid):
     session = Session(request, user, repo)
     session._cached_lang = lang
     tools.cnx_attach_entity(session, user)
-    # Calling the hooks should be done only once, disabling it completely for
-    # now
-    # with session.new_cnx() as cnx:
-    #     repo.hm.call_hooks('session_open', cnx)
-    #     cnx.commit()
-    # repo._sessions[session.sessionid] = session
     return session
 
 

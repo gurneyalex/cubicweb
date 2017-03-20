@@ -30,31 +30,28 @@ class StatsService(Service):
     resources usage.
     """
 
-    __regid__  = 'repo_stats'
+    __regid__ = 'repo_stats'
     __select__ = match_user_groups('managers', 'users')
 
     def call(self):
-        repo = self._cw.repo # Service are repo side only.
+        repo = self._cw.repo  # Service are repo side only.
         results = {}
         querier = repo.querier
         source = repo.system_source
         for size, maxsize, hits, misses, title in (
-            (len(querier._rql_cache), repo.config['rql-cache-size'],
-            querier.cache_hit, querier.cache_miss, 'rqlt_st'),
+            (len(querier.rql_cache), repo.config['rql-cache-size'],
+             querier.rql_cache.cache_hit, querier.rql_cache.cache_miss, 'rqlt_st'),
             (len(source._cache), repo.config['rql-cache-size'],
-            source.cache_hit, source.cache_miss, 'sql'),
-            ):
+             source.cache_hit, source.cache_miss, 'sql'),
+        ):
             results['%s_cache_size' % title] = {'size': size, 'maxsize': maxsize}
             results['%s_cache_hit' % title] = hits
             results['%s_cache_miss' % title] = misses
             results['%s_cache_hit_percent' % title] = (hits * 100) / (hits + misses)
         results['type_cache_size'] = len(repo._type_cache)
         results['sql_no_cache'] = repo.system_source.no_cache
-        results['nb_open_sessions'] = len(repo._sessions)
         results['nb_active_threads'] = threading.activeCount()
-        looping_tasks = repo._tasks_manager._looping_tasks
-        results['looping_tasks'] = [(t.name, t.interval) for t in looping_tasks]
-        results['available_cnxsets'] = repo._cnxsets_pool.qsize()
+        results['available_cnxsets'] = repo.cnxsets.qsize()
         results['threads'] = [t.name for t in threading.enumerate()]
         return results
 
@@ -64,14 +61,12 @@ class GcStatsService(Service):
     resources usage.
     """
 
-    __regid__  = 'repo_gc_stats'
+    __regid__ = 'repo_gc_stats'
     __select__ = match_user_groups('managers')
 
     def call(self, nmax=20):
         """Return a dictionary containing some statistics about the repository
         memory usage.
-
-        This is a public method, not requiring a session id.
 
         nmax is the max number of (most) referenced object returned as
         the 'referenced' result
@@ -86,11 +81,6 @@ class GcStatsService(Service):
         lookupclasses = (AppObject,
                          Union, ResultSet,
                          CubicWebRequestBase)
-        try:
-            from cubicweb.server.session import Session, InternalSession
-            lookupclasses += (InternalSession, Session)
-        except ImportError:
-            pass  # no server part installed
 
         results = {}
         counters, ocounters, garbage = gc_info(lookupclasses,

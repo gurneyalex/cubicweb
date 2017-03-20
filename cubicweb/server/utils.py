@@ -19,13 +19,14 @@
 from __future__ import print_function
 
 
-
+from functools import wraps
+import sched
 import sys
 import logging
-from threading import Timer, Thread
+from threading import Thread
 from getpass import getpass
 
-from six import PY2, text_type
+from six import PY2
 from six.moves import input
 
 from passlib.utils import handlers as uh, to_hash_str
@@ -58,25 +59,28 @@ class CustomMD5Crypt(uh.HasSalt, uh.GenericHandler):
         return md5crypt(secret, self.salt.encode('ascii')).decode('utf-8')
     _calc_checksum = calc_checksum
 
+
 _CRYPTO_CTX = CryptContext(['sha512_crypt', CustomMD5Crypt, 'des_crypt', 'ldap_salted_sha1'],
                            deprecated=['cubicwebmd5crypt', 'des_crypt'])
 verify_and_update = _CRYPTO_CTX.verify_and_update
+
 
 def crypt_password(passwd, salt=None):
     """return the encrypted password using the given salt or a generated one
     """
     if salt is None:
-        return _CRYPTO_CTX.encrypt(passwd).encode('ascii')
+        return _CRYPTO_CTX.hash(passwd).encode('ascii')
     # empty hash, accept any password for backwards compat
     if salt == '':
         return salt
     try:
         if _CRYPTO_CTX.verify(passwd, salt):
             return salt
-    except ValueError: # e.g. couldn't identify hash
+    except ValueError:  # e.g. couldn't identify hash
         pass
     # wrong password
     return b''
+
 
 @deprecated('[3.22] no more necessary, directly get eschema.eid')
 def eschema_eid(cnx, eschema):
@@ -91,6 +95,7 @@ def eschema_eid(cnx, eschema):
 
 DEFAULT_MSG = 'we need a manager connection on the repository \
 (the server doesn\'t have to run, even should better not)'
+
 
 def manager_userpasswd(user=None, msg=DEFAULT_MSG, confirm=False,
                        passwdmsg='password'):
@@ -113,7 +118,51 @@ def manager_userpasswd(user=None, msg=DEFAULT_MSG, confirm=False,
     return user, passwd
 
 
+if PY2:
+    import time  # noqa
+
+    class scheduler(sched.scheduler):
+        """Python2 version of sched.scheduler that matches Python3 API."""
+
+        def __init__(self, **kwargs):
+            kwargs.setdefault('timefunc', time.time)
+            kwargs.setdefault('delayfunc', time.sleep)
+            # sched.scheduler is an old-style class.
+            sched.scheduler.__init__(self, **kwargs)
+
+else:
+    scheduler = sched.scheduler
+
+
+def schedule_periodic_task(scheduler, interval, func, *args):
+    """Enter a task with `func(*args)` as a periodic event in `scheduler`
+    executing at `interval` seconds. Once executed, the task would re-schedule
+    itself unless a BaseException got raised.
+    """
+    @wraps(func)
+    def task(*args):
+        restart = True
+        try:
+            func(*args)
+        except Exception:
+            logger = logging.getLogger('cubicweb.scheduler')
+            logger.exception('Unhandled exception in periodic task "%s"',
+                             func.__name__)
+        except BaseException as exc:
+            logger = logging.getLogger('cubicweb.scheduler')
+            logger.error('periodic task "%s" not re-scheduled due to %r',
+                         func.__name__, exc)
+            restart = False
+        finally:
+            if restart:
+                scheduler.enter(interval, 1, task, argument=args)
+
+    return scheduler.enter(interval, 1, task, argument=args)
+
+
 _MARKER = object()
+
+
 def func_name(func):
     name = getattr(func, '__name__', _MARKER)
     if name is _MARKER:
@@ -121,46 +170,6 @@ def func_name(func):
     if name is _MARKER:
         name = repr(func)
     return name
-
-class LoopTask(object):
-    """threaded task restarting itself once executed"""
-    def __init__(self, tasks_manager, interval, func, args):
-        if interval < 0:
-            raise ValueError('Loop task interval must be >= 0 '
-                             '(current value: %f for %s)' % \
-                             (interval, func_name(func)))
-        self._tasks_manager = tasks_manager
-        self.interval = interval
-        def auto_restart_func(self=self, func=func, args=args):
-            restart = True
-            try:
-                func(*args)
-            except Exception:
-                logger = logging.getLogger('cubicweb.repository')
-                logger.exception('Unhandled exception in LoopTask %s', self.name)
-                raise
-            except BaseException:
-                restart = False
-            finally:
-                if restart and tasks_manager.running:
-                    self.start()
-        self.func = auto_restart_func
-        self.name = func_name(func)
-
-    def __str__(self):
-        return '%s (%s seconds)' % (self.name, self.interval)
-
-    def start(self):
-        self._t = Timer(self.interval, self.func)
-        self._t.setName('%s-%s[%d]' % (self._t.getName(), self.name, self.interval))
-        self._t.start()
-
-    def cancel(self):
-        self._t.cancel()
-
-    def join(self):
-        if self._t.isAlive():
-            self._t.join()
 
 
 class RepoThread(Thread):
@@ -188,56 +197,3 @@ class RepoThread(Thread):
 
     def getName(self):
         return '%s(%s)' % (self._name, Thread.getName(self))
-
-class TasksManager(object):
-    """Object dedicated manage background task"""
-
-    def __init__(self):
-        self.running = False
-        self._tasks = []
-        self._looping_tasks = []
-
-    def add_looping_task(self, interval, func, *args):
-        """register a function to be called every `interval` seconds.
-
-        If interval is negative, no looping task is registered.
-        """
-        if interval < 0:
-            self.debug('looping task %s ignored due to interval %f < 0',
-                       func_name(func), interval)
-            return
-        task = LoopTask(self, interval, func, args)
-        if self.running:
-            self._start_task(task)
-        else:
-            self._tasks.append(task)
-
-    def _start_task(self, task):
-        self._looping_tasks.append(task)
-        self.info('starting task %s with interval %.2fs', task.name,
-                  task.interval)
-        task.start()
-
-    def start(self):
-        """Start running looping task"""
-        assert self.running == False # bw compat purpose maintly
-        while self._tasks:
-            task = self._tasks.pop()
-            self._start_task(task)
-        self.running = True
-
-    def stop(self):
-        """Stop all running task.
-
-        returns when all task have been cancel and none are running anymore"""
-        if self.running:
-            while self._looping_tasks:
-                looptask = self._looping_tasks.pop()
-                self.info('canceling task %s...', looptask.name)
-                looptask.cancel()
-                looptask.join()
-                self.info('task %s finished', looptask.name)
-
-from logging import getLogger
-from cubicweb import set_log_methods
-set_log_methods(TasksManager, getLogger('cubicweb.repository'))

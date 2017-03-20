@@ -1,4 +1,4 @@
-# copyright 2003-2011 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2016 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -17,8 +17,7 @@
 # with CubicWeb.  If not, see <http://www.gnu.org/licenses/>.
 """Twisted request handler for CubicWeb"""
 
-
-
+from six import text_type
 
 from cubicweb.web.request import CubicWebRequestBase
 
@@ -27,19 +26,19 @@ class CubicWebTwistedRequestAdapter(CubicWebRequestBase):
     """ from twisted .req to cubicweb .form
     req.files are put into .form[<filefield>]
     """
-    def __init__(self, req, vreg, https):
+    def __init__(self, req, vreg):
         self._twreq = req
         super(CubicWebTwistedRequestAdapter, self).__init__(
-            vreg, https, req.args, headers=req.received_headers)
+            vreg, req.args, headers=req.received_headers)
         for key, name_stream_list in req.files.items():
             for name, stream in name_stream_list:
                 if name is not None:
-                    name = unicode(name, self.encoding)
+                    name = text_type(name, self.encoding)
                 self.form.setdefault(key, []).append((name, stream))
             # 3.16.4 backward compat
             if len(self.form[key]) == 1:
                 self.form[key] = self.form[key][0]
-        self.content = self._twreq.content # stream
+        self.content = self._twreq.content  # stream
 
     def http_method(self):
         """returns 'POST', 'GET', 'HEAD', etc."""
@@ -53,7 +52,7 @@ class CubicWebTwistedRequestAdapter(CubicWebRequestBase):
         :param includeparams:
            boolean indicating if GET form parameters should be kept in the path
         """
-        path = self._twreq.uri[1:] # remove the root '/'
+        path = self._twreq.uri[1:]  # remove the root '/'
         if not includeparams:
             path = path.split('?', 1)[0]
         return path

@@ -17,16 +17,18 @@
 # with CubicWeb.  If not, see <http://www.gnu.org/licenses/>.
 """user authentication component"""
 
-
-
 from logilab.common.deprecation import class_renamed
+from logilab.common.textutils import unormalize
 
 from cubicweb import AuthenticationError
+from cubicweb.utils import make_uid
 from cubicweb.view import Component
 from cubicweb.web import InvalidSession
+from cubicweb.server.session import Connection
 
 
-class NoAuthInfo(Exception): pass
+class NoAuthInfo(Exception):
+    pass
 
 
 class WebAuthInfoRetriever(Component):
@@ -67,6 +69,7 @@ class WebAuthInfoRetriever(Component):
         """
         pass
 
+
 WebAuthInfoRetreiver = class_renamed(
     'WebAuthInfoRetreiver', WebAuthInfoRetriever,
     '[3.17] WebAuthInfoRetreiver had been renamed into WebAuthInfoRetriever '
@@ -92,11 +95,44 @@ class LoginPasswordRetriever(WebAuthInfoRetriever):
     def revalidate_login(self, req):
         return req.get_authorization()[0]
 
+
 LoginPasswordRetreiver = class_renamed(
     'LoginPasswordRetreiver', LoginPasswordRetriever,
     '[3.17] LoginPasswordRetreiver had been renamed into LoginPasswordRetriever '
     '("ie" instead of "ei")')
 
+
+class Session(object):
+    """In-memory user session
+    """
+
+    def __init__(self, repo, user):
+        self.user = user  # XXX deprecate and store only a login.
+        self.repo = repo
+        self.sessionid = make_uid(unormalize(user.login))
+        self.data = {}
+
+    def __unicode__(self):
+        return '<session %s (0x%x)>' % (unicode(self.user.login), id(self))
+
+    @property
+    def anonymous_session(self):
+        # XXX for now, anonymous_user only exists in webconfig (and testconfig).
+        # It will only be present inside all-in-one instance.
+        # there is plan to move it down to global config.
+        if not hasattr(self.repo.config, 'anonymous_user'):
+            # not a web or test config, no anonymous user
+            return False
+        return self.user.login == self.repo.config.anonymous_user()[0]
+
+    def new_cnx(self):
+        """Return a new Connection object linked to the session
+
+        The returned Connection will *not* be managed by the Session.
+        """
+        cnx = Connection(self.repo, self.user)
+        cnx.session = self
+        return cnx
 
 
 class RepositoryAuthenticationManager(object):
@@ -133,7 +169,7 @@ class RepositoryAuthenticationManager(object):
         # check session.login and not user.login, since in case of login by
         # email, login and cnx.login are the email while user.login is the
         # actual user login
-        if login and session.login != login:
+        if login and session.user.login != login:
             raise InvalidSession('login mismatch')
 
     def authenticate(self, req):
@@ -155,7 +191,7 @@ class RepositoryAuthenticationManager(object):
                 session = self._authenticate(login, authinfo)
             except AuthenticationError:
                 retriever.cleanup_authentication_information(req)
-                continue # the next one may succeed
+                continue  # the next one may succeed
             for retriever_ in self.authinforetrievers:
                 retriever_.authenticated(retriever, req, session, login, authinfo)
             return session, login
@@ -170,4 +206,6 @@ class RepositoryAuthenticationManager(object):
         raise AuthenticationError()
 
     def _authenticate(self, login, authinfo):
-        return self.repo.new_session(login, **authinfo)
+        with self.repo.internal_cnx() as cnx:
+            user = self.repo.authenticate_user(cnx, login, **authinfo)
+        return Session(self.repo, user)

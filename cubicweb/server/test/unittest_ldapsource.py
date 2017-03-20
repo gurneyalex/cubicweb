@@ -246,9 +246,6 @@ class LDAPFeedUserTC(LDAPFeedTestBase):
             self.assertRaises(AuthenticationError,
                               source.authenticate, cnx, 'syt', 'toto')
             self.assertTrue(source.authenticate(cnx, 'syt', 'syt'))
-        session = self.repo.new_session('syt', password='syt')
-        self.assertTrue(session)
-        session.close()
 
     def test_base(self):
         with self.admin_access.repo_cnx() as cnx:
@@ -280,7 +277,6 @@ class LDAPFeedUserTC(LDAPFeedTestBase):
             eid = cnx.execute('CWUser X WHERE X login %(login)s', {'login': 'syt'})[0][0]
             cnx.execute('SET X cw_source S WHERE X eid %(x)s, S name "system"', {'x': eid})
             cnx.commit()
-            source.reset_caches()
             rset = cnx.execute('CWUser X WHERE X login %(login)s', {'login': 'syt'})
             self.assertEqual(len(rset), 1)
             e = rset.get_entity(0, 0)
@@ -329,16 +325,18 @@ class LDAPFeedUserDeletionTC(LDAPFeedTestBase):
 
     def test_a_filter_inactivate(self):
         """ filtered out people should be deactivated, unable to authenticate """
+        repo_source = self.repo.sources_by_uri['ldap']
         with self.admin_access.repo_cnx() as cnx:
             source = cnx.execute('CWSource S WHERE S type="ldapfeed"').get_entity(0, 0)
-            config = source.repo_source.check_config(source)
+            config = repo_source.check_config(source)
             # filter with adim's phone number
             config['user-filter'] = u'(%s=%s)' % ('telephoneNumber', '109')
-            source.repo_source.update_config(source, config)
+            repo_source.update_config(source, config)
             cnx.commit()
         with self.repo.internal_cnx() as cnx:
             self.pull(cnx)
-        self.assertRaises(AuthenticationError, self.repo.new_session, 'syt', password='syt')
+            self.assertRaises(AuthenticationError,
+                              repo_source.authenticate, cnx, 'syt', 'syt')
         with self.admin_access.repo_cnx() as cnx:
             self.assertEqual(cnx.execute('Any N WHERE U login "syt", '
                                          'U in_state S, S name N').rows[0][0],
@@ -348,7 +346,7 @@ class LDAPFeedUserDeletionTC(LDAPFeedTestBase):
                              'activated')
             # unfilter, syt should be activated again
             config['user-filter'] = u''
-            source.repo_source.update_config(source, config)
+            repo_source.update_config(source, config)
             cnx.commit()
         with self.repo.internal_cnx() as cnx:
             self.pull(cnx)
@@ -367,7 +365,9 @@ class LDAPFeedUserDeletionTC(LDAPFeedTestBase):
         self.delete_ldap_entry('uid=syt,ou=People,dc=cubicweb,dc=test')
         with self.repo.internal_cnx() as cnx:
             self.pull(cnx)
-        self.assertRaises(AuthenticationError, self.repo.new_session, 'syt', password='syt')
+            source = self.repo.sources_by_uri['ldap']
+            self.assertRaises(AuthenticationError,
+                              source.authenticate, cnx, 'syt', 'syt')
         with self.admin_access.repo_cnx() as cnx:
             self.assertEqual(cnx.execute('Any N WHERE U login "syt", '
                                          'U in_state S, S name N').rows[0][0],
@@ -404,6 +404,7 @@ class LDAPFeedUserDeletionTC(LDAPFeedTestBase):
         # test reactivating BY HAND the user isn't enough to
         # authenticate, as the native source refuse to authenticate
         # user from other sources
+        repo_source = self.repo.sources_by_uri['ldap']
         self.delete_ldap_entry('uid=syt,ou=People,dc=cubicweb,dc=test')
         with self.repo.internal_cnx() as cnx:
             self.pull(cnx)
@@ -412,17 +413,16 @@ class LDAPFeedUserDeletionTC(LDAPFeedTestBase):
             user = cnx.execute('CWUser U WHERE U login "syt"').get_entity(0, 0)
             user.cw_adapt_to('IWorkflowable').fire_transition('activate')
             cnx.commit()
-            with self.assertRaises(AuthenticationError):
-                self.repo.new_session('syt', password='syt')
+            self.assertRaises(AuthenticationError,
+                              repo_source.authenticate, cnx, 'syt', 'syt')
 
             # ok now let's try to make it a system user
             cnx.execute('SET X cw_source S WHERE X eid %(x)s, S name "system"', {'x': user.eid})
             cnx.commit()
-        # and that we can now authenticate again
-        self.assertRaises(AuthenticationError, self.repo.new_session, 'syt', password='toto')
-        session = self.repo.new_session('syt', password='syt')
-        self.assertTrue(session)
-        session.close()
+            # and that we can now authenticate again
+            self.assertRaises(AuthenticationError,
+                              repo_source.authenticate, cnx, 'syt', 'toto')
+            self.assertTrue(self.repo.authenticate_user(cnx, 'syt', password='syt'))
 
 
 class LDAPFeedGroupTC(LDAPFeedTestBase):

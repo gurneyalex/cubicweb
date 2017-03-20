@@ -18,14 +18,12 @@
 
 import time
 from datetime import datetime
-import pytz
-
-from xml.etree.ElementTree import fromstring
-from lxml import html
 
 from six import text_type
 
-from logilab.common.testlib import unittest_main
+import pytz
+
+from lxml import html
 
 from cubicweb import Binary, ValidationError
 from cubicweb.mttransforms import HAS_TAL
@@ -34,7 +32,7 @@ from cubicweb.web.formfields import (IntField, StringField, RichTextField,
                                      PasswordField, DateTimeField,
                                      FileField, EditableFileField,
                                      TZDatetimeField)
-from cubicweb.web.formwidgets import PasswordInput, Input, DateTimePicker
+from cubicweb.web.formwidgets import DateTimePicker, JQueryDateTimePicker
 from cubicweb.web.views.forms import EntityFieldsForm, FieldsForm
 from cubicweb.web.views.workflow import ChangeStateForm
 from cubicweb.web.views.formrenderers import FormRenderer
@@ -63,6 +61,15 @@ class FieldsFormTC(CubicWebTC):
         with self.admin_access.web_request(anint='1a', astring='2b', _cw_fields='anint,astring') as req:
             form = AForm(req)
             self.assertRaises(ValidationError, form.process_posted)
+
+    def test_jqdt_process_data(self):
+        widget = JQueryDateTimePicker()
+        field = DateTimeField('jqdt')
+        with self.admin_access.web_request(**{'jqdt-date': '', 'jqdt-time': '00:00'}) as req:
+            self._cw = req
+            self.formvalues = {}
+            date = widget.process_field_data(self, field)
+            self.assertIsNone(date)
 
 
 class EntityFieldsFormTC(CubicWebTC):
@@ -200,20 +207,20 @@ class EntityFieldsFormTC(CubicWebTC):
     def test_richtextfield_1(self):
         with self.admin_access.web_request() as req:
             req.use_fckeditor = lambda: False
-            self._test_richtextfield(req, '''<select id="description_format-subject:%(eid)s" name="description_format-subject:%(eid)s" size="1" style="display: block" tabindex="1">
+            self._test_richtextfield(req, '''<select id="description_format-subject:%(eid)s" name="description_format-subject:%(eid)s" size="1" style="display: block">
 ''' + ('<option value="text/cubicweb-page-template">text/cubicweb-page-template</option>\n'
 if HAS_TAL else '') +
 '''<option selected="selected" value="text/html">text/html</option>
 <option value="text/markdown">text/markdown</option>
 <option value="text/plain">text/plain</option>
 <option value="text/rest">text/rest</option>
-</select><textarea cols="80" id="description-subject:%(eid)s" name="description-subject:%(eid)s" onkeyup="autogrow(this)" rows="2" tabindex="2"></textarea>''')
+</select><textarea cols="80" id="description-subject:%(eid)s" name="description-subject:%(eid)s" onkeyup="autogrow(this)" rows="2"></textarea>''')
 
 
     def test_richtextfield_2(self):
         with self.admin_access.web_request() as req:
             req.use_fckeditor = lambda: True
-            self._test_richtextfield(req, '<input name="description_format-subject:%(eid)s" type="hidden" value="text/html" /><textarea cols="80" cubicweb:type="wysiwyg" id="description-subject:%(eid)s" name="description-subject:%(eid)s" onkeyup="autogrow(this)" rows="2" tabindex="1"></textarea>')
+            self._test_richtextfield(req, '<input name="description_format-subject:%(eid)s" type="hidden" value="text/html" /><textarea cols="80" cubicweb:type="wysiwyg" id="description-subject:%(eid)s" name="description-subject:%(eid)s" onkeyup="autogrow(this)" rows="2"></textarea>')
 
 
     def test_filefield(self):
@@ -229,11 +236,11 @@ if HAS_TAL else '') +
                                      data=Binary(b'new widgets system'))
             form = FFForm(req, redirect_path='perdu.com', entity=file)
             self.assertMultiLineEqual(self._render_entity_field(req, 'data', form),
-                              '''<input id="data-subject:%(eid)s" name="data-subject:%(eid)s" tabindex="1" type="file" value="" />
+                              '''<input id="data-subject:%(eid)s" name="data-subject:%(eid)s" type="file" value="" />
 <a href="javascript: toggleVisibility(&#39;data-subject:%(eid)s-advanced&#39;)" title="show advanced fields"><img src="http://testing.fr/cubicweb/data/puce_down.png" alt="show advanced fields"/></a>
 <div id="data-subject:%(eid)s-advanced" class="hidden">
-<label for="data_format-subject:%(eid)s">data_format</label><input id="data_format-subject:%(eid)s" maxlength="50" name="data_format-subject:%(eid)s" size="45" tabindex="2" type="text" value="text/plain" /><br/>
-<label for="data_encoding-subject:%(eid)s">data_encoding</label><input id="data_encoding-subject:%(eid)s" maxlength="20" name="data_encoding-subject:%(eid)s" size="20" tabindex="3" type="text" value="UTF-8" /><br/>
+<label for="data_format-subject:%(eid)s">data_format</label><input id="data_format-subject:%(eid)s" maxlength="50" name="data_format-subject:%(eid)s" size="45" type="text" value="text/plain" /><br/>
+<label for="data_encoding-subject:%(eid)s">data_encoding</label><input id="data_encoding-subject:%(eid)s" maxlength="20" name="data_encoding-subject:%(eid)s" size="20" type="text" value="UTF-8" /><br/>
 </div>
 <br/>
 <input name="data-subject__detach:%(eid)s" type="checkbox" />
@@ -253,17 +260,17 @@ detach attached file''' % {'eid': file.eid})
                                      data=Binary(b'new widgets system'))
             form = EFFForm(req, redirect_path='perdu.com', entity=file)
             self.assertMultiLineEqual(self._render_entity_field(req, 'data', form),
-                              '''<input id="data-subject:%(eid)s" name="data-subject:%(eid)s" tabindex="1" type="file" value="" />
+                              '''<input id="data-subject:%(eid)s" name="data-subject:%(eid)s" type="file" value="" />
 <a href="javascript: toggleVisibility(&#39;data-subject:%(eid)s-advanced&#39;)" title="show advanced fields"><img src="http://testing.fr/cubicweb/data/puce_down.png" alt="show advanced fields"/></a>
 <div id="data-subject:%(eid)s-advanced" class="hidden">
-<label for="data_format-subject:%(eid)s">data_format</label><input id="data_format-subject:%(eid)s" maxlength="50" name="data_format-subject:%(eid)s" size="45" tabindex="2" type="text" value="text/plain" /><br/>
-<label for="data_encoding-subject:%(eid)s">data_encoding</label><input id="data_encoding-subject:%(eid)s" maxlength="20" name="data_encoding-subject:%(eid)s" size="20" tabindex="3" type="text" value="UTF-8" /><br/>
+<label for="data_format-subject:%(eid)s">data_format</label><input id="data_format-subject:%(eid)s" maxlength="50" name="data_format-subject:%(eid)s" size="45" type="text" value="text/plain" /><br/>
+<label for="data_encoding-subject:%(eid)s">data_encoding</label><input id="data_encoding-subject:%(eid)s" maxlength="20" name="data_encoding-subject:%(eid)s" size="20" type="text" value="UTF-8" /><br/>
 </div>
 <br/>
 <input name="data-subject__detach:%(eid)s" type="checkbox" />
 detach attached file
 <p><b>You can either submit a new file using the browse button above, or choose to remove already uploaded file by checking the "detach attached file" check-box, or edit file content online with the widget below.</b></p>
-<textarea cols="80" name="data-subject:%(eid)s" onkeyup="autogrow(this)" rows="3" tabindex="4">new widgets system</textarea>''' % {'eid': file.eid})
+<textarea cols="80" name="data-subject:%(eid)s" onkeyup="autogrow(this)" rows="3">new widgets system</textarea>''' % {'eid': file.eid})
 
     def _modified_tzdatenaiss(self, eid, date_and_time_str=None):
         ctx = {}
@@ -303,9 +310,9 @@ detach attached file
         with self.admin_access.web_request() as req:
             form = PFForm(req, redirect_path='perdu.com', entity=req.user)
             self.assertMultiLineEqual(self._render_entity_field(req, 'upassword', form),
-                                  '''<input id="upassword-subject:%(eid)s" name="upassword-subject:%(eid)s" tabindex="1" type="password" value="" />
+                                  '''<input id="upassword-subject:%(eid)s" name="upassword-subject:%(eid)s" type="password" value="" />
 <br/>
-<input name="upassword-subject-confirm:%(eid)s" tabindex="1" type="password" value="" />
+<input name="upassword-subject-confirm:%(eid)s" type="password" value="" />
 &#160;
 <span class="emphasis">confirm password</span>''' % {'eid': req.user.eid})
 
@@ -319,4 +326,5 @@ detach attached file
     #     self.assertEqual(init, cur)
 
 if __name__ == '__main__':
-    unittest_main()
+    import unittest
+    unittest.main()

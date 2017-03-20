@@ -44,16 +44,15 @@ from logilab.common.shellutils import getlogin
 
 from cubicweb import (ValidationError, NoSelectableObject, AuthenticationError,
                       BadConnectionId)
-from cubicweb import cwconfig, devtools, web, server
+from cubicweb import cwconfig, devtools, repoapi, server, web
 from cubicweb.utils import json
 from cubicweb.sobjects import notification
 from cubicweb.web import Redirect, application, eid_param
 from cubicweb.server.hook import SendMailOp
-from cubicweb.server.session import Session
 from cubicweb.devtools import SYSTEM_ENTITIES, SYSTEM_RELATIONS, VIEW_VALIDATORS
 from cubicweb.devtools import fake, htmlparser, DEFAULT_EMPTY_DB_ID
 from cubicweb.devtools.fill import insert_entity_queries, make_relations_queries
-
+from cubicweb.web.views.authentication import Session
 
 if sys.version_info[:2] < (3, 4):
     from unittest2 import TestCase
@@ -223,42 +222,20 @@ class RepoAccess(object):
 
     .. automethod:: cubicweb.testlib.RepoAccess.cnx
     .. automethod:: cubicweb.testlib.RepoAccess.web_request
-
-    The RepoAccess need to be closed to destroy the associated Session.
-    TestCase usually take care of this aspect for the user.
-
-    .. automethod:: cubicweb.testlib.RepoAccess.close
     """
 
     def __init__(self, repo, login, requestcls):
         self._repo = repo
         self._login = login
         self.requestcls = requestcls
-        self._session = self._unsafe_connect(login)
-
-    def _unsafe_connect(self, login, **kwargs):
-        """ a completely unsafe connect method for the tests """
-        # use an internal connection
-        with self._repo.internal_cnx() as cnx:
-            # try to get a user object
-            user = cnx.find('CWUser', login=login).one()
-            user.groups
-            user.properties
-            user.login
-            session = Session(user, self._repo)
-            self._repo._sessions[session.sessionid] = session
-            user._cw = user.cw_rset.req = session
-        with session.new_cnx() as cnx:
-            self._repo.hm.call_hooks('session_open', cnx)
-            # commit connection at this point in case write operation has been
-            # done during `session_open` hooks
-            cnx.commit()
-        return session
+        with repo.internal_cnx() as cnx:
+            self._user = cnx.find('CWUser', login=login).one()
+            self._user.cw_attr_cache['login'] = login
 
     @contextmanager
     def cnx(self):
         """Context manager returning a server side connection for the user"""
-        with self._session.new_cnx() as cnx:
+        with repoapi.Connection(self._repo, self._user) as cnx:
             yield cnx
 
     # aliases for bw compat
@@ -273,20 +250,19 @@ class RepoAccess(object):
             req.cnx.commit()
             req.cnx.rolback()
         """
+        session = kwargs.pop('session', Session(self._repo, self._user))
         req = self.requestcls(self._repo.vreg, url=url, headers=headers,
                               method=method, form=kwargs)
-        with self._session.new_cnx() as cnx:
+        with self.cnx() as cnx:
+            # web request expect a session attribute on cnx referencing the web session
+            cnx.session = session
             req.set_cnx(cnx)
             yield req
-
-    def close(self):
-        """Close the session associated to the RepoAccess"""
-        self._session.close()
 
     @contextmanager
     def shell(self):
         from cubicweb.server.migractions import ServerMigrationHelper
-        with self._session.new_cnx() as cnx:
+        with self.cnx() as cnx:
             mih = ServerMigrationHelper(None, repo=self._repo, cnx=cnx,
                                         interactive=False,
                                         # hack so it don't try to load fs schema
@@ -333,7 +309,6 @@ class CubicWebTC(BaseTestCase):
         cls.config.mode = 'test'
 
     def __init__(self, *args, **kwargs):
-        self._admin_session = None
         self.repo = None
         self._open_access = set()
         super(CubicWebTC, self).__init__(*args, **kwargs)
@@ -360,14 +335,9 @@ class CubicWebTC(BaseTestCase):
     def _close_access(self):
         while self._open_access:
             try:
-                self._open_access.pop().close()
+                self._open_access.pop()
             except BadConnectionId:
                 continue  # already closed
-
-    @property
-    def session(self):
-        """return admin session"""
-        return self._admin_session
 
     def _init_repo(self):
         """init the repository and connection to it.
@@ -380,7 +350,6 @@ class CubicWebTC(BaseTestCase):
         # get an admin session (without actual login)
         login = text_type(db_handler.config.default_admin_config['login'])
         self.admin_access = self.new_access(login)
-        self._admin_session = self.admin_access._session
 
     # config management ########################################################
 
@@ -456,10 +425,6 @@ class CubicWebTC(BaseTestCase):
         MAILBOX[:] = []  # reset mailbox
 
     def tearDown(self):
-        # XXX hack until logilab.common.testlib is fixed
-        if self._admin_session is not None:
-            self._admin_session.close()
-            self._admin_session = None
         while self._cleanups:
             cleanup, args, kwargs = self._cleanups.pop(-1)
             cleanup(*args, **kwargs)
@@ -679,7 +644,8 @@ class CubicWebTC(BaseTestCase):
     def list_boxes_for(self, rset):
         """returns the list of boxes that can be applied on `rset`"""
         req = rset.req
-        for box in self.vreg['ctxcomponents'].possible_objects(req, rset=rset):
+        for box in self.vreg['ctxcomponents'].possible_objects(req, rset=rset,
+                                                               view=None):
             yield box
 
     def list_startup_views(self):
@@ -715,10 +681,10 @@ class CubicWebTC(BaseTestCase):
         return ctrl.publish(), req
 
     @contextmanager
-    def remote_calling(self, fname, *args):
+    def remote_calling(self, fname, *args, **kwargs):
         """remote json call simulation"""
         args = [json.dumps(arg) for arg in args]
-        with self.admin_access.web_request(fname=fname, pageid='123', arg=args) as req:
+        with self.admin_access.web_request(fname=fname, pageid='123', arg=args, **kwargs) as req:
             ctrl = self.vreg['controllers'].select('ajax', req)
             yield ctrl.publish(), req
 
@@ -900,15 +866,15 @@ class CubicWebTC(BaseTestCase):
         authm.anoninfo = authm.anoninfo[0], {'password': authm.anoninfo[1]}
         # not properly cleaned between tests
         self.open_sessions = sh.session_manager._sessions = {}
-        return req, self.session
+        return req
 
-    def assertAuthSuccess(self, req, origsession, nbsessions=1):
+    def assertAuthSuccess(self, req, nbsessions=1):
         session = self.app.get_session(req)
         cnx = session.new_cnx()
         with cnx:
             req.set_cnx(cnx)
         self.assertEqual(len(self.open_sessions), nbsessions, self.open_sessions)
-        self.assertEqual(session.login, origsession.login)
+        self.assertEqual(req.user.login, self.admlogin)
         self.assertEqual(session.anonymous_session, False)
 
     def assertAuthFailure(self, req, nbsessions=0):

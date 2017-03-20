@@ -1,0 +1,41 @@
+###
+# app configuration
+# http://docs.pylonsproject.org/projects/pyramid/en/latest/narr/environment.html
+###
+
+[app:main]
+use = egg:cubicweb#main
+
+pyramid.reload_templates = true
+pyramid.debug_authorization = false
+pyramid.debug_notfound = false
+pyramid.debug_routematch = false
+pyramid.default_locale_name = en
+pyramid.includes =
+    pyramid_debugtoolbar
+    cubicweb_%(cubename)s
+
+# By default, the toolbar only appears for clients from IP addresses
+# '127.0.0.1' and '::1'.
+# debugtoolbar.hosts = 127.0.0.1 ::1
+
+##
+# CubicWeb instance settings
+# http://cubicweb.readthedocs.io/en/latest/book/pyramid/settings/
+##
+cubicweb.instance = %(instance)s
+cubicweb.bwcompat = false
+cubicweb.debug = true
+cubicweb.session.secret = %(session-secret)s
+cubicweb.auth.authtkt.persistent.secure = false
+cubicweb.auth.authtkt.persistent.secret = %(auth-authtkt-persistent-secret)s
+cubicweb.auth.authtkt.session.secure = false
+cubicweb.auth.authtkt.session.secret = %(auth-authtkt-session-secret)s
+
+###
+# wsgi server configuration
+###
+
+[server:main]
+use = egg:waitress#main
+listen = 127.0.0.1:6543 [::1]:6543

@@ -38,15 +38,25 @@ Three primitives are defined:
 
 
 import logging
-from warnings import warn
 
 from six import string_types
 
 from logilab.common.logging_ext import set_log_methods
 from logilab.common.registry import RegistrableInstance, yes
 
+
 def _ensure_str_key(key):
     return tuple(str(k) for k in key)
+
+
+def rtags_chain(rtag):
+    """Return the rtags chain, starting from the given one, and going back through each parent rtag
+    up to the root (i.e. which as no parent).
+    """
+    while rtag is not None:
+        yield rtag
+        rtag = rtag._parent
+
 
 class RegistrableRtags(RegistrableInstance):
     __registry__ = 'uicfg'
@@ -67,8 +77,13 @@ class RelationTags(RegistrableRtags):
     # function given as __init__ argument and kept for bw compat
     _init = _initfunc = None
 
-    def __init__(self):
+    def __init__(self, parent=None, __module__=None):
+        super(RelationTags, self).__init__(__module__)
         self._tagdefs = {}
+        self._parent = parent
+        if parent is not None:
+            assert parent.__class__ is self.__class__, \
+                'inconsistent class for parent rtag {0}'.format(parent)
 
     def __repr__(self):
         # find a way to have more infos but keep it readable
@@ -99,12 +114,12 @@ class RelationTags(RegistrableRtags):
         if check:
             for (stype, rtype, otype, tagged), value in list(self._tagdefs.items()):
                 for ertype in (stype, rtype, otype):
-                    if ertype != '*' and not ertype in schema:
+                    if ertype != '*' and ertype not in schema:
                         self.warning('removing rtag %s: %s, %s undefined in schema',
                                      (stype, rtype, otype, tagged), value, ertype)
                         self.del_rtag(stype, rtype, otype, tagged)
                         break
-        if self._init is not None:
+        if self._parent is None and self._init is not None:
             self.apply(schema, self._init)
 
     def apply(self, schema, func):
@@ -120,6 +135,19 @@ class RelationTags(RegistrableRtags):
                     func(sschema, rschema, oschema, role)
 
     # rtag declaration api ####################################################
+
+    def derive(self, module, select):
+        """Return a derivated of this relation tag, associated to given module and selector.
+
+        This derivated will hold a set of specific rules but delegate to its "parent" relation tags
+        for unfound keys.
+
+        >>> class_afs = uicfg.autoform_section.derive(__name__, is_instance('Class'))
+        """
+        copied = self.__class__(self, __module__=__name__)
+        copied.__module__ = module
+        copied.__select__ = select
+        return copied
 
     def tag_attribute(self, key, *args, **kwargs):
         key = list(key)
@@ -141,8 +169,8 @@ class RelationTags(RegistrableRtags):
         assert len(key) == 4, 'bad key: %s' % list(key)
         if self._allowed_values is not None:
             assert tag in self._allowed_values, \
-                   '%r is not an allowed tag (should be in %s)' % (
-                tag, self._allowed_values)
+                '%r is not an allowed tag (should be in %s)' % (
+                    tag, self._allowed_values)
         self._tagdefs[_ensure_str_key(key)] = tag
         return tag
 
@@ -156,18 +184,21 @@ class RelationTags(RegistrableRtags):
         else:
             self.tag_object_of((desttype, attr, etype), *args, **kwargs)
 
-
     # rtag runtime api ########################################################
 
     def del_rtag(self, *key):
         del self._tagdefs[key]
 
     def get(self, *key):
+        """Return value for the given key, by looking from the most specific key to the more
+        generic (using '*' wildcards). For each key, look into this rtag and its parent rtags.
+        """
         for key in reversed(self._get_keys(*key)):
-            try:
-                return self._tagdefs[key]
-            except KeyError:
-                continue
+            for rtag in rtags_chain(self):
+                try:
+                    return rtag._tagdefs[key]
+                except KeyError:
+                    continue
         return None
 
     def etype_get(self, etype, rtype, role, ttype='*'):
@@ -177,7 +208,7 @@ class RelationTags(RegistrableRtags):
 
     # these are overridden by set_log_methods below
     # only defining here to prevent pylint from complaining
-    info = warning = error = critical = exception = debug = lambda msg,*a,**kw: None
+    info = warning = error = critical = exception = debug = lambda msg, *a, **kw: None
 
 
 class RelationTagsSet(RelationTags):
@@ -192,17 +223,23 @@ class RelationTagsSet(RelationTags):
         return rtags
 
     def get(self, stype, rtype, otype, tagged):
+        """Return value for the given key, which is an union of the values found from the most
+        specific key to the more generic (using '*' wildcards). For each key, look into this rtag
+        and its parent rtags.
+        """
         rtags = self.tag_container_cls()
         for key in self._get_keys(stype, rtype, otype, tagged):
-            try:
-                rtags.update(self._tagdefs[key])
-            except KeyError:
-                continue
+            for rtag in rtags_chain(self):
+                try:
+                    rtags.update(rtag._tagdefs[key])
+                    break
+                except KeyError:
+                    continue
         return rtags
 
 
 class RelationTagsDict(RelationTagsSet):
-    """This class associates a set of tags to each key."""
+    """This class associates a dictionary to each key."""
     tag_container_cls = dict
 
     def tag_relation(self, key, tag):

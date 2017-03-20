@@ -18,7 +18,6 @@
 """CubicWeb web client application object"""
 
 
-
 import contextlib
 from functools import wraps
 import json
@@ -77,10 +76,14 @@ def _deprecated_req_path_swapped(func):
 
 @contextmanager
 def anonymized_request(req):
+    from cubicweb.web.views.authentication import Session
+
     orig_cnx = req.cnx
     anon_cnx = anonymous_cnx(orig_cnx.session.repo)
     try:
         with anon_cnx:
+            # web request expect a session attribute on cnx referencing the web session
+            anon_cnx.session = Session(orig_cnx.session.repo, anon_cnx.user)
             req.set_cnx(anon_cnx)
             yield req
     finally:
@@ -125,8 +128,6 @@ class CookieSessionHandler(object):
         """return a string giving the name of the cookie used to store the
         session identifier.
         """
-        if req.https:
-            return '__%s_https_session' % self.vreg.config.appid
         return '__%s_session' % self.vreg.config.appid
 
     def get_session(self, req):
@@ -158,7 +159,7 @@ class CookieSessionHandler(object):
     def open_session(self, req):
         session = self.session_manager.open_session(req)
         sessioncookie = self.session_cookie(req)
-        secure = req.https and req.base_url().startswith('https://')
+        secure = req.base_url().startswith('https://')
         req.set_cookie(sessioncookie, session.sessionid,
                        maxage=None, secure=secure, httponly=True)
         if not session.anonymous_session:
@@ -252,15 +253,18 @@ class CubicWebPublisher(object):
             return set_cnx
 
         req.set_cnx = wrap_set_cnx(req.set_cnx)
+        tstart, cstart = time(), clock()
         try:
             return self.main_handle_request(req)
         finally:
             cnx = req.cnx
-            if cnx:
+            if cnx and cnx.executed_queries:
                 with self._logfile_lock:
+                    tend, cend = time(), clock()
                     try:
                         result = ['\n' + '*' * 80]
-                        result.append(req.url())
+                        result.append('%s -- (%.3f sec, %.3f CPU sec)' % (
+                            req.url(), tend - tstart, cend - cstart))
                         result += ['%s %s -- (%.3f sec, %.3f CPU sec)' % q
                                    for q in cnx.executed_queries]
                         cnx.executed_queries = []
@@ -331,27 +335,20 @@ class CubicWebPublisher(object):
             content = self.redirect_handler(req, ex)
         # Wrong, absent or Reseted credential
         except AuthenticationError:
-            # If there is an https url configured and
-            # the request does not use https, redirect to login form
-            https_url = self.vreg.config['https-url']
-            if https_url and req.base_url() != https_url:
-                req.status_out = http_client.SEE_OTHER
-                req.headers_out.setHeader('location', https_url + 'login')
+            # We assume here that in http auth mode the user *May* provide
+            # Authentification Credential if asked kindly.
+            if self.vreg.config['auth-mode'] == 'http':
+                req.status_out = http_client.UNAUTHORIZED
+            # In the other case (coky auth) we assume that there is no way
+            # for the user to provide them...
+            # XXX But WHY ?
             else:
-                # We assume here that in http auth mode the user *May* provide
-                # Authentification Credential if asked kindly.
-                if self.vreg.config['auth-mode'] == 'http':
-                    req.status_out = http_client.UNAUTHORIZED
-                # In the other case (coky auth) we assume that there is no way
-                # for the user to provide them...
-                # XXX But WHY ?
-                else:
-                    req.status_out = http_client.FORBIDDEN
-                # If previous error handling already generated a custom content
-                # do not overwrite it. This is used by LogOut Except
-                # XXX ensure we don't actually serve content
-                if not content:
-                    content = self.need_login_content(req)
+                req.status_out = http_client.FORBIDDEN
+            # If previous error handling already generated a custom content
+            # do not overwrite it. This is used by LogOut Except
+            # XXX ensure we don't actually serve content
+            if not content:
+                content = self.need_login_content(req)
         assert isinstance(content, binary_type)
         return content
 

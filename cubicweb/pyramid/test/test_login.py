@@ -3,6 +3,7 @@ from shutil import rmtree
 
 from cubicweb.pyramid.test import PyramidCWTest
 
+
 class LoginTestLangUrlPrefix(PyramidCWTest):
 
     @classmethod
@@ -17,7 +18,6 @@ class LoginTestLangUrlPrefix(PyramidCWTest):
 
         res = self.webapp.get('/fr/login')
         self.assertEqual(res.status_int, 303)
-
 
 
 class LoginTest(PyramidCWTest):

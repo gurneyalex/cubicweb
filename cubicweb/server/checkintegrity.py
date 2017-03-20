@@ -140,6 +140,19 @@ def reindex_entities(schema, cnx, withpb=True, etypes=None):
         pb.finish()
 
 
+_CHECKERS = {}
+
+
+def _checker(func):
+    """Decorator to register a function as a checker for check()."""
+    fname = func.__name__
+    prefix = 'check_'
+    assert fname.startswith(prefix), 'cannot register %s as a checker' % func
+    _CHECKERS[fname[len(prefix):]] = func
+    return func
+
+
+@_checker
 def check_schema(schema, cnx, eids, fix=1):
     """check serialized schema"""
     print('Checking serialized schema')
@@ -157,10 +170,12 @@ def check_schema(schema, cnx, eids, fix=1):
                 print('dunno how to fix, do it yourself')
 
 
+@_checker
 def check_text_index(schema, cnx, eids, fix=1):
     """check all entities registered in the text index"""
     print('Checking text index')
-    msg = '  Entity with eid %s exists in the text index but in no source (autofix will remove from text index)'
+    msg = ('  Entity with eid %s exists in the text index but not in any '
+           'entity type table (autofix will remove from text index)')
     cursor = cnx.system_sql('SELECT uid FROM appears;')
     for row in cursor.fetchall():
         eid = row[0]
@@ -171,11 +186,13 @@ def check_text_index(schema, cnx, eids, fix=1):
             notify_fixed(fix)
 
 
+@_checker
 def check_entities(schema, cnx, eids, fix=1):
     """check all entities registered in the repo system table"""
     print('Checking entities system table')
     # system table but no source
-    msg = '  Entity %s with eid %s exists in the system table but in no source (autofix will delete the entity)'
+    msg = ('  Entity %s with eid %s exists in "entities" table but not in any '
+           'entity type table (autofix will delete the entity)')
     cursor = cnx.system_sql('SELECT eid,type FROM entities;')
     for row in cursor.fetchall():
         eid, etype = row
@@ -228,7 +245,8 @@ def check_entities(schema, cnx, eids, fix=1):
                            '  WHERE cs.eid_from=e.eid AND cs.eid_to=s.cw_eid)')
         notify_fixed(True)
     print('Checking entities tables')
-    msg = '  Entity with eid %s exists in the %s table but not in the system table (autofix will delete the entity)'
+    msg = ('  Entity with eid %s exists in the %s table but not in "entities" '
+           'table (autofix will delete the entity)')
     for eschema in schema.entities():
         if eschema.final:
             continue
@@ -247,8 +265,9 @@ def check_entities(schema, cnx, eids, fix=1):
 
 
 def bad_related_msg(rtype, target, eid, fix):
-    msg = '  A relation %s with %s eid %s exists but no such entity in sources'
-    sys.stderr.write(msg % (rtype, target, eid))
+    msg = ('  A relation %(rtype)s with %(target)s eid %(eid)d exists but '
+           'entity #(eid)d does not exist')
+    sys.stderr.write(msg % {'rtype': rtype, 'target': target, 'eid': eid})
     notify_fixed(fix)
 
 
@@ -259,13 +278,14 @@ def bad_inlined_msg(rtype, parent_eid, eid, fix):
     notify_fixed(fix)
 
 
+@_checker
 def check_relations(schema, cnx, eids, fix=1):
     """check that eids referenced by relations are registered in the repo system
     table
     """
     print('Checking relations')
     for rschema in schema.relations():
-        if rschema.final or rschema.type in PURE_VIRTUAL_RTYPES:
+        if rschema.final or rschema.rule or rschema.type in PURE_VIRTUAL_RTYPES:
             continue
         if rschema.inlined:
             for subjtype in rschema.subjects():
@@ -308,6 +328,7 @@ def check_relations(schema, cnx, eids, fix=1):
                     cnx.system_sql(sql)
 
 
+@_checker
 def check_mandatory_relations(schema, cnx, eids, fix=1):
     """check entities missing some mandatory relation"""
     print('Checking mandatory relations')
@@ -335,6 +356,7 @@ def check_mandatory_relations(schema, cnx, eids, fix=1):
                     notify_fixed(fix)
 
 
+@_checker
 def check_mandatory_attributes(schema, cnx, eids, fix=1):
     """check for entities stored in the system source missing some mandatory
     attribute
@@ -355,6 +377,7 @@ def check_mandatory_attributes(schema, cnx, eids, fix=1):
                     notify_fixed(fix)
 
 
+@_checker
 def check_metadata(schema, cnx, eids, fix=1):
     """check entities has required metadata
 
@@ -397,7 +420,7 @@ def check(repo, cnx, checks, reindex, fix, withpb=True):
         eids_cache = {}
         with cnx.security_enabled(read=False, write=False): # ensure no read security
             for check in checks:
-                check_func = globals()['check_%s' % check]
+                check_func = _CHECKERS[check]
                 check_func(repo.schema, cnx, eids_cache, fix=fix)
         if fix:
             cnx.commit()

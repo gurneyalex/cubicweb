@@ -78,11 +78,9 @@ register_persistent_options( (
     ))
 
 
-class WebConfiguration(CubicWebConfiguration):
-    """the WebConfiguration is a singleton object handling instance's
-    configuration and preferences
-    """
-    cubicweb_appobject_path = CubicWebConfiguration.cubicweb_appobject_path | set([join('web', 'views')])
+class BaseWebConfiguration(CubicWebConfiguration):
+    """Base class for web configurations"""
+    cubicweb_appobject_path = CubicWebConfiguration.cubicweb_appobject_path | set(['web.views'])
     cube_appobject_path = CubicWebConfiguration.cube_appobject_path | set(['views'])
 
     options = merge_options(CubicWebConfiguration.options + (
@@ -92,7 +90,11 @@ class WebConfiguration(CubicWebConfiguration):
           'help': 'see `cubicweb.dbapi.connect` documentation for possible value',
           'group': 'web', 'level': 2,
           }),
-
+        ('use-uicache',
+         {'type': 'yn', 'default': True,
+          'help': _('should css be compiled and store in uicache'),
+          'group': 'ui', 'level': 2,
+          }),
         ('anonymous-user',
          {'type' : 'string',
           'default': None,
@@ -112,20 +114,41 @@ class WebConfiguration(CubicWebConfiguration):
           'help': 'web instance query log file',
           'group': 'web', 'level': 3,
           }),
-        # web configuration
-        ('https-url',
-         {'type' : 'string',
-          'default': None,
-          'help': 'web server root url on https. By specifying this option your '\
-          'site can be available as an http and https site. Authenticated users '\
-          'will in this case be authenticated and once done navigate through the '\
-          'https site. IMPORTANTE NOTE: to do this work, you should have your '\
-          'apache redirection include "https" as base url path so cubicweb can '\
-          'differentiate between http vs https access. For instance: \n'\
-          'RewriteRule ^/demo/(.*) http://127.0.0.1:8080/https/$1 [L,P]\n'\
-          'where the cubicweb web server is listening on port 8080.',
-          'group': 'main', 'level': 3,
+        ('cleanup-anonymous-session-time',
+         {'type' : 'time',
+          'default': '5min',
+          'help': 'Same as cleanup-session-time but specific to anonymous '
+          'sessions. You can have a much smaller timeout here since it will be '
+          'transparent to the user. Default to 5min.',
+          'group': 'web', 'level': 3,
           }),
+    ))
+
+    def anonymous_user(self):
+        """return a login and password to use for anonymous users.
+
+        None may be returned for both if anonymous connection is not
+        allowed or if an empty login is used in configuration
+        """
+        try:
+            user   = self['anonymous-user'] or None
+            passwd = self['anonymous-password']
+            if user:
+                user = text_type(user)
+        except KeyError:
+            user, passwd = None, None
+        except UnicodeDecodeError:
+            raise ConfigurationError("anonymous information should only contains ascii")
+        return user, passwd
+
+
+
+class WebConfiguration(BaseWebConfiguration):
+    """the WebConfiguration is a singleton object handling instance's
+    configuration and preferences
+    """
+    options = merge_options(BaseWebConfiguration.options + (
+        # web configuration
         ('datadir-url',
          {'type': 'string', 'default': None,
           'help': ('base url for static data, if different from "${base-url}/data/".  '
@@ -153,14 +176,6 @@ class WebConfiguration(CubicWebConfiguration):
           "If 0, the cookie will expire when the user exist its browser. "
           "Should be 0 or greater than repository\'s session-time.",
           'group': 'web', 'level': 2,
-          }),
-        ('cleanup-anonymous-session-time',
-         {'type' : 'time',
-          'default': '5min',
-          'help': 'Same as cleanup-session-time but specific to anonymous '
-          'sessions. You can have a much smaller timeout here since it will be '
-          'transparent to the user. Default to 5min.',
-          'group': 'web', 'level': 3,
           }),
         ('submit-mail',
          {'type' : 'string',
@@ -261,9 +276,7 @@ have the python imaging library installed to use captcha)',
     def __init__(self, *args, **kwargs):
         super(WebConfiguration, self).__init__(*args, **kwargs)
         self.uiprops = None
-        self.https_uiprops = None
         self.datadir_url = None
-        self.https_datadir_url = None
 
     def fckeditor_installed(self):
         if self.uiprops is None:
@@ -279,23 +292,6 @@ have the python imaging library installed to use captcha)',
     @deprecated('[3.22] call req.cnx.repo.get_versions() directly')
     def vc_config(self):
         return self.repository().get_versions()
-
-    def anonymous_user(self):
-        """return a login and password to use for anonymous users.
-
-        None may be returned for both if anonymous connection is not
-        allowed or if an empty login is used in configuration
-        """
-        try:
-            user   = self['anonymous-user'] or None
-            passwd = self['anonymous-password']
-            if user:
-                user = text_type(user)
-        except KeyError:
-            user, passwd = None, None
-        except UnicodeDecodeError:
-            raise ConfigurationError("anonymous information should only contains ascii")
-        return user, passwd
 
     @cachedproperty
     def _instance_salt(self):
@@ -343,7 +339,7 @@ have the python imaging library installed to use captcha)',
         directory = self._fs_path_locate(rid, rdirectory)
         if directory is None:
             return None, None
-        if rdirectory == 'data' and rid.endswith('.css'):
+        if self['use-uicache'] and rdirectory == 'data' and rid.endswith('.css'):
             if rid == 'cubicweb.old.css':
                 # @import('cubicweb.css') in css
                 warn('[3.20] cubicweb.old.css has been renamed back to cubicweb.css',
@@ -382,16 +378,8 @@ have the python imaging library installed to use captcha)',
                 self.datadir_url += '/'
             if self.mode != 'test':
                 self.datadir_url += '%s/' % self.instance_md5_version()
-            self.https_datadir_url = self.datadir_url
             return
-        httpsurl = self['https-url']
         data_relpath = self.data_relpath()
-        if httpsurl:
-            if httpsurl[-1] != '/':
-                httpsurl += '/'
-                if not self.repairing:
-                    self.global_set_option('https-url', httpsurl)
-            self.https_datadir_url = httpsurl + data_relpath
         self.datadir_url = baseurl + data_relpath
 
     def data_relpath(self):
@@ -409,14 +397,6 @@ have the python imaging library installed to use captcha)',
             data=lambda x: self.datadir_url + x,
             datadir_url=self.datadir_url[:-1])
         self._init_uiprops(self.uiprops)
-        if self['https-url']:
-            cachedir = join(self.appdatahome, 'uicachehttps')
-            self.check_writeable_uid_directory(cachedir)
-            self.https_uiprops = PropertySheet(
-                cachedir,
-                data=lambda x: self.https_datadir_url + x,
-                datadir_url=self.https_datadir_url[:-1])
-            self._init_uiprops(self.https_uiprops)
 
     def _init_uiprops(self, uiprops):
         libuiprops = join(self.shared_dir(), 'data', 'uiprops.py')

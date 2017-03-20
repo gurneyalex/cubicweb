@@ -1,3 +1,25 @@
+# copyright 2017 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2014-2016 UNLISH S.A.S. (Montpellier, FRANCE), all rights reserved.
+#
+# contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
+#
+# This file is part of CubicWeb.
+#
+# CubicWeb is free software: you can redistribute it and/or modify it under the
+# terms of the GNU Lesser General Public License as published by the Free
+# Software Foundation, either version 2.1 of the License, or (at your option)
+# any later version.
+#
+# CubicWeb is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Lesser General Public License along
+# with CubicWeb.  If not, see <http://www.gnu.org/licenses/>.
+
+"""Backward compatibility layer for CubicWeb to run as a Pyramid application."""
+
 import sys
 import logging
 
@@ -52,10 +74,6 @@ class CubicWebPyramidHandler(object):
         Handler that mimics what CubicWebPublisher.main_handle_request and
         CubicWebPublisher.core_handle do
         """
-
-        # XXX The main handler of CW forbid anonymous https connections
-        # I guess we can drop this "feature" but in doubt I leave this comment
-        # so we don't forget about it. (cdevienne)
 
         req = request.cw_request
         vreg = request.registry['cubicweb.registry']
@@ -170,10 +188,6 @@ class TweenHandler(object):
         self.cwhandler = registry['cubicweb.handler']
 
     def __call__(self, request):
-        if request.path.startswith('/https/'):
-            request.environ['PATH_INFO'] = request.environ['PATH_INFO'][6:]
-            assert not request.path.startswith('/https/')
-            request.scheme = 'https'
         try:
             response = self.handler(request)
         except httpexceptions.HTTPNotFound:
