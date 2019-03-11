@@ -632,6 +632,29 @@ class QueryCache(object):
         with self._lock:
             return len(self._data)
 
+    def items(self):
+        """Get an iterator over the dictionary's items: (key, value) pairs"""
+        with self._lock:
+            for k, v in self._data.items():
+                yield k, v
+
+    def get(self, k, default=None):
+        """Get the value associated to the specified key
+
+        :param k: The key to look for
+        :param default: The default value when the key is not found
+        :return: The associated value (or the default value)
+        """
+        try:
+            return self._data[k]
+        except KeyError:
+            return default
+
+    def __iter__(self):
+        with self._lock:
+            for k in iter(self._data):
+                yield k
+
     def __getitem__(self, k):
         with self._lock:
             if k in self._permanent:
@@ -689,10 +712,20 @@ class QueryCache(object):
                     break
                 level = v
         else:
-            # we removed cruft but everything is permanent
+            # we removed cruft
             if len(self._data) >= self._max:
-                logger.warning('Cache %s is full.' % id(self))
-                self._clear()
+                if len(self._permanent) >= self._max:
+                    # we really are full with permanents => clear
+                    logger.warning('Cache %s is full.' % id(self))
+                    self._clear()
+                else:
+                    # pathological case where _transient was probably empty ...
+                    # drop all non-permanents
+                    to_drop = set(self._data.keys()).difference(self._permanent)
+                    for k in to_drop:
+                        # should not be in _transient
+                        assert k not in self._transient
+                        self._data.pop(k, None)
 
     def _usage_report(self):
         with self._lock:

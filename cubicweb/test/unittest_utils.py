@@ -109,6 +109,95 @@ class TestQueryCache(TestCase):
                           'itemcount': 10,
                           'permanentcount': 5})
 
+    def test_clear_on_overflow(self):
+        """Tests that only non-permanent items in the cache are wiped-out on ceiling overflow
+        """
+        c = QueryCache(ceiling=10)
+        # set 10 values
+        for x in range(10):
+            c[x] = x
+        # arrange for the first 5 to be permanent
+        for x in range(5):
+            for r in range(QueryCache._maxlevel + 2):
+                v = c[x]
+                self.assertEqual(v, x)
+        # Add the 11-th
+        c[10] = 10
+        self.assertEqual(c._usage_report(),
+                         {'transientcount': 0,
+                          'itemcount': 6,
+                          'permanentcount': 5})
+
+    def test_get_with_default(self):
+        """
+        Tests the capability of QueryCache for retrieving items with a default value
+        """
+        c = QueryCache(ceiling=20)
+        # set 10 values
+        for x in range(10):
+            c[x] = x
+        # arrange for the first 5 to be permanent
+        for x in range(5):
+            for r in range(QueryCache._maxlevel + 2):
+                v = c[x]
+                self.assertEqual(v, x)
+        self.assertEqual(c._usage_report(),
+                         {'transientcount': 0,
+                          'itemcount': 10,
+                          'permanentcount': 5})
+        # Test defaults for existing (including in permanents)
+        for x in range(10):
+            v = c.get(x, -1)
+            self.assertEqual(v, x)
+        # Test defaults for others
+        for x in range(10, 15):
+            v = c.get(x, -1)
+            self.assertEqual(v, -1)
+
+    def test_iterkeys(self):
+        """
+        Tests the iterating on keys in the cache
+        """
+        c = QueryCache(ceiling=20)
+        # set 10 values
+        for x in range(10):
+            c[x] = x
+        # arrange for the first 5 to be permanent
+        for x in range(5):
+            for r in range(QueryCache._maxlevel + 2):
+                v = c[x]
+                self.assertEqual(v, x)
+        self.assertEqual(c._usage_report(),
+                         {'transientcount': 0,
+                          'itemcount': 10,
+                          'permanentcount': 5})
+        keys = sorted(c)
+        for x in range(10):
+            self.assertEquals(x, keys[x])
+
+    def test_items(self):
+        """
+        Tests the iterating on key-value couples in the cache
+        """
+        c = QueryCache(ceiling=20)
+        # set 10 values
+        for x in range(10):
+            c[x] = x
+        # arrange for the first 5 to be permanent
+        for x in range(5):
+            for r in range(QueryCache._maxlevel + 2):
+                v = c[x]
+                self.assertEqual(v, x)
+        self.assertEqual(c._usage_report(),
+                         {'transientcount': 0,
+                          'itemcount': 10,
+                          'permanentcount': 5})
+        content = sorted(c.items())
+        for x in range(10):
+            self.assertEquals(x, content[x][0])
+            self.assertEquals(x, content[x][1])
+
+
 class UStringIOTC(TestCase):
     def test_boolean_value(self):
         self.assertTrue(UStringIO())
