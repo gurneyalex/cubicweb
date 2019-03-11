@@ -32,6 +32,7 @@ from hashlib import sha1  # pylint: disable=E0611
 from os.path import abspath, join, exists, split, isdir, dirname
 from functools import partial
 
+import filelock
 from six import text_type
 from six.moves import cPickle as pickle
 
@@ -427,11 +428,12 @@ class TestDataBaseHandler(object):
         raise ValueError('no initialization function for driver %r' % self.DRIVER)
 
     def has_cache(self, db_id):
-        """Check if a given database id exist in cb cache for the current config"""
-        cache_glob = self.absolute_backup_file('*', '*')
-        if cache_glob not in self.explored_glob:
-            self.discover_cached_db()
-        return self.db_cache_key(db_id) in self.db_cache
+        """Check if a given database id exist in db cache for the current config"""
+        key = self.db_cache_key(db_id)
+        if key in self.db_cache:
+            return True
+        self.discover_cached_db()
+        return key in self.db_cache
 
     def discover_cached_db(self):
         """Search available db_if for the current config"""
@@ -469,20 +471,23 @@ class TestDataBaseHandler(object):
         ``pre_setup_func`` to setup the database.
 
         This function backup any database it build"""
-        if self.has_cache(test_db_id):
-            return  # test_db_id, 'already in cache'
-        if test_db_id is DEFAULT_EMPTY_DB_ID:
-            self.init_test_database()
-        else:
-            print('Building %s for database %s' % (test_db_id, self.dbname))
-            self.build_db_cache(DEFAULT_EMPTY_DB_ID)
-            self.restore_database(DEFAULT_EMPTY_DB_ID)
-            self.get_repo(startup=True)
-            cnx = self.get_cnx()
-            with cnx:
-                pre_setup_func(cnx, self.config)
-                cnx.commit()
-        self.backup_database(test_db_id)
+        lockfile = join(self._ensure_test_backup_db_dir(),
+                        '{}.lock'.format(test_db_id))
+        with filelock.FileLock(lockfile):
+            if self.has_cache(test_db_id):
+                return  # test_db_id, 'already in cache'
+            if test_db_id is DEFAULT_EMPTY_DB_ID:
+                self.init_test_database()
+            else:
+                print('Building %s for database %s' % (test_db_id, self.dbname))
+                self.build_db_cache(DEFAULT_EMPTY_DB_ID)
+                self.restore_database(DEFAULT_EMPTY_DB_ID)
+                self.get_repo(startup=True)
+                cnx = self.get_cnx()
+                with cnx:
+                    pre_setup_func(cnx, self.config)
+                    cnx.commit()
+            self.backup_database(test_db_id)
 
 
 class NoCreateDropDatabaseHandler(TestDataBaseHandler):
