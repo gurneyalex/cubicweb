@@ -20,19 +20,20 @@
 
 from cubicweb import _
 
-from six import add_metaclass
-
 from logilab.mtconverter import xml_escape
-from logilab.common.deprecation import class_deprecated, class_renamed
+from logilab.common.deprecation import class_deprecated
 
 from cubicweb import Unauthorized, role as get_role
 from cubicweb.schema import display_name
 from cubicweb.predicates import no_cnx, one_line_rset
 from cubicweb.view import View
-from cubicweb.web import INTERNAL_FIELD_VALUE, stdmsgs
 from cubicweb.web.htmlwidgets import (BoxLink, BoxWidget, SideBoxWidget,
-                                      RawBoxItem, BoxSeparator)
+                                      RawBoxItem)
 from cubicweb.web.action import UnregisteredAction
+from cubicweb.web.component import (
+    EditRelationMixIn,
+    Separator,
+)
 
 
 def sort_by_category(actions, categories_in_order=None):
@@ -41,13 +42,13 @@ def sort_by_category(actions, categories_in_order=None):
     actions_by_cat = {}
     for action in actions:
         actions_by_cat.setdefault(action.category, []).append(
-            (action.title, action) )
+            (action.title, action))
     for key, values in actions_by_cat.items():
         actions_by_cat[key] = [act for title, act in sorted(values, key=lambda x: x[0])]
     if categories_in_order:
         for cat in categories_in_order:
             if cat in actions_by_cat:
-                result.append( (cat, actions_by_cat[cat]) )
+                result.append((cat, actions_by_cat[cat]))
     for item in sorted(actions_by_cat.items()):
         result.append(item)
     return result
@@ -55,8 +56,7 @@ def sort_by_category(actions, categories_in_order=None):
 
 # old box system, deprecated ###################################################
 
-@add_metaclass(class_deprecated)
-class BoxTemplate(View):
+class BoxTemplate(View, metaclass=class_deprecated):
     """base template for boxes, usually a (contextual) list of possible
     actions. Various classes attributes may be used to control the box
     rendering.
@@ -69,7 +69,9 @@ class BoxTemplate(View):
 
         box.render(self.w)
     """
-    __deprecation_warning__ = '[3.10] *BoxTemplate classes are deprecated, use *CtxComponent instead (%(cls)s)'
+    __deprecation_warning__ = (
+        '[3.10] *BoxTemplate classes are deprecated, use *CtxComponent instead (%(cls)s)'
+    )
 
     __registry__ = 'ctxcomponents'
     __select__ = ~no_cnx()
@@ -78,13 +80,13 @@ class BoxTemplate(View):
     cw_property_defs = {
         _('visible'): dict(type='Boolean', default=True,
                            help=_('display the box or not')),
-        _('order'):   dict(type='Int', default=99,
-                           help=_('display order of the box')),
+        _('order'): dict(type='Int', default=99,
+                         help=_('display order of the box')),
         # XXX 'incontext' boxes are handled by the default primary view
         _('context'): dict(type='String', default='left',
                            vocabulary=(_('left'), _('incontext'), _('right')),
                            help=_('context where this box should be displayed')),
-        }
+    }
     context = 'left'
 
     def sort_actions(self, actions):
@@ -161,8 +163,6 @@ class EntityBoxTemplate(BoxTemplate):
         """classes inheriting from EntityBoxTemplate should define cell_call"""
         self.cell_call(row, col, **kwargs)
 
-from cubicweb.web.component import AjaxEditRelationCtxComponent, EditRelationMixIn
-
 
 class EditRelationBoxTemplate(EditRelationMixIn, EntityBoxTemplate):
     """base class for boxes which let add or remove entities linked
@@ -172,6 +172,7 @@ class EditRelationBoxTemplate(EditRelationMixIn, EntityBoxTemplate):
     class attributes.
     """
     rtype = None
+
     def cell_call(self, row, col, view=None, **kwargs):
         self._cw.add_js('cubicweb.ajax.js')
         entity = self.cw_rset.get_entity(row, col)
@@ -182,7 +183,7 @@ class EditRelationBoxTemplate(EditRelationMixIn, EntityBoxTemplate):
         unrelated = self.unrelated_boxitems(entity)
         box.extend(related)
         if related and unrelated:
-            box.append(BoxSeparator())
+            box.append(Separator())
         box.extend(unrelated)
         box.render(self.w)
 
@@ -190,8 +191,3 @@ class EditRelationBoxTemplate(EditRelationMixIn, EntityBoxTemplate):
         label = super(EditRelationBoxTemplate, self).box_item(
             entity, etarget, rql, label)
         return RawBoxItem(label, liclass=u'invisible')
-
-
-AjaxEditRelationBoxTemplate = class_renamed(
-    'AjaxEditRelationBoxTemplate', AjaxEditRelationCtxComponent,
-    '[3.10] AjaxEditRelationBoxTemplate has been renamed to AjaxEditRelationCtxComponent (%(cls)s)')

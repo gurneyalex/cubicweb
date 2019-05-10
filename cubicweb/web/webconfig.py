@@ -24,37 +24,32 @@ import os
 import hmac
 from uuid import uuid4
 from os.path import dirname, join, exists, split, isdir
-from warnings import warn
-
-from six import text_type
 
 from logilab.common.decorators import cached, cachedproperty
-from logilab.common.deprecation import deprecated
-from logilab.common.configuration import merge_options
+from logilab.common.configuration import Method, merge_options
 
 from cubicweb import ConfigurationError
-from cubicweb.toolsutils import read_config
 from cubicweb.cwconfig import CubicWebConfiguration, register_persistent_options
 
 
 _DATA_DIR = join(dirname(__file__), 'data')
 
 
-register_persistent_options( (
+register_persistent_options((
     # site-wide only web ui configuration
     ('site-title',
-     {'type' : 'string', 'default': 'unset title',
+     {'type': 'string', 'default': 'unset title',
       'help': _('site title'),
       'sitewide': True, 'group': 'ui',
       }),
     ('main-template',
-     {'type' : 'string', 'default': 'main-template',
+     {'type': 'string', 'default': 'main-template',
       'help': _('id of main template used to render pages'),
       'sitewide': True, 'group': 'ui',
       }),
     # user web ui configuration
     ('fckeditor',
-     {'type' : 'yn', 'default': False,
+     {'type': 'yn', 'default': False,
       'help': _('should html fields being edited using fckeditor (a HTML '
                 'WYSIWYG editor).  You should also select text/html as default '
                 'text format to actually get fckeditor.'),
@@ -62,23 +57,23 @@ register_persistent_options( (
       }),
     # navigation configuration
     ('page-size',
-     {'type' : 'int', 'default': 40,
+     {'type': 'int', 'default': 40,
       'help': _('maximum number of objects displayed by page of results'),
       'group': 'navigation',
       }),
     ('related-limit',
-     {'type' : 'int', 'default': 8,
+     {'type': 'int', 'default': 8,
       'help': _('maximum number of related entities to display in the primary '
                 'view'),
       'group': 'navigation',
       }),
     ('combobox-limit',
-     {'type' : 'int', 'default': 20,
+     {'type': 'int', 'default': 20,
       'help': _('maximum number of entities to display in related combo box'),
       'group': 'navigation',
       }),
 
-    ))
+))
 
 
 class BaseWebConfiguration(CubicWebConfiguration):
@@ -88,7 +83,7 @@ class BaseWebConfiguration(CubicWebConfiguration):
 
     options = merge_options(CubicWebConfiguration.options + (
         ('repository-uri',
-         {'type' : 'string',
+         {'type': 'string',
           'default': 'inmemory://',
           'help': 'see `cubicweb.dbapi.connect` documentation for possible value',
           'group': 'web', 'level': 2,
@@ -99,26 +94,27 @@ class BaseWebConfiguration(CubicWebConfiguration):
           'group': 'ui', 'level': 2,
           }),
         ('anonymous-user',
-         {'type' : 'string',
+         {'type': 'string',
           'default': None,
-          'help': 'login of the CubicWeb user account to use for anonymous user (if you want to allow anonymous)',
+          'help': ('login of the CubicWeb user account to use for anonymous '
+                   'user (if you want to allow anonymous)'),
           'group': 'web', 'level': 1,
           }),
         ('anonymous-password',
-         {'type' : 'string',
+         {'type': 'string',
           'default': None,
           'help': 'password of the CubicWeb user account to use for anonymous user, '
           'if anonymous-user is set',
           'group': 'web', 'level': 1,
           }),
         ('query-log-file',
-         {'type' : 'string',
+         {'type': 'string',
           'default': None,
           'help': 'web instance query log file',
           'group': 'web', 'level': 3,
           }),
         ('cleanup-anonymous-session-time',
-         {'type' : 'time',
+         {'type': 'time',
           'default': '5min',
           'help': 'Same as cleanup-session-time but specific to anonymous '
           'sessions. You can have a much smaller timeout here since it will be '
@@ -134,16 +130,13 @@ class BaseWebConfiguration(CubicWebConfiguration):
         allowed or if an empty login is used in configuration
         """
         try:
-            user   = self['anonymous-user'] or None
+            user = self['anonymous-user'] or None
             passwd = self['anonymous-password']
-            if user:
-                user = text_type(user)
         except KeyError:
             user, passwd = None, None
         except UnicodeDecodeError:
             raise ConfigurationError("anonymous information should only contains ascii")
         return user, passwd
-
 
 
 class WebConfiguration(BaseWebConfiguration):
@@ -160,20 +153,20 @@ class WebConfiguration(BaseWebConfiguration):
           'group': 'web',
           }),
         ('auth-mode',
-         {'type' : 'choice',
-          'choices' : ('cookie', 'http'),
+         {'type': 'choice',
+          'choices': ('cookie', 'http'),
           'default': 'cookie',
           'help': 'authentication mode (cookie / http)',
           'group': 'web', 'level': 3,
           }),
         ('realm',
-         {'type' : 'string',
+         {'type': 'string',
           'default': 'cubicweb',
           'help': 'realm to use on HTTP authentication mode',
           'group': 'web', 'level': 3,
           }),
         ('http-session-time',
-         {'type' : 'time',
+         {'type': 'time',
           'default': 0,
           'help': "duration of the cookie used to store session identifier. "
           "If 0, the cookie will expire when the user exist its browser. "
@@ -181,7 +174,7 @@ class WebConfiguration(BaseWebConfiguration):
           'group': 'web', 'level': 2,
           }),
         ('submit-mail',
-         {'type' : 'string',
+         {'type': 'string',
           'default': None,
           'help': ('Mail used as recipient to report bug in this instance, '
                    'if you want this feature on'),
@@ -189,31 +182,32 @@ class WebConfiguration(BaseWebConfiguration):
           }),
 
         ('language-mode',
-         {'type' : 'choice',
+         {'type': 'choice',
           'choices': ('http-negotiation', 'url-prefix', ''),
           'default': 'http-negotiation',
           'help': ('source for interface\'s language detection. '
                    'If set to "http-negotiation" the Accept-Language HTTP header will be used,'
-                   ' if set to "url-prefix", the URL will be inspected for a short language prefix.'),
+                   ' if set to "url-prefix", the URL will be inspected for a'
+                   ' short language prefix.'),
           'group': 'web', 'level': 2,
           }),
 
         ('print-traceback',
-         {'type' : 'yn',
+         {'type': 'yn',
           'default': CubicWebConfiguration.mode != 'system',
           'help': 'print the traceback on the error page when an error occurred',
           'group': 'web', 'level': 2,
           }),
 
         ('captcha-font-file',
-         {'type' : 'string',
+         {'type': 'string',
           'default': join(_DATA_DIR, 'porkys.ttf'),
           'help': 'True type font to use for captcha image generation (you \
 must have the python imaging library installed to use captcha)',
           'group': 'web', 'level': 3,
           }),
         ('captcha-font-size',
-         {'type' : 'int',
+         {'type': 'int',
           'default': 25,
           'help': 'Font size to use for captcha image generation (you must \
 have the python imaging library installed to use captcha)',
@@ -221,7 +215,7 @@ have the python imaging library installed to use captcha)',
           }),
 
         ('concat-resources',
-         {'type' : 'yn',
+         {'type': 'yn',
           'default': False,
           'help': 'use modconcat-like URLS to concat and serve JS / CSS files',
           'group': 'web', 'level': 2,
@@ -245,36 +239,37 @@ have the python imaging library installed to use captcha)',
           'group': 'web', 'level': 2,
           }),
         ('access-control-allow-origin',
-         {'type' : 'csv',
+         {'type': 'csv',
           'default': (),
-          'help':('comma-separated list of allowed origin domains or "*" for any domain'),
+          'help': ('comma-separated list of allowed origin domains or "*" for any domain'),
           'group': 'web', 'level': 2,
           }),
         ('access-control-allow-methods',
-         {'type' : 'csv',
+         {'type': 'csv',
           'default': (),
           'help': ('comma-separated list of allowed HTTP methods'),
           'group': 'web', 'level': 2,
           }),
         ('access-control-max-age',
-         {'type' : 'int',
+         {'type': 'int',
           'default': None,
           'help': ('maximum age of cross-origin resource sharing (in seconds)'),
           'group': 'web', 'level': 2,
           }),
         ('access-control-expose-headers',
-         {'type' : 'csv',
+         {'type': 'csv',
           'default': (),
-          'help':('comma-separated list of HTTP headers the application declare in response to a preflight request'),
+          'help': ('comma-separated list of HTTP headers the application '
+                   'declare in response to a preflight request'),
           'group': 'web', 'level': 2,
           }),
         ('access-control-allow-headers',
-         {'type' : 'csv',
+         {'type': 'csv',
           'default': (),
-          'help':('comma-separated list of HTTP headers the application may set in the response'),
+          'help': ('comma-separated list of HTTP headers the application may set in the response'),
           'group': 'web', 'level': 2,
           }),
-        ))
+    ))
 
     def __init__(self, *args, **kwargs):
         super(WebConfiguration, self).__init__(*args, **kwargs)
@@ -292,10 +287,6 @@ have the python imaging library installed to use captcha)',
                 continue
             yield key, pdef
 
-    @deprecated('[3.22] call req.cnx.repo.get_versions() directly')
-    def vc_config(self):
-        return self.repository().get_versions()
-
     @cachedproperty
     def _instance_salt(self):
         """This random key/salt is used to sign content to be sent back by
@@ -306,12 +297,13 @@ have the python imaging library installed to use captcha)',
     def sign_text(self, text):
         """sign some text for later checking"""
         # hmac.new expect bytes
-        if isinstance(text, text_type):
+        if isinstance(text, str):
             text = text.encode('utf-8')
         # replace \r\n so we do not depend on whether a browser "reencode"
         # original message using \r\n or not
         return hmac.new(self._instance_salt,
-                        text.strip().replace(b'\r\n', b'\n')).hexdigest()
+                        text.strip().replace(b'\r\n', b'\n'),
+                        digestmod="sha3_512").hexdigest()
 
     def check_text_sign(self, text, signature):
         """check the text signature is equal to the given signature"""
@@ -343,14 +335,9 @@ have the python imaging library installed to use captcha)',
         if directory is None:
             return None, None
         if self['use-uicache'] and rdirectory == 'data' and rid.endswith('.css'):
-            if rid == 'cubicweb.old.css':
-                # @import('cubicweb.css') in css
-                warn('[3.20] cubicweb.old.css has been renamed back to cubicweb.css',
-                     DeprecationWarning)
-                rid = 'cubicweb.css'
             return self.ensure_uid_directory(
-                        self.uiprops.process_resource(
-                             join(directory, rdirectory), rid)), rid
+                self.uiprops.process_resource(
+                    join(directory, rdirectory), rid)), rid
         return join(directory, rdirectory), rid
 
     def locate_all_files(self, rid, rdirectory='wdoc'):
@@ -408,14 +395,6 @@ have the python imaging library installed to use captcha)',
             self._load_ui_properties_file(uiprops, path)
         self._load_ui_properties_file(uiprops, self.apphome)
         datadir_url = uiprops.context['datadir_url']
-        if (datadir_url+'/cubicweb.old.css') in uiprops['STYLESHEETS']:
-            warn('[3.20] cubicweb.old.css has been renamed back to cubicweb.css',
-                 DeprecationWarning)
-            idx = uiprops['STYLESHEETS'].index(datadir_url+'/cubicweb.old.css')
-            uiprops['STYLESHEETS'][idx] = datadir_url+'/cubicweb.css'
-        if datadir_url+'/cubicweb.reset.css' in uiprops['STYLESHEETS']:
-            warn('[3.20] cubicweb.reset.css is obsolete', DeprecationWarning)
-            uiprops['STYLESHEETS'].remove(datadir_url+'/cubicweb.reset.css')
         cubicweb_js_url = datadir_url + '/cubicweb.js'
         if cubicweb_js_url not in uiprops['JAVASCRIPTS']:
             uiprops['JAVASCRIPTS'].insert(0, cubicweb_js_url)
@@ -453,3 +432,39 @@ have the python imaging library installed to use captcha)',
     def static_file_del(self, rpath):
         if self.static_file_exists(rpath):
             os.remove(join(self.static_directory, rpath))
+
+
+class WebConfigurationBase(WebConfiguration):
+    """web instance (in a web server) client of a RQL server"""
+
+    options = merge_options((
+        # ctl configuration
+        ('port',
+         {'type': 'int',
+          'default': None,
+          'help': 'http server port number (default to 8080)',
+          'group': 'web', 'level': 0,
+          }),
+        ('interface',
+         {'type': 'string',
+          'default': '0.0.0.0',
+          'help': 'http server address on which to listen (default to everywhere)',
+          'group': 'web', 'level': 1,
+          }),
+        ('max-post-length',  # XXX specific to "wsgi" server
+         {'type': 'bytes',
+          'default': '100MB',
+          'help': 'maximum length of HTTP request. Default to 100 MB.',
+          'group': 'web', 'level': 1,
+          }),
+        ('pid-file',
+         {'type': 'string',
+          'default': Method('default_pid_file'),
+          'help': 'repository\'s pid file',
+          'group': 'main', 'level': 2,
+          }),
+    ) + WebConfiguration.options)
+
+    def default_base_url(self):
+        from socket import getfqdn
+        return 'http://%s:%s/' % (self['host'] or getfqdn().lower(), self['port'] or 8080)

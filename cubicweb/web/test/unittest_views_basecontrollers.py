@@ -18,14 +18,11 @@
 """cubicweb.web.views.basecontrollers unit tests"""
 
 import time
-
-from six import text_type
-from six.moves.urllib.parse import urlsplit, urlunsplit, urljoin, parse_qs
+from urllib.parse import urlsplit, urlunsplit, urljoin, parse_qs
 
 import lxml
 
 from logilab.common.testlib import unittest_main
-from logilab.common.decorators import monkeypatch
 
 from cubicweb import Binary, NoSelectableObject, ValidationError, transaction as tx
 from cubicweb.schema import RRQLExpression
@@ -37,7 +34,6 @@ from cubicweb.utils import json_dumps
 from cubicweb.uilib import rql_for_eid
 from cubicweb.web import Redirect, RemoteCallFailed, http_headers, formfields as ff
 from cubicweb.web.views.autoform import get_pending_inserts, get_pending_deletes
-from cubicweb.web.views.basecontrollers import JSonController, xhtmlize, jsonize
 from cubicweb.web.views.ajaxcontroller import ajaxfunc, AjaxFunction
 from cubicweb.server.session import Connection
 from cubicweb.server.hook import Hook, Operation
@@ -94,7 +90,7 @@ class EditControllerTC(CubicWebTC):
                     }
             with self.assertRaises(ValidationError) as cm:
                 self.ctrl_publish(req)
-            cm.exception.translate(text_type)
+            cm.exception.translate(str)
             expected = {
                 '': u'some relations violate a unicity constraint',
                 'login': u'login is part of violated unicity constraint',
@@ -151,12 +147,12 @@ class EditControllerTC(CubicWebTC):
             user = req.user
             groupeids = [eid for eid, in req.execute('CWGroup G WHERE G name '
                                                      'in ("managers", "users")')]
-            groups = [text_type(eid) for eid in groupeids]
-            eid = text_type(user.eid)
+            groups = [str(eid) for eid in groupeids]
+            eid = str(user.eid)
             req.form = {
                 'eid': eid, '__type:'+eid: 'CWUser',
                 '_cw_entity_fields:'+eid: 'login-subject,firstname-subject,surname-subject,in_group-subject',
-                'login-subject:'+eid:     text_type(user.login),
+                'login-subject:'+eid:     str(user.login),
                 'surname-subject:'+eid: u'Th\xe9nault',
                 'firstname-subject:'+eid:   u'Sylvain',
                 'in_group-subject:'+eid:  groups,
@@ -174,7 +170,7 @@ class EditControllerTC(CubicWebTC):
             self.create_user(cnx, u'user')
             cnx.commit()
         with self.new_access(u'user').web_request() as req:
-            eid = text_type(req.user.eid)
+            eid = str(req.user.eid)
             req.form = {
                 'eid': eid, '__maineid' : eid,
                 '__type:'+eid: 'CWUser',
@@ -194,12 +190,12 @@ class EditControllerTC(CubicWebTC):
         with self.admin_access.web_request() as req:
             user = req.user
             groupeids = [g.eid for g in user.in_group]
-            eid = text_type(user.eid)
+            eid = str(user.eid)
             req.form = {
                 'eid':       eid,
                 '__type:'+eid:    'CWUser',
                 '_cw_entity_fields:'+eid: 'login-subject,firstname-subject,surname-subject',
-                'login-subject:'+eid:     text_type(user.login),
+                'login-subject:'+eid:     str(user.login),
                 'firstname-subject:'+eid: u'Th\xe9nault',
                 'surname-subject:'+eid:   u'Sylvain',
                 }
@@ -222,7 +218,7 @@ class EditControllerTC(CubicWebTC):
                         'login-subject:X': u'adim',
                         'upassword-subject:X': u'toto', 'upassword-subject-confirm:X': u'toto',
                         'surname-subject:X': u'Di Mascio',
-                        'in_group-subject:X': text_type(gueid),
+                        'in_group-subject:X': str(gueid),
 
                         '__type:Y': 'EmailAddress',
                         '_cw_entity_fields:Y': 'address-subject,use_email-object',
@@ -289,7 +285,7 @@ class EditControllerTC(CubicWebTC):
         # non regression test for #3120495. Without the fix, leads to
         # "unhashable type: 'list'" error
         with self.admin_access.web_request() as req:
-            cwrelation = text_type(req.execute('CWEType X WHERE X name "CWSource"')[0][0])
+            cwrelation = str(req.execute('CWEType X WHERE X name "CWSource"')[0][0])
             req.form = {'eid': [cwrelation], '__maineid' : cwrelation,
 
                         '__type:'+cwrelation: 'CWEType',
@@ -302,7 +298,7 @@ class EditControllerTC(CubicWebTC):
 
     def test_edit_multiple_linked(self):
         with self.admin_access.web_request() as req:
-            peid = text_type(self.create_user(req, u'adim').eid)
+            peid = str(self.create_user(req, u'adim').eid)
             req.form = {'eid': [peid, 'Y'], '__maineid': peid,
 
                         '__type:'+peid: u'CWUser',
@@ -322,7 +318,7 @@ class EditControllerTC(CubicWebTC):
             self.assertEqual(email.address, 'dima@logilab.fr')
 
         # with self.admin_access.web_request() as req:
-            emaileid = text_type(email.eid)
+            emaileid = str(email.eid)
             req.form = {'eid': [peid, emaileid],
 
                         '__type:'+peid: u'CWUser',
@@ -344,7 +340,7 @@ class EditControllerTC(CubicWebTC):
         with self.admin_access.web_request() as req:
             user = req.user
             req.form = {'eid': 'X',
-                        '__cloned_eid:X': text_type(user.eid), '__type:X': 'CWUser',
+                        '__cloned_eid:X': str(user.eid), '__type:X': 'CWUser',
                         '_cw_entity_fields:X': 'login-subject,upassword-subject',
                         'login-subject:X': u'toto',
                         'upassword-subject:X': u'toto',
@@ -353,7 +349,7 @@ class EditControllerTC(CubicWebTC):
                 self.ctrl_publish(req)
             self.assertEqual({'upassword-subject': u'password and confirmation don\'t match'},
                              cm.exception.errors)
-            req.form = {'__cloned_eid:X': text_type(user.eid),
+            req.form = {'__cloned_eid:X': str(user.eid),
                         'eid': 'X', '__type:X': 'CWUser',
                         '_cw_entity_fields:X': 'login-subject,upassword-subject',
                         'login-subject:X': u'toto',
@@ -377,11 +373,11 @@ class EditControllerTC(CubicWebTC):
                         '__type:X': 'Salesterm',
                         '_cw_entity_fields:X': 'amount-subject,described_by_test-subject',
                         'amount-subject:X': u'-10',
-                        'described_by_test-subject:X': text_type(feid),
+                        'described_by_test-subject:X': str(feid),
                     }
             with self.assertRaises(ValidationError) as cm:
                 self.ctrl_publish(req)
-            cm.exception.translate(text_type)
+            cm.exception.translate(str)
             self.assertEqual({'amount-subject': 'value -10 must be >= 0'},
                              cm.exception.errors)
 
@@ -390,11 +386,11 @@ class EditControllerTC(CubicWebTC):
                         '__type:X': 'Salesterm',
                         '_cw_entity_fields:X': 'amount-subject,described_by_test-subject',
                         'amount-subject:X': u'110',
-                        'described_by_test-subject:X': text_type(feid),
+                        'described_by_test-subject:X': str(feid),
                         }
             with self.assertRaises(ValidationError) as cm:
                 self.ctrl_publish(req)
-            cm.exception.translate(text_type)
+            cm.exception.translate(str)
             self.assertEqual(cm.exception.errors, {'amount-subject': 'value 110 must be <= 100'})
 
         with self.admin_access.web_request(rollbackfirst=True) as req:
@@ -402,7 +398,7 @@ class EditControllerTC(CubicWebTC):
                         '__type:X': 'Salesterm',
                         '_cw_entity_fields:X': 'amount-subject,described_by_test-subject',
                         'amount-subject:X': u'10',
-                        'described_by_test-subject:X': text_type(feid),
+                        'described_by_test-subject:X': str(feid),
                         }
             self.expect_redirect_handle_request(req, 'edit')
             # should be redirected on the created
@@ -421,7 +417,7 @@ class EditControllerTC(CubicWebTC):
 
         # ensure a value that violate a constraint is properly detected
         with self.admin_access.web_request(rollbackfirst=True) as req:
-            req.form = {'eid': [text_type(seid)],
+            req.form = {'eid': [str(seid)],
                         '__type:%s'%seid: 'Salesterm',
                         '_cw_entity_fields:%s'%seid: 'amount-subject',
                         'amount-subject:%s'%seid: u'-10',
@@ -432,7 +428,7 @@ class EditControllerTC(CubicWebTC):
 
         # ensure a value that comply a constraint is properly processed
         with self.admin_access.web_request(rollbackfirst=True) as req:
-            req.form = {'eid': [text_type(seid)],
+            req.form = {'eid': [str(seid)],
                         '__type:%s'%seid: 'Salesterm',
                         '_cw_entity_fields:%s'%seid: 'amount-subject',
                         'amount-subject:%s'%seid: u'20',
@@ -448,7 +444,7 @@ class EditControllerTC(CubicWebTC):
                         '__type:X': 'Salesterm',
                         '_cw_entity_fields:X': 'amount-subject,described_by_test-subject',
                         'amount-subject:X': u'0',
-                        'described_by_test-subject:X': text_type(feid),
+                        'described_by_test-subject:X': str(feid),
                     }
 
             # ensure a value that is modified in an operation on a modify
@@ -556,7 +552,7 @@ class EditControllerTC(CubicWebTC):
     def test_redirect_delete_button(self):
         with self.admin_access.web_request() as req:
             eid = req.create_entity('BlogEntry', title=u'hop', content=u'hop').eid
-            req.form = {'eid': text_type(eid), '__type:%s'%eid: 'BlogEntry',
+            req.form = {'eid': str(eid), '__type:%s'%eid: 'BlogEntry',
                         '__action_delete': ''}
             path, params = self.expect_redirect_handle_request(req, 'edit')
             self.assertEqual(path, 'blogentry')
@@ -565,14 +561,14 @@ class EditControllerTC(CubicWebTC):
             req.execute('SET X use_email E WHERE E eid %(e)s, X eid %(x)s',
                         {'x': req.user.eid, 'e': eid})
             req.cnx.commit()
-            req.form = {'eid': text_type(eid), '__type:%s'%eid: 'EmailAddress',
+            req.form = {'eid': str(eid), '__type:%s'%eid: 'EmailAddress',
                         '__action_delete': ''}
             path, params = self.expect_redirect_handle_request(req, 'edit')
             self.assertEqual(path, 'cwuser/admin')
             self.assertIn('_cwmsgid', params)
             eid1 = req.create_entity('BlogEntry', title=u'hop', content=u'hop').eid
             eid2 = req.create_entity('EmailAddress', address=u'hop@logilab.fr').eid
-            req.form = {'eid': [text_type(eid1), text_type(eid2)],
+            req.form = {'eid': [str(eid1), str(eid2)],
                         '__type:%s'%eid1: 'BlogEntry',
                         '__type:%s'%eid2: 'EmailAddress',
                         '__action_delete': ''}
@@ -674,13 +670,13 @@ class EditControllerTC(CubicWebTC):
             groupeids = sorted(eid
                                for eid, in req.execute('CWGroup G '
                                                        'WHERE G name in ("managers", "users")'))
-            groups = [text_type(eid) for eid in groupeids]
+            groups = [str(eid) for eid in groupeids]
             cwetypeeid = req.execute('CWEType X WHERE X name "CWEType"')[0][0]
-            basegroups = [text_type(eid)
+            basegroups = [str(eid)
                           for eid, in req.execute('CWGroup G '
                                                   'WHERE X read_permission G, X eid %(x)s',
                                                   {'x': cwetypeeid})]
-            cwetypeeid = text_type(cwetypeeid)
+            cwetypeeid = str(cwetypeeid)
             req.form = {
                 'eid':      cwetypeeid,
                 '__type:'+cwetypeeid:  'CWEType',
@@ -760,8 +756,8 @@ class EditControllerTC(CubicWebTC):
         with self.admin_access.web_request(url='edit') as req:
             p = self.create_user(req, u"doe")
             # do not try to skip 'primary_email' for this test
-            old_skips = p.__class__.skip_copy_for
-            p.__class__.skip_copy_for = ()
+            old_skips = p.__class__.cw_skip_copy_for
+            p.__class__.cw_skip_copy_for = ()
             try:
                 e = req.create_entity('EmailAddress', address=u'doe@doe.com')
                 req.execute('SET P use_email E, P primary_email E WHERE P eid %(p)s, E eid %(e)s',
@@ -786,7 +782,7 @@ class EditControllerTC(CubicWebTC):
                 rset = req.execute('CWUser P WHERE P surname "Boom"')
                 self.assertEqual(len(rset), 0)
             finally:
-                p.__class__.skip_copy_for = old_skips
+                p.__class__.cw_skip_copy_for = old_skips
 
     def test_regr_inlined_forms(self):
         with self.admin_access.web_request() as req:
@@ -1018,64 +1014,6 @@ class AjaxControllerTC(CubicWebTC):
                 pass
         self.assertEqual(cm.exception.status, 400)
         self.assertEqual(cm.exception.reason, 'no foo method')
-
-
-class JSonControllerTC(AjaxControllerTC):
-    # NOTE: this class performs the same tests as AjaxController but with
-    #       deprecated 'json' controller (i.e. check backward compatibility)
-    tested_controller = 'json'
-
-    def setUp(self):
-        super(JSonControllerTC, self).setUp()
-        self.exposed_remote_funcs = [fname for fname in dir(JSonController)
-                                     if fname.startswith('js_')]
-
-    def tearDown(self):
-        super(JSonControllerTC, self).tearDown()
-        for funcname in dir(JSonController):
-            # remove functions added dynamically during tests
-            if funcname.startswith('js_') and funcname not in self.exposed_remote_funcs:
-                delattr(JSonController, funcname)
-
-    def test_monkeypatch_jsoncontroller(self):
-        with self.assertRaises(RemoteCallFailed):
-            with self.remote_calling('foo'):
-                pass
-        @monkeypatch(JSonController)
-        def js_foo(self):
-            return u'hello'
-        with self.remote_calling('foo') as (res, _):
-            self.assertEqual(res, b'hello')
-
-    def test_monkeypatch_jsoncontroller_xhtmlize(self):
-        with self.assertRaises(RemoteCallFailed):
-            with self.remote_calling('foo'):
-                pass
-        @monkeypatch(JSonController)
-        @xhtmlize
-        def js_foo(self):
-            return u'hello'
-        with self.remote_calling('foo') as (res, _):
-            self.assertEqual(b'<div>hello</div>', res)
-
-    def test_monkeypatch_jsoncontroller_jsonize(self):
-        with self.assertRaises(RemoteCallFailed):
-            with self.remote_calling('foo'):
-                pass
-        @monkeypatch(JSonController)
-        @jsonize
-        def js_foo(self):
-            return 12
-        with self.remote_calling('foo') as (res, _):
-            self.assertEqual(res, b'12')
-
-    def test_monkeypatch_jsoncontroller_stdfunc(self):
-        @monkeypatch(JSonController)
-        @jsonize
-        def js_reledit_form(self):
-            return 12
-        with self.remote_calling('reledit_form') as (res, _):
-            self.assertEqual(res, b'12')
 
 
 class UndoControllerTC(CubicWebTC):

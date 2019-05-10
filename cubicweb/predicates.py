@@ -24,11 +24,7 @@ import logging
 from warnings import warn
 from operator import eq
 
-from six import string_types, integer_types
-from six.moves import range
-
-from logilab.common.deprecation import deprecated
-from logilab.common.registry import Predicate, objectify_predicate, yes
+from logilab.common.registry import Predicate, objectify_predicate
 
 from yams.schema import BASE_TYPES, role_name
 from rql.nodes import Function
@@ -37,8 +33,6 @@ from cubicweb import (Unauthorized, NoSelectableObject, NotAnEntity,
                       CW_EVENT_MANAGER, role)
 from cubicweb.uilib import eid_param
 from cubicweb.schema import split_expression
-
-yes = deprecated('[3.15] import yes() from use logilab.common.registry')(yes)
 
 
 # abstract predicates / mixin helpers ###########################################
@@ -85,12 +79,7 @@ class EClassPredicate(Predicate):
       - `accept_none` is False and some cell in the column has a None value
         (this may occurs with outer join)
     """
-    def __init__(self, once_is_enough=None, accept_none=True, mode='all'):
-        if once_is_enough is not None:
-            warn("[3.14] once_is_enough is deprecated, use mode='any'",
-                 DeprecationWarning, stacklevel=2)
-            if once_is_enough:
-                mode = 'any'
+    def __init__(self, accept_none=True, mode='all'):
         assert mode in ('any', 'all'), 'bad mode %s' % mode
         self.once_is_enough = mode == 'any'
         self.accept_none = accept_none
@@ -618,7 +607,7 @@ class is_instance(EClassPredicate):
         super(is_instance, self).__init__(**kwargs)
         self.expected_etypes = expected_etypes
         for etype in self.expected_etypes:
-            assert isinstance(etype, string_types), etype
+            assert isinstance(etype, str), etype
 
     def __str__(self):
         return '%s(%s)' % (self.__class__.__name__,
@@ -672,13 +661,13 @@ class score_entity(EntityPredicate):
     See :class:`~cubicweb.predicates.EntityPredicate` documentation for entity
     lookup / score rules according to the input context.
     """
-    def __init__(self, scorefunc, once_is_enough=None, mode='all'):
-        super(score_entity, self).__init__(mode=mode, once_is_enough=once_is_enough)
+    def __init__(self, scorefunc, mode='all'):
+        super(score_entity, self).__init__(mode=mode)
         def intscore(*args, **kwargs):
             score = scorefunc(*args, **kwargs)
             if not score:
                 return 0
-            if isinstance(score, integer_types):
+            if isinstance(score, int):
                 return score
             return 1
         self.score_entity = intscore
@@ -690,8 +679,8 @@ class has_mimetype(EntityPredicate):
     You can give 'image/' to match any image for instance, or 'image/png' to match
     only PNG images.
     """
-    def __init__(self, mimetype, once_is_enough=None, mode='all'):
-        super(has_mimetype, self).__init__(mode=mode, once_is_enough=once_is_enough)
+    def __init__(self, mimetype, mode='all'):
+        super(has_mimetype, self).__init__(mode=mode)
         self.mimetype = mimetype
 
     def score_entity(self, entity):
@@ -995,8 +984,8 @@ class rql_condition(EntityPredicate):
     See :class:`~cubicweb.predicates.EntityPredicate` documentation for entity
     lookup / score rules according to the input context.
     """
-    def __init__(self, expression, once_is_enough=None, mode='all', user_condition=False):
-        super(rql_condition, self).__init__(mode=mode, once_is_enough=once_is_enough)
+    def __init__(self, expression, mode='all', user_condition=False):
+        super(rql_condition, self).__init__(mode=mode)
         self.user_condition = user_condition
         if user_condition:
             rql = 'Any COUNT(U) WHERE U eid %%(u)s, %s' % expression
@@ -1084,7 +1073,7 @@ class is_in_state(score_entity):
                            ','.join(str(s) for s in self.expected))
 
 
-def on_fire_transition(etype, tr_names, from_state_name=None):
+def on_fire_transition(etype, tr_names):
     """Return 1 when entity of the type `etype` is going through transition of
     a name included in `tr_names`.
 
@@ -1096,9 +1085,7 @@ def on_fire_transition(etype, tr_names, from_state_name=None):
 
     See :class:`cubicweb.entities.wfobjs.TrInfo` for more information.
     """
-    if from_state_name is not None:
-        warn("on_fire_transition's from_state_name argument is unused", DeprecationWarning)
-    if isinstance(tr_names, string_types):
+    if isinstance(tr_names, str):
         tr_names = set((tr_names,))
     def match_etype_and_transition(trinfo):
         # take care trinfo.transition is None when calling change_state
@@ -1298,7 +1285,7 @@ class match_form_params(ExpectedValuePredicate):
             raise ValueError("match_form_params() can't be called with both "
                              "positional and named arguments")
         if expected:
-            if len(expected) == 1 and not isinstance(expected[0], string_types):
+            if len(expected) == 1 and not isinstance(expected[0], str):
                 raise ValueError("match_form_params() positional arguments "
                                  "must be strings")
             super(match_form_params, self).__init__(*expected)
@@ -1391,8 +1378,8 @@ class attribute_edited(EntityPredicate):
      is_instance('Version') & (match_transition('ready') |
                                attribute_edited('publication_date'))
     """
-    def __init__(self, attribute, once_is_enough=None, mode='all'):
-        super(attribute_edited, self).__init__(mode=mode, once_is_enough=once_is_enough)
+    def __init__(self, attribute, mode='all'):
+        super(attribute_edited, self).__init__(mode=mode)
         self._attribute = attribute
 
     def score_entity(self, entity):

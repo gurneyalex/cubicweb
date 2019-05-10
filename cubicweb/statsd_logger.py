@@ -58,6 +58,7 @@ or a method and the number of calls. It will send a message like::
 
 import time
 import socket
+from contextlib import contextmanager
 
 _bucket = 'cubicweb'
 _address = None
@@ -87,19 +88,32 @@ def setup(bucket, address):
     _socket = socket.socket(family, socket.SOCK_DGRAM)
 
 
+def teardown():
+    """Unconfigure the statsd endpoint
+
+    This is most likely only useful for unit tests"""
+    global _bucket, _address, _socket
+    _bucket = 'cubicweb'
+    _address = None
+    _socket = None
+
+
 def statsd_c(context, n=1):
     if _address is not None:
-        _socket.sendto('{0}.{1}:{2}|c\n'.format(_bucket, context, n), _address)
+        _socket.sendto('{0}.{1}:{2}|c\n'.format(_bucket, context, n).encode(),
+                       _address)
 
 
 def statsd_g(context, value):
     if _address is not None:
-        _socket.sendto('{0}.{1}:{2}|g\n'.format(_bucket, context, value), _address)
+        _socket.sendto('{0}.{1}:{2}|g\n'.format(_bucket, context, value).encode(),
+                       _address)
 
 
 def statsd_t(context, value):
     if _address is not None:
-        _socket.sendto('{0}.{1}:{2:.4f}|ms\n'.format(_bucket, context, value), _address)
+        _socket.sendto('{0}.{1}:{2:.4f}|ms\n'.format(_bucket, context, value).encode(),
+                       _address)
 
 
 class statsd_timeit(object):
@@ -125,7 +139,7 @@ class statsd_timeit(object):
         finally:
             dt = 1000 * (time.time() - t0)
             msg = '{0}.{1}:{2:.4f}|ms\n{0}.{1}:1|c\n'.format(
-                _bucket, self.__name__, dt)
+                _bucket, self.__name__, dt).encode()
             _socket.sendto(msg, _address)
 
     def __get__(self, obj, objtype):
@@ -134,3 +148,17 @@ class statsd_timeit(object):
             return self
         import functools
         return functools.partial(self.__call__, obj)
+
+
+@contextmanager
+def statsd_timethis(ctxmsg):
+    if _address is not None:
+        t0 = time.time()
+    try:
+        yield
+    finally:
+        if _address is not None:
+            dt = 1000 * (time.time() - t0)
+            msg = '{0}.{1}:{2:.4f}|ms\n{0}.{1}:1|c\n'.format(
+                _bucket, ctxmsg, dt).encode()
+            _socket.sendto(msg, _address)

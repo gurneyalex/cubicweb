@@ -58,23 +58,23 @@ In the other hand the request's method `self._cw._` is also meant to
 retrieve the proper translation of translation strings in the
 requested language.
 
-Finally you can also use the `__` attribute of request object to get a
+Finally you can also use the `__` (two underscores) attribute of request object to get a
 translation for a string *which should not itself added to the catalog*,
 usually in case where the actual msgid is created by string interpolation ::
 
   self._cw.__('This %s' % etype)
 
-In this example ._cw.__` is used instead of ._cw._` so we don't have 'This %s' in
+In this example `._cw.__` is used instead of `._cw._` so we don't have 'This %s' in
 messages catalogs.
 
 Translations in cubicweb-tal template can also be done with TAL tags
 `i18n:content` and `i18n:replace`.
 
-If you need to add messages on top of those that can be found in the source,
-you can create a file named `i18n/static-messages.pot`.
+If you need to mark other messages as translatable,
+you can create a file named `i18n/static-messages.pot`, see for example :ref:`translate-application-cube`.
 
 You could put there messages not found in the python sources or
-overrides for some messages of used cubes.
+overrides some messages that are in cubes used in the dependencies.
 
 Generated string
 ````````````````
@@ -149,7 +149,7 @@ You have added and/or modified some translation strings in your cube
 To update the translation catalogs you need to do:
 
 1. `cubicweb-ctl i18ncube <cube>`
-2. Edit the <cube>/i18n/xxx.po  files and add missing translations (empty `msgstr`)
+2. Edit the `<cube>/i18n/xxx.po` files and add missing translations (those with an empty `msgstr`)
 3. `hg ci -m "updated i18n catalogs"`
 4. `cubicweb-ctl i18ninstance <myinstance>`
 
@@ -280,9 +280,11 @@ Contextual entries are automatically used in some cases. For instance,
 entity.dc_type(), eschema.display_name(req) or display_name(etype,
 req, form, context) methods/function calls will use them.
 
-It is also possible to explicitly use the with _cw.pgettext(context,
-msgid).
+It is also possible to explicitly use a context with `_cw.pgettext(context,
+msgid)`.
 
+
+.. _translate-application-cube:
 
 Specialize translation for an application cube
 ``````````````````````````````````````````````

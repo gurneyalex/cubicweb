@@ -18,21 +18,14 @@
 """this module contains base classes and utilities for integration with running
 http server
 """
-from __future__ import print_function
 
-
-
+import http.client
 import random
 import threading
 import socket
-
-from six import PY3
-from six.moves import range, http_client
-from six.moves.urllib.parse import urlparse
-
+from urllib.parse import urlparse
 
 from cubicweb.devtools.testlib import CubicWebTC
-from cubicweb.devtools import ApptestConfiguration
 
 
 def get_available_port(ports_scan):
@@ -54,7 +47,7 @@ def get_available_port(ports_scan):
     for port in ports_scan:
         try:
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock = s.connect(("localhost", port))
+            s.connect(("localhost", port))
         except socket.error as err:
             if err.args[0] in (111, 106):
                 return port
@@ -64,7 +57,7 @@ def get_available_port(ports_scan):
 
 
 class _CubicWebServerTC(CubicWebTC):
-    """Class for running a Twisted-based test web server.
+    """Base class for running a test web server.
     """
     ports_range = range(7000, 8000)
 
@@ -81,13 +74,13 @@ class _CubicWebServerTC(CubicWebTC):
         If no user is provided, admin connection are used.
         """
         if user is None:
-            user  = self.admlogin
+            user = self.admlogin
             passwd = self.admpassword
         if passwd is None:
             passwd = user
         response = self.web_get("login?__login=%s&__password=%s" %
                                 (user, passwd))
-        assert response.status == http_client.SEE_OTHER, response.status
+        assert response.status == http.client.SEE_OTHER, response.status
         self._ident_cookie = response.getheader('Set-Cookie')
         assert self._ident_cookie
         return True
@@ -95,11 +88,11 @@ class _CubicWebServerTC(CubicWebTC):
     def web_logout(self, user='admin', pwd=None):
         """Log out current http user"""
         if self._ident_cookie is not None:
-            response = self.web_get('logout')
+            self.web_get('logout')
         self._ident_cookie = None
 
     def web_request(self, path='', method='GET', body=None, headers=None):
-        """Return an http_client.HTTPResponse object for the specified path
+        """Return an http.client.HTTPResponse object for the specified path
 
         Use available credential if available.
         """
@@ -110,8 +103,8 @@ class _CubicWebServerTC(CubicWebTC):
             headers['Cookie'] = self._ident_cookie
         self._web_test_cnx.request(method, '/' + path, headers=headers, body=body)
         response = self._web_test_cnx.getresponse()
-        response.body = response.read() # to chain request
-        response.read = lambda : response.body
+        response.body = response.read()  # to chain request
+        response.read = lambda: response.body
         return response
 
     def web_get(self, path='', body=None, headers=None):
@@ -120,7 +113,7 @@ class _CubicWebServerTC(CubicWebTC):
     def setUp(self):
         super(_CubicWebServerTC, self).setUp()
         port = self.config['port'] or get_available_port(self.ports_range)
-        self.config.global_set_option('port', port) # force rewrite here
+        self.config.global_set_option('port', port)  # force rewrite here
         self.config.global_set_option('base-url', 'http://127.0.0.1:%d/' % port)
         # call load_configuration again to let the config reset its datadir_url
         self.config.load_configuration()
@@ -133,55 +126,9 @@ class _CubicWebServerTC(CubicWebTC):
 
 class CubicWebServerTC(_CubicWebServerTC):
     def start_server(self):
-        if PY3:
-            self.skipTest('not using twisted on python3')
-        from twisted.internet import reactor
-        from cubicweb.etwist.server import run
-        # use a semaphore to avoid starting test while the http server isn't
-        # fully initilialized
-        semaphore = threading.Semaphore(0)
-        def safe_run(*args, **kwargs):
-            try:
-                run(*args, **kwargs)
-            finally:
-                semaphore.release()
-
-        reactor.addSystemEventTrigger('after', 'startup', semaphore.release)
-        t = threading.Thread(target=safe_run, name='cubicweb_test_web_server',
-                args=(self.config, True), kwargs={'repo': self.repo})
-        self.web_thread = t
-        t.start()
-        semaphore.acquire()
-        if not self.web_thread.isAlive():
-            # XXX race condition with actual thread death
-            raise RuntimeError('Could not start the web server')
-        #pre init utils connection
-        parseurl = urlparse(self.config['base-url'])
-        assert parseurl.port == self.config['port'], (self.config['base-url'], self.config['port'])
-        self._web_test_cnx = http_client.HTTPConnection(parseurl.hostname,
-                                                        parseurl.port)
-        self._ident_cookie = None
-
-    def stop_server(self, timeout=15):
-        """Stop the webserver, waiting for the thread to return"""
-        from twisted.internet import reactor
-        if self._web_test_cnx is None:
-            self.web_logout()
-            self._web_test_cnx.close()
-        try:
-            reactor.stop()
-            self.web_thread.join(timeout)
-            assert not self.web_thread.isAlive()
-
-        finally:
-            reactor.__init__()
-
-
-class CubicWebWsgiTC(CubicWebServerTC):
-    def start_server(self):
         from cubicweb.wsgi.handler import CubicWebWSGIApplication
         from wsgiref import simple_server
-        from six.moves import queue
+        import queue
 
         config = self.config
         port = config['port'] or 8080
@@ -214,7 +161,7 @@ class CubicWebWsgiTC(CubicWebServerTC):
             self.fail(start_flag.get())
         parseurl = urlparse(self.config['base-url'])
         assert parseurl.port == self.config['port'], (self.config['base-url'], self.config['port'])
-        self._web_test_cnx = http_client.HTTPConnection(parseurl.hostname,
+        self._web_test_cnx = http.client.HTTPConnection(parseurl.hostname,
                                                         parseurl.port)
         self._ident_cookie = None
 

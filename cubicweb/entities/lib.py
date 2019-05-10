@@ -20,9 +20,7 @@
 
 from warnings import warn
 from datetime import datetime
-
-from six.moves import range
-from six.moves.urllib.parse import urlsplit, urlunsplit
+from urllib.parse import urlsplit, urlunsplit
 
 from logilab.mtconverter import xml_escape
 
@@ -125,25 +123,3 @@ class CWProperty(AnyEntity):
             return self._cw._(self._cw.vreg.property_info(self.pkey)['help'])
         except UnknownProperty:
             return u''
-
-
-class CWCache(AnyEntity):
-    """Cache"""
-    __regid__ = 'CWCache'
-    fetch_attrs, cw_fetch_order = fetch_config(['name'])
-
-    def __init__(self, *args, **kwargs):
-        warn('[3.19] CWCache entity type is going away soon. '
-             'Other caching mechanisms can be used more reliably '
-             'to the same effect.',
-             DeprecationWarning)
-        super(CWCache, self).__init__(*args, **kwargs)
-
-    def touch(self):
-        self._cw.execute('SET X timestamp %(t)s WHERE X eid %(x)s',
-                         {'t': datetime.now(), 'x': self.eid})
-
-    def valid(self, date):
-        if date:
-            return date > self.timestamp
-        return False

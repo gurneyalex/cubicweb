@@ -10,9 +10,9 @@ Step 1: creating a virtual environment
 
 Fisrt I need a python virtual environment with cubicweb::
 
-  virtualenv python-2.7.5_cubicweb
-  . /python-2.7.5_cubicweb/bin/activate
-  pip install cubicweb[etwist]
+  python3 -m venv venv
+  . venv/bin/activate
+  pip install cubicweb[pyramid]
 
 
 Step 2: creating a new cube for my web site
@@ -20,9 +20,9 @@ Step 2: creating a new cube for my web site
 
 One note about my development environment: I wanted to use the packaged
 version of CubicWeb and cubes while keeping my cube in the current
-directory, let's say `~src/cubes`::
+directory, let's say `~/src/cubes`::
 
-  cd ~src/cubes
+  cd ~/src/cubes
   CW_MODE=user
 
 I can now create the cube which will hold custom code for this web
@@ -173,7 +173,7 @@ database step, thus skipping questions asked by the 'create' command.
 
 Once the instance and database are fully initialized, run ::
 
-  cubicweb-ctl start -D sytweb_instance
+  cubicweb-ctl pyramid -D sytweb_instance
 
 to start the instance, check you can connect on it, etc... then go on
 http://localhost:8080 (or with another port if you've modified it)

@@ -24,16 +24,13 @@ from io import BytesIO
 from os.path import exists
 from datetime import datetime, timedelta
 from functools import partial
-
-from six.moves.urllib.parse import urlparse
-from six.moves.urllib.request import Request, build_opener, HTTPCookieProcessor
-from six.moves.urllib.error import HTTPError
-from six.moves.http_cookiejar import CookieJar
+from http.cookiejar import CookieJar
+from urllib.parse import urlparse
+from urllib.request import Request, build_opener, HTTPCookieProcessor
+from urllib.error import HTTPError
 
 from pytz import utc
 from lxml import etree
-
-from logilab.common.deprecation import deprecated
 
 from cubicweb import ObjectNotFound, ValidationError, SourceException, _
 from cubicweb.server.sources import AbstractSource
@@ -364,20 +361,6 @@ class DataFeedParser(AppObject):
 
 
 class DataFeedXMLParser(DataFeedParser):
-
-    @deprecated()
-    def process(self, url, raise_on_error=False):
-        """IDataFeedParser main entry point"""
-        try:
-            parsed = self.parse(url)
-        except Exception as ex:
-            if raise_on_error:
-                raise
-            self.import_log.record_error(str(ex))
-            return True
-        for args in parsed:
-            self.process_item(*args, raise_on_error=raise_on_error)
-        return False
 
     def parse(self, url):
         stream = self.retrieve_url(url)
