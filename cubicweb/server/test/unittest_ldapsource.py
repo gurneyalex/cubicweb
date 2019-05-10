@@ -20,8 +20,6 @@
 Those tests expect to have slapd, python-ldap3 and ldapscripts packages installed.
 """
 
-from __future__ import print_function
-
 import os
 import sys
 import shutil
@@ -30,9 +28,6 @@ import subprocess
 import tempfile
 import unittest
 from os.path import join
-
-from six import string_types
-from six.moves import range
 
 from cubicweb import AuthenticationError, ValidationError
 from cubicweb.devtools.testlib import CubicWebTC
@@ -148,6 +143,9 @@ class LDAPFeedTestBase(CubicWebTC):
 
     @classmethod
     def pre_setup_database(cls, cnx, config):
+        if sys.version_info[:2] >= (3, 7):
+            raise unittest.SkipTest(
+                'ldapfeed is not currently compatible with Python 3.7')
         cnx.create_entity('CWSource', name=u'ldap', type=u'ldapfeed', parser=u'ldapfeed',
                           url=URL, config=CONFIG_LDAPFEED)
 
@@ -177,7 +175,7 @@ class LDAPFeedTestBase(CubicWebTC):
         """
         modcmd = ['dn: %s' % dn, 'changetype: add']
         for key, values in mods.items():
-            if isinstance(values, string_types):
+            if isinstance(values, str):
                 values = [values]
             for value in values:
                 modcmd.append('%s: %s' % (key, value))
@@ -197,7 +195,7 @@ class LDAPFeedTestBase(CubicWebTC):
         modcmd = ['dn: %s' % dn, 'changetype: modify']
         for (kind, key), values in mods.items():
             modcmd.append('%s: %s' % (kind, key))
-            if isinstance(values, string_types):
+            if isinstance(values, str):
                 values = [values]
             for value in values:
                 modcmd.append('%s: %s' % (key, value))

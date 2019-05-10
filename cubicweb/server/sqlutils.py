@@ -17,8 +17,6 @@
 # with CubicWeb.  If not, see <http://www.gnu.org/licenses/>.
 """SQL utilities functions and classes."""
 
-from __future__ import print_function
-
 import os
 import sys
 import re
@@ -27,14 +25,10 @@ from os.path import abspath
 from logging import getLogger
 from datetime import time, datetime, timedelta
 
-from six import string_types, text_type
-from six.moves import filter
-
 from pytz import utc
 
 from logilab import database as db, common as lgc
 from logilab.common.shellutils import ProgressBar, DummyProgressBar
-from logilab.common.deprecation import deprecated
 from logilab.common.logging_ext import set_log_methods
 from logilab.common.date import utctime, utcdatetime, strptime
 from logilab.database.sqlgen import SQLGenerator
@@ -53,7 +47,7 @@ def _run_command(cmd, extra_env=None):
     env = os.environ.copy()
     for key, value in (extra_env or {}).items():
         env.setdefault(key, value)
-    if isinstance(cmd, string_types):
+    if isinstance(cmd, str):
         print(cmd)
         return subprocess.call(cmd, shell=True, env=env)
     else:
@@ -82,7 +76,7 @@ def sqlexec(sqlstmts, cursor_or_execute, withpb=True,
     else:
         execute = cursor_or_execute
     sqlstmts_as_string = False
-    if isinstance(sqlstmts, string_types):
+    if isinstance(sqlstmts, str):
         sqlstmts_as_string = True
         sqlstmts = sqlstmts.split(delimiter)
     if withpb:
@@ -236,21 +230,6 @@ class ConnectionWrapper(object):
         self._source.info('trying to reconnect')
         self.cnx = self._source.get_connection()
         self.cu = self.cnx.cursor()
-
-    @deprecated('[3.19] use .cu instead')
-    def __getitem__(self, uri):
-        assert uri == 'system'
-        return self.cu
-
-    @deprecated('[3.19] use repo.system_source instead')
-    def source(self, uid):
-        assert uid == 'system'
-        return self._source
-
-    @deprecated('[3.19] use .cnx instead')
-    def connection(self, uid):
-        assert uid == 'system'
-        return self.cnx
 
 
 class SqliteConnectionWrapper(ConnectionWrapper):
@@ -491,7 +470,7 @@ def _install_sqlite_querier_patch():
                 for row, rowdesc in zip(rset, rset.description):
                     for cellindex, (value, vtype) in enumerate(zip(row, rowdesc)):
                         if vtype in ('TZDatetime', 'Date', 'Datetime') \
-                           and isinstance(value, text_type):
+                           and isinstance(value, str):
                             found_date = True
                             value = value.rsplit('.', 1)[0]
                             try:
@@ -500,7 +479,7 @@ def _install_sqlite_querier_patch():
                                 row[cellindex] = strptime(value, '%Y-%m-%d')
                             if vtype == 'TZDatetime':
                                 row[cellindex] = row[cellindex].replace(tzinfo=utc)
-                        if vtype == 'Time' and isinstance(value, text_type):
+                        if vtype == 'Time' and isinstance(value, str):
                             found_date = True
                             try:
                                 row[cellindex] = strptime(value, '%H:%M:%S')
@@ -533,7 +512,7 @@ def _init_sqlite_connection(cnx):
                 self.values.add(value)
 
         def finalize(self):
-            return ', '.join(text_type(v) for v in self.values)
+            return ', '.join(str(v) for v in self.values)
 
     cnx.create_aggregate("GROUP_CONCAT", 1, group_concat)
 

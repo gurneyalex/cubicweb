@@ -1,5 +1,5 @@
 # coding: utf-8
-# copyright 2003-2016 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2018 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -18,9 +18,8 @@
 # with CubicWeb.  If not, see <http://www.gnu.org/licenses/>.
 """unit tests for module cubicweb.rset"""
 
-from six import string_types
-from six.moves import cPickle as pickle
-from six.moves.urllib.parse import urlsplit
+import pickle
+from urllib.parse import urlsplit
 
 from rql import parse
 
@@ -444,6 +443,78 @@ class ResultSetTC(CubicWebTC):
             with self.assertRaises(MultipleResultsError):
                 req.execute('Any X WHERE X is CWUser').one()
 
+    def test_first(self):
+        with self.admin_access.web_request() as req:
+            req.create_entity('CWUser',
+                              login=u'cdevienne',
+                              upassword=u'cdevienne',
+                              surname=u'de Vienne',
+                              firstname=u'Christophe')
+            e = req.execute('Any X WHERE X login "cdevienne"').first()
+            self.assertEqual(e.surname, u'de Vienne')
+
+            e = req.execute(
+                'Any X, N WHERE X login "cdevienne", X surname N').first()
+            self.assertEqual(e.surname, u'de Vienne')
+
+            e = req.execute(
+                'Any N, X WHERE X login "cdevienne", X surname N').first(col=1)
+            self.assertEqual(e.surname, u'de Vienne')
+
+    def test_first_no_rows(self):
+        with self.admin_access.web_request() as req:
+            with self.assertRaises(NoResultError):
+                req.execute('Any X WHERE X login "patanok"').first()
+
+    def test_first_multiple_rows(self):
+        with self.admin_access.web_request() as req:
+            req.create_entity(
+                'CWUser', login=u'user1', upassword=u'cdevienne',
+                surname=u'de Vienne', firstname=u'Christophe')
+            req.create_entity(
+                'CWUser', login=u'user2', upassword='adim',
+                surname=u'di mascio', firstname=u'adrien')
+
+            e = req.execute('Any X ORDERBY X WHERE X is CWUser, '
+                            'X login LIKE "user%"').first()
+            self.assertEqual(e.login, 'user1')
+
+    def test_last(self):
+        with self.admin_access.web_request() as req:
+            req.create_entity('CWUser',
+                              login=u'cdevienne',
+                              upassword=u'cdevienne',
+                              surname=u'de Vienne',
+                              firstname=u'Christophe')
+            e = req.execute('Any X WHERE X login "cdevienne"').last()
+            self.assertEqual(e.surname, u'de Vienne')
+
+            e = req.execute(
+                'Any X, N WHERE X login "cdevienne", X surname N').last()
+            self.assertEqual(e.surname, u'de Vienne')
+
+            e = req.execute(
+                'Any N, X WHERE X login "cdevienne", X surname N').last(col=1)
+            self.assertEqual(e.surname, u'de Vienne')
+
+    def test_last_no_rows(self):
+        with self.admin_access.web_request() as req:
+            with self.assertRaises(NoResultError):
+                req.execute('Any X WHERE X login "patanok"').last()
+
+    def test_last_multiple_rows(self):
+        with self.admin_access.web_request() as req:
+            req.create_entity(
+                'CWUser', login=u'user1', upassword=u'cdevienne',
+                surname=u'de Vienne', firstname=u'Christophe')
+            req.create_entity(
+                'CWUser', login=u'user2', upassword='adim',
+                surname=u'di mascio', firstname=u'adrien')
+
+            e = req.execute('Any X ORDERBY X WHERE X is CWUser, '
+                            'X login LIKE "user%"').last()
+            self.assertEqual(e.login, 'user2')
+
     def test_related_entity_optional(self):
         with self.admin_access.web_request() as req:
             req.create_entity('Bookmark', title=u'aaaa', path=u'path')
@@ -583,17 +654,17 @@ class ResultSetTC(CubicWebTC):
     def test_str(self):
         with self.admin_access.web_request() as req:
             rset = req.execute('(Any X,N WHERE X is CWGroup, X name N)')
-            self.assertIsInstance(str(rset), string_types)
+            self.assertIsInstance(str(rset), str)
             self.assertEqual(len(str(rset).splitlines()), 1)
 
     def test_repr(self):
         with self.admin_access.web_request() as req:
             rset = req.execute('(Any X,N WHERE X is CWGroup, X name N)')
-            self.assertIsInstance(repr(rset), string_types)
+            self.assertIsInstance(repr(rset), str)
             self.assertTrue(len(repr(rset).splitlines()) > 1)
 
             rset = req.execute('(Any X WHERE X is CWGroup, X name "managers")')
-            self.assertIsInstance(str(rset), string_types)
+            self.assertIsInstance(str(rset), str)
             self.assertEqual(len(str(rset).splitlines()), 1)
 
     def test_slice(self):

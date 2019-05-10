@@ -1,5 +1,7 @@
 cubicweb/__init__.py
 cubicweb/__main__.py
+cubicweb/cwctl.py
+cubicweb/cwvreg.py
 cubicweb/dataimport/csv.py
 cubicweb/dataimport/importer.py
 cubicweb/dataimport/massive_store.py
@@ -9,9 +11,9 @@ cubicweb/dataimport/test/data/schema.py
 cubicweb/dataimport/test/test_csv.py
 cubicweb/dataimport/test/test_pgstore.py
 cubicweb/dataimport/test/test_massive_store.py
-cubicweb/dataimport/test/test_sqlgenstore.py
 cubicweb/dataimport/test/test_stores.py
 cubicweb/dataimport/test/unittest_importer.py
+cubicweb/devtools/httptest.py
 cubicweb/devtools/test/data/cubes/i18ntestcube/__init__.py
 cubicweb/devtools/test/data/cubes/i18ntestcube/views.py
 cubicweb/devtools/test/data/cubes/__init__.py
@@ -24,9 +26,6 @@ cubicweb/devtools/webtest.py
 cubicweb/entities/adapters.py
 cubicweb/entities/authobjs.py
 cubicweb/entities/test/unittest_base.py
-cubicweb/etwist/__init__.py
-cubicweb/etwist/request.py
-cubicweb/etwist/service.py
 cubicweb/ext/__init__.py
 cubicweb/ext/test/unittest_rest.py
 cubicweb/hooks/synccomputed.py
@@ -108,10 +107,12 @@ cubicweb/test/unittest_rqlrewrite.py
 cubicweb/test/unittest_rset.py
 cubicweb/test/unittest_rtags.py
 cubicweb/test/unittest_schema.py
+cubicweb/test/unittest_statsd.py
 cubicweb/test/unittest_toolsutils.py
 cubicweb/test/unittest_wfutils.py
 cubicweb/toolsutils.py
 cubicweb/web/application.py
+cubicweb/web/box.py
 cubicweb/web/formwidgets.py
 cubicweb/web/test/data/entities.py
 cubicweb/web/test/unittest_application.py
@@ -130,6 +131,7 @@ cubicweb/web/views/staticcontrollers.py
 cubicweb/web/views/wdoc.py
 cubicweb/web/views/workflow.py
 cubicweb/web/views/uicfg.py
+cubicweb/web/webconfig.py
 cubicweb/web/webctl.py
 cubicweb/xy.py
 cubicweb/pyramid/auth.py
