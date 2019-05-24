@@ -17,13 +17,7 @@
 # with CubicWeb.  If not, see <http://www.gnu.org/licenses/>.
 """abstract form classes for CubicWeb web client"""
 
-
-from warnings import warn
-
-from six import add_metaclass
-
 from logilab.common.decorators import iclassmethod
-from logilab.common.deprecation import deprecated
 
 from cubicweb.appobject import AppObject
 from cubicweb.view import NOINDEX, NOFOLLOW
@@ -76,8 +70,7 @@ class FieldNotFound(Exception):
     found
     """
 
-@add_metaclass(metafieldsform)
-class Form(AppObject):
+class Form(AppObject, metaclass=metafieldsform):
     __registry__ = 'forms'
 
     parent_form = None
@@ -274,10 +267,7 @@ class Form(AppObject):
             try:
                 return self.form_valerror.errors.pop(field.role_name())
             except KeyError:
-                if field.role and field.name in self.form_valerror:
-                    warn('%s: errors key of attribute/relation should be suffixed by "-<role>"'
-                         % self.form_valerror.__class__, DeprecationWarning)
-                    return self.form_valerror.errors.pop(field.name)
+                pass
         return None
 
     def remaining_errors(self):

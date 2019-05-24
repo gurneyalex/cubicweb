@@ -23,18 +23,14 @@ import base64
 from hashlib import sha1  # pylint: disable=E0611
 from calendar import timegm
 from datetime import date, datetime
-from warnings import warn
+import http.client
 from io import BytesIO
-
-from six import PY2, text_type, string_types
-from six.moves import http_client
-from six.moves.urllib.parse import urlsplit, quote as urlquote
-from six.moves.http_cookies import SimpleCookie
+from urllib.parse import urlsplit, quote as urlquote
+from http.cookies import SimpleCookie
 
 from rql.utils import rqlvar_maker
 
 from logilab.common.decorators import cached
-from logilab.common.deprecation import deprecated
 
 from cubicweb import AuthenticationError
 from cubicweb.req import RequestSessionBase
@@ -162,16 +158,6 @@ class _CubicWebRequestBase(RequestSessionBase):
             self.html_headers.define_var('pageid', pid, override=False)
         self.pageid = pid
 
-    def _get_json_request(self):
-        warn('[3.15] self._cw.json_request is deprecated, use self._cw.ajax_request instead',
-             DeprecationWarning, stacklevel=2)
-        return self.ajax_request
-    def _set_json_request(self, value):
-        warn('[3.15] self._cw.json_request is deprecated, use self._cw.ajax_request instead',
-             DeprecationWarning, stacklevel=2)
-        self.ajax_request = value
-    json_request = property(_get_json_request, _set_json_request)
-
     @property
     def authmode(self):
         """Authentification mode of the instance
@@ -220,12 +206,8 @@ class _CubicWebRequestBase(RequestSessionBase):
         encoding = self.encoding
         for param, val in params.items():
             if isinstance(val, (tuple, list)):
-                if PY2:
-                    val = [unicode(x, encoding) for x in val]
                 if len(val) == 1:
                     val = val[0]
-            elif PY2 and isinstance(val, str):
-                val = unicode(val, encoding)
             if param in self.no_script_form_params and val:
                 val = self.no_script_form_param(param, val)
             if param == '_cwmsgid':
@@ -286,7 +268,7 @@ class _CubicWebRequestBase(RequestSessionBase):
                 return None
 
     def set_message(self, msg):
-        assert isinstance(msg, text_type)
+        assert isinstance(msg, str)
         self.reset_message()
         self._msg = msg
 
@@ -299,7 +281,7 @@ class _CubicWebRequestBase(RequestSessionBase):
 
     def set_redirect_message(self, msg):
         # TODO - this should probably be merged with append_to_redirect_message
-        assert isinstance(msg, text_type)
+        assert isinstance(msg, str)
         msgid = self.redirect_message_id()
         self.session.data[msgid] = msg
         return msgid
@@ -386,7 +368,7 @@ class _CubicWebRequestBase(RequestSessionBase):
             eids = form['eid']
         except KeyError:
             raise NothingToEdit(self._('no selected entities'))
-        if isinstance(eids, string_types):
+        if isinstance(eids, str):
             eids = (eids,)
         for peid in eids:
             if withtype:
@@ -472,12 +454,6 @@ class _CubicWebRequestBase(RequestSessionBase):
         Give maxage = None to have a "session" cookie expiring when the
         client close its browser
         """
-        if isinstance(name, SimpleCookie):
-            warn('[3.13] set_cookie now takes name and value as two first '
-                 'argument, not anymore cookie object and name',
-                 DeprecationWarning, stacklevel=2)
-            secure = name[value]['secure']
-            name, value = value, name[value].value
         if maxage: # don't check is None, 0 may be specified
             assert expires is None, 'both max age and expires cant be specified'
             expires = maxage + time.time()
@@ -494,12 +470,8 @@ class _CubicWebRequestBase(RequestSessionBase):
                         expires=expires, secure=secure, httponly=httponly)
         self.headers_out.addHeader('Set-cookie', cookie)
 
-    def remove_cookie(self, name, bwcompat=None):
+    def remove_cookie(self, name):
         """remove a cookie by expiring it"""
-        if bwcompat is not None:
-            warn('[3.13] remove_cookie now take only a name as argument',
-                 DeprecationWarning, stacklevel=2)
-            name = bwcompat
         self.set_cookie(name, '', maxage=0, expires=date(2000, 1, 1))
 
     def set_content_type(self, content_type, filename=None, encoding=None,
@@ -545,7 +517,7 @@ class _CubicWebRequestBase(RequestSessionBase):
         :param localfile: if True, the default data dir prefix is added to the
                           JS filename
         """
-        if isinstance(jsfiles, string_types):
+        if isinstance(jsfiles, str):
             jsfiles = (jsfiles,)
         for jsfile in jsfiles:
             if localfile:
@@ -565,7 +537,7 @@ class _CubicWebRequestBase(RequestSessionBase):
                        the css inclusion. cf:
                        http://msdn.microsoft.com/en-us/library/ms537512(VS.85).aspx
         """
-        if isinstance(cssfiles, string_types):
+        if isinstance(cssfiles, str):
             cssfiles = (cssfiles,)
         if ieonly:
             if self.ie_browser():
@@ -635,7 +607,7 @@ class _CubicWebRequestBase(RequestSessionBase):
         lang_prefix = ''
         if self.lang is not None and self.vreg.config.get('language-mode') == 'url-prefix':
             lang_prefix = '%s/' % self.lang
-        return lang_prefix + path
+        return lang_prefix + str(path)
 
     def url(self, includeparams=True):
         """return currently accessed url"""
@@ -688,22 +660,13 @@ class _CubicWebRequestBase(RequestSessionBase):
             # overwrite headers_out to forge a brand new not-modified response
             self.headers_out = self._forge_cached_headers()
             if self.http_method() in ('HEAD', 'GET'):
-                self.status_out = http_client.NOT_MODIFIED
+                self.status_out = http.client.NOT_MODIFIED
             else:
-                self.status_out = http_client.PRECONDITION_FAILED
+                self.status_out = http.client.PRECONDITION_FAILED
             # XXX replace by True once validate_cache bw compat method is dropped
             return self.status_out
         # XXX replace by False once validate_cache bw compat method is dropped
         return None
-
-    @deprecated('[3.18] use .is_client_cache_valid() method instead')
-    def validate_cache(self):
-        """raise a `StatusResponse` exception if a cached page along the way
-        exists and is still usable.
-        """
-        status_code = self.is_client_cache_valid()
-        if status_code is not None:
-            raise StatusResponse(status_code)
 
     # abstract methods to override according to the web front-end #############
 
@@ -812,26 +775,13 @@ class _CubicWebRequestBase(RequestSessionBase):
         values = _parse_accept_header(accepteds, value_parser, value_sort_key)
         return (raw_value for (raw_value, parsed_value, score) in values)
 
-    @deprecated('[3.17] demote_to_html is deprecated as we always serve html')
-    def demote_to_html(self):
-        """helper method to dynamically set request content type to text/html
-
-        The global doctype and xmldec must also be changed otherwise the browser
-        will display '<[' at the beginning of the page
-        """
-        pass
-
-
     # xml doctype #############################################################
 
-    def set_doctype(self, doctype, reset_xmldecl=None):
+    def set_doctype(self, doctype):
         """helper method to dynamically change page doctype
 
         :param doctype: the new doctype, e.g. '<!DOCTYPE html>'
         """
-        if reset_xmldecl is not None:
-            warn('[3.17] reset_xmldecl is deprecated as we only serve html',
-                 DeprecationWarning, stacklevel=2)
         self.main_stream.set_doctype(doctype)
 
     # page data management ####################################################
@@ -877,16 +827,6 @@ class _CubicWebRequestBase(RequestSessionBase):
     def ie_browser(self):
         useragent = self.useragent()
         return useragent and 'MSIE' in useragent
-
-    @deprecated('[3.17] xhtml_browser is deprecated (xhtml is no longer served)')
-    def xhtml_browser(self):
-        """return True if the browser is considered as xhtml compatible.
-
-        If the instance is configured to always return text/html and not
-        application/xhtml+xml, this method will always return False, even though
-        this is semantically different
-        """
-        return False
 
     def html_content_type(self):
         return 'text/html'

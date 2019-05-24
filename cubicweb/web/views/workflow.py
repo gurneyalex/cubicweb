@@ -24,12 +24,7 @@
 
 from cubicweb import _
 
-import os
-
-from six import add_metaclass, text_type
-
 from logilab.mtconverter import xml_escape
-from logilab.common.deprecation import class_deprecated
 
 from cubicweb import Unauthorized
 from cubicweb.predicates import (one_line_rset,
@@ -38,7 +33,6 @@ from cubicweb.predicates import (one_line_rset,
 from cubicweb.view import EntityView
 from cubicweb.web import stdmsgs, action, component, form
 from cubicweb.web import formwidgets as fwdgs
-from cubicweb.web.views import TmpFileViewMixin
 from cubicweb.web.views import uicfg, forms, ibreadcrumbs
 from cubicweb.web.views.tabs import TabbedPrimaryView, PrimaryTab
 from cubicweb.web.views.dotgraphview import DotGraphView, DotPropsHandler
@@ -313,7 +307,7 @@ def _wf_items_for_relation(req, wfeid, wfrelation, field):
     wf = req.entity_from_eid(wfeid)
     rschema = req.vreg.schema[field.name]
     param = 'toeid' if field.role == 'subject' else 'fromeid'
-    return sorted((e.view('combobox'), text_type(e.eid))
+    return sorted((e.view('combobox'), str(e.eid))
                   for e in getattr(wf, 'reverse_%s' % wfrelation)
                   if rschema.has_perm(req, 'add', **{param: e.eid}))
 
@@ -444,24 +438,3 @@ class WorkflowGraphView(DotGraphView):
 
     def build_dotpropshandler(self):
         return WorkflowDotPropsHandler(self._cw)
-
-
-@add_metaclass(class_deprecated)
-class TmpPngView(TmpFileViewMixin, EntityView):
-    __deprecation_warning__ = '[3.18] %(cls)s is deprecated'
-    __regid__ = 'tmppng'
-    __select__ = match_form_params('tmpfile')
-    content_type = 'image/png'
-    binary = True
-
-    def cell_call(self, row=0, col=0):
-        key = self._cw.form['tmpfile']
-        if key not in self._cw.session.data:
-            # the temp file is gone and there's nothing
-            # we can do about it
-            # we should probably write it to some well
-            # behaved place and serve it
-            return
-        tmpfile = self._cw.session.data.pop(key)
-        self.w(open(tmpfile, 'rb').read())
-        os.unlink(tmpfile)

@@ -19,7 +19,7 @@ following schema.
        age = Int(required=True)
 
 We would like to add a range constraint over a person's age. Let's write an hook
-(supposing yams can not handle this nativly, which is wrong). It shall be placed
+(supposing yams can not handle this natively, which is wrong). It shall be placed
 into `mycube/hooks.py`. If this file were to grow too much, we can easily have a
 `mycube/hooks/... package` containing hooks in various modules.
 
@@ -44,7 +44,7 @@ into `mycube/hooks.py`. If this file were to grow too much, we can easily have a
 In our example the base `__select__` is augmented with an `is_instance` selector
 matching the desired entity type.
 
-The `events` tuple is used specify that our hook should be called before the
+The `events` tuple is used to specify that our hook should be called before the
 entity is added or updated.
 
 Then in the hook's `__call__` method, we:
@@ -53,7 +53,7 @@ Then in the hook's `__call__` method, we:
 * if so, check the value is in the range
 * if not, raise a validation error properly
 
-Now Let's augment our schema with new `Company` entity type with some relation to
+Now let's augment our schema with a new `Company` entity type with some relation to
 `Person` (in 'mycube/schema.py').
 
 .. sourcecode:: python
@@ -99,7 +99,7 @@ be set at commit time.
 
     from cubicweb.server.hook import Hook, DataOperationMixIn, Operation, match_rtype
 
-    def check_cycle(self, session, eid, rtype, role='subject'):
+    def check_cycle(session, eid, rtype, role='subject'):
         parents = set([eid])
         parent = session.entity_from_eid(eid)
         while parent.related(rtype, role):
@@ -135,8 +135,6 @@ alternative method to schedule an operation from a hook, using the
 
 .. sourcecode:: python
 
-   from cubicweb.server.hook import set_operation
-
    class CheckSubsidiaryCycleHook(Hook):
        __regid__ = 'check_no_subsidiary_cycle'
        events = ('after_add_relation',)
@@ -152,11 +150,11 @@ alternative method to schedule an operation from a hook, using the
                check_cycle(self.session, eid, self.rtype)
 
 
-Here, we call :func:`set_operation` so that we will simply accumulate eids of
+Here, we call :func:`add_data` so that we will simply accumulate eids of
 entities to check at the end in a single `CheckSubsidiaryCycleOp`
-operation. Value are stored in a set associated to the
-'subsidiary_cycle_detection' transaction data key. The set initialization and
-operation creation are handled nicely by :func:`set_operation`.
+operation. Values are stored in a set associated to the
+'check_no_subsidiary_cycle' transaction data key. The set initialization and
+operation creation are handled nicely by :func:`add_data`.
 
 A more realistic example can be found in the advanced tutorial chapter
 :ref:`adv_tuto_security_propagation`.
