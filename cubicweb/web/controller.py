@@ -17,13 +17,8 @@
 # with CubicWeb.  If not, see <http://www.gnu.org/licenses/>.
 """abstract controller classe for CubicWeb web client"""
 
-
-
-from six import PY2
-
 from logilab.mtconverter import xml_escape
 from logilab.common.registry import yes
-from logilab.common.deprecation import deprecated
 
 from cubicweb.appobject import AppObject
 from cubicweb.mail import format_mail
@@ -89,8 +84,6 @@ class Controller(AppObject):
         rql = req.form.get('rql')
         if rql:
             req.ensure_ro_rql(rql)
-            if PY2 and not isinstance(rql, unicode):
-                rql = unicode(rql, req.encoding)
             pp = req.vreg['components'].select_or_none('magicsearch', req)
             if pp is not None:
                 return pp.process_query(rql)
@@ -105,12 +98,6 @@ class Controller(AppObject):
         #       relation) that might not be satisfied yet (in case of creations)
         if not self._edited_entity:
             self._edited_entity = entity
-
-    @deprecated('[3.18] call view.set_http_cache_headers then '
-                '.is_client_cache_valid() method and return instead')
-    def validate_cache(self, view):
-        view.set_http_cache_headers()
-        self._cw.validate_cache()
 
     def sendmail(self, recipient, subject, body):
         senderemail = self._cw.user.cw_adapt_to('IEmailable').get_email()

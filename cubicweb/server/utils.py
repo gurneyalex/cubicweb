@@ -16,23 +16,14 @@
 # You should have received a copy of the GNU Lesser General Public License along
 # with CubicWeb.  If not, see <http://www.gnu.org/licenses/>.
 """Some utilities for the CubicWeb server."""
-from __future__ import print_function
-
 
 from functools import wraps
-import sched
-import sys
 import logging
 from threading import Thread
 from getpass import getpass
 
-from six import PY2, text_type
-from six.moves import input
-
 from passlib.utils import handlers as uh, to_hash_str
 from passlib.context import CryptContext
-
-from logilab.common.deprecation import deprecated
 
 from cubicweb.md5crypt import crypt as md5crypt
 
@@ -60,9 +51,7 @@ class CustomMD5Crypt(uh.HasSalt, uh.GenericHandler):
 
 _CRYPTO_CTX = CryptContext(['sha512_crypt', CustomMD5Crypt, 'des_crypt', 'ldap_salted_sha1'],
                            deprecated=['cubicwebmd5crypt', 'des_crypt'])
-# for bw compat with passlib < 1.7
-if not hasattr(_CRYPTO_CTX, 'hash'):
-    _CRYPTO_CTX.hash = _CRYPTO_CTX.encrypt
+
 verify_and_update = _CRYPTO_CTX.verify_and_update
 
 
@@ -83,17 +72,6 @@ def crypt_password(passwd, salt=None):
     return b''
 
 
-@deprecated('[3.22] no more necessary, directly get eschema.eid')
-def eschema_eid(cnx, eschema):
-    """get eid of the CWEType entity for the given yams type.
-
-    This used to be necessary because when the schema has been loaded from the
-    file-system, not from the database, (e.g. during tests), eschema.eid was
-    not set.
-    """
-    return eschema.eid
-
-
 DEFAULT_MSG = 'we need a manager connection on the repository \
 (the server doesn\'t have to run, even should better not)'
 
@@ -105,8 +83,6 @@ def manager_userpasswd(user=None, msg=DEFAULT_MSG, confirm=False,
             print(msg)
         while not user:
             user = input('login: ')
-        if PY2:
-            user = text_type(user, sys.stdin.encoding)
     passwd = getpass('%s: ' % passwdmsg)
     if confirm:
         while True:
@@ -117,22 +93,6 @@ def manager_userpasswd(user=None, msg=DEFAULT_MSG, confirm=False,
             passwd = getpass('password: ')
     # XXX decode password using stdin encoding then encode it using appl'encoding
     return user, passwd
-
-
-if PY2:
-    import time  # noqa
-
-    class scheduler(sched.scheduler):
-        """Python2 version of sched.scheduler that matches Python3 API."""
-
-        def __init__(self, **kwargs):
-            kwargs.setdefault('timefunc', time.time)
-            kwargs.setdefault('delayfunc', time.sleep)
-            # sched.scheduler is an old-style class.
-            sched.scheduler.__init__(self, **kwargs)
-
-else:
-    scheduler = sched.scheduler
 
 
 def schedule_periodic_task(scheduler, interval, func, *args):

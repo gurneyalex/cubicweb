@@ -19,15 +19,11 @@
 
 
 import contextlib
-from functools import wraps
+import http.client as http_client
 import json
 import sys
 from time import clock, time
 from contextlib import contextmanager
-from warnings import warn
-
-from six import PY2, text_type, binary_type
-from six.moves import http_client
 
 from rql import BadRQLQuery
 
@@ -38,40 +34,12 @@ from cubicweb import (
 from cubicweb.repoapi import anonymous_cnx
 from cubicweb.web import cors
 from cubicweb.web import (
-    LOGGER, StatusResponse, DirectResponse, Redirect, NotFound, LogOut,
+    LOGGER, DirectResponse, Redirect, NotFound, LogOut,
     RemoteCallFailed, InvalidSession, RequestError, PublishException)
-from cubicweb.web.request import CubicWebRequestBase
 
 # make session manager available through a global variable so the debug view can
 # print information about web session
 SESSION_MANAGER = None
-
-
-def _deprecated_path_arg(func):
-    @wraps(func)
-    def wrapper(self, req, *args, **kwargs):
-        if args or 'path' in kwargs:
-            func_name = func.func_name if PY2 else func.__name__
-            warn('[3.24] path argument got removed from "%s" parameters' % func_name,
-                 DeprecationWarning)
-            path = args[0] if args else kwargs['path']
-            assert path == req.relative_path(False), \
-                'mismatching path, {0} vs {1}'.format(path, req.relative_path(False))
-        return func(self, req)
-    return wrapper
-
-
-def _deprecated_req_path_swapped(func):
-    @wraps(func)
-    def wrapper(self, req, *args, **kwargs):
-        if not isinstance(req, CubicWebRequestBase):
-            warn('[3.15] Application entry point arguments are now (req, path) '
-                 'not (path, req)', DeprecationWarning, 2)
-            path = req
-            req = args[0] if args else kwargs.pop('req')
-            args = (path, ) + args[1:]
-        return func(self, req, *args, **kwargs)
-    return wrapper
 
 
 @contextmanager
@@ -227,7 +195,6 @@ class CubicWebPublisher(object):
 
     # publish methods #########################################################
 
-    @_deprecated_path_arg
     def log_handle_request(self, req):
         """wrapper around _publish to log all queries executed for a given
         accessed path
@@ -273,8 +240,6 @@ class CubicWebPublisher(object):
                     except Exception:
                         self.exception('error while logging queries')
 
-    @_deprecated_req_path_swapped
-    @_deprecated_path_arg
     def main_handle_request(self, req):
         """Process an HTTP request `req`
 
@@ -349,10 +314,9 @@ class CubicWebPublisher(object):
             # XXX ensure we don't actually serve content
             if not content:
                 content = self.need_login_content(req)
-        assert isinstance(content, binary_type)
+        assert isinstance(content, bytes)
         return content
 
-    @_deprecated_path_arg
     def core_handle(self, req):
         """method called by the main publisher to process <req> relative path
 
@@ -390,11 +354,6 @@ class CubicWebPublisher(object):
                 # Return directly an empty 200
                 req.status_out = 200
                 result = b''
-            except StatusResponse as ex:
-                warn('[3.16] StatusResponse is deprecated use req.status_out',
-                     DeprecationWarning, stacklevel=2)
-                result = ex.content
-                req.status_out = ex.status
             except Redirect as ex:
                 # Redirect may be raised by edit controller when everything went
                 # fine, so attempt to commit
@@ -520,7 +479,7 @@ class CubicWebPublisher(object):
         if req.status_out < 400:
             # don't overwrite it if it's already set
             req.status_out = status
-        json_dumper = getattr(ex, 'dumps', lambda: json.dumps({'reason': text_type(ex)}))
+        json_dumper = getattr(ex, 'dumps', lambda: json.dumps({'reason': str(ex)}))
         return json_dumper().encode('utf-8')
 
     # special case handling

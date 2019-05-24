@@ -17,8 +17,6 @@
 # with CubicWeb.  If not, see <http://www.gnu.org/licenses/>.
 """Test tools for cubicweb"""
 
-from __future__ import print_function
-
 import os
 import sys
 import errno
@@ -31,18 +29,16 @@ import getpass
 from hashlib import sha1  # pylint: disable=E0611
 from os.path import abspath, join, exists, split, isdir, dirname
 from functools import partial
+import pickle
 
-from six import text_type
-from six.moves import cPickle as pickle
+import filelock
 
 from logilab.common.decorators import cached, clear_cache
 
 from cubicweb import ExecutionError
 from cubicweb import schema, cwconfig
 from cubicweb.server.serverconfig import ServerConfiguration
-from cubicweb.etwist.twconfig import WebConfigurationBase
-
-cwconfig.CubicWebConfiguration.cls_adjust_sys_path()
+from cubicweb.web.webconfig import WebConfigurationBase
 
 # db auto-population configuration #############################################
 
@@ -94,7 +90,7 @@ DEFAULT_SOURCES = {
 DEFAULT_PSQL_SOURCES = DEFAULT_SOURCES.copy()
 DEFAULT_PSQL_SOURCES['system'] = DEFAULT_SOURCES['system'].copy()
 DEFAULT_PSQL_SOURCES['system']['db-driver'] = 'postgres'
-DEFAULT_PSQL_SOURCES['system']['db-user'] = text_type(getpass.getuser())
+DEFAULT_PSQL_SOURCES['system']['db-user'] = getpass.getuser()
 DEFAULT_PSQL_SOURCES['system']['db-password'] = None
 # insert a dumb value as db-host to avoid unexpected connection to local server
 DEFAULT_PSQL_SOURCES['system']['db-host'] = 'REPLACEME'
@@ -396,7 +392,7 @@ class TestDataBaseHandler(object):
         from cubicweb.repoapi import connect
         repo = self.get_repo()
         sources = self.config.read_sources_file()
-        login = text_type(sources['admin']['login'])
+        login = sources['admin']['login']
         password = sources['admin']['password'] or 'xxx'
         cnx = connect(repo, login, password=password)
         return cnx
@@ -427,11 +423,12 @@ class TestDataBaseHandler(object):
         raise ValueError('no initialization function for driver %r' % self.DRIVER)
 
     def has_cache(self, db_id):
-        """Check if a given database id exist in cb cache for the current config"""
-        cache_glob = self.absolute_backup_file('*', '*')
-        if cache_glob not in self.explored_glob:
-            self.discover_cached_db()
-        return self.db_cache_key(db_id) in self.db_cache
+        """Check if a given database id exist in db cache for the current config"""
+        key = self.db_cache_key(db_id)
+        if key in self.db_cache:
+            return True
+        self.discover_cached_db()
+        return key in self.db_cache
 
     def discover_cached_db(self):
         """Search available db_if for the current config"""
@@ -469,20 +466,23 @@ class TestDataBaseHandler(object):
         ``pre_setup_func`` to setup the database.
 
         This function backup any database it build"""
-        if self.has_cache(test_db_id):
-            return  # test_db_id, 'already in cache'
-        if test_db_id is DEFAULT_EMPTY_DB_ID:
-            self.init_test_database()
-        else:
-            print('Building %s for database %s' % (test_db_id, self.dbname))
-            self.build_db_cache(DEFAULT_EMPTY_DB_ID)
-            self.restore_database(DEFAULT_EMPTY_DB_ID)
-            self.get_repo(startup=True)
-            cnx = self.get_cnx()
-            with cnx:
-                pre_setup_func(cnx, self.config)
-                cnx.commit()
-        self.backup_database(test_db_id)
+        lockfile = join(self._ensure_test_backup_db_dir(),
+                        '{}.lock'.format(test_db_id))
+        with filelock.FileLock(lockfile):
+            if self.has_cache(test_db_id):
+                return  # test_db_id, 'already in cache'
+            if test_db_id is DEFAULT_EMPTY_DB_ID:
+                self.init_test_database()
+            else:
+                print('Building %s for database %s' % (test_db_id, self.dbname))
+                self.build_db_cache(DEFAULT_EMPTY_DB_ID)
+                self.restore_database(DEFAULT_EMPTY_DB_ID)
+                self.get_repo(startup=True)
+                cnx = self.get_cnx()
+                with cnx:
+                    pre_setup_func(cnx, self.config)
+                    cnx.commit()
+            self.backup_database(test_db_id)
 
 
 class NoCreateDropDatabaseHandler(TestDataBaseHandler):

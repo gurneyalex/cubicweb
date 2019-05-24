@@ -50,8 +50,6 @@ recursive-include cubicweb/devtools/test *.py
 recursive-include cubicweb/devtools/test/data *.py *.txt *.js *.po.ref
 recursive-include cubicweb/entities/test *.py
 recursive-include cubicweb/entities/test/data *.py
-recursive-include cubicweb/etwist/test *.py
-recursive-include cubicweb/etwist/test/data *.py
 recursive-include cubicweb/ext/test *.py
 recursive-include cubicweb/ext/test/data *.py
 recursive-include cubicweb/hooks/test *.py
@@ -68,11 +66,14 @@ recursive-include cubicweb/server/test/data-migractions bootstrap_cubes *.py
 recursive-include cubicweb/server/test/data-schemaserial *.py
 include cubicweb/web/test/testutils.js
 recursive-include cubicweb/web/test *.py
+include cubicweb/web/test/data/cubicweb_file/data/file.png
+include cubicweb/web/test/data/cubicweb_file/wdoc/toc.xml
 recursive-include cubicweb/web/test/data bootstrap_cubes pouet.css *.py
 recursive-include cubicweb/web/test/data/static/jstests *.js *.html *.json
 recursive-include cubicweb/wsgi/test *.py
 
 include cubicweb/pyramid/development.ini.tmpl
+include cubicweb/pyramid/pyramid.ini.tmpl
 
 include cubicweb/web/data/jquery-treeview/*.md
 

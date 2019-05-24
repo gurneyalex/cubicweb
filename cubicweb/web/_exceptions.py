@@ -18,9 +18,7 @@
 # with CubicWeb.  If not, see <http://www.gnu.org/licenses/>.
 """exceptions used in the core of the CubicWeb web application"""
 
-
-
-from six.moves import http_client
+import http.client as http_client
 
 from cubicweb._exceptions import *
 from cubicweb.utils import json_dumps
@@ -28,14 +26,17 @@ from cubicweb.utils import json_dumps
 
 class DirectResponse(Exception):
     """Used to supply a twitted HTTP Response directly"""
+
     def __init__(self, response):
         self.response = response
+
 
 class InvalidSession(CubicWebException):
     """raised when a session id is found but associated session is not found or
     invalid"""
 
 # Publish related exception
+
 
 class PublishException(CubicWebException):
     """base class for publishing related exception"""
@@ -44,17 +45,22 @@ class PublishException(CubicWebException):
         self.status = kwargs.pop('status', http_client.OK)
         super(PublishException, self).__init__(*args, **kwargs)
 
+
 class LogOut(PublishException):
     """raised to ask for deauthentication of a logged in user"""
+
     def __init__(self, url=None):
         super(LogOut, self).__init__()
         self.url = url
 
+
 class Redirect(PublishException):
     """raised to redirect the http request"""
+
     def __init__(self, location, status=http_client.SEE_OTHER):
         super(Redirect, self).__init__(status=status)
         self.location = location
+
 
 class StatusResponse(PublishException):
 
@@ -66,6 +72,7 @@ class StatusResponse(PublishException):
         return '%s(%r, %r)' % (self.__class__.__name__, self.status, self.content)
 
 # Publish related error
+
 
 class RequestError(PublishException):
     """raised when a request can't be served because of a bad input"""
@@ -82,12 +89,15 @@ class NothingToEdit(RequestError):
         kwargs.setdefault('status', http_client.BAD_REQUEST)
         super(NothingToEdit, self).__init__(*args, **kwargs)
 
+
 class ProcessFormError(RequestError):
     """raised when posted data can't be processed by the corresponding field
     """
+
     def __init__(self, *args, **kwargs):
         kwargs.setdefault('status', http_client.BAD_REQUEST)
         super(ProcessFormError, self).__init__(*args, **kwargs)
+
 
 class NotFound(RequestError):
     """raised when something was not found. In most case,
@@ -97,9 +107,11 @@ class NotFound(RequestError):
         kwargs.setdefault('status', http_client.NOT_FOUND)
         super(NotFound, self).__init__(*args, **kwargs)
 
+
 class RemoteCallFailed(RequestError):
     """raised when a json remote call fails
     """
+
     def __init__(self, reason='', status=http_client.INTERNAL_SERVER_ERROR):
         super(RemoteCallFailed, self).__init__(reason, status=status)
         self.reason = reason

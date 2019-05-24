@@ -18,75 +18,78 @@
 """Exceptions shared by different cubicweb packages."""
 
 
-
-from warnings import warn
-
-from six import PY2, text_type
-
 from logilab.common.decorators import cachedproperty
+from logilab.common.registry import RegistryException
 
-from yams import ValidationError
+from yams import ValidationError  # noqa: F401
 
 # abstract exceptions #########################################################
+
 
 class CubicWebException(Exception):
     """base class for cubicweb server exception"""
     msg = ""
-    def __unicode__(self):
+
+    def __str__(self):
         if self.msg:
             if self.args:
                 return self.msg % tuple(self.args)
             else:
                 return self.msg
         else:
-            return u' '.join(text_type(arg) for arg in self.args)
-
-    def __str__(self):
-        res = self.__unicode__()
-        if PY2:
-            res = res.encode('utf-8')
-        return res
+            return u' '.join(str(arg) for arg in self.args)
 
 
 class ConfigurationError(CubicWebException):
     """a misconfiguration error"""
 
+
 class InternalError(CubicWebException):
     """base class for exceptions which should not occur"""
+
 
 class SecurityError(CubicWebException):
     """base class for cubicweb server security exceptions"""
 
+
 class RepositoryError(CubicWebException):
     """base class for repository exceptions"""
 
+
 class SourceException(CubicWebException):
     """base class for source exceptions"""
+
 
 class CubicWebRuntimeError(CubicWebException):
     """base class for runtime exceptions"""
 
 # repository exceptions #######################################################
 
+
 class ConnectionError(RepositoryError):
     """raised when a bad connection id is given or when an attempt to establish
     a connection failed
     """
+
 
 class AuthenticationError(ConnectionError):
     """raised when an attempt to establish a connection failed due to wrong
     connection information (login / password or other authentication token)
     """
 
+
 class BadConnectionId(ConnectionError):
     """raised when a bad connection id is given"""
+
 
 class UnknownEid(RepositoryError):
     """the eid is not defined in the system tables"""
     msg = 'No entity with eid %s in the repository'
 
+
 class UniqueTogetherError(RepositoryError):
     """raised when a unique_together constraint caused an IntegrityError"""
+
     def __init__(self, session, **kwargs):
         self.session = session
         assert 'rtypes' in kwargs or 'cstrname' in kwargs
@@ -98,23 +101,20 @@ class UniqueTogetherError(RepositoryError):
     def rtypes(self):
         if 'rtypes' in self.kwargs:
             return self.kwargs['rtypes']
-        cstrname = text_type(self.kwargs['cstrname'])
+        cstrname = str(self.kwargs['cstrname'])
         cstr = self.session.find('CWUniqueTogetherConstraint', name=cstrname).one()
         return sorted(rtype.name for rtype in cstr.relations)
 
-    @cachedproperty
-    def args(self):
-        warn('[3.18] UniqueTogetherError.args is deprecated, just use '
-             'the .rtypes accessor.',
-             DeprecationWarning)
-        # the first argument, etype, is never used and was never garanteed anyway
-        return None, self.rtypes
-
 
 class ViolatedConstraint(RepositoryError):
-    def __init__(self, cnx, cstrname):
+    def __init__(self, cnx, cstrname, query):
         self.cnx = cnx
         self.cstrname = cstrname
+        message = (
+            "constraint '%s' is being violated by the query '%s'. "
+            "You can run the inverted constraint on the database to list the problematic rows."
+        ) % (cstrname, query)
+        super(ViolatedConstraint, self).__init__(message)
 
 
 # security exceptions #########################################################
@@ -127,7 +127,7 @@ class Unauthorized(SecurityError):
     msg1 = u'You are not allowed to perform %s operation on %s'
     var = None
 
-    def __unicode__(self):
+    def __str__(self):
         try:
             if self.args and len(self.args) == 2:
                 return self.msg1 % self.args
@@ -135,13 +135,15 @@ class Unauthorized(SecurityError):
                 return u' '.join(self.args)
             return self.msg
         except Exception as ex:
-            return text_type(ex)
+            return str(ex)
+
 
 class Forbidden(SecurityError):
     """raised when a user tries to perform a forbidden action
     """
 
 # source exceptions ###########################################################
+
 
 class EidNotInSource(SourceException):
     """trying to access an object with a particular eid from a particular
@@ -152,30 +154,32 @@ class EidNotInSource(SourceException):
 
 # registry exceptions #########################################################
 
-# pre 3.15 bw compat
-from logilab.common.registry import RegistryException, ObjectNotFound, NoSelectableObject
-
 class UnknownProperty(RegistryException):
     """property found in database but unknown in registry"""
 
 # query exception #############################################################
 
+
 class QueryError(CubicWebRuntimeError):
     """a query try to do something it shouldn't"""
+
 
 class NotAnEntity(CubicWebRuntimeError):
     """raised when get_entity is called for a column which doesn't contain
     a non final entity
     """
 
+
 class MultipleResultsError(CubicWebRuntimeError):
     """raised when ResultSet.one() is called on a resultset with multiple rows
     of multiple columns.
     """
 
+
 class NoResultError(CubicWebRuntimeError):
     """raised when no result is found but at least one is expected.
     """
+
 
 class UndoTransactionException(QueryError):
     """Raised when undoing a transaction could not be performed completely.
@@ -208,8 +212,10 @@ class UndoTransactionException(QueryError):
 
 # tools exceptions ############################################################
 
+
 class ExecutionError(Exception):
     """server execution control error (already started, not running...)"""
 
+
 # pylint: disable=W0611
-from logilab.common.clcommands import BadCommandUsage
+from logilab.common.clcommands import BadCommandUsage  # noqa: E402, F401

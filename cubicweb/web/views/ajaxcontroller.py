@@ -61,17 +61,11 @@ implement the ``__call__`` method:
 
 """
 
-
-
-from warnings import warn
+import http.client as http_client
 from functools import partial
-
-from six import PY2, text_type
-from six.moves import http_client
 
 from logilab.common.date import strptime
 from logilab.common.registry import yes
-from logilab.common.deprecation import deprecated
 
 from cubicweb import ObjectNotFound, NoSelectableObject, ValidationError
 from cubicweb.appobject import AppObject
@@ -119,23 +113,11 @@ class AjaxController(Controller):
         except KeyError:
             raise RemoteCallFailed('no method specified',
                                    status=http_client.BAD_REQUEST)
-        # 1/ check first for old-style (JSonController) ajax func for bw compat
         try:
-            func = getattr(basecontrollers.JSonController, 'js_%s' % fname)
-            if PY2:
-                func = func.__func__
-            func = partial(func, self)
-        except AttributeError:
-            # 2/ check for new-style (AjaxController) ajax func
-            try:
-                func = self._cw.vreg['ajax-func'].select(fname, self._cw)
-            except ObjectNotFound:
-                raise RemoteCallFailed('no %s method' % fname,
-                                       status=http_client.BAD_REQUEST)
-        else:
-            warn('[3.15] remote function %s found on JSonController, '
-                 'use AjaxFunction / @ajaxfunc instead' % fname,
-                 DeprecationWarning, stacklevel=2)
+            func = self._cw.vreg['ajax-func'].select(fname, self._cw)
+        except ObjectNotFound:
+            raise RemoteCallFailed('no %s method' % fname,
+                                   status=http_client.BAD_REQUEST)
         debug_mode = self._cw.vreg.config.debugmode
         # no <arg> attribute means the callback takes no argument
         args = self._cw.form.get('arg', ())
@@ -165,7 +147,7 @@ class AjaxController(Controller):
         if result is None:
             return b''
         # get unicode on @htmlize methods, encoded string on @jsonize methods
-        elif isinstance(result, text_type):
+        elif isinstance(result, str):
             return result.encode(self._cw.encoding)
         return result
 
@@ -443,16 +425,6 @@ def external_resource(self, resource):
 def unload_page_data(self):
     """remove user's session data associated to current pageid"""
     self._cw.session.data.pop(self._cw.pageid, None)
-
-@ajaxfunc(output_type='json')
-@deprecated("[3.13] use jQuery.cookie(cookiename, cookievalue, {path: '/'}) in js land instead")
-def set_cookie(self, cookiename, cookievalue):
-    """generates the Set-Cookie HTTP reponse header corresponding
-    to `cookiename` / `cookievalue`.
-    """
-    cookiename, cookievalue = str(cookiename), str(cookievalue)
-    self._cw.set_cookie(cookiename, cookievalue)
-
 
 
 @ajaxfunc

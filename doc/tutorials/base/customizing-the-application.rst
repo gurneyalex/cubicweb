@@ -26,20 +26,8 @@ cube::
 
   cubicweb-ctl newcube myblog
 
-This will create in the cubes directory (:file:`/path/to/grshell/cubes` for source
-installation, :file:`/usr/share/cubicweb/cubes` for Debian packages installation)
-a directory named :file:`blog` reflecting the structure described in
-:ref:`cubelayout`.
-
-For packages installation, you can still create new cubes in your home directory
-using the following configuration. Let's say you want to develop your new cubes
-in `~src/cubes`, then set the following environment variables: ::
-
-  CW_CUBES_PATH=~/src/cubes
-
-and then create your new cube using: ::
-
-  cubicweb-ctl newcube --directory=~/src/cubes myblog
+This will create a a directory named :file:`cubicweb-myblog` reflecting the
+structure described in :ref:`cubelayout`.
 
 .. Note::
 
@@ -58,7 +46,7 @@ file:
 
 .. sourcecode:: python
 
-   __depends__ =  {'cubicweb': '>= 3.10.7',
+   __depends__ =  {'cubicweb': '>= 3.24.0',
                    'cubicweb-blog': None}
 
 where the ``None`` means we do not depends on a particular version of the cube.
@@ -136,7 +124,7 @@ One easy way, as we've no really valuable data in the instance would be to trash
   cubicweb-ctl stop myblog # or Ctrl-C in the terminal running the server in debug mode
   cubicweb-ctl delete myblog
   cubicweb-ctl create myblog myblog
-  cubicweb-ctl start -D myblog
+  cubicweb-ctl pyramid -D myblog
 
 Another way is to add our cube to the instance using the cubicweb-ctl shell
 facility. It's a python shell connected to the instance with some special
@@ -151,7 +139,7 @@ in the `add_cube` command: ::
   type "exit" or Ctrl-D to quit the shell and resume operation
   >>> add_cube('myblog')
   >>>
-  $ cubicweb-ctl start -D myblog
+  $ cubicweb-ctl pyramid -D myblog
 
 The `add_cube` command is enough since it automatically updates our
 application to the cube's schema. There are plenty of other migration
@@ -225,7 +213,7 @@ we'll have to use dedicated `cubicweb-ctl` commands:
   cubicweb-ctl i18ncube myblog # build/update cube's message catalogs
   # then add translation into .po file into the cube's i18n directory
   cubicweb-ctl i18ninstance myblog # recompile instance's message catalogs
-  cubicweb-ctl restart -D myblog # instance has to be restarted to consider new catalogs
+  # instance has to be restarted to consider new catalogs
 
 You'll then be able to redefine each of them according to your needs and
 preferences. So let's see how to do such thing.

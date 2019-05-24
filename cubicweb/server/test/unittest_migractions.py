@@ -22,6 +22,7 @@ import os.path as osp
 import sys
 from datetime import date
 from contextlib import contextmanager
+from tempfile import TemporaryDirectory
 
 from logilab.common import tempattr
 
@@ -30,7 +31,8 @@ from yams.constraints import UniqueConstraint
 from cubicweb import (ConfigurationError, ValidationError,
                       ExecutionError, Binary)
 from cubicweb.devtools import startpgcluster, stoppgcluster
-from cubicweb.devtools.testlib import CubicWebTC, TemporaryDirectory
+from cubicweb.devtools.testlib import CubicWebTC
+from cubicweb.schema import constraint_name_for
 from cubicweb.server.sqlutils import SQL_PREFIX
 from cubicweb.server.migractions import ServerMigrationHelper
 from cubicweb.server.sources import storages
@@ -59,8 +61,6 @@ def tearDownModule(*args):
 
 class MigrationConfig(cubicweb.devtools.TestServerConfiguration):
     default_sources = cubicweb.devtools.DEFAULT_PSQL_SOURCES
-    CUBES_PATH = cubicweb.devtools.TestServerConfiguration.CUBES_PATH + [
-        osp.join(HERE, 'data-migractions', 'cubes')]
 
 
 class MigrationTC(CubicWebTC):
@@ -93,10 +93,6 @@ class MigrationTC(CubicWebTC):
         with temp_app(self.config, appid, apphome) as config:
             global migrschema
             migrschema = config.load_schema()
-
-    def setUp(self):
-        self.configcls.cls_adjust_sys_path()
-        super(MigrationTC, self).setUp()
 
     def tearDown(self):
         super(MigrationTC, self).tearDown()
@@ -616,7 +612,7 @@ class MigrationCommandsTC(MigrationTC):
             self.assertEqual(len(constraints), 1, constraints)
             rdef = migrschema['promo'].rdefs['Personne', 'String']
             cstr = rdef.constraint_by_type('StaticVocabularyConstraint')
-            self.assertIn(cstr.name_for(rdef), constraints)
+            self.assertIn(constraint_name_for(cstr, rdef), constraints)
 
     def _erqlexpr_rset(self, cnx, action, ertype):
         rql = 'RQLExpression X WHERE ET is CWEType, ET %s_permission X, ET name %%(name)s' % action
@@ -702,8 +698,8 @@ class MigrationCommandsTC(MigrationTC):
                                  ['Bookmark', 'EmailThread', 'Folder', 'Note'])
                 self.assertEqual(sorted(schema['see_also'].objects()),
                                  ['Bookmark', 'EmailThread', 'Folder', 'Note'])
-                from cubes.fakeemail.__pkginfo__ import version as email_version
-                from cubes.file.__pkginfo__ import version as file_version
+                from cubicweb_fakeemail.__pkginfo__ import version as email_version
+                from cubicweb_file.__pkginfo__ import version as file_version
                 self.assertEqual(
                     cnx.execute('Any V WHERE X value V, X pkey "system.version.fakeemail"')[0][0],
                     email_version)

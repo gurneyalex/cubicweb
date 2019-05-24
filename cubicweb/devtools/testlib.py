@@ -17,21 +17,15 @@
 # with CubicWeb.  If not, see <http://www.gnu.org/licenses/>.
 """Base classes and utilities for cubicweb tests"""
 
-from __future__ import print_function
-
 import sys
 import re
-import warnings
 from os.path import dirname, join, abspath
 from math import log
 from contextlib import contextmanager
 from inspect import isgeneratorfunction
 from itertools import chain
-from warnings import warn
-
-from six import binary_type, text_type, string_types, reraise
-from six.moves import range
-from six.moves.urllib.parse import urlparse, parse_qs, unquote as urlunquote
+from unittest import TestCase
+from urllib.parse import urlparse, parse_qs, unquote as urlunquote
 
 import yams.schema
 
@@ -39,7 +33,7 @@ from logilab.common.testlib import Tags, nocoverage
 from logilab.common.debugger import Debugger
 from logilab.common.umessage import message_from_string
 from logilab.common.decorators import cached, classproperty, clear_cache, iclassmethod
-from logilab.common.deprecation import deprecated, class_deprecated
+from logilab.common.deprecation import class_deprecated
 from logilab.common.shellutils import getlogin
 
 from cubicweb import (ValidationError, NoSelectableObject, AuthenticationError,
@@ -53,22 +47,6 @@ from cubicweb.devtools import SYSTEM_ENTITIES, SYSTEM_RELATIONS, VIEW_VALIDATORS
 from cubicweb.devtools import fake, htmlparser, DEFAULT_EMPTY_DB_ID
 from cubicweb.devtools.fill import insert_entity_queries, make_relations_queries
 from cubicweb.web.views.authentication import Session
-
-if sys.version_info[:2] < (3, 4):
-    from unittest2 import TestCase
-    if not hasattr(TestCase, 'subTest'):
-        raise ImportError('no subTest support in available unittest2')
-    try:
-        from backports.tempfile import TemporaryDirectory  # noqa
-    except ImportError:
-        # backports.tempfile not available
-        TemporaryDirectory = None
-else:
-    from unittest import TestCase
-    from tempfile import TemporaryDirectory  # noqa
-
-# in python 2.7, DeprecationWarning are not shown anymore by default
-warnings.filterwarnings('default', category=DeprecationWarning)
 
 
 # provide a data directory for the test class ##################################
@@ -327,7 +305,6 @@ class CubicWebTC(BaseTestCase):
         """provide a new RepoAccess object for a given user
 
         The access is automatically closed at the end of the test."""
-        login = text_type(login)
         access = RepoAccess(self.repo, login, self.requestcls)
         self._open_access.add(access)
         return access
@@ -348,7 +325,7 @@ class CubicWebTC(BaseTestCase):
         db_handler.restore_database(self.test_db_id)
         self.repo = db_handler.get_repo(startup=True)
         # get an admin session (without actual login)
-        login = text_type(db_handler.config.default_admin_config['login'])
+        login = db_handler.config.default_admin_config['login']
         self.admin_access = self.new_access(login)
 
     # config management ########################################################
@@ -366,7 +343,7 @@ class CubicWebTC(BaseTestCase):
         been properly bootstrapped.
         """
         admincfg = config.default_admin_config
-        cls.admlogin = text_type(admincfg['login'])
+        cls.admlogin = admincfg['login']
         cls.admpassword = admincfg['password']
         # uncomment the line below if you want rql queries to be logged
         # config.global_set_option('query-log-file',
@@ -453,29 +430,19 @@ class CubicWebTC(BaseTestCase):
 
     # user / session management ###############################################
 
-    @deprecated('[3.19] explicitly use RepoAccess object in test instead')
-    def user(self, req=None):
-        """return the application schema"""
-        if req is None:
-            return self.request().user
-        else:
-            return req.user
-
     @iclassmethod  # XXX turn into a class method
     def create_user(self, req, login=None, groups=('users',), password=None,
                     email=None, commit=True, **kwargs):
         """create and return a new user entity"""
         if password is None:
             password = login
-        if login is not None:
-            login = text_type(login)
         user = req.create_entity('CWUser', login=login,
                                  upassword=password, **kwargs)
         req.execute('SET X in_group G WHERE X eid %%(x)s, G name IN(%s)'
                     % ','.join(repr(str(g)) for g in groups),
                     {'x': user.eid})
         if email is not None:
-            req.create_entity('EmailAddress', address=text_type(email),
+            req.create_entity('EmailAddress', address=email,
                               reverse_primary_email=user)
         user.cw_clear_relation_cache('in_group', 'subject')
         if commit:
@@ -530,7 +497,7 @@ class CubicWebTC(BaseTestCase):
         """
         torestore = []
         for erschema, etypeperms in chain(perm_overrides, perm_kwoverrides.items()):
-            if isinstance(erschema, string_types):
+            if isinstance(erschema, str):
                 erschema = self.schema[erschema]
             for action, actionperms in etypeperms.items():
                 origperms = erschema.permissions[action]
@@ -668,15 +635,6 @@ class CubicWebTC(BaseTestCase):
         publisher.error_handler = raise_error_handler
         return publisher
 
-    @deprecated('[3.19] use the .remote_calling method')
-    def remote_call(self, fname, *args):
-        """remote json call simulation"""
-        dump = json.dumps
-        args = [dump(arg) for arg in args]
-        req = self.request(fname=fname, pageid='123', arg=args)
-        ctrl = self.vreg['controllers'].select('ajax', req)
-        return ctrl.publish(), req
-
     @contextmanager
     def remote_calling(self, fname, *args, **kwargs):
         """remote json call simulation"""
@@ -685,18 +643,8 @@ class CubicWebTC(BaseTestCase):
             ctrl = self.vreg['controllers'].select('ajax', req)
             yield ctrl.publish(), req
 
-    def app_handle_request(self, req, path=None):
-        if path is not None:
-            warn('[3.24] path argument got removed from app_handle_request parameters, '
-                 'give it to the request constructor', DeprecationWarning)
-            if req.relative_path(False) != path:
-                req._url = path
+    def app_handle_request(self, req):
         return self.app.core_handle(req)
-
-    @deprecated("[3.15] app_handle_request is the new and better way"
-                " (beware of small semantic changes)")
-    def app_publish(self, *args, **kwargs):
-        return self.app_handle_request(*args, **kwargs)
 
     def ctrl_publish(self, req, ctrl='edit', rset=None):
         """call the publish method of the edit controller"""
@@ -748,20 +696,6 @@ class CubicWebTC(BaseTestCase):
             form['_cw_fields'] = ','.join(sorted(fields))
         return form
 
-    @deprecated('[3.19] use .admin_request_from_url instead')
-    def req_from_url(self, url):
-        """parses `url` and builds the corresponding CW-web request
-
-        req.form will be setup using the url's query string
-        """
-        req = self.request(url=url)
-        if isinstance(url, text_type):
-            url = url.encode(req.encoding)  # req.setup_params() expects encoded strings
-        querystring = urlparse(url)[-2]
-        params = parse_qs(querystring)
-        req.setup_params(params)
-        return req
-
     @contextmanager
     def admin_request_from_url(self, url):
         """parses `url` and builds the corresponding CW-web request
@@ -769,7 +703,7 @@ class CubicWebTC(BaseTestCase):
         req.form will be setup using the url's query string
         """
         with self.admin_access.web_request(url=url) as req:
-            if isinstance(url, text_type):
+            if isinstance(url, str):
                 url = url.encode(req.encoding)  # req.setup_params() expects encoded strings
             querystring = urlparse(url)[-2]
             params = parse_qs(querystring)
@@ -840,11 +774,6 @@ class CubicWebTC(BaseTestCase):
         self.assertTrue(300 <= req.status_out < 400, req.status_out)
         location = req.get_response_header('location')
         return self._parse_location(req, location)
-
-    @deprecated("[3.15] expect_redirect_handle_request is the new and better way"
-                " (beware of small semantic changes)")
-    def expect_redirect_publish(self, *args, **kwargs):
-        return self.expect_redirect_handle_request(*args, **kwargs)
 
     def set_auth_mode(self, authmode, anonuser=None):
         self.set_option('auth-mode', authmode)
@@ -955,7 +884,7 @@ class CubicWebTC(BaseTestCase):
                 msg = '[%s in %s] %s' % (klass, view.__regid__, exc)
             except Exception:
                 msg = '[%s in %s] undisplayable exception' % (klass, view.__regid__)
-            reraise(AssertionError, AssertionError(msg), sys.exc_info()[-1])
+            raise AssertionError(msg).with_traceback(sys.exc_info()[-1])
         return self._check_html(output, view, template)
 
     def get_validator(self, view=None, content_type=None, output=None):
@@ -988,7 +917,7 @@ class CubicWebTC(BaseTestCase):
     def _check_html(self, output, view, template='main-template'):
         """raises an exception if the HTML is invalid"""
         output = output.strip()
-        if isinstance(output, text_type):
+        if isinstance(output, str):
             # XXX
             output = output.encode('utf-8')
         validator = self.get_validator(view, output=output)
@@ -1021,8 +950,8 @@ class CubicWebTC(BaseTestCase):
                 position = getattr(exc, "position", (0,))[0]
                 if position:
                     # define filter
-                    if isinstance(content, binary_type):
-                        content = text_type(content, sys.getdefaultencoding(), 'replace')
+                    if isinstance(content, bytes):
+                        content = str(content, sys.getdefaultencoding(), 'replace')
                     content = validator.preprocess_data(content)
                     content = content.splitlines()
                     width = int(log(len(content), 10)) + 1

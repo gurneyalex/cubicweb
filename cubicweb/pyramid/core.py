@@ -23,7 +23,6 @@
 import itertools
 
 from contextlib import contextmanager
-from warnings import warn
 from cgi import FieldStorage
 
 import rql
@@ -124,11 +123,6 @@ def cw_to_pyramid(request):
         assert 300 <= ex.status < 400
         raise httpexceptions.status_map[ex.status](
             ex.location, headers=cw_headers(request))
-    except cubicweb.web.StatusResponse as ex:
-        warn('[3.16] StatusResponse is deprecated use req.status_out',
-             DeprecationWarning, stacklevel=2)
-        request.body = ex.content
-        request.status_int = ex.status
     except cubicweb.web.Unauthorized:
         raise httpexceptions.HTTPForbidden(
             request.cw_request._(
@@ -177,15 +171,6 @@ class CubicWebPyramidRequest(CubicWebRequestBase):
                 val = (val.filename, val.file)
             if param == '_cwmsgid':
                 self.set_message_id(val)
-            elif param == '__message':
-                warn('[3.13] __message in request parameter is deprecated '
-                     '(may only be given to .build_url). Seeing this message '
-                     'usualy means your application hold some <form> where '
-                     'you should replace use of __message hidden input by '
-                     'form.set_message, so new _cwmsgid mechanism is properly '
-                     'used',
-                     DeprecationWarning)
-                self.set_message(val)
             else:
                 self.form[param] = val
 
@@ -413,12 +398,7 @@ def includeme(config):
 
     cwcfg = config.registry['cubicweb.config']
     for cube in cwcfg.cubes():
-        try:
-            pkgname = 'cubicweb_{}'.format(cube)
-            mod = __import__(pkgname)
-        except ImportError:
-            pkgname = 'cubes.{}'.format(cube)
-            mod = __import__(pkgname)
-            mod = getattr(mod, cube)
+        pkgname = 'cubicweb_{}'.format(cube)
+        mod = __import__(pkgname)
         if hasattr(mod, 'includeme'):
             config.include(pkgname)

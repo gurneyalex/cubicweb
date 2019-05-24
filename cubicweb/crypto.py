@@ -19,8 +19,7 @@
 
 
 from base64 import b64encode, b64decode
-
-from six.moves import cPickle as pickle
+import pickle
 
 from Crypto.Cipher import Blowfish
 
@@ -29,6 +28,8 @@ _CYPHERERS = {}
 
 
 def _cypherer(seed):
+    if isinstance(seed, str):
+        seed = seed.encode('utf-8')
     try:
         return _CYPHERERS[seed]
     except KeyError:
