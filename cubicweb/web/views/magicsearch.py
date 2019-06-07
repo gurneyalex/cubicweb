@@ -23,8 +23,6 @@
 import re
 from logging import getLogger
 
-from six import text_type
-
 from yams.interfaces import IVocabularyConstraint
 
 from rql import RQLSyntaxError, BadRQLQuery, parse
@@ -98,7 +96,7 @@ def translate_rql_tree(rqlst, translations, schema):
 
 def resolve_ambiguities(var_types, ambiguous_nodes, schema):
     """Tries to resolve remaining ambiguities for translation
-    /!\ An ambiguity is when two different string can be localized with
+    /!\\ An ambiguity is when two different string can be localized with
         the same string
     A simple example:
       - 'name' in a company context will be localized as 'nom' in French
@@ -388,7 +386,7 @@ class MagicSearchComponent(Component):
         self.processors = sorted(processors, key=lambda x: x.priority)
 
     def process_query(self, uquery):
-        assert isinstance(uquery, text_type)
+        assert isinstance(uquery, str)
         try:
             procname, query = uquery.split(':', 1)
             proc = self.by_name[procname.strip().lower()]

@@ -63,12 +63,8 @@ above and implement your own class.
 
 from cubicweb import _
 
-from warnings import warn
 from copy import copy
 from types import MethodType
-
-from six import string_types, add_metaclass, create_bound_method
-from six.moves import range
 
 from logilab.mtconverter import xml_escape
 from logilab.common.decorators import cachedproperty
@@ -287,7 +283,7 @@ class TableLayout(component.Component):
         attrs = renderer.attributes.copy()
         if renderer.sortable:
             sortvalue = renderer.sortvalue(rownum)
-            if isinstance(sortvalue, string_types):
+            if isinstance(sortvalue, str):
                 sortvalue = sortvalue[:self.sortvalue_limit]
             if sortvalue is not None:
                 attrs[u'cubicweb:sortvalue'] = js_dumps(sortvalue)
@@ -605,7 +601,7 @@ class RsetTableView(TableMixIn, AnyRsetView):
         return self.__regid__ == 'table'
 
     def call(self, headers=None, displaycols=None, cellvids=None,
-             paginate=None, **kwargs):
+             paginate=None):
         if self.headers:
             self.headers = [h and self._cw._(h) for h in self.headers]
         if (headers or displaycols or cellvids or paginate):
@@ -617,15 +613,7 @@ class RsetTableView(TableMixIn, AnyRsetView):
                 self.cellvids = cellvids
             if paginate is not None:
                 self.paginable = paginate
-        if kwargs:
-            # old table view arguments that we can safely ignore thanks to
-            # selectors
-            if len(kwargs) > 1:
-                msg = '[3.14] %s arguments are deprecated' % ', '.join(kwargs)
-            else:
-                msg = '[3.14] %s argument is deprecated' % ', '.join(kwargs)
-            warn(msg, DeprecationWarning, stacklevel=2)
-        super(RsetTableView, self).call(**kwargs)
+        super(RsetTableView, self).call()
 
     def main_var_index(self):
         """returns the index of the first non-attribute variable among the RQL
@@ -726,7 +714,7 @@ class EntityTableColRenderer(AbstractColumnRenderer):
             for aname, member in[('renderfunc', renderfunc),
                                  ('sortfunc', sortfunc)]:
                 if isinstance(member, MethodType):
-                    member = create_bound_method(member.__func__, acopy)
+                    member = MethodType(member.__func__, acopy)
                 setattr(acopy, aname, member)
             return acopy
         finally:
@@ -921,8 +909,7 @@ class EmptyCellView(AnyRsetView):
 ################################################################################
 
 
-@add_metaclass(class_deprecated)
-class TableView(AnyRsetView):
+class TableView(AnyRsetView, metaclass=class_deprecated):
     """The table view accepts any non-empty rset. It uses introspection on the
     result set to compute column names and the proper way to display the cells.
 
@@ -1187,8 +1174,7 @@ class EditableTableView(TableView):
     title = _('editable-table')
 
 
-@add_metaclass(class_deprecated)
-class CellView(EntityView):
+class CellView(EntityView, metaclass=class_deprecated):
     __deprecation_warning__ = '[3.14] %(cls)s is deprecated'
     __regid__ = 'cell'
     __select__ = nonempty_rset()
@@ -1211,128 +1197,3 @@ class CellView(EntityView):
         else:
             # XXX why do we need a fallback view here?
             self.wview(cellvid or 'final', self.cw_rset, 'null', row=row, col=col)
-
-
-class InitialTableView(TableView):
-    """same display as  table view but consider two rql queries :
-
-    * the default query (ie `rql` form parameter), which is only used to select
-      this view and to build the filter form. This query should have the same
-      structure as the actual without actual restriction (but link to
-      restriction variables) and usually with a limit for efficiency (limit set
-      to 2 is advised)
-
-    * the actual query (`actualrql` form parameter) whose results will be
-      displayed with default restrictions set
-    """
-    __regid__ = 'initialtable'
-    __select__ = nonempty_rset()
-    # should not be displayed in possible view since it expects some specific
-    # parameters
-    title = None
-
-    def call(self, title=None, subvid=None, headers=None, divid=None,
-             paginate=False, displaycols=None, displayactions=None,
-             mainindex=None):
-        """Dumps a table displaying a composite query"""
-        try:
-            actrql = self._cw.form['actualrql']
-        except KeyError:
-            actrql = self.cw_rset.printable_rql()
-        else:
-            self._cw.ensure_ro_rql(actrql)
-        displaycols = self.displaycols(displaycols, headers)
-        if displayactions is None and 'displayactions' in self._cw.form:
-            displayactions = True
-        if divid is None and 'divid' in self._cw.form:
-            divid = self._cw.form['divid']
-        self.w(u'<div class="section">')
-        if not title and 'title' in self._cw.form:
-            # pop title so it's not displayed by the table view as well
-            title = self._cw.form.pop('title')
-        if title:
-            self.w(u'<h2>%s</h2>\n' % title)
-        if mainindex is None:
-            mainindex = self.main_var_index()
-        if mainindex is not None:
-            actions = self.form_filter(divid, displaycols, displayactions,
-                                       displayfilter=True, paginate=paginate,
-                                       hidden=True)
-        else:
-            actions = ()
-        if not subvid and 'subvid' in self._cw.form:
-            subvid = self._cw.form.pop('subvid')
-        self._cw.view('table', self._cw.execute(actrql),
-                      'noresult', w=self.w, displayfilter=False, subvid=subvid,
-                      displayactions=displayactions, displaycols=displaycols,
-                      actions=actions, headers=headers, divid=divid)
-        self.w(u'</div>\n')
-
-
-class EditableInitialTableTableView(InitialTableView):
-    __regid__ = 'editable-initialtable'
-    finalview = 'editable-final'
-
-
-@add_metaclass(class_deprecated)
-class EntityAttributesTableView(EntityView):
-    """This table displays entity attributes in a table and allow to set a
-    specific method to help building cell content for each attribute as well as
-    column header.
-
-    Table will render entity cell by using the appropriate build_COLNAME_cell
-    methods if defined otherwise cell content will be entity.COLNAME.
-
-    Table will render column header using the method header_for_COLNAME if
-    defined otherwise COLNAME will be used.
-    """
-    __deprecation_warning__ = '[3.14] %(cls)s is deprecated'
-    __abstract__ = True
-    columns = ()
-    table_css = "listing"
-    css_files = ()
-
-    def call(self, columns=None):
-        if self.css_files:
-            self._cw.add_css(self.css_files)
-        _ = self._cw._
-        self.columns = columns or self.columns
-        sample = self.cw_rset.get_entity(0, 0)
-        self.w(u'<table class="%s">' % self.table_css)
-        self.table_header(sample)
-        self.w(u'<tbody>')
-        for row in range(self.cw_rset.rowcount):
-            self.cell_call(row=row, col=0)
-        self.w(u'</tbody>')
-        self.w(u'</table>')
-
-    def cell_call(self, row, col):
-        _ = self._cw._
-        entity = self.cw_rset.get_entity(row, col)
-        entity.complete()
-        infos = {}
-        for col in self.columns:
-            meth = getattr(self, 'build_%s_cell' % col, None)
-            # find the build method or try to find matching attribute
-            if meth:
-                content = meth(entity)
-            else:
-                content = entity.printable_value(col)
-            infos[col] = content
-        self.w(u"""<tr onmouseover="$(this).addClass('highlighted');"
-            onmouseout="$(this).removeClass('highlighted')">""")
-        line = u''.join(u'<td>%%(%s)s</td>' % col for col in self.columns)
-        self.w(line % infos)
-        self.w(u'</tr>\n')
-
-    def table_header(self, sample):
-        """builds the table's header"""
-        self.w(u'<thead><tr>')
-        for column in self.columns:
-            meth = getattr(self, 'header_for_%s' % column, None)
-            if meth:
-                colname = meth(sample)
-            else:
-                colname = self._cw._(column)
-            self.w(u'<th>%s</th>' % xml_escape(colname))
-        self.w(u'</tr></thead>\n')

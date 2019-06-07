@@ -53,17 +53,13 @@ to skip those classes...
 from cubicweb import _
 
 from functools import reduce
-from warnings import warn
 from copy import deepcopy
 from datetime import datetime, timedelta
-
-from six import text_type, string_types
 
 from logilab.mtconverter import xml_escape
 from logilab.common.graph import has_path
 from logilab.common.decorators import cached, cachedproperty
 from logilab.common.date import datetime2ticks, ustrftime, ticks2datetime
-from logilab.common.deprecation import deprecated
 from logilab.common.registry import yes
 
 from rql import nodes, utils
@@ -88,12 +84,6 @@ def rtype_facet_title(facet):
 def get_facet(req, facetid, select, filtered_variable):
     return req.vreg['facets'].object_by_id(facetid, req, select=select,
                                            filtered_variable=filtered_variable)
-
-@deprecated('[3.13] filter_hiddens moved to cubicweb.web.views.facets with '
-            'slightly modified prototype')
-def filter_hiddens(w, baserql, **kwargs):
-    from cubicweb.web.views.facets import filter_hiddens
-    return filter_hiddens(w, baserql, wdgs=kwargs.pop('facets'), **kwargs)
 
 
 ## rqlst manipulation functions used by facets ################################
@@ -163,15 +153,6 @@ def prepare_select(select, filtered_variable):
             select.undefine_variable(dvar)
     # global tree config: DISTINCT, LIMIT, OFFSET
     select.set_distinct(True)
-
-@deprecated('[3.13] use init_facets instead')
-def prepare_facets_rqlst(rqlst, args=None):
-    assert len(rqlst.children) == 1, 'FIXME: union not yet supported'
-    select = rqlst.children[0]
-    filtered_variable = get_filtered_variable(select)
-    baserql = select.as_string(args)
-    prepare_select(select, filtered_variable)
-    return filtered_variable, baserql
 
 def prepare_vocabulary_select(select, filtered_variable, rtype, role,
                               select_target_entity=True):
@@ -370,11 +351,6 @@ def _get_var(select, varname, varmap):
         return var
 
 
-_prepare_vocabulary_rqlst = deprecated('[3.13] renamed prepare_vocabulary_select')(
-    prepare_vocabulary_select)
-_cleanup_rqlst = deprecated('[3.13] renamed to cleanup_select')(cleanup_select)
-
-
 ## base facet classes ##########################################################
 
 class AbstractFacet(AppObject):
@@ -478,11 +454,6 @@ class AbstractFacet(AppObject):
     @property
     def wdgclass(self):
         raise NotImplementedError
-
-    @property
-    @deprecated('[3.13] renamed .select')
-    def rqlst(self):
-        return self.select
 
 
 class VocabularyFacet(AbstractFacet):
@@ -672,7 +643,7 @@ class RelationFacet(VocabularyFacet):
                 insert_attr_select_relation(
                     select, self.filtered_variable, self.rtype, self.role,
                     self.target_attr, select_target_entity=False)
-            values = [text_type(x) for x, in self.rqlexec(select.as_string())]
+            values = [str(x) for x, in self.rqlexec(select.as_string())]
         except Exception:
             self.exception('while computing values for %s', self)
             return []
@@ -723,7 +694,7 @@ class RelationFacet(VocabularyFacet):
         if self.i18nable:
             tr = self._cw._
         else:
-            tr = text_type
+            tr = str
         if self.rql_sort:
             values = [(tr(label), eid) for eid, label in rset]
         else:
@@ -743,20 +714,11 @@ class RelationFacet(VocabularyFacet):
 
     # internal utilities #######################################################
 
-    @cached
-    def _support_and_compat(self):
-        support = self.support_and
-        if callable(support):
-            warn('[3.13] %s.support_and is now a property' % self.__class__,
-                 DeprecationWarning)
-            support = support()
-        return support
-
     def value_restriction(self, restrvar, rel, value):
         # XXX handle rel is None case in RQLPathFacet?
         if self.restr_attr != 'eid':
             self.select.set_distinct(True)
-        if isinstance(value, string_types):
+        if isinstance(value, str):
             # only one value selected
             if value:
                 self.select.add_constant_restriction(
@@ -766,7 +728,7 @@ class RelationFacet(VocabularyFacet):
                 rel.parent.replace(rel, nodes.Not(rel))
         elif self.operator == 'OR':
             # set_distinct only if rtype cardinality is > 1
-            if self._support_and_compat():
+            if self.support_and:
                 self.select.set_distinct(True)
             # multiple ORed values: using IN is fine
             if '' in value:
@@ -920,7 +882,7 @@ class RelationAttributeFacet(RelationFacet):
         if self.i18nable:
             tr = self._cw._
         else:
-            tr = text_type
+            tr = str
         if self.rql_sort:
             return [(tr(value), value) for value, in rset]
         values = [(tr(value), value) for value, in rset]
@@ -1073,7 +1035,7 @@ class RQLPathFacet(RelationFacet):
         assert self.path and isinstance(self.path, (list, tuple)), \
             'path should be a list of 3-uples, not %s' % self.path
         for part in self.path:
-            if isinstance(part, string_types):
+            if isinstance(part, str):
                 part = part.split()
             assert len(part) == 3, \
                    'path should be a list of 3-uples, not %s' % part
@@ -1126,7 +1088,7 @@ class RQLPathFacet(RelationFacet):
             cleanup_select(select, self.filtered_variable)
             varmap, restrvar = self.add_path_to_select(skiplabel=True)
             select.append_selected(nodes.VariableRef(restrvar))
-            values = [text_type(x) for x, in self.rqlexec(select.as_string())]
+            values = [str(x) for x, in self.rqlexec(select.as_string())]
         except Exception:
             self.exception('while computing values for %s', self)
             return []
@@ -1149,7 +1111,7 @@ class RQLPathFacet(RelationFacet):
         varmap = {'X': self.filtered_variable}
         actual_filter_variable = None
         for part in self.path:
-            if isinstance(part, string_types):
+            if isinstance(part, str):
                 part = part.split()
             subject, rtype, object = part
             if skiplabel and object == self.label_variable:
@@ -1253,7 +1215,7 @@ class RangeFacet(AttributeFacet):
         rset = self._range_rset()
         if rset:
             minv, maxv = rset[0]
-            return [(text_type(minv), minv), (text_type(maxv), maxv)]
+            return [(str(minv), minv), (str(maxv), maxv)]
         return []
 
     def possible_values(self):
@@ -1272,7 +1234,7 @@ class RangeFacet(AttributeFacet):
 
     def formatvalue(self, value):
         """format `value` before in order to insert it in the RQL query"""
-        return text_type(value)
+        return str(value)
 
     def infvalue(self, min=False):
         if min:
@@ -1373,7 +1335,7 @@ class AbstractRangeRQLPathFacet(RQLPathFacet):
         # *list* (see rqlexec implementation)
         if rset:
             minv, maxv = rset[0]
-            return [(text_type(minv), minv), (text_type(maxv), maxv)]
+            return [(str(minv), minv), (str(maxv), maxv)]
         return []
 
 
@@ -1392,7 +1354,7 @@ class AbstractRangeRQLPathFacet(RQLPathFacet):
             skiplabel=True, skipattrfilter=True)
         restrel = None
         for part in self.path:
-            if isinstance(part, string_types):
+            if isinstance(part, str):
                 part = part.split()
             subject, rtype, object = part
             if object == self.filter_variable:
@@ -1516,7 +1478,7 @@ class BitFieldFacet(AttributeFacet):
                        if not val or val & mask])
 
     def possible_values(self):
-        return [text_type(val) for label, val in self.vocabulary()]
+        return [str(val) for label, val in self.vocabulary()]
 
 
 ## html widets ################################################################
@@ -1542,7 +1504,7 @@ class FacetVocabularyWidget(htmlwidgets.HTMLWidget):
     def height(self):
         """ title, optional and/or dropdown, len(items) or upper limit """
         return (1.5 + # title + small magic constant
-                int(self.facet._support_and_compat() +
+                int(self.facet.support_and +
                     min(len(self.items), self.css_overflow_limit)))
 
     @property
@@ -1562,14 +1524,14 @@ class FacetVocabularyWidget(htmlwidgets.HTMLWidget):
             cssclass += ' hideFacetBody'
         w(u'<div class="%s" cubicweb:facetName="%s">%s</div>\n' %
           (cssclass, xml_escape(self.facet.__regid__), title))
-        if self.facet._support_and_compat():
+        if self.facet.support_and:
             self._render_and_or(w)
         cssclass = 'facetBody vocabularyFacet'
         if not self.facet.start_unfolded:
             cssclass += ' hidden'
         overflow = self.overflows
         if overflow:
-            if self.facet._support_and_compat():
+            if self.facet.support_and:
                 cssclass += ' vocabularyFacetBodyWithLogicalSelector'
             else:
                 cssclass += ' vocabularyFacetBody'
@@ -1595,7 +1557,7 @@ class FacetVocabularyWidget(htmlwidgets.HTMLWidget):
         if selected:
             cssclass += ' facetValueSelected'
         w(u'<div class="%s" cubicweb:value="%s">\n'
-          % (cssclass, xml_escape(text_type(value))))
+          % (cssclass, xml_escape(str(value))))
         # If it is overflowed one must add padding to compensate for the vertical
         # scrollbar; given current css values, 4 blanks work perfectly ...
         padding = u'&#160;' * self.scrollbar_padding_factor if overflow else u''
@@ -1754,7 +1716,7 @@ class CheckBoxFacetWidget(htmlwidgets.HTMLWidget):
             imgsrc = self._cw.data_url(self.unselected_img)
             imgalt = self._cw._('not selected')
         w(u'<div class="%s" cubicweb:value="%s">\n'
-          % (cssclass, xml_escape(text_type(self.value))))
+          % (cssclass, xml_escape(str(self.value))))
         w(u'<div>')
         w(u'<img src="%s" alt="%s" cubicweb:unselimg="true" />&#160;' % (imgsrc, imgalt))
         w(u'<label class="facetTitle" cubicweb:facetName="%s">%s</label>'

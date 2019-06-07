@@ -1,4 +1,4 @@
-# copyright 2003-2016 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
+# copyright 2003-2018 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
 # contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
 #
 # This file is part of CubicWeb.
@@ -17,20 +17,10 @@
 # with CubicWeb.  If not, see <http://www.gnu.org/licenses/>.
 """The `ResultSet` class which is returned as result of an rql query"""
 
-
-from warnings import warn
-
-from six import PY3, text_type
-from six.moves import range
-
-from logilab.common import nullobject
 from logilab.common.decorators import cached, clear_cache, copy_cache
 from rql import nodes, stmts
 
 from cubicweb import NotAnEntity, NoResultError, MultipleResultsError, UnknownEid
-
-
-_MARKER = nullobject()
 
 
 class ResultSet(object):
@@ -52,10 +42,7 @@ class ResultSet(object):
     :param rql: the original RQL query string
     """
 
-    def __init__(self, results, rql, args=None, description=None, rqlst=None):
-        if rqlst is not None:
-            warn('[3.20] rqlst parameter is deprecated',
-                 DeprecationWarning, stacklevel=2)
+    def __init__(self, results, rql, args=None, description=None):
         self.rows = results
         self.rowcount = results and len(results) or 0
         # original query and arguments
@@ -371,25 +358,11 @@ class ResultSet(object):
         rset.limited = (limit, offset)
         return rset
 
-    def printable_rql(self, encoded=_MARKER):
+    def printable_rql(self):
         """return the result set's origin rql as a string, with arguments
         substitued
         """
-        if encoded is not _MARKER:
-            warn('[3.21] the "encoded" argument is deprecated', DeprecationWarning)
-        encoding = self.req.encoding
-        rqlstr = self.syntax_tree().as_string(kwargs=self.args)
-        if PY3:
-            return rqlstr
-        # sounds like we get encoded or unicode string due to a bug in as_string
-        if not encoded:
-            if isinstance(rqlstr, text_type):
-                return rqlstr
-            return text_type(rqlstr, encoding)
-        else:
-            if isinstance(rqlstr, text_type):
-                return rqlstr.encode(encoding)
-            return rqlstr
+        return self.syntax_tree().as_string(kwargs=self.args)
 
     # client helper methods ###################################################
 
@@ -400,6 +373,8 @@ class ResultSet(object):
             # hacks)
             if self.rows[i][col] is not None:
                 yield self.get_entity(i, col)
+
+    all = entities
 
     def iter_rows_with_entities(self):
         """ iterates over rows, and for each row
@@ -466,6 +441,34 @@ class ResultSet(object):
             raise NoResultError("No row was found for one()")
         else:
             raise MultipleResultsError("Multiple rows were found for one()")
+
+    def first(self, col=0):
+        """Retrieve the first entity from the query.
+
+        If the result set is empty, raises :exc:`NoResultError`.
+
+        :type col: int
+        :param col: The column localising the entity in the unique row
+
+        :return: the partially initialized `Entity` instance
+        """
+        if len(self) == 0:
+            raise NoResultError("No row was found for first()")
+        return self.get_entity(0, col)
+
+    def last(self, col=0):
+        """Retrieve the last entity from the query.
+
+        If the result set is empty, raises :exc:`NoResultError`.
+
+        :type col: int
+        :param col: The column localising the entity in the unique row
+
+        :return: the partially initialized `Entity` instance
+        """
+        if len(self) == 0:
+            raise NoResultError("No row was found for last()")
+        return self.get_entity(-1, col)
 
     def _make_entity(self, row, col):
         """Instantiate an entity, and store it in the entity cache"""

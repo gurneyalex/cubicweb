@@ -17,13 +17,7 @@
 # with CubicWeb.  If not, see <http://www.gnu.org/licenses/>.
 """Base class for entity objects manipulated in clients"""
 
-from warnings import warn
-
-from six import text_type, string_types, integer_types
-from six.moves import range
-
 from logilab.common.decorators import cached
-from logilab.common.deprecation import deprecated
 from logilab.common.registry import yes
 from logilab.mtconverter import TransformData, xml_escape
 
@@ -58,7 +52,6 @@ def can_use_rest_path(value):
     """return True if value can be used at the end of a Rest URL path"""
     if value is None:
         return False
-    value = text_type(value)
     # the check for ?, /, & are to prevent problems when running
     # behind Apache mod_proxy
     if value == u'' or u'?' in value or u'/' in value or u'&' in value:
@@ -175,7 +168,6 @@ class Entity(AppObject):
     # class attributes that must be set in class definition
     rest_attr = None
     fetch_attrs = None
-    skip_copy_for = () # bw compat (< 3.14), use cw_skip_copy_for instead
     cw_skip_copy_for = [('in_state', 'subject')]
     # class attributes set automatically at registration time
     e_schema = None
@@ -256,23 +248,11 @@ class Entity(AppObject):
             select.add_sort_var(var, asc=False)
 
     @classmethod
-    def fetch_rql(cls, user, restriction=None, fetchattrs=None, mainvar='X',
+    def fetch_rql(cls, user, fetchattrs=None, mainvar='X',
                   settype=True, ordermethod='fetch_order'):
         st = cls.fetch_rqlst(user, mainvar=mainvar, fetchattrs=fetchattrs,
                              settype=settype, ordermethod=ordermethod)
-        rql = st.as_string()
-        if restriction:
-            # cannot use RQLRewriter API to insert 'X rtype %(x)s' restriction
-            warn('[3.14] fetch_rql: use of `restriction` parameter is '
-                 'deprecated, please use fetch_rqlst and supply a syntax'
-                 'tree with your restriction instead', DeprecationWarning)
-            insert = ' WHERE ' + ','.join(restriction)
-            if ' WHERE ' in rql:
-                select, where = rql.split(' WHERE ', 1)
-                rql = select + insert + ',' + where
-            else:
-                rql += insert
-        return rql
+        return st.as_string()
 
     @classmethod
     def fetch_rqlst(cls, user, select=None, mainvar='X', fetchattrs=None,
@@ -281,7 +261,7 @@ class Entity(AppObject):
             select = Select()
             mainvar = select.get_variable(mainvar)
             select.add_selected(mainvar)
-        elif isinstance(mainvar, string_types):
+        elif isinstance(mainvar, str):
             assert mainvar in select.defined_vars
             mainvar = select.get_variable(mainvar)
         # eases string -> syntax tree test transition: please remove once stable
@@ -377,34 +357,8 @@ class Entity(AppObject):
                 etypecls._fetch_restrictions(var, select, fetchattrs,
                                              user, None, visited=visited)
             if ordermethod is not None:
-                try:
-                    cmeth = getattr(cls, ordermethod)
-                    warn('[3.14] %s %s class method should be renamed to cw_%s'
-                         % (cls.__regid__, ordermethod, ordermethod),
-                         DeprecationWarning)
-                except AttributeError:
-                    cmeth = getattr(cls, 'cw_' + ordermethod)
-                if support_args(cmeth, 'select'):
-                    cmeth(select, attr, var)
-                else:
-                    warn('[3.14] %s should now take (select, attr, var) and '
-                         'modify the syntax tree when desired instead of '
-                         'returning something' % cmeth, DeprecationWarning)
-                    orderterm = cmeth(attr, var.name)
-                    if orderterm is not None:
-                        try:
-                            var, order = orderterm.split()
-                        except ValueError:
-                            if '(' in orderterm:
-                                cls.error('ignore %s until %s is upgraded',
-                                          orderterm, cmeth)
-                                orderterm = None
-                            elif not ' ' in orderterm.strip():
-                                var = orderterm
-                                order = 'ASC'
-                        if orderterm is not None:
-                            select.add_sort_var(select.get_variable(var),
-                                                order=='ASC')
+                cmeth = getattr(cls, 'cw_' + ordermethod)
+                cmeth(select, attr, var)
 
     @classmethod
     @cached
@@ -548,12 +502,12 @@ class Entity(AppObject):
         return NotImplemented
 
     def __eq__(self, other):
-        if isinstance(self.eid, integer_types):
+        if isinstance(self.eid, int):
             return self.eid == other.eid
         return self is other
 
     def __hash__(self):
-        if isinstance(self.eid, integer_types):
+        if isinstance(self.eid, int):
             return self.eid
         return super(Entity, self).__hash__()
 
@@ -622,14 +576,6 @@ class Entity(AppObject):
         """
         return self.has_eid() and self._cw_is_saved
 
-    @deprecated('[3.24] cw_metainformation is deprecated')
-    @cached
-    def cw_metainformation(self):
-        source = self.cw_source[0].name
-        return {'type': self.cw_etype,
-                'extid': self.cwuri if source != 'system' else None,
-                'source': {'uri': source}}
-
     def cw_check_perm(self, action):
         self.e_schema.check_perm(self._cw, action, eid=self.eid)
 
@@ -662,10 +608,8 @@ class Entity(AppObject):
             kwargs['rql'] = 'Any X WHERE X eid %s' % self.eid
         return self._cw.build_url(method, **kwargs)
 
-    def rest_path(self, *args, **kwargs): # XXX cw_rest_path
+    def rest_path(self): # XXX cw_rest_path
         """returns a REST-like (relative) path for this entity"""
-        if args or kwargs:
-            warn("[3.24] rest_path doesn't take parameters anymore", DeprecationWarning)
         mainattr, needcheck = self.cw_rest_attr_info()
         etype = str(self.e_schema)
         path = etype.lower()
@@ -691,7 +635,7 @@ class Entity(AppObject):
         if path is None:
             # fallback url: <base-url>/<eid> url is used as cw entities uri,
             # prefer it to <base-url>/<etype>/eid/<eid>
-            return text_type(value)
+            return str(value)
         return u'%s/%s' % (path, self._cw.url_quote(value))
 
     def cw_attr_metadata(self, attr, metadata):
@@ -709,7 +653,7 @@ class Entity(AppObject):
         attr = str(attr)
         if value is _marker:
             value = getattr(self, attr)
-        if isinstance(value, string_types):
+        if isinstance(value, str):
             value = value.strip()
         if value is None or value == '': # don't use "not", 0 is an acceptable value
             return u''
@@ -759,11 +703,6 @@ class Entity(AppObject):
         assert self.has_eid()
         execute = self._cw.execute
         skip_copy_for = {'subject': set(), 'object': set()}
-        for rtype in self.skip_copy_for:
-            skip_copy_for['subject'].add(rtype)
-            warn('[3.14] skip_copy_for on entity classes (%s) is deprecated, '
-                 'use cw_skip_copy_for instead with list of couples (rtype, role)' % self.cw_etype,
-                 DeprecationWarning)
         for rtype, role in self.cw_skip_copy_for:
             assert role in ('subject', 'object'), role
             skip_copy_for[role].add(rtype)
@@ -1343,29 +1282,6 @@ class Entity(AppObject):
         for rqlexpr in self.e_schema.get_rqlexprs(action):
             self._cw.local_perm_cache.pop((rqlexpr.eid, (('x', self.eid),)), None)
 
-    # deprecated stuff #########################################################
-
-    @deprecated('[3.16] use cw_set() instead of set_attributes()')
-    def set_attributes(self, **kwargs): # XXX cw_set_attributes
-        if kwargs:
-            self.cw_set(**kwargs)
-
-    @deprecated('[3.16] use cw_set() instead of set_relations()')
-    def set_relations(self, **kwargs): # XXX cw_set_relations
-        """add relations to the given object. To set a relation where this entity
-        is the object of the relation, use 'reverse_'<relation> as argument name.
-
-        Values may be an entity or eid, a list of entities or eids, or None
-        (meaning that all relations of the given type from or to this object
-        should be deleted).
-        """
-        if kwargs:
-            self.cw_set(**kwargs)
-
-    @deprecated('[3.13] use entity.cw_clear_all_caches()')
-    def clear_all_caches(self):
-        return self.cw_clear_all_caches()
-
 
 # attribute and relation descriptors ##########################################
 
@@ -1380,13 +1296,6 @@ class Attribute(object):
         if eobj is None:
             return self
         return eobj.cw_attr_value(self._attrname)
-
-    @deprecated('[3.10] assign to entity.cw_attr_cache[attr] or entity.cw_edited[attr]')
-    def __set__(self, eobj, value):
-        if hasattr(eobj, 'cw_edited') and not eobj.cw_edited.saved:
-            eobj.cw_edited[self._attrname] = value
-        else:
-            eobj.cw_attr_cache[self._attrname] = value
 
 
 class Relation(object):

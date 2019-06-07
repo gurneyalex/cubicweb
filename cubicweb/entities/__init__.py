@@ -17,14 +17,7 @@
 # with CubicWeb.  If not, see <http://www.gnu.org/licenses/>.
 """base application's entities class implementation: `AnyEntity`"""
 
-
-
-from warnings import warn
-
-from six import text_type, string_types
-
 from logilab.common.decorators import classproperty
-from logilab.common.deprecation import deprecated
 
 from cubicweb import Unauthorized
 from cubicweb.entity import Entity
@@ -39,7 +32,7 @@ class AnyEntity(Entity):
     @classproperty
     def cw_etype(cls):
         """entity type as a unicode string"""
-        return text_type(cls.__regid__)
+        return cls.__regid__
 
     @classmethod
     def cw_create_url(cls, req, **kwargs):
@@ -47,36 +40,11 @@ class AnyEntity(Entity):
         return req.build_url('add/%s' % cls.__regid__, **kwargs)
 
     @classmethod
-    @deprecated('[3.22] use cw_fti_index_rql_limit instead')
-    def cw_fti_index_rql_queries(cls, req):
-        """return the list of rql queries to fetch entities to FT-index
-
-        The default is to fetch all entities at once and to prefetch
-        indexable attributes but one could imagine iterating over
-        "smaller" resultsets if the table is very big or returning
-        a subset of entities that match some business-logic condition.
-        """
-        restrictions = ['X is %s' % cls.__regid__]
-        selected = ['X']
-        for attrschema in sorted(cls.e_schema.indexable_attributes()):
-            varname = attrschema.type.upper()
-            restrictions.append('X %s %s' % (attrschema, varname))
-            selected.append(varname)
-        return ['Any %s WHERE %s' % (', '.join(selected),
-                                     ', '.join(restrictions))]
-
-    @classmethod
     def cw_fti_index_rql_limit(cls, req, limit=1000):
         """generate rsets of entities to FT-index
 
         By default, each successive result set is limited to 1000 entities
         """
-        if cls.cw_fti_index_rql_queries.__func__ != AnyEntity.cw_fti_index_rql_queries.__func__:
-            warn("[3.22] cw_fti_index_rql_queries is replaced by cw_fti_index_rql_limit",
-                 DeprecationWarning)
-            for rql in cls.cw_fti_index_rql_queries(req):
-                yield req.execute(rql)
-            return
         restrictions = ['X is %s' % cls.__regid__]
         selected = ['X']
         start = 0
@@ -141,8 +109,8 @@ class AnyEntity(Entity):
         if rtype is None:
             return self.dc_title().lower()
         value = self.cw_attr_value(rtype)
-        # do not restrict to `unicode` because Bytes will return a `str` value
-        if isinstance(value, string_types):
+        # do not restrict to `str` because Bytes will return a `str` value
+        if isinstance(value, str):
             return self.printable_value(rtype, format='text/plain').lower()
         return value
 

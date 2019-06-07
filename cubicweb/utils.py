@@ -25,24 +25,14 @@ import datetime
 import random
 import re
 import json
-
-from six import PY3
-
 from operator import itemgetter
-if PY3:
-    from inspect import getfullargspec as getargspec
-else:
-    from inspect import getargspec
+from inspect import getfullargspec as getargspec
 from itertools import repeat
 from uuid import uuid4
-from warnings import warn
 from threading import Lock
 from logging import getLogger
 
-from six import text_type
-
 from logilab.mtconverter import xml_escape
-from logilab.common.deprecation import deprecated
 from logilab.common.date import ustrftime
 
 from cubicweb import Binary
@@ -108,7 +98,7 @@ class wrap_on_write(object):
     """
     def __init__(self, w, tag, closetag=None):
         self.written = False
-        self.tag = text_type(tag)
+        self.tag = tag
         self.closetag = closetag
         self.w = w
 
@@ -124,7 +114,7 @@ class wrap_on_write(object):
     def __exit__(self, exctype, value, traceback):
         if self.written is True:
             if self.closetag:
-                self.w(text_type(self.closetag))
+                self.w(self.closetag)
             else:
                 self.w(self.tag.replace('<', '</', 1))
 
@@ -206,8 +196,6 @@ class UStringIO(list):
     __nonzero__ = __bool__
 
     def write(self, value):
-        assert isinstance(value, text_type), u"unicode required not %s : %s"\
-                                     % (type(value).__name__, repr(value))
         if self.tracewrites:
             from traceback import format_stack
             stack = format_stack(None)[:-1]
@@ -442,25 +430,14 @@ class HTMLStream(object):
         # keep main_stream's reference on req for easier text/html demoting
         req.main_stream = self
 
-    @deprecated('[3.17] there are no namespaces in html, xhtml is not served any longer')
-    def add_namespace(self, prefix, uri):
-        pass
-
-    @deprecated('[3.17] there are no namespaces in html, xhtml is not served any longer')
-    def set_namespaces(self, namespaces):
-        pass
-
     def add_htmlattr(self, attrname, attrvalue):
         self._htmlattrs.append( (attrname, attrvalue) )
 
     def set_htmlattrs(self, attrs):
         self._htmlattrs = attrs
 
-    def set_doctype(self, doctype, reset_xmldecl=None):
+    def set_doctype(self, doctype):
         self.doctype = doctype
-        if reset_xmldecl is not None:
-            warn('[3.17] xhtml is no more supported',
-                 DeprecationWarning, stacklevel=2)
 
     @property
     def htmltag(self):
@@ -632,6 +609,29 @@ class QueryCache(object):
         with self._lock:
             return len(self._data)
 
+    def items(self):
+        """Get an iterator over the dictionary's items: (key, value) pairs"""
+        with self._lock:
+            for k, v in self._data.items():
+                yield k, v
+
+    def get(self, k, default=None):
+        """Get the value associated to the specified key
+
+        :param k: The key to look for
+        :param default: The default value when the key is not found
+        :return: The associated value (or the default value)
+        """
+        try:
+            return self._data[k]
+        except KeyError:
+            return default
+
+    def __iter__(self):
+        with self._lock:
+            for k in iter(self._data):
+                yield k
+
     def __getitem__(self, k):
         with self._lock:
             if k in self._permanent:
@@ -689,10 +689,20 @@ class QueryCache(object):
                     break
                 level = v
         else:
-            # we removed cruft but everything is permanent
+            # we removed cruft
             if len(self._data) >= self._max:
-                logger.warning('Cache %s is full.' % id(self))
-                self._clear()
+                if len(self._permanent) >= self._max:
+                    # we really are full with permanents => clear
+                    logger.warning('Cache %s is full.' % id(self))
+                    self._clear()
+                else:
+                    # pathological case where _transient was probably empty ...
+                    # drop all non-permanents
+                    to_drop = set(self._data.keys()).difference(self._permanent)
+                    for k in to_drop:
+                        # should not be in _transient
+                        assert k not in self._transient
+                        self._data.pop(k, None)
 
     def _usage_report(self):
         with self._lock:

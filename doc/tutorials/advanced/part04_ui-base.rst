@@ -174,7 +174,7 @@ it's more logical stuff than view stuff:
 
 .. sourcecode:: python
 
-    from cubes.folder import entities as folder
+    from cubicweb_folder import entities as folder
 
 
     class FolderITreeAdapter(folder.FolderITreeAdapter):
@@ -327,7 +327,7 @@ directory). Once the above command is executed, I'll then update translations.
 To see if everything is ok on my test instance, I do: ::
 
   $ cubicweb-ctl i18ninstance sytweb_instance
-  $ cubicweb-ctl start -D sytweb_instance
+  $ cubicweb-ctl pyramid -D sytweb_instance
 
 The first command compile i18n catalogs (e.g. generates '.mo' files) for my test
 instance. The second command start it in debug mode, so I can open my browser and

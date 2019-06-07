@@ -18,8 +18,6 @@
 """additional cubicweb-ctl commands and command handlers for cubicweb and
 cubicweb's cubes development
 """
-from __future__ import print_function
-
 # *ctl module should limit the number of import to be imported as quickly as
 # possible (for cubicweb-ctl reactivity, necessary for instance for usable bash
 # completion). So import locally in command helpers.
@@ -30,11 +28,8 @@ import sys
 from datetime import datetime, date
 from os import getcwd, mkdir, chdir, path as osp
 import pkg_resources
-from warnings import warn
 
 from pytz import UTC
-
-from six.moves import input
 
 from logilab.common import STD_BLACKLIST
 from logilab.common.modutils import clean_sys_modules
@@ -481,12 +476,7 @@ class I18nCubeMessageExtractor(object):
         print('-> extracting messages:', end=' ')
         potfiles = []
         # static messages
-        if osp.exists(osp.join('i18n', 'entities.pot')):
-            warn('entities.pot is deprecated, rename file '
-                 'to static-messages.pot (%s)'
-                 % osp.join('i18n', 'entities.pot'), DeprecationWarning)
-            potfiles.append(osp.join('i18n', 'entities.pot'))
-        elif osp.exists(osp.join('i18n', 'static-messages.pot')):
+        if osp.exists(osp.join('i18n', 'static-messages.pot')):
             potfiles.append(osp.join('i18n', 'static-messages.pot'))
         # messages from schema
         potfiles.append(self.schemapot())
@@ -723,7 +713,6 @@ layout, and a full featured cube with "full" layout.',
             longdesc = input(
                 'Enter a long description (leave empty to reuse the short one): ')
         dependencies = {
-            'six': '>= 1.4.0',
             'cubicweb': '>= %s' % cubicwebversion,
         }
         if verbose:
@@ -797,7 +786,7 @@ class ExamineLogCommand(Command):
                     continue
                 try:
                     rql, time = line.split('--')
-                    rql = re.sub("(\'\w+': \d*)", '', rql)
+                    rql = re.sub(r"(\'\w+': \d*)", '', rql)
                     if '{' in rql:
                         rql = rql[:rql.index('{')]
                     req = requests.setdefault(rql, [])

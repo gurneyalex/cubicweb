@@ -10,7 +10,25 @@ Build-Depends:
  dh-systemd,
  python-all,
  python-setuptools,
- python-sphinx
+ python-six (>= 1.4.0),
+ python-docutils,
+ python-sphinx,
+ python-logilab-common (>= 1.4.0),
+ python-logilab-mtconverter,
+ python-markdown,
+ python-tz,
+ python-rql (>= 0.34.0),
+ python-yams (>= 0.45.0),
+ python-lxml,
+ python-setuptools,
+ python-pyramid,
+ python-pyramid-multiauth,
+ python-waitress,
+ python-passlib,
+ python-repoze.lru,
+ python-wsgicors,
+ python-filelock,
+ sphinx-common,
 Standards-Version: 3.9.6
 Homepage: https://www.cubicweb.org
 X-Python-Version: >= 2.7
@@ -27,12 +45,12 @@ Depends:
  python-logilab-database (>= 1.15.0),
  python-yams (>= 0.45.0),
  python-rql (>= 0.34.0),
- python-unittest2 (>= 0.7.0),
  python-lxml,
  python-markdown,
  python-passlib,
  python-tz,
  graphviz,
+ python-filelock,
  gettext,
 Recommends:
  cubicweb-ctl (= ${source:Version}),
@@ -41,7 +59,7 @@ Recommends:
  python-cubicweb-pyramid (= ${source:Version}),
 # common recommends
  python-simpletal (>= 4.0),
- python-crypto,
+ python-pycryptodome,
 # web recommends (mostly)
  python-docutils (>= 0.6),
  python-vobject,
@@ -55,21 +73,18 @@ Recommends:
 Suggests:
  python-zmq,
  python-cwclientlib (>= 0.4.0),
- python-cubicweb-twisted (= ${source:Version}),
  python-cubicweb-documentation (= ${source:Version}),
  w3c-dtd-xhtml,
  xvfb,
 Replaces:
  cubicweb (<< 3.24.0-1~),
  cubicweb-server (<< 3.24.0-1~),
- cubicweb-twisted (<< 3.24.0-1~),
  cubicweb-web (<< 3.24.0-1~),
  cubicweb-core,
  cubicweb-common (<< 3.24.0-1~),
 Breaks:
  cubicweb (<< 3.24.0-1~),
  cubicweb-server (<< 3.24.0-1~),
- cubicweb-twisted (<< 3.24.0-1~),
  cubicweb-inlinedit (<< 1.1.1),
  cubicweb-bootstrap (<< 0.6.6),
  cubicweb-folder (<< 1.10.0),
@@ -118,18 +133,6 @@ Description: postgres support for the CubicWeb framework
  .
  This virtual package provides dependencies to use PostgreSQL for the
  cubicweb repository.
-
-
-Package: python-cubicweb-twisted
-Architecture: all
-Depends:
- python-cubicweb (= ${source:Version}),
- python-twisted-web (<< 16.0.0),
-Description: meta package to use Twisted as HTTP server for CubicWeb
- CubicWeb is a semantic web application framework.
- .
- This package includes dependencies to run a Twisted based HTTP server to serve
- the adaptative web interface.
 
 
 Package: python-cubicweb-pyramid
@@ -211,16 +214,6 @@ Priority: extra
 Section: oldlibs
 Depends:
  python-cubicweb-postgresql-support, ${misc:Depends}
-Description: transitional package
-  This is a transitional package. It can safely be removed.
-
-
-Package: cubicweb-twisted
-Architecture: all
-Priority: extra
-Section: oldlibs
-Depends:
- python-cubicweb-twisted, ${misc:Depends}
 Description: transitional package
   This is a transitional package. It can safely be removed.
 
