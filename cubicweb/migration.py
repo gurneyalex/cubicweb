@@ -16,26 +16,21 @@
 # You should have received a copy of the GNU Lesser General Public License along
 # with CubicWeb.  If not, see <http://www.gnu.org/licenses/>.
 """utilities for instances migration"""
-from __future__ import print_function
-
-
 
 import sys
 import os
+import string
 import logging
 import tempfile
+import itertools
 from os.path import exists, join, basename, splitext
 from itertools import chain
-from warnings import warn
-
-from six import string_types
 
 from logilab.common import IGNORED_EXTENSIONS
 from logilab.common.decorators import cached
 from logilab.common.configuration import REQUIRED, read_old_config
 from logilab.common.shellutils import ASK
 from logilab.common.changelog import Version
-from logilab.common.deprecation import deprecated
 
 from cubicweb import ConfigurationError, ExecutionError
 from cubicweb.cwconfig import CubicWebConfiguration as cwcfg
@@ -269,11 +264,20 @@ class MigrationHelper(object):
         banner = """entering the migration python shell
 just type migration commands or arbitrary python code and type ENTER to execute it
 type "exit" or Ctrl-D to quit the shell and resume operation"""
-        interact(banner, local=local_ctx)
+
+        # use ipython if available
         try:
-            readline.write_history_file(histfile)
-        except IOError:
-            pass
+            from IPython import start_ipython
+            print(banner)
+            start_ipython(argv=[], user_ns=local_ctx)
+        except ImportError:
+            interact(banner, local=local_ctx)
+
+            try:
+                readline.write_history_file(histfile)
+            except IOError:
+                pass
+
         # delete instance's confirm attribute to avoid questions
         del self.confirm
         self.need_wrap = True
@@ -349,13 +353,7 @@ type "exit" or Ctrl-D to quit the shell and resume operation"""
             scriptlocals['__name__'] = pyname
             with open(migrscript, 'rb') as fobj:
                 fcontent = fobj.read()
-            try:
-                code = compile(fcontent, migrscript, 'exec')
-            except SyntaxError:
-                # try without print_function
-                code = compile(fcontent, migrscript, 'exec', 0, True)
-                warn('[3.22] script %r should be updated to work with print_function'
-                     % migrscript, DeprecationWarning)
+            code = compile(fcontent, migrscript, 'exec')
             exec(code, scriptlocals)
             if funcname is not None:
                 try:
@@ -406,7 +404,7 @@ type "exit" or Ctrl-D to quit the shell and resume operation"""
         """modify the list of used cubes in the in-memory config
         returns newly inserted cubes, including dependencies
         """
-        if isinstance(cubes, string_types):
+        if isinstance(cubes, str):
             cubes = (cubes,)
         origcubes = self.config.cubes()
         newcubes = [p for p in self.config.expand_cubes(cubes)
@@ -414,10 +412,6 @@ type "exit" or Ctrl-D to quit the shell and resume operation"""
         if newcubes:
             self.config.add_cubes(newcubes)
         return newcubes
-
-    @deprecated('[3.20] use drop_cube() instead of remove_cube()')
-    def cmd_remove_cube(self, cube, removedeps=False):
-        return self.cmd_drop_cube(cube, removedeps)
 
     def cmd_drop_cube(self, cube, removedeps=False):
         if removedeps:
@@ -474,6 +468,14 @@ def version_strictly_lower(a, b):
 def max_version(a, b):
     return str(max(Version(a), Version(b)))
 
+
+def split_constraint(constraint):
+    oper = itertools.takewhile(lambda x: x in "<>=", constraint)
+    version = itertools.dropwhile(lambda x: x not in string.digits + ".", constraint)
+
+    return "".join(oper), "".join(version)
+
+
 class ConfigurationProblem(object):
     """Each cube has its own list of dependencies on other cubes/versions.
 
@@ -507,7 +509,7 @@ class ConfigurationProblem(object):
                 self.reverse_dependencies.setdefault(name,set())
                 if constraint:
                     try:
-                        oper, version = constraint.split()
+                        oper, version = split_constraint(constraint)
                         self.reverse_dependencies[name].add( (oper, version, cube) )
                     except Exception:
                         self.warnings.append(

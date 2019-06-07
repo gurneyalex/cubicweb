@@ -20,8 +20,6 @@
 
 from datetime import datetime
 
-from six import text_type
-
 from logilab.common import tempattr
 from logilab.common.decorators import clear_cache
 
@@ -800,11 +798,11 @@ du :eid:`1:*ReST*`'''
             # ambiguity test
             person2 = req.create_entity('Personne', prenom=u'remi', nom=u'doe')
             person.cw_clear_all_caches()
-            self.assertEqual(person.rest_path(), text_type(person.eid))
-            self.assertEqual(person2.rest_path(), text_type(person2.eid))
+            self.assertEqual(person.rest_path(), str(person.eid))
+            self.assertEqual(person2.rest_path(), str(person2.eid))
             # unique attr with None value (nom in this case)
             friend = req.create_entity('Ami', prenom=u'bob')
-            self.assertEqual(friend.rest_path(), text_type(friend.eid))
+            self.assertEqual(friend.rest_path(), str(friend.eid))
             # 'ref' below is created without the unique but not required
             # attribute, make sur that the unique _and_ required 'ean' is used
             # as the rest attribute
@@ -836,16 +834,6 @@ du :eid:`1:*ReST*`'''
             note = req.create_entity('Note', type=u'y')
             note.cw_set(ecrit_par=person.eid)
             self.assertEqual(len(person.reverse_ecrit_par), 2)
-
-    def test_metainformation(self):
-        with self.admin_access.client_cnx() as cnx:
-            note = cnx.create_entity('Note', type=u'z')
-            cnx.commit()
-            note.cw_clear_all_caches()
-            metainf = note.cw_metainformation()
-            self.assertEqual(metainf, {'type': u'Note',
-                                       'extid': None,
-                                       'source': {'uri': 'system'}})
 
     def test_absolute_url_empty_field(self):
         with self.admin_access.web_request() as req:

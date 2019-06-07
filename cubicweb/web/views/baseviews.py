@@ -77,10 +77,6 @@ views use those text views as a basis.
 
 from cubicweb import _
 
-from warnings import warn
-
-from six.moves import range
-
 from logilab.mtconverter import TransformError, xml_escape
 from logilab.common.registry import yes
 
@@ -368,11 +364,8 @@ class SimpleListView(ListItemView):
 
         :param listid: the DOM id to use for the root element
         """
-        if subvid is None and 'vid' in kwargs:
-            warn("should give a 'subvid' argument instead of 'vid'",
-                 DeprecationWarning, stacklevel=2)
-        else:
-            kwargs['vid'] = subvid
+        assert 'vid' not in kwargs
+        kwargs['vid'] = subvid
         return super(SimpleListView, self).call(**kwargs)
 
 
@@ -626,18 +619,3 @@ class AuthorView(GroupByView):
         url = self.index_url(basepath, key[1], vtitle=vtitle)
         title = self._cw._('archive for %(author)s') % {'author': key[0]}
         return tags.a(label, href=url, title=title)
-
-
-# bw compat ####################################################################
-
-from logilab.common.deprecation import class_moved, class_deprecated
-
-from cubicweb.web.views import boxes, xmlrss, primary, tableview
-PrimaryView = class_moved(primary.PrimaryView)
-SideBoxView = class_moved(boxes.SideBoxView)
-XmlView = class_moved(xmlrss.XMLView)
-XmlItemView = class_moved(xmlrss.XMLItemView)
-XmlRsetView = class_moved(xmlrss.XMLRsetView)
-RssView = class_moved(xmlrss.RSSView)
-RssItemView = class_moved(xmlrss.RSSItemView)
-TableView = class_moved(tableview.TableView)

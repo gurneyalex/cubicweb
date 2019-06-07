@@ -19,15 +19,7 @@
 object to handle publication.
 """
 
-
-from cubicweb import _
-
-from warnings import warn
-
-from six import text_type
-from six.moves import http_client
-
-from logilab.common.deprecation import deprecated
+import http.client
 
 from cubicweb import (NoSelectableObject, ObjectNotFound, ValidationError,
                       AuthenticationError, UndoTransactionException,
@@ -35,44 +27,9 @@ from cubicweb import (NoSelectableObject, ObjectNotFound, ValidationError,
 from cubicweb.utils import json_dumps
 from cubicweb.predicates import (authenticated_user, anonymous_user,
                                 match_form_params)
-from cubicweb.web import Redirect, RemoteCallFailed
-from cubicweb.web.controller import Controller, append_url_params
+from cubicweb.web import Redirect
+from cubicweb.web.controller import Controller
 from cubicweb.web.views import vid_from_rset
-import cubicweb.transaction as tx
-
-@deprecated('[3.15] jsonize is deprecated, use AjaxFunction appobjects instead')
-def jsonize(func):
-    """decorator to sets correct content_type and calls `json_dumps` on
-    results
-    """
-    def wrapper(self, *args, **kwargs):
-        self._cw.set_content_type('application/json')
-        return json_dumps(func(self, *args, **kwargs))
-    wrapper.__name__ = func.__name__
-    return wrapper
-
-@deprecated('[3.15] xhtmlize is deprecated, use AjaxFunction appobjects instead')
-def xhtmlize(func):
-    """decorator to sets correct content_type and calls `xmlize` on results"""
-    def wrapper(self, *args, **kwargs):
-        self._cw.set_content_type(self._cw.html_content_type())
-        result = func(self, *args, **kwargs)
-        return ''.join((u'<div>', result.strip(),
-                        u'</div>'))
-    wrapper.__name__ = func.__name__
-    return wrapper
-
-@deprecated('[3.15] check_pageid is deprecated, use AjaxFunction appobjects instead')
-def check_pageid(func):
-    """decorator which checks the given pageid is found in the
-    user's session data
-    """
-    def wrapper(self, *args, **kwargs):
-        data = self._cw.session.data.get(self._cw.pageid)
-        if data is None:
-            raise RemoteCallFailed(self._cw._('pageid-not-found'))
-        return func(self, *args, **kwargs)
-    return wrapper
 
 
 class LoginController(Controller):
@@ -86,7 +43,7 @@ class LoginController(Controller):
             raise AuthenticationError()
         else:
             # Cookie authentication
-            self._cw.status_out = http_client.FORBIDDEN
+            self._cw.status_out = http.client.FORBIDDEN
             return self.appli.need_login_content(self._cw)
 
 class LoginControllerForAuthed(Controller):
@@ -229,7 +186,7 @@ def _validate_form(req, vreg):
     except Exception as ex:
         req.cnx.rollback()
         req.exception('unexpected error while validating form')
-        return (False, text_type(ex), ctrl._edited_entity)
+        return (False, str(ex), ctrl._edited_entity)
     return (False, '???', None)
 
 
@@ -253,16 +210,6 @@ class FormValidatorController(Controller):
         status, args, entity = _validate_form(self._cw, self._cw.vreg)
         domid = self._cw.form.get('__domid', 'entityForm')
         return self.response(domid, status, args, entity).encode(self._cw.encoding)
-
-
-class JSonController(Controller):
-    __regid__ = 'json'
-
-    def publish(self, rset=None):
-        warn('[3.15] JSONController is deprecated, use AjaxController instead',
-             DeprecationWarning)
-        ajax_controller = self._cw.vreg['controllers'].select('ajax', self._cw, appli=self.appli)
-        return ajax_controller.publish(rset)
 
 
 class MailBugReportController(Controller):

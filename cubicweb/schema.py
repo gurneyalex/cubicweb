@@ -17,21 +17,14 @@
 # with CubicWeb.  If not, see <http://www.gnu.org/licenses/>.
 """classes to define schemas for CubicWeb"""
 
-from __future__ import print_function
-
 from functools import wraps
 import re
 from os.path import join
 from hashlib import md5
 from logging import getLogger
-from warnings import warn
-
-from six import PY2, text_type, string_types, add_metaclass
-from six.moves import range
 
 from logilab.common.decorators import cached, clear_cache, monkeypatch, cachedproperty
 from logilab.common.logging_ext import set_log_methods
-from logilab.common.deprecation import deprecated
 from logilab.common.textutils import splitstrip
 from logilab.common.graph import get_cycles
 
@@ -45,12 +38,12 @@ from yams.reader import (CONSTRAINTS, PyFileReader, SchemaLoader,
                          cleanup_sys_modules, fill_schema_from_namespace)
 from yams.buildobjs import _add_relation as yams_add_relation
 
-from rql import parse, nodes, stmts, RQLSyntaxError, TypeResolverException
+from rql import parse, nodes, RQLSyntaxError, TypeResolverException
 from rql.analyze import ETypeResolver
 
 import cubicweb
 from cubicweb import server
-from cubicweb import ETYPE_NAME_MAP, ValidationError, Unauthorized, _
+from cubicweb import ValidationError, Unauthorized, _
 
 
 PURE_VIRTUAL_RTYPES = set(('identity', 'has_text',))
@@ -96,7 +89,7 @@ WORKFLOW_TYPES = set(('Transition', 'State', 'TrInfo', 'Workflow',
                       'WorkflowTransition', 'BaseTransition',
                       'SubWorkflowExitPoint'))
 
-INTERNAL_TYPES = set(('CWProperty', 'CWCache', 'ExternalUri', 'CWDataImport',
+INTERNAL_TYPES = set(('CWProperty', 'ExternalUri', 'CWDataImport',
                       'CWSource', 'CWSourceHostConfig', 'CWSession'))
 
 UNIQUE_CONSTRAINTS = ('SizeConstraint', 'FormatConstraint',
@@ -147,8 +140,6 @@ def normalize_expression(rqlstring):
     added/removed for instance)
     """
     union = parse(u'Any 1 WHERE %s' % rqlstring).as_string()
-    if PY2 and isinstance(union, str):
-        union = union.decode('utf-8')
     return union.split(' WHERE ', 1)[1]
 
 
@@ -220,7 +211,7 @@ class RQLExpression(object):
         """
         self.eid = eid  # eid of the entity representing this rql expression
         assert mainvars, 'bad mainvars %s' % mainvars
-        if isinstance(mainvars, string_types):
+        if isinstance(mainvars, str):
             mainvars = set(splitstrip(mainvars))
         elif not isinstance(mainvars, set):
             mainvars = set(mainvars)
@@ -233,8 +224,8 @@ class RQLExpression(object):
             raise RQLSyntaxError(expression)
         for mainvar in mainvars:
             if len(self.snippet_rqlst.defined_vars[mainvar].references()) < 2:
-                _LOGGER.warn('You did not use the %s variable in your RQL '
-                             'expression %s', mainvar, self)
+                _LOGGER.warning('You did not use the %s variable in your RQL '
+                                'expression %s', mainvar, self)
         # graph of links between variables, used by rql rewriter
         self.vargraph = vargraph(self.snippet_rqlst)
         # useful for some instrumentation, e.g. localperms permcheck command
@@ -570,15 +561,6 @@ def order_eschemas(eschemas):
     return eschemas
 
 
-def bw_normalize_etype(etype):
-    if etype in ETYPE_NAME_MAP:
-        msg = '%s has been renamed to %s, please update your code' % (
-            etype, ETYPE_NAME_MAP[etype])
-        warn(msg, DeprecationWarning, stacklevel=4)
-        etype = ETYPE_NAME_MAP[etype]
-    return etype
-
-
 def display_name(req, key, form='', context=None):
     """return a internationalized string for the key (schema entity or relation
     name) in a given form
@@ -590,9 +572,9 @@ def display_name(req, key, form='', context=None):
         key = key + '_' + form
     # ensure unicode
     if context is not None:
-        return text_type(req.pgettext(context, key))
+        return req.pgettext(context, key)
     else:
-        return text_type(req._(key))
+        return req._(key)
 
 
 def _override_method(cls, method_name=None, pass_original=False):
@@ -638,7 +620,7 @@ def get_groups(self, action):
     """
     assert action in self.ACTIONS, action
     try:
-        return frozenset(g for g in self.permissions[action] if isinstance(g, string_types))
+        return frozenset(g for g in self.permissions[action] if isinstance(g, str))
     except KeyError:
         return ()
 
@@ -657,7 +639,7 @@ def get_rqlexprs(self, action):
     """
     assert action in self.ACTIONS, action
     try:
-        return tuple(g for g in self.permissions[action] if not isinstance(g, string_types))
+        return tuple(g for g in self.permissions[action] if not isinstance(g, str))
     except KeyError:
         return ()
 
@@ -993,10 +975,6 @@ class CubicWebRelationSchema(PermissionMixIn, RelationSchema):
                     return False
         return True
 
-    @deprecated('use .rdef(subjtype, objtype).role_cardinality(role)')
-    def cardinality(self, subjtype, objtype, target):
-        return self.rdef(subjtype, objtype).role_cardinality(target)
-
 
 class CubicWebSchema(Schema):
     """set of entities and relations schema defining the possible data sets
@@ -1038,7 +1016,6 @@ class CubicWebSchema(Schema):
 
     def add_entity_type(self, edef):
         edef.name = str(edef.name)
-        edef.name = bw_normalize_etype(edef.name)
         if not re.match(self.etype_name_re, edef.name):
             raise BadSchemaDefinition(
                 '%r is not a valid name for an entity type. It should start '
@@ -1084,8 +1061,6 @@ class CubicWebSchema(Schema):
         :param: the newly created or just completed relation schema
         """
         rdef.name = rdef.name.lower()
-        rdef.subject = bw_normalize_etype(rdef.subject)
-        rdef.object = bw_normalize_etype(rdef.object)
         rdefs = super(CubicWebSchema, self).add_relation_def(rdef)
         if rdefs:
             try:
@@ -1182,14 +1157,13 @@ class CubicWebSchema(Schema):
 
 # additional cw specific constraints ###########################################
 
-@monkeypatch(BaseConstraint)
-def name_for(self, rdef):
+def constraint_name_for(constraint, rdef):
     """Return a unique, size controlled, name for this constraint applied to given `rdef`.
 
     This name may be used as name for the constraint in the database.
     """
-    return 'cstr' + md5((rdef.subject.type + rdef.rtype.type + self.type()
-                         + (self.serialize() or '')).encode('ascii')).hexdigest()
+    return 'cstr' + md5((rdef.subject.type + rdef.rtype.type + constraint.type()
+                         + (constraint.serialize() or '')).encode('ascii')).hexdigest()
 
 
 class BaseRQLConstraint(RRQLExpression, BaseConstraint):
@@ -1352,8 +1326,7 @@ class workflowable_definition(ybo.metadefinition):
         return cls
 
 
-@add_metaclass(workflowable_definition)
-class WorkflowableEntityType(ybo.EntityType):
+class WorkflowableEntityType(ybo.EntityType, metaclass=workflowable_definition):
     """Use this base class instead of :class:`EntityType` to have workflow
     relations (i.e. `in_state`, `wf_info_for` and `custom_workflow`) on your
     entity type.
@@ -1463,27 +1436,3 @@ def vocabulary(self, entity=None, form=None):
         if hasperm:
             return self.regular_formats + tuple(NEED_PERM_FORMATS)
     return self.regular_formats
-
-
-# XXX itou for some Statement methods
-
-@_override_method(stmts.ScopeNode, pass_original=True)
-def get_etype(self, name, _orig):
-    return _orig(self, bw_normalize_etype(name))
-
-
-@_override_method(stmts.Delete, method_name='add_main_variable',
-                  pass_original=True)
-def _add_main_variable_delete(self, etype, vref, _orig):
-    return _orig(self, bw_normalize_etype(etype), vref)
-
-
-@_override_method(stmts.Insert, method_name='add_main_variable',
-                  pass_original=True)
-def _add_main_variable_insert(self, etype, vref, _orig):
-    return _orig(self, bw_normalize_etype(etype), vref)
-
-
-@_override_method(stmts.Select, pass_original=True)
-def set_statement_type(self, etype, _orig):
-    return _orig(self, bw_normalize_etype(etype))

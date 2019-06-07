@@ -22,8 +22,8 @@ software
 
 modname = distname = "cubicweb"
 
-numversion = (3, 26, 11)
-version = '.'.join(str(num) for num in numversion)
+numversion = (3, 27, 0)
+version = '.'.join(str(num) for num in numversion) + '.dev0'
 
 description = "a repository of entities / relations for knowledge management"
 author = "Logilab"
@@ -34,7 +34,7 @@ license = 'LGPL'
 classifiers = [
     'Environment :: Web Environment',
     'Framework :: CubicWeb',
-    'Programming Language :: Python',
+    'Programming Language :: Python :: 3',
     'Programming Language :: JavaScript',
 ]
 

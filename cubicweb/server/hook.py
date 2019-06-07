@@ -75,7 +75,7 @@ before a rollback of a transaction).
 
 Hooks are being fired immediately on data operations, and it is sometime
 necessary to delay the actual work down to a time where we can expect all
-information to be there, or when all other hooks have run (though take case
+information to be there, or when all other hooks have run (though take care
 since operations may themselves trigger hooks). Also while the order of
 execution of hooks is data dependant (and thus hard to predict), it is possible
 to force an order on operations.
@@ -245,13 +245,11 @@ Hooks and operations classes
 .. autoclass:: cubicweb.server.hook.LateOperation
 .. autoclass:: cubicweb.server.hook.DataOperationMixIn
 """
-from __future__ import print_function
 
 from logging import getLogger
 from itertools import chain
 
 from logilab.common.decorators import classproperty, cached
-from logilab.common.deprecation import deprecated, class_renamed
 from logilab.common.logging_ext import set_log_methods
 from logilab.common.registry import (NotPredicate, OrPredicate,
                                      objectify_predicate)
@@ -428,10 +426,6 @@ def enabled_category(cls, req, **kwargs):
 def issued_from_user_query(cls, req, **kwargs):
     return 0 if req.hooks_in_progress else 1
 
-from_dbapi_query = class_renamed('from_dbapi_query',
-                                 issued_from_user_query,
-                                 message='[3.21] ')
-
 
 class rechain(object):
     def __init__(self, *iterators):
@@ -445,7 +439,7 @@ class match_rtype(ExpectedValuePredicate):
     named parameters `frometypes` and `toetypes` can be used to restrict
     target subject and/or object entity types of the relation.
 
-    :param \*expected: possible relation types
+    :param *expected: possible relation types
     :param frometypes: candidate entity types as subject of relation
     :param toetypes: candidate entity types as object of relation
     """
@@ -738,11 +732,6 @@ class Operation(object):
         self.processed = None # 'precommit', 'commit'
         self.failed = False
 
-    @property
-    @deprecated('[3.19] Operation.session is deprecated, use Operation.cnx instead')
-    def session(self):
-        return self.cnx
-
     def register(self, cnx):
         cnx.add_operation(self, self.insert_index())
 
@@ -795,7 +784,7 @@ def _container_add(container, value):
 
 class DataOperationMixIn(object):
     """Mix-in class to ease applying a single operation on a set of data,
-    avoiding to create as many as operation as they are individual modification.
+    avoiding creating as many operations as there are individual modifications.
     The body of the operation must then iterate over the values that have been
     stored in a single operation instance.
 

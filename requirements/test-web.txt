@@ -1,7 +1,3 @@
 docutils
-Twisted < 16.0.0
 requests
 webtest
-cubicweb-blog
-cubicweb-file >= 2.0.0
-cubicweb-tag

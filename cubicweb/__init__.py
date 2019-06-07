@@ -20,19 +20,13 @@ relations between entitites.
 """
 
 
-import imp
 import logging
 import os
 import pickle
 import sys
-import types
 import warnings
 import zlib
 
-from six import PY2, binary_type, text_type
-from six.moves import builtins
-
-from logilab.common.deprecation import deprecated
 from logilab.common.logging_ext import set_log_methods
 from yams.constraints import BASE_CONVERTERS, BASE_CHECKERS
 from yams.schema import role_name as rname
@@ -44,11 +38,7 @@ from logilab.common.registry import ObjectNotFound, NoSelectableObject, Registry
 from yams import ValidationError
 from cubicweb._exceptions import *  # noqa
 
-if PY2:
-    # http://bugs.python.org/issue10211
-    from StringIO import StringIO as BytesIO
-else:
-    from io import BytesIO
+from io import BytesIO
 
 # ignore the pygments UserWarnings
 warnings.filterwarnings('ignore', category=UserWarning,
@@ -67,20 +57,12 @@ CW_SOFTWARE_ROOT = __path__[0]  # noqa
 
 # '_' is available to mark internationalized string but should not be used to
 # do the actual translation
-_ = text_type
-if not hasattr(builtins, '_'):
-    builtins._ = deprecated("[3.22] Use 'from cubicweb import _'")(_)
-
-
-# convert eid to the right type, raise ValueError if it's not a valid eid
-@deprecated('[3.17] typed_eid() was removed. replace it with int() when needed.')
-def typed_eid(eid):
-    return int(eid)
+_ = str
 
 
 class Binary(BytesIO):
     """class to hold binary data. Use BytesIO to prevent use of unicode data"""
-    _allowed_types = (binary_type, bytearray, buffer if PY2 else memoryview)  # noqa: F405
+    _allowed_types = (bytes, bytearray, memoryview)
 
     def __init__(self, buf=b''):
         assert isinstance(buf, self._allowed_types), \
@@ -156,7 +138,7 @@ class Binary(BytesIO):
 
 
 def check_password(eschema, value):
-    return isinstance(value, (binary_type, Binary))
+    return isinstance(value, (bytes, Binary))
 
 
 BASE_CHECKERS['Password'] = check_password
@@ -165,7 +147,7 @@ BASE_CHECKERS['Password'] = check_password
 def str_or_binary(value):
     if isinstance(value, Binary):
         return value
-    return binary_type(value)
+    return bytes(value)
 
 
 BASE_CONVERTERS['Password'] = str_or_binary
@@ -278,60 +260,3 @@ class ProgrammingError(Exception):
     not be processed, a memory allocation error occurred during processing,
     etc.
     """
-
-
-# Import hook for "legacy" cubes ##############################################
-
-class _CubesLoader(object):
-
-    def __init__(self, *modinfo):
-        self.modinfo = modinfo
-
-    def load_module(self, fullname):
-        try:
-            # If there is an existing module object named 'fullname' in
-            # sys.modules , the loader must use that existing module.
-            # Otherwise, the reload() builtin will not work correctly.
-            return sys.modules[fullname]
-        except KeyError:
-            pass
-        if fullname == 'cubes':
-            mod = sys.modules[fullname] = types.ModuleType(
-                fullname, doc='CubicWeb cubes')
-        else:
-            modname, file, pathname, description = self.modinfo
-            try:
-                mod = sys.modules[fullname] = imp.load_module(
-                    modname, file, pathname, description)
-            finally:
-                # https://docs.python.org/2/library/imp.html#imp.load_module
-                # Important: the caller is responsible for closing the file
-                # argument, if it was not None, even when an exception is
-                # raised. This is best done using a try ... finally statement
-                if file is not None:
-                    file.close()
-        return mod
-
-
-class _CubesImporter(object):
-    """Module finder handling redirection of import of "cubes.<name>"
-    to "cubicweb_<name>".
-    """
-
-    @classmethod
-    def install(cls):
-        if not any(isinstance(x, cls) for x in sys.meta_path):
-            self = cls()
-            sys.meta_path.append(self)
-
-    def find_module(self, fullname, path=None):
-        if fullname == 'cubes':
-            return _CubesLoader()
-        elif fullname.startswith('cubes.') and fullname.count('.') == 1:
-            modname = 'cubicweb_' + fullname.split('.', 1)[1]
-            try:
-                modinfo = imp.find_module(modname)
-            except ImportError:
-                return None
-            else:
-                return _CubesLoader(modname, *modinfo)

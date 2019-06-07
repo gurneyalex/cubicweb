@@ -30,10 +30,6 @@ from cubicweb.hooks import integrity, syncschema
 
 class OperationsTC(CubicWebTC):
 
-    def setUp(self):
-        CubicWebTC.setUp(self)
-        self.hm = self.repo.hm
-
     def test_late_operation(self):
         with self.admin_access.repo_cnx() as cnx:
             l1 = hook.LateOperation(cnx)
@@ -63,9 +59,11 @@ class HookCalled(Exception):
     pass
 
 
-config = devtools.TestServerConfiguration('data', __file__)
-config.bootstrap_cubes()
-schema = config.load_schema()
+def setUpModule():
+    global config, schema
+    config = devtools.TestServerConfiguration('data', __file__)
+    config.bootstrap_cubes()
+    schema = config.load_schema()
 
 def tearDownModule(*args):
     global config, schema

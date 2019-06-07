@@ -21,11 +21,8 @@ Cubicweb registries
 
 import sys
 from os.path import join, dirname, realpath
-from warnings import warn
 from datetime import datetime, date, time, timedelta
 from functools import reduce
-
-from six import text_type, binary_type
 
 from logilab.common.decorators import cached, clear_cache
 from logilab.common.deprecation import class_deprecated
@@ -128,7 +125,7 @@ class ETypeRegistry(CWRegistry):
     def register(self, obj, **kwargs):
         obj = related_appobject(obj)
         oid = kwargs.get('oid') or obj.__regid__
-        if oid != 'Any' and not oid in self.schema:
+        if oid != 'Any' and oid not in self.schema:
             self.error('don\'t register %s, %s type not defined in the '
                        'schema', obj, oid)
             return
@@ -219,9 +216,9 @@ class ViewsRegistry(CWRegistry):
         """
         obj = self.select(oid, req, rset=rset, **kwargs)
         res = obj.render(**kwargs)
-        if isinstance(res, text_type):
+        if isinstance(res, str):
             return res.encode(req.encoding)
-        assert isinstance(res, binary_type)
+        assert isinstance(res, bytes)
         return res
 
     def possible_views(self, req, rset=None, **kwargs):
@@ -253,7 +250,7 @@ class ActionsRegistry(CWRegistry):
         if rset is None:
             actions = self.poss_visible_objects(req, rset=rset, **kwargs)
         else:
-            actions = rset.possible_actions(**kwargs) # cached implementation
+            actions = rset.possible_actions(**kwargs)  # cached implementation
         result = {}
         for action in actions:
             result.setdefault(action.category, []).append(action)
@@ -293,21 +290,6 @@ class CtxComponentsRegistry(CWRegistry):
         for component in thisctxcomps:
             component.cw_extra_kwargs['context'] = context
         return thisctxcomps
-
-
-class BwCompatCWRegistry(object):
-    def __init__(self, vreg, oldreg, redirecttoreg):
-        self.vreg = vreg
-        self.oldreg = oldreg
-        self.redirecto = redirecttoreg
-
-    def __getattr__(self, attr):
-        warn('[3.10] you should now use the %s registry instead of the %s registry'
-             % (self.redirecto, self.oldreg), DeprecationWarning, stacklevel=2)
-        return getattr(self.vreg[self.redirecto], attr)
-
-    def clear(self): pass
-    def initialization_completed(self): pass
 
 
 class CWRegistryStore(RegistryStore):
@@ -366,8 +348,6 @@ class CWRegistryStore(RegistryStore):
             sys.path.remove(CW_SOFTWARE_ROOT)
         self.schema = None
         self.initialized = False
-        self['boxes'] = BwCompatCWRegistry(self, 'boxes', 'ctxcomponents')
-        self['contentnavigation'] = BwCompatCWRegistry(self, 'contentnavigation', 'ctxcomponents')
 
     def setdefault(self, regid):
         try:
@@ -379,12 +359,14 @@ class CWRegistryStore(RegistryStore):
     def items(self):
         return [item for item in super(CWRegistryStore, self).items()
                 if not item[0] in ('propertydefs', 'propertyvalues')]
+
     def iteritems(self):
         return (item for item in super(CWRegistryStore, self).items()
                 if not item[0] in ('propertydefs', 'propertyvalues'))
 
     def values(self):
         return [value for key, value in self.items()]
+
     def itervalues(self):
         return (value for key, value in self.items())
 
@@ -479,7 +461,7 @@ class CWRegistryStore(RegistryStore):
             # bad class reference pb after reloading
             cfg = self.config
             for cube in cfg.expand_cubes(cubes, with_recommends=True):
-                if not cube in cubes:
+                if cube not in cubes:
                     cube_modnames = cfg.appobjects_cube_modnames(cube)
                     self._cleanup_sys_modules(cube_modnames)
         self.register_modnames(modnames)
@@ -523,12 +505,6 @@ class CWRegistryStore(RegistryStore):
         if depends_on is not None:
             self._needs_appobject[obj] = depends_on
 
-    def register_objects(self, path):
-        """overriden to give cubicweb's extrapath (eg cubes package's __path__)
-        """
-        super(CWRegistryStore, self).register_objects(
-            path, self.config.extrapath)
-
     def initialization_completed(self):
         """cw specific code once vreg initialization is completed:
 
@@ -555,7 +531,7 @@ class CWRegistryStore(RegistryStore):
                                registry.objid(obj), ' or '.join(regids), regname)
                     self.unregister(obj)
         super(CWRegistryStore, self).initialization_completed()
-        if 'uicfg' in self: # 'uicfg' is not loaded in a pure repository mode
+        if 'uicfg' in self:  # 'uicfg' is not loaded in a pure repository mode
             for rtags in self['uicfg'].values():
                 for rtag in rtags:
                     # don't check rtags if we don't want to cleanup_unused_appobjects
@@ -634,8 +610,8 @@ class CWRegistryStore(RegistryStore):
         vocab = pdef['vocabulary']
         if vocab is not None:
             if callable(vocab):
-                vocab = vocab(None) # XXX need a req object
-            if not value in vocab:
+                vocab = vocab(None)  # XXX need a req object
+            if value not in vocab:
                 raise ValueError(_('unauthorized value'))
         return value
 
@@ -658,11 +634,11 @@ class CWRegistryStore(RegistryStore):
 # XXX unify with yams.constraints.BASE_CONVERTERS?
 YAMS_TO_PY = BASE_CONVERTERS.copy()
 YAMS_TO_PY.update({
-    'Bytes':      Binary,
-    'Date':       date,
-    'Datetime':   datetime,
+    'Bytes': Binary,
+    'Date': date,
+    'Datetime': datetime,
     'TZDatetime': datetime,
-    'Time':       time,
-    'TZTime':     time,
-    'Interval':   timedelta,
-    })
+    'Time': time,
+    'TZTime': time,
+    'Interval': timedelta,
+})

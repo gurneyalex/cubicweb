@@ -58,17 +58,14 @@ case the store requires additional work once everything is done.
 .. autoclass:: cubicweb.dataimport.stores.MetadataGenerator
 """
 import inspect
-import warnings
 from datetime import datetime
 from copy import copy
 from itertools import count
 
-from six import add_metaclass
-
 import pytz
 
 from logilab.common.decorators import cached
-from logilab.common.deprecation import deprecated, class_deprecated
+from logilab.common.deprecation import class_deprecated
 
 from cubicweb.schema import META_RTYPES, VIRTUAL_RTYPES
 from cubicweb.server.edition import EditedEntity
@@ -115,13 +112,9 @@ class RQLObjectStore(NullStore):
     """Store that works by making RQL queries, hence with all the cubicweb's machinery activated.
     """
 
-    def __init__(self, cnx, commit=None):
-        if commit is not None:
-            warnings.warn('[3.19] commit argument should not be specified '
-                          'as the cnx object already provides it.',
-                          DeprecationWarning, stacklevel=2)
+    def __init__(self, cnx):
         self._cnx = cnx
-        self._commit = commit or cnx.commit
+        self._commit = cnx.commit
         # XXX 3.21 deprecated attributes
         self.eids = {}
         self.types = {}
@@ -148,23 +141,6 @@ class RQLObjectStore(NullStore):
 
     def commit(self):
         return self._commit()
-
-    @deprecated("[3.19] use cnx.find(*args, **kwargs).entities() instead")
-    def find_entities(self, *args, **kwargs):
-        return self._cnx.find(*args, **kwargs).entities()
-
-    @deprecated("[3.19] use cnx.find(*args, **kwargs).one() instead")
-    def find_one_entity(self, *args, **kwargs):
-        return self._cnx.find(*args, **kwargs).one()
-
-    @deprecated('[3.21] use prepare_insert_entity instead')
-    def create_entity(self, *args, **kwargs):
-        eid = self.prepare_insert_entity(*args, **kwargs)
-        return self._cnx.entity_from_eid(eid)
-
-    @deprecated('[3.21] use prepare_insert_relation instead')
-    def relate(self, eid_from, rtype, eid_to, **kwargs):
-        self.prepare_insert_relation(eid_from, rtype, eid_to, **kwargs)
 
 
 class NoHookRQLObjectStore(RQLObjectStore):
@@ -212,7 +188,7 @@ class NoHookRQLObjectStore(RQLObjectStore):
         self._system_source.add_info(cnx, entity, entity_source)
         self._system_source.add_entity(cnx, entity)
         kwargs = dict()
-        if inspect.getargspec(self._add_relation).keywords:
+        if inspect.getfullargspec(self._add_relation).varkw:
             kwargs['subjtype'] = entity.cw_etype
         for rtype, targeteids in rels.items():
             # targeteids may be a single eid or a list of eids
@@ -240,21 +216,6 @@ class NoHookRQLObjectStore(RQLObjectStore):
         if rschema.symmetric:
             self._add_relation(self._cnx, eid_to, rtype, eid_from, rschema.inlined)
         self._nb_inserted_relations += 1
-
-    @property
-    @deprecated('[3.21] deprecated')
-    def nb_inserted_entities(self):
-        return self._nb_inserted_entities
-
-    @property
-    @deprecated('[3.21] deprecated')
-    def nb_inserted_types(self):
-        return self._nb_inserted_types
-
-    @property
-    @deprecated('[3.21] deprecated')
-    def nb_inserted_relations(self):
-        return self._nb_inserted_relations
 
 
 class MetadataGenerator(object):
@@ -399,8 +360,7 @@ class _MetaGeneratorBWCompatWrapper(object):
         return self._mdgen.source
 
 
-@add_metaclass(class_deprecated)
-class MetaGenerator(object):
+class MetaGenerator(object, metaclass=class_deprecated):
     """Class responsible for generating standard metadata for imported entities. You may want to
     derive it to add application specific's metadata.
 

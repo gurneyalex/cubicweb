@@ -19,15 +19,13 @@
 """unit tests for i18n messages generator"""
 
 from contextlib import contextmanager
-from io import StringIO, BytesIO
+from io import StringIO
 import os
 import os.path as osp
 import sys
 from subprocess import PIPE, Popen, STDOUT
 from unittest import TestCase, main
-
-from six import PY2
-from mock import patch
+from unittest.mock import patch
 
 from cubicweb.devtools import devctl
 from cubicweb.devtools.testlib import BaseTestCase
@@ -58,7 +56,7 @@ def load_po(fname):
     return msgs
 
 
-TESTCUBE_DIR = osp.join(DATADIR, 'cubes', 'i18ntestcube')
+TESTCUBE_DIR = osp.join(DATADIR, 'libpython', 'cubicweb_i18ntestcube')
 
 
 class cubePotGeneratorTC(TestCase):
@@ -72,17 +70,6 @@ class cubePotGeneratorTC(TestCase):
             env['PYTHONPATH'] = ''
         env['PYTHONPATH'] += osp.join(DATADIR, 'libpython')
         cubedir = osp.join(DATADIR, 'libpython', 'cubicweb_i18ntestcube')
-        self._check(cubedir, env)
-
-    def test_i18ncube_legacy_layout(self):
-        env = os.environ.copy()
-        env['CW_CUBES_PATH'] = osp.join(DATADIR, 'cubes')
-        if 'PYTHONPATH' in env:
-            env['PYTHONPATH'] += os.pathsep
-        else:
-            env['PYTHONPATH'] = ''
-        env['PYTHONPATH'] += DATADIR
-        cubedir = osp.join(DATADIR, 'cubes', 'i18ntestcube')
         self._check(cubedir, env)
 
     def _check(self, cubedir, env):
@@ -102,7 +89,7 @@ class CustomMessageExtractor(devctl.I18nCubeMessageExtractor):
 
 @contextmanager
 def capture_stdout():
-    stream = BytesIO() if PY2 else StringIO()
+    stream = StringIO()
     sys.stdout = stream
     yield stream
     stream.seek(0)
@@ -137,19 +124,14 @@ class I18nCollectorTest(BaseTestCase):
     @patch('pkg_resources.load_entry_point', return_value=FakeMessageExtractor)
     def test_cube_custom_extractor(self, mock_load_entry_point):
         distname = 'cubicweb_i18ntestcube'  # same for new and legacy layout
-        for cubedir in [
-            osp.join(DATADIR, 'libpython', 'cubicweb_i18ntestcube'),
-            # Legacy cubes.
-            osp.join(DATADIR, 'cubes', 'i18ntestcube'),
-        ]:
-            with self.subTest(cubedir=cubedir):
-                with capture_stdout() as stream:
-                    devctl.update_cube_catalogs(cubedir)
-                self.assertIn(u'no message catalog for cube i18ntestcube',
-                              stream.read())
-                mock_load_entry_point.assert_called_once_with(
-                    distname, 'cubicweb.i18ncube', 'i18ntestcube')
-                mock_load_entry_point.reset_mock()
+        cubedir = osp.join(DATADIR, 'libpython', 'cubicweb_i18ntestcube')
+        with capture_stdout() as stream:
+            devctl.update_cube_catalogs(cubedir)
+        self.assertIn(u'no message catalog for cube i18ntestcube',
+                      stream.read())
+        mock_load_entry_point.assert_called_once_with(
+            distname, 'cubicweb.i18ncube', 'i18ntestcube')
+        mock_load_entry_point.reset_mock()
 
 
 if __name__ == '__main__':
